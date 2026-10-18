@@ -1,9 +1,7 @@
-const CACHE_NAME = 'ridvanses-pwa-v5';
+const CACHE_NAME = 'ridvanses-pwa-v6';
 const ASSETS_TO_CACHE = [
   '/',
   '/dinle',
-  '/rehber',
-  '/panel',
   '/css/style.css',
   '/manifest.json',
   '/icons/icon-512.svg'
@@ -28,7 +26,17 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws')) return;
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/ws') ||
+    url.pathname.startsWith('/rehber') ||
+    url.pathname.startsWith('/hoca') ||
+    url.pathname.startsWith('/panel') ||
+    url.pathname.startsWith('/acente') ||
+    url.pathname.startsWith('/login')
+  ) {
+    return;
+  }
 
   event.respondWith(
     fetch(event.request)

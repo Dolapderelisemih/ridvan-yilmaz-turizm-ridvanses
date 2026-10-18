@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Acente & Rehber Girişi | Rıdvan Yılmaz Turizm — RıdvanSes</title>
+  <title>Yetkili Girişi (Rehber & Acente) | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body class="star-field">
@@ -14,57 +14,126 @@
         <img src="https://ridvanyilmazturizm.com/wp-content/uploads/2025/09/logo-ridvan-yilmaz.png" alt="Logo" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <span class="brand-title">Rıdvan Yılmaz Turizm</span>
-          <span class="brand-sub">Acente & Rehber Yönetim Girişi</span>
+          <span class="brand-sub">Rehber Yayını & Acente Yönetim Girişi</span>
         </div>
       </a>
-      <a href="/" class="btn btn-outline btn-sm">← Ana Sayfaya Dön</a>
+      <div style="display:flex; gap:8px;">
+        <a href="/dinle" class="btn btn-gold btn-sm">🎧 Hacı Dinleme Ekranı (Şifresiz)</a>
+        <a href="/" class="btn btn-outline btn-sm">← Ana Sayfa</a>
+      </div>
     </div>
   </header>
 
-  <main style="max-width:440px; margin:60px auto; padding:0 16px;">
-    <div class="card">
+  <main style="max-width:460px; margin:56px auto; padding:0 16px;">
+    <div class="card" style="border:2px solid var(--color-emerald-deep);">
       <div style="text-align:center; margin-bottom:20px;">
-        <span class="badge badge-gold">YETKİLİ GİRİŞİ</span>
-        <h2 style="margin-top:8px; color:var(--color-emerald-night);">Yönetim Paneline Giriş</h2>
-        <p style="font-size:0.86rem; color:var(--color-muted); margin-top:4px;">
-          Hacılarımızın giriş yapmasına gerek yoktur; hacılarımız doğrudan <a href="/dinle" style="color:var(--color-emerald-deep); font-weight:700; text-decoration:underline;">Kafile Kodu</a> ile katılabilir.
+        <span class="badge badge-gold" id="loginTargetBadge">🔒 YETKİLİ GÜVENLİK GİRİŞİ</span>
+        <h2 style="margin-top:10px; color:var(--color-emerald-night);" id="loginTargetTitle">Rehber & Acente Paneli Girişi</h2>
+        <p style="font-size:0.86rem; color:var(--color-muted); margin-top:6px;">
+          Bu alan yalnızca <strong>Rıdvan Yılmaz Turizm</strong> rehber hocaları ve acente yetkilileri içindir.<br/>
+          Hacılarımız şifre girmeden doğrudan <a href="/dinle" style="color:var(--color-emerald-deep); font-weight:800; text-decoration:underline;">Hacı Girişi (Kafile Kodu)</a> ekranından katılabilir.
         </p>
       </div>
 
+      <div id="loginErrorBox" style="display:none; margin-bottom:14px; padding:12px; border-radius:10px; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; font-size:0.86rem; font-weight:700; text-align:center;"></div>
+
       <form id="loginForm" style="display:flex; flex-direction:column; gap:14px;">
         <div>
-          <label class="label">E-Posta Adresi</label>
-          <input type="email" id="email" class="input" value="info@ridvanyilmazturizm.com" required />
+          <label class="label">Kullanıcı Adı (E-Posta Adresi) *</label>
+          <input type="email" id="email" class="input" placeholder="ridvanyilmazturizm@gmail.com" autocomplete="username" required />
         </div>
         <div>
-          <label class="label">Şifre</label>
-          <input type="password" id="password" class="input" value="ridvan2026" required />
+          <label class="label">Yetkili Şifresi *</label>
+          <div style="position:relative; display:flex; align-items:center;">
+            <input type="password" id="password" class="input" style="padding-right:84px;" placeholder="••••••••••••" autocomplete="current-password" required />
+            <button type="button" onclick="togglePassVisibility()" id="togglePassBtn" style="position:absolute; right:8px; background:var(--color-ground); border:1px solid var(--color-hairline); border-radius:8px; padding:5px 10px; font-size:0.75rem; font-weight:700; cursor:pointer; color:var(--color-emerald-night);">
+              👁️ Göster
+            </button>
+          </div>
         </div>
-        <button type="submit" class="btn btn-primary" style="width:100%;">Giriş Yap ve Panele Geç →</button>
-      </form>
 
-      <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--color-hairline); display:flex; gap:8px;">
-        <a href="/panel" class="btn btn-outline btn-sm" style="flex:1;">🛡️ Acente Paneli</a>
-        <a href="/rehber" class="btn btn-gold btn-sm" style="flex:1;">🎙️ Rehber Konsolu</a>
-      </div>
+        <button type="submit" id="mainSubmitBtn" class="btn btn-primary" style="width:100%; padding:13px;">
+          🔓 Giriş Yap ve Devam Et →
+        </button>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:2px;">
+          <button type="button" class="btn btn-gold btn-sm" onclick="submitWithTarget('/rehber')">
+            🎙️ Rehber Yayınına Gir
+          </button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="submitWithTarget('/panel')">
+            🛡️ Acente Paneline Gir
+          </button>
+        </div>
+      </form>
     </div>
   </main>
 
   <script>
+    const params = new URLSearchParams(window.location.search);
+    let nextUrl = params.get('next') || '/panel';
+    if (!nextUrl.startsWith('/')) nextUrl = '/panel';
+
+    const titleEl = document.getElementById('loginTargetTitle');
+    const badgeEl = document.getElementById('loginTargetBadge');
+    const mainBtn = document.getElementById('mainSubmitBtn');
+
+    if (nextUrl.startsWith('/rehber') || nextUrl.startsWith('/hoca')) {
+      badgeEl.textContent = '🎙️ REHBER (HOCA) YAYIN KONSOLU';
+      titleEl.textContent = 'Rehber Yayını Yetkili Girişi';
+      mainBtn.textContent = '🎙️ Giriş Yap ve Rehber Yayınına Geç →';
+    } else if (nextUrl.startsWith('/panel') || nextUrl.startsWith('/acente')) {
+      badgeEl.textContent = '🛡️ ACENTE YÖNETİM PANELİ';
+      titleEl.textContent = 'Acente Paneli Yetkili Girişi';
+      mainBtn.textContent = '🛡️ Giriş Yap ve Acente Paneline Geç →';
+    }
+
+    function togglePassVisibility() {
+      const passInput = document.getElementById('password');
+      const btn = document.getElementById('togglePassBtn');
+      if (passInput.type === 'password') {
+        passInput.type = 'text';
+        btn.textContent = '🙈 Gizle';
+      } else {
+        passInput.type = 'password';
+        btn.textContent = '👁️ Göster';
+      }
+    }
+
+    function submitWithTarget(target) {
+      nextUrl = target;
+      document.getElementById('loginForm').requestSubmit();
+    }
+
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await res.json();
-      if (data.token) {
+      const errBox = document.getElementById('loginErrorBox');
+      errBox.style.display = 'none';
+
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value.trim();
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data.token) {
+          errBox.textContent = '❌ ' + (data.message || 'Kullanıcı adı veya şifre hatalı!');
+          errBox.style.display = 'block';
+          return;
+        }
+
+        document.cookie = `ry_auth=${data.token}; path=/; max-age=2592000; SameSite=Lax`;
+        localStorage.setItem('ry_auth_token', data.token);
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        window.location.href = '/panel';
+        window.location.href = nextUrl;
+      } catch (err) {
+        errBox.textContent = '❌ Bağlantı hatası oluştu, lütfen tekrar deneyin.';
+        errBox.style.display = 'block';
       }
     });
   </script>

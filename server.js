@@ -471,24 +471,62 @@ app.get('/api/ws-relay', (req, res) => {
 
 // ======================== REST API ENDPOINTS ========================
 
-// 1. Auth Endpoints (compatible with UmrahVoice /api/login & /api/forgot-password)
+// 1. Auth Endpoints (Rehber Yayını & Acente Paneli Yetkili Girişi)
+const ADMIN_USERNAME = 'ridvanyilmazturizm@gmail.com';
+const ADMIN_PASSWORD = 'dolapdereli16';
+const AUTH_COOKIE_NAME = 'ry_auth';
+const AUTH_TOKEN_VALUE = 'ry_auth_v1_987a6b5c4d';
+
+function isRequestAuthenticated(req) {
+  const cookieHeader = String(req.headers.cookie || '');
+  if (cookieHeader.includes(`${AUTH_COOKIE_NAME}=${AUTH_TOKEN_VALUE}`)) return true;
+  const authHeader = String(req.headers.authorization || '');
+  if (authHeader === `Bearer ${AUTH_TOKEN_VALUE}`) return true;
+  return false;
+}
+
 app.post('/api/login', (req, res) => {
   const { email, password } = req.body || {};
-  if (!email || !password) {
-    return res.status(400).json({ message: 'E-posta ve şifre alanı zorunludur.' });
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  const cleanPass = String(password || '').trim();
+
+  if (!cleanEmail || !cleanPass) {
+    return res.status(400).json({
+      success: false,
+      message: 'Kullanıcı adı (e-posta) ve şifre alanı zorunludur.'
+    });
   }
-  const guide = db.guides.find((g) => g.email.toLowerCase() === String(email).toLowerCase());
+
+  if (cleanEmail !== ADMIN_USERNAME || cleanPass !== ADMIN_PASSWORD) {
+    return res.status(401).json({
+      success: false,
+      message: 'Kullanıcı adı veya şifre hatalı! Lütfen yetkili giriş bilgilerinizi kontrol ediniz.'
+    });
+  }
+
   const user = {
-    id: guide ? guide.id : 'admin-1',
-    name: guide ? guide.name : 'Rıdvan Yılmaz (Acente Yönetimi)',
-    email,
-    role: guide ? 'guide' : 'agency_admin',
+    id: 'admin-1',
+    name: 'Rıdvan Yılmaz Turizm (Yetkili)',
+    email: ADMIN_USERNAME,
+    role: 'agency_admin',
     agency: db.agency.name
   };
+
+  res.setHeader(
+    'Set-Cookie',
+    `${AUTH_COOKIE_NAME}=${AUTH_TOKEN_VALUE}; Path=/; Max-Age=2592000; SameSite=Lax`
+  );
+
   return res.json({
-    token: `ry-jwt-${Buffer.from(email).toString('base64')}-${Date.now()}`,
+    success: true,
+    token: AUTH_TOKEN_VALUE,
     user
   });
+});
+
+app.post('/api/logout', (req, res) => {
+  res.setHeader('Set-Cookie', `${AUTH_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax`);
+  return res.json({ success: true });
 });
 
 app.post('/api/forgot-password', (req, res) => {
@@ -785,6 +823,22 @@ app.get('/api/qr', async (req, res) => {
 });
 
 // ======================== STATIC & PAGE ROUTES ========================
+const protectedRoutes = new Set([
+  '/rehber',
+  '/hoca',
+  '/rehber.html',
+  '/panel',
+  '/acente-kafile-yonetim-sistemi',
+  '/panel.html'
+]);
+
+app.use((req, res, next) => {
+  if (protectedRoutes.has(req.path) && !isRequestAuthenticated(req)) {
+    return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
+  }
+  return next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/favicon.ico', (req, res) => {

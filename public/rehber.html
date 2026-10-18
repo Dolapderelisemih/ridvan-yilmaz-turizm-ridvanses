@@ -5,6 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Rehber (Hoca) Canlı Yayın Konsolu | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <link rel="stylesheet" href="/css/style.css" />
+  <script>
+    (function() {
+      const TOKEN = 'ry_auth_v1_987a6b5c4d';
+      const hasCookie = document.cookie.includes('ry_auth=' + TOKEN);
+      const hasLocal = localStorage.getItem('ry_auth_token') === TOKEN;
+      if (!hasCookie && !hasLocal) {
+        window.location.replace('/login?next=' + encodeURIComponent(window.location.pathname + window.location.search));
+      } else if (!hasCookie && hasLocal) {
+        document.cookie = 'ry_auth=' + TOKEN + '; path=/; max-age=2592000; SameSite=Lax';
+      }
+    })();
+    async function ryLogout() {
+      localStorage.removeItem('ry_auth_token');
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax';
+      await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+      window.location.href = '/login?next=/rehber';
+    }
+  </script>
   <script src="/vercel-ws-shim.js"></script>
   <style>
     .console-wrap {
@@ -64,6 +84,7 @@
       <div class="nav-actions">
         <a href="/dinle" target="_blank" class="btn btn-outline btn-sm">🎧 Hacı Ekranını Yeni Sekmede Aç</a>
         <a href="/panel" class="btn btn-primary btn-sm">🛡️ Acente Paneli</a>
+        <button type="button" onclick="ryLogout()" class="btn btn-outline btn-sm">🚪 Çıkış Yap</button>
       </div>
     </div>
   </header>
