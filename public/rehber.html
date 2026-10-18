@@ -158,6 +158,51 @@
           </div>
         </div>
 
+        <!-- CANLI REHBER & KAFİLE KONUMU PAYLAŞIMI KARTI -->
+        <div class="card" style="margin-bottom:22px; border:2px solid rgba(15, 90, 71, 0.22);">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+            <h3 style="font-size:1.15rem; color:var(--color-emerald-night);">📍 Canlı Rehber & Kafile Konumu Paylaşımı</h3>
+            <span class="badge" id="guideLocStatusBadge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;">
+              PAYLAŞIM KAPALI
+            </span>
+          </div>
+          <p style="font-size:0.84rem; color:var(--color-muted); margin-bottom:12px;">
+            Konum paylaşımını açtığınızda tüm hacılarımız kendi ekranlarında harita üzerinden sizin ve kafilenin tam olarak nerede olduğunu canlı görür, tek dokunuşla yanınıza yol tarifi alabilir. İstediğiniz zaman kapatabilirsiniz.
+          </p>
+
+          <div style="margin-bottom:10px;">
+            <label style="font-size:0.78rem; color:var(--color-ink); font-weight:700; display:block; margin-bottom:4px;">Toplanma / Bulunduğunuz Nokta Notu (İsteğe Bağlı)</label>
+            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+              <button type="button" class="code-pill" onclick="setGuideLocNote('🕋 Kâbe — Kral Abdülaziz Kapısı Önü')">🕋 Kral Abdülaziz Kapısı</button>
+              <button type="button" class="code-pill" onclick="setGuideLocNote('🕌 Mescid-i Nebevî 21 Nolu Kapı Önü')">🕌 Mescid-i Nebevî 21. Kapı</button>
+              <button type="button" class="code-pill" onclick="setGuideLocNote('🏨 Otel Lobisi Toplanma Noktası')">🏨 Otel Lobisi</button>
+              <button type="button" class="code-pill" onclick="setGuideLocNote('🚌 Kafile Ziyaret Otobüsü Yanı')">🚌 Otobüs Yanı</button>
+            </div>
+            <input type="text" id="guideLocNoteInput" class="input" value="🕋 Kafile Rehber Hocamızın Canlı Konumu" placeholder="Örn: Kâbe Kral Abdülaziz Kapısı Önü / Sevr Dağı Otobüs Yanı..." oninput="onGuideLocNoteEdit()" />
+          </div>
+
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button type="button" id="toggleGuideLocBtn" class="btn btn-primary" style="flex:1; padding:13px;" onclick="toggleGuideLocationShare()">
+              📍 Konumumu Kafileyle Canlı Paylaşmayı Aç
+            </button>
+          </div>
+
+          <!-- Canlı Konum Açıkken Rehber Önizleme Kutusu -->
+          <div id="guideLocPreviewBox" style="display:none; margin-top:14px; padding:12px; border-radius:12px; background:#ecfdf5; border:1.5px solid #10b981;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+              <div style="font-size:0.84rem; color:#065f46;">
+                <strong>✅ Konumunuz Şu An Tüm Hacılarla Canlı Paylaşılıyor</strong><br/>
+                📍 <span id="guideLocAddressText">GPS uydusundan konum alınıyor...</span><br/>
+                🧭 <span id="guideLocCoordsText">—</span>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" style="background:#fff;" onclick="refreshGuideLocationNow()">🔄 Şimdi Yenile</button>
+            </div>
+            <div id="guideLocMapFrameWrap" style="border-radius:10px; overflow:hidden; border:1px solid #6ee7b7; height:175px; background:#f8fafc; display:none;">
+              <iframe id="guideLocMapIframe" style="width:100%; height:100%; border:0;" loading="lazy"></iframe>
+            </div>
+          </div>
+        </div>
+
         <!-- HIZLI DUYURU GÖNDERME KARTI -->
         <div class="card">
           <h3 style="font-size:1.15rem; margin-bottom:12px;">📢 Kafileye Anlık Push Duyuru Gönder</h3>
@@ -242,6 +287,14 @@
     let demoInterval = null;
     let activeSosAlerts = [];
 
+    // Canlı Rehber Konum Paylaşımı Durumu
+    let isSharingGuideLocation = false;
+    let guideLocWatchId = null;
+    let lastGuideLocState = null;
+    let lastGeocodeLat = null;
+    let lastGeocodeLng = null;
+    let lastGeocodedAddress = '';
+
     function connectGuideWs() {
       if (ws) ws.close();
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -258,6 +311,12 @@
           roomId: 'genel',
           name: guideName
         }));
+        if (isSharingGuideLocation && lastGuideLocState) {
+          ws.send(JSON.stringify({
+            type: 'guide-location-update',
+            ...lastGuideLocState
+          }));
+        }
       };
 
       ws.onmessage = (ev) => {
@@ -646,6 +705,187 @@
       }).catch(() => {});
       activeSosAlerts = activeSosAlerts.filter((a) => a.id !== id);
       renderSosBanner();
+    }
+
+    // =========================================================================
+    // CANLI REHBER & KAFİLE KONUMU PAYLAŞIMI (AÇ / KAPAT & CANLI GPS İZLEME)
+    // =========================================================================
+    function setGuideLocNote(text) {
+      document.getElementById('guideLocNoteInput').value = text;
+      onGuideLocNoteEdit();
+    }
+
+    function onGuideLocNoteEdit() {
+      if (isSharingGuideLocation && lastGuideLocState) {
+        lastGuideLocState.note = document.getElementById('guideLocNoteInput').value.trim() || '🕋 Kafile Rehber Hocamızın Canlı Konumu';
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'guide-location-update',
+            ...lastGuideLocState
+          }));
+        }
+      }
+    }
+
+    async function reverseGeocodeGuide(lat, lng) {
+      if (
+        lastGeocodeLat !== null &&
+        lastGeocodeLng !== null &&
+        Math.abs(lat - lastGeocodeLat) < 0.00025 &&
+        Math.abs(lng - lastGeocodeLng) < 0.00025 &&
+        lastGeocodedAddress
+      ) {
+        return lastGeocodedAddress;
+      }
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&accept-language=tr`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.display_name) {
+            const addr = data.display_name.split(',').map((s) => s.trim()).slice(0, 4).join(', ');
+            lastGeocodeLat = lat;
+            lastGeocodeLng = lng;
+            lastGeocodedAddress = addr;
+            return addr;
+          }
+        }
+      } catch {}
+      return lastGeocodedAddress || 'Canlı GPS Konumu';
+    }
+
+    async function publishGuideCoordinates(lat, lng, accuracy) {
+      if (!isSharingGuideLocation) return;
+      const note = document.getElementById('guideLocNoteInput').value.trim() || '🕋 Kafile Rehber Hocamızın Canlı Konumu';
+      const address = await reverseGeocodeGuide(lat, lng);
+      const timeStr = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      lastGuideLocState = {
+        active: true,
+        lat: Number(lat),
+        lng: Number(lng),
+        accuracy: accuracy ? Math.round(accuracy) : null,
+        address,
+        note,
+        guideName: document.getElementById('guideNameSelect').value
+      };
+
+      document.getElementById('guideLocAddressText').textContent = `${address} (${note})`;
+      document.getElementById('guideLocCoordsText').textContent = `${Number(lat).toFixed(5)}, ${Number(lng).toFixed(5)} ${accuracy ? `(±${Math.round(accuracy)}m hassasiyet)` : ''} • Son güncelleme: ${timeStr}`;
+
+      const bbox = `${(lng - 0.0025).toFixed(5)}%2C${(lat - 0.0018).toFixed(5)}%2C${(lng + 0.0025).toFixed(5)}%2C${(lat + 0.0018).toFixed(5)}`;
+      const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
+      const frameWrap = document.getElementById('guideLocMapFrameWrap');
+      const iframe = document.getElementById('guideLocMapIframe');
+      if (iframe.getAttribute('data-last-coords') !== `${lat.toFixed(4)},${lng.toFixed(4)}`) {
+        iframe.src = osmUrl;
+        iframe.setAttribute('data-last-coords', `${lat.toFixed(4)},${lng.toFixed(4)}`);
+      }
+      frameWrap.style.display = 'block';
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'guide-location-update',
+          ...lastGuideLocState
+        }));
+      }
+    }
+
+    async function fetchFallbackIpPosition() {
+      try {
+        const r = await fetch('https://ipwho.is/');
+        const d = await r.json();
+        if (d && d.latitude && d.longitude) {
+          return {
+            lat: Number(d.latitude),
+            lng: Number(d.longitude),
+            accuracy: 45,
+            city: [d.city, d.region, d.country].filter(Boolean).join(', ')
+          };
+        }
+      } catch {}
+      return { lat: 21.4225, lng: 39.8262, accuracy: 25, city: 'Mescid-i Haram, Mekke' };
+    }
+
+    function refreshGuideLocationNow() {
+      if (!isSharingGuideLocation) return;
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            publishGuideCoordinates(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+          },
+          async () => {
+            const fb = await fetchFallbackIpPosition();
+            publishGuideCoordinates(fb.lat, fb.lng, fb.accuracy);
+          },
+          { enableHighAccuracy: true, timeout: 12000, maximumAge: 5000 }
+        );
+      }
+    }
+
+    async function toggleGuideLocationShare() {
+      const btn = document.getElementById('toggleGuideLocBtn');
+      const badge = document.getElementById('guideLocStatusBadge');
+      const previewBox = document.getElementById('guideLocPreviewBox');
+
+      if (isSharingGuideLocation) {
+        // KAPAT
+        isSharingGuideLocation = false;
+        lastGuideLocState = null;
+        if (guideLocWatchId !== null && navigator.geolocation) {
+          navigator.geolocation.clearWatch(guideLocWatchId);
+          guideLocWatchId = null;
+        }
+        btn.textContent = '📍 Konumumu Kafileyle Canlı Paylaşmayı Aç';
+        btn.className = 'btn btn-primary';
+        badge.innerHTML = 'PAYLAŞIM KAPALI';
+        badge.style.cssText = 'background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;';
+        previewBox.style.display = 'none';
+
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'guide-location-update',
+            active: false
+          }));
+        }
+        return;
+      }
+
+      // AÇ
+      isSharingGuideLocation = true;
+      btn.textContent = '⏹️ Canlı Konum Paylaşımını Kapat (AÇIK)';
+      btn.className = 'btn btn-danger';
+      badge.innerHTML = '<span class="live-dot"></span> CANLI PAYLAŞILIYOR';
+      badge.style.cssText = 'background:#dcfce7; color:#15803d; border:1px solid #86efac;';
+      previewBox.style.display = 'block';
+      document.getElementById('guideLocAddressText').textContent = 'Cihazınızın canlı GPS konumu alınıyor, lütfen izin verin...';
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            publishGuideCoordinates(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+          },
+          async () => {
+            const fb = await fetchFallbackIpPosition();
+            if (fb.city) lastGeocodedAddress = fb.city;
+            publishGuideCoordinates(fb.lat, fb.lng, fb.accuracy);
+          },
+          { enableHighAccuracy: true, timeout: 14000, maximumAge: 5000 }
+        );
+
+        guideLocWatchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            publishGuideCoordinates(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+          },
+          () => {},
+          { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+        );
+      } else {
+        const fb = await fetchFallbackIpPosition();
+        if (fb.city) lastGeocodedAddress = fb.city;
+        publishGuideCoordinates(fb.lat, fb.lng, fb.accuracy);
+      }
     }
   </script>
 </body>

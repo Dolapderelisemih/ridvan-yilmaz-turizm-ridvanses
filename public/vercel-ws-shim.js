@@ -314,7 +314,7 @@
           this._deliverIncomingMessage(msg);
           return;
         }
-        if (msg.type === 'room-state' || msg.type === 'new-announcement') {
+        if (msg.type === 'room-state' || msg.type === 'new-announcement' || msg.type === 'guide-location') {
           this._deliverIncomingMessage(msg);
           return;
         }
@@ -345,6 +345,7 @@
             tourCode === 'RY-KASIM'
               ? 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk'
               : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti',
+          guideLocation: this._guideLocation || null,
           connectedPilgrims: pilgrims,
           totalListeners: pilgrims.length + baseCount,
           realListenerCount: pilgrims.length,
@@ -410,6 +411,31 @@
             speakerRole: 'guide',
             speakerName: this._joinContext.name || 'Ömer Ali Gültekin'
           });
+        } else if (parsed.type === 'guide-location-update') {
+          if (parsed.active === false) {
+            this._guideLocation = {
+              active: false,
+              updatedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            };
+          } else {
+            this._guideLocation = {
+              active: true,
+              lat: Number(parsed.lat),
+              lng: Number(parsed.lng),
+              accuracy: parsed.accuracy || null,
+              address: parsed.address || '',
+              note: parsed.note || 'Kafile Toplanma / Rehber Konumu',
+              guideName: this._joinContext.name || 'Rehber Hoca',
+              updatedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            };
+          }
+          const locPayload = {
+            _msgId: parsed._msgId,
+            type: 'guide-location',
+            guideLocation: this._guideLocation
+          };
+          this._publishMqtt(locPayload);
+          this._broadcastP2PRoomState();
         } else if (parsed.type === 'quick-announcement') {
           const annPayload = {
             _msgId: parsed._msgId,

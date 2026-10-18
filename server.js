@@ -68,6 +68,7 @@ function getOrCreateRoom(tourCode, roomId = 'genel') {
           : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti',
       activeSpeakerClientId: null,
       activeSpeakerName: null,
+      guideLocation: null,
       clients: new Map() // clientId -> { ws, id, role, name, phone, lang, handRaised, micGranted, joinedAt }
     });
   }
@@ -120,6 +121,7 @@ function serializeRoom(room) {
     currentTopic: room.currentTopic,
     activeSpeakerClientId: room.activeSpeakerClientId,
     activeSpeakerName: room.activeSpeakerName,
+    guideLocation: room.guideLocation || null,
     connectedPilgrims: pilgrims,
     connectedGuides: guides,
     totalListeners: pilgrims.length + baseCount,
@@ -256,6 +258,30 @@ function processClientJsonMessage(ctx, msg) {
       if (currentRoom.isLive) {
         currentRoom.startedAt = Date.now();
       }
+      broadcastRoomState(currentRoom);
+      break;
+    }
+
+    case 'guide-location-update': {
+      if (sender.role !== 'guide') break;
+      if (msg.active) {
+        currentRoom.guideLocation = {
+          active: true,
+          lat: Number(msg.lat) || 21.4225,
+          lng: Number(msg.lng) || 39.8262,
+          accuracy: msg.accuracy || null,
+          address: msg.address || 'Canlı Rehber GPS Konumu',
+          note: msg.note || '',
+          guideName: msg.guideName || sender.name || currentRoom.guideName,
+          updatedAt: msg.updatedAt || new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+        };
+      } else {
+        currentRoom.guideLocation = { active: false };
+      }
+      broadcastToRoom(currentRoom, {
+        type: 'guide-location',
+        guideLocation: currentRoom.guideLocation
+      });
       broadcastRoomState(currentRoom);
       break;
     }

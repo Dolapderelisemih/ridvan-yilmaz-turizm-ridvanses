@@ -282,6 +282,42 @@
       <!-- Gizli Arka Plan Ses Koruyucu (iOS / Android Tuş Kilidi Keep-Alive) -->
       <audio id="bgKeepAliveAudio" loop playsinline style="display:none;"></audio>
 
+      <!-- CANLI REHBER & KAFİLE KONUMU KARTI (Rehber Konum Paylaşımını Açtığında Görünür) -->
+      <div id="guideLiveLocationCard" class="card" style="display:none; margin-bottom:18px; border:2px solid var(--color-emerald); background:linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+          <span class="badge" style="background:#dcfce7; color:#15803d; border:1px solid #86efac; font-weight:800;">
+            <span class="live-dot"></span> 📍 HOCAMIZIN & KAFİLENİN CANLI KONUMU
+          </span>
+          <span id="pilgrimGuideLocTime" style="font-size:0.75rem; color:var(--color-muted); font-weight:700;">Şimdi</span>
+        </div>
+
+        <div style="background:#fff; border:1px solid #a7f3d0; border-radius:12px; padding:12px; margin-bottom:10px;">
+          <div id="pilgrimGuideLocNote" style="font-weight:800; font-size:0.98rem; color:var(--color-emerald-night); margin-bottom:4px;">
+            🕋 Kafile Rehber Hocamızın Canlı Konumu
+          </div>
+          <div id="pilgrimGuideLocAddr" style="font-size:0.84rem; color:var(--color-ink); line-height:1.4;">
+            —
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-top:8px; font-size:0.78rem; color:var(--color-muted);">
+            <span id="pilgrimGuideLocCoords">🧭 —</span>
+            <span id="pilgrimDistanceBadge" style="font-weight:800; color:var(--color-emerald-deep);"></span>
+          </div>
+        </div>
+
+        <div style="border-radius:12px; overflow:hidden; border:1.5px solid #6ee7b7; height:195px; background:#f8fafc; margin-bottom:10px;">
+          <iframe id="pilgrimGuideLocIframe" style="width:100%; height:100%; border:0;" loading="lazy"></iframe>
+        </div>
+
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <a id="pilgrimGuideDirBtn" href="#" target="_blank" class="btn btn-primary" style="flex:1; padding:12px; font-size:0.88rem;">
+            🧭 Hocanın Yanına Yol Tarifi Al
+          </a>
+          <a id="pilgrimGuideMapBtn" href="#" target="_blank" class="btn btn-outline" style="padding:12px; font-size:0.86rem; background:#fff;">
+            🗺️ Haritada Aç
+          </a>
+        </div>
+      </div>
+
       <!-- İKİ YÖNLÜ ETKİLEŞİM: SÖZ İSTE (EL KALDIR) & SOS -->
       <div class="card" style="margin-bottom:18px;">
         <h3 style="font-size:1.08rem; margin-bottom:12px;" id="i18n_interactionTitle">Hocamızla İletişim & Acil Durum</h3>
@@ -554,9 +590,16 @@
             document.getElementById('liveGuideName').textContent = r.guideName;
             document.getElementById('liveListenerCount').textContent = r.totalListeners;
             document.getElementById('liveTopicText').textContent = r.currentTopic;
+            if (typeof r.guideLocation !== 'undefined') {
+              renderGuideLiveLocation(r.guideLocation);
+            }
           }
           if (msg.announcements) renderAnnouncements(msg.announcements);
           if (msg.siyerPoints) renderPrayers(msg.siyerPoints);
+        }
+
+        if (msg.type === 'guide-location') {
+          renderGuideLiveLocation(msg.guideLocation);
         }
 
         if (msg.type === 'audio-chunk') {
@@ -590,6 +633,98 @@
           sendServiceWorkerNotification(msg.announcement.title, msg.announcement.message);
         }
       };
+    }
+
+    let wasGuideLocationActive = false;
+
+    function computeDistanceMeters(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toRad = (d) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    }
+
+    function renderGuideLiveLocation(loc) {
+      const card = document.getElementById('guideLiveLocationCard');
+      if (!card) return;
+      if (!loc || !loc.active || !loc.lat || !loc.lng) {
+        card.style.display = 'none';
+        wasGuideLocationActive = false;
+        return;
+      }
+
+      const lat = Number(loc.lat);
+      const lng = Number(loc.lng);
+      card.style.display = 'block';
+
+      if (!wasGuideLocationActive) {
+        wasGuideLocationActive = true;
+        playNotificationChime();
+      }
+
+      document.getElementById('pilgrimGuideLocTime').textContent = `🕒 Güncelleme: ${loc.updatedAt || 'Şimdi'}`;
+      document.getElementById('pilgrimGuideLocNote').textContent =
+        loc.note || `🕋 ${loc.guideName || 'Rehber Hocamızın'} Canlı Konumu`;
+      document.getElementById('pilgrimGuideLocAddr').textContent =
+        loc.address ? `📍 ${loc.address}` : '📍 Canlı Rehber & Kafile GPS Konumu';
+      document.getElementById('pilgrimGuideLocCoords').textContent =
+        `🧭 ${lat.toFixed(5)}, ${lng.toFixed(5)}${loc.accuracy ? ` (±${loc.accuracy}m)` : ''}`;
+
+      const bbox = `${(lng - 0.0025).toFixed(5)}%2C${(lat - 0.0018).toFixed(5)}%2C${(lng + 0.0025).toFixed(5)}%2C${(lat + 0.0018).toFixed(5)}`;
+      const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
+      const iframe = document.getElementById('pilgrimGuideLocIframe');
+      const coordKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+      if (iframe && iframe.getAttribute('data-coord-key') !== coordKey) {
+        iframe.src = osmUrl;
+        iframe.setAttribute('data-coord-key', coordKey);
+      }
+
+      const dirBtn = document.getElementById('pilgrimGuideDirBtn');
+      const mapBtn = document.getElementById('pilgrimGuideMapBtn');
+      if (dirBtn) dirBtn.href = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=walking`;
+      if (mapBtn) mapBtn.href = `https://www.google.com/maps?q=${lat},${lng}`;
+
+      // Eğer hacının cihaz GPS konumu biliniyorsa hocaya olan mesafeyi göster
+      const distBadge = document.getElementById('pilgrimDistanceBadge');
+      if (cachedGpsPos && cachedGpsPos.coords && distBadge) {
+        const distM = computeDistanceMeters(
+          cachedGpsPos.coords.latitude,
+          cachedGpsPos.coords.longitude,
+          lat,
+          lng
+        );
+        distBadge.textContent =
+          distM >= 1000 ? `📏 Mesafe: ${(distM / 1000).toFixed(1)} km` : `📏 Hocaya Mesafe: ~${distM} m`;
+      } else if (distBadge) {
+        distBadge.innerHTML = `<span style="cursor:pointer; text-decoration:underline;" onclick="measureDistanceToGuide(${lat}, ${lng})">📏 Mesafemi Ölç</span>`;
+      }
+    }
+
+    function measureDistanceToGuide(guideLat, guideLng) {
+      const distBadge = document.getElementById('pilgrimDistanceBadge');
+      if (!navigator.geolocation || !distBadge) return;
+      distBadge.textContent = '📡 Ölçülüyor...';
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          cachedGpsPos = pos;
+          const distM = computeDistanceMeters(
+            pos.coords.latitude,
+            pos.coords.longitude,
+            guideLat,
+            guideLng
+          );
+          distBadge.textContent =
+            distM >= 1000 ? `📏 Mesafe: ${(distM / 1000).toFixed(1)} km` : `📏 Hocaya Mesafe: ~${distM} m`;
+        },
+        () => {
+          distBadge.textContent = '⚠️ Konum izni gerekli';
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
+      );
     }
 
     function ensureAudioContext() {
