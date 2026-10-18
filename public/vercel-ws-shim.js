@@ -1,12 +1,11 @@
-// RıdvanSes — 3 Katmanlı Hibrit Gerçek Zamanlı Ses & Veri Köprüsü
+// RıdvanSes — 3 Katmanlı Hibrit Gerçek Zamanlı Ses, Konum (SOS) & Veri Köprüsü
 // 1. Yerel / Dedicated Sunucu: Doğrudan Native WebSocket (/ws)
-// 2. Kalıcı WSS Bulut Ses Otobüsü (MQTT-over-WSS: wss://broker.emqx.io:8084/mqtt) — 35ms gecikme, NAT/Firewall aşımı, sıfır ID çakışması
-// 3. PeerJS WebRTC P2P DataChannel + Tek-Uçuşlu (/api/ws-relay) HTTP Yedeği (msgId tekilleştirmeli)
+// 2. Kalıcı WSS Bulut Ses & SOS Otobüsü (MQTT-over-WSS: wss://broker.emqx.io:8084/mqtt) — 35ms gecikme, tüm odalar ve acil SOS için anlık iletim
+// 3. Tek-Uçuşlu (/api/ws-relay) HTTP Yedeği (msgId tekilleştirmeli)
 (function () {
   const NativeWebSocket = window.WebSocket;
   if (!NativeWebSocket) return;
 
-  // Dinamik script yükleyici
   function loadScriptOnce(src, globalName, cb) {
     if (window[globalName]) {
       cb();
@@ -24,23 +23,15 @@
     document.head.appendChild(s);
   }
 
-  // Ön yükleme: MQTT.js (WSS gerçek zamanlı pub/sub) ve PeerJS (WebRTC P2P)
   loadScriptOnce('https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js', 'mqtt', () => {});
-  loadScriptOnce('https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js', 'Peer', () => {});
 
   window.__ryActiveGuideStream = null;
   window.__ryActiveSocket = null;
 
-  window.ryBroadcastGuideStream = function (mediaStream) {
-    window.__ryActiveGuideStream = mediaStream;
-    if (window.__ryActiveSocket && typeof window.__ryActiveSocket._callAllPilgrimsWithStream === 'function') {
-      window.__ryActiveSocket._callAllPilgrimsWithStream(mediaStream);
-    }
-  };
+  const GLOBAL_SOS_TOPIC = 'ridvanses/v2/global/sos';
 
   class SmartWebSocket {
     constructor(url, protocols) {
-      // Sadece kendi uygulama /ws bağlantımızı sarmala; dış WSS (MQTT/PeerJS) bağlantılarını doğrudan NativeWebSocket ile aç!
       const isAppWs = typeof url === 'string' && url.endsWith('/ws') && url.includes(window.location.host);
       if (!isAppWs) {
         return protocols ? new NativeWebSocket(url, protocols) : new NativeWebSocket(url);
@@ -63,21 +54,15 @@
       sessionStorage.setItem('ry_relay_cid', this._clientId);
 
       this._joinContext = null;
+      this._isAdmin = false;
       this._sendQueue = [];
       this._seenIds = new Set();
       this._pollTimer = null;
 
-      // Oda içi bağlı hacı listesi (Rehber ve Hacı ekranları için)
-      this._pilgrimMeta = new Map(); // clientId -> { id, name, phone, lang, handRaised, micGranted, joinedAt }
+      this._pilgrimMeta = new Map();
       this._mqttClient = null;
       this._mqttTopic = null;
 
-      // PeerJS durumu
-      this._peer = null;
-      this._guideConn = null;
-      this._pilgrimConns = new Map();
-
-      // Vercel üzerinde (*.vercel.app) hiç beklemeden doğrudan gerçek zamanlı bulut köprüsünü başlat
       const isVercelHost = window.location.hostname.endsWith('.vercel.app');
       if (isVercelHost) {
         setTimeout(() => this._activateCloudRelay(), 15);
@@ -156,8 +141,7 @@
       return String(str || 'RY2026').toUpperCase().replace(/[^A-Z0-9]/g, '');
     }
 
-    // 1. Kalıcı WSS Bulut Ses Otobüsü (MQTT over WSS — 35ms Gerçek Zamanlı Ses & Komut Akışı)
-    _initMqttBus(joinMsg) {
+    _initMqttBus(joinMsg, isAdminMode = false) {
       loadScriptOnce('https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js', 'mqtt', () => {
         if (!window.mqtt) return;
         if (this._mqttClient) {
@@ -165,8 +149,8 @@
           this._mqttClient = null;
         }
 
-        const codeClean = this._sanitizeCode(joinMsg.tourCode);
-        const roomClean = this._sanitizeCode(joinMsg.roomId || 'genel');
+        const codeClean = joinMsg ? this._sanitizeCode(joinMsg.tourCode) : 'ALL';
+        const roomClean = joinMsg ? this._sanitizeCode(joinMsg.roomId || 'genel') : 'GENEL';
         const topic = `ridvanses/v2/room/${codeClean}/${roomClean}`;
         this._mqttTopic = topic;
 
@@ -179,45 +163,57 @@
         this._mqttClient = client;
 
         client.on('connect', () => {
-          client.subscribe(topic, { qos: 0 }, () => {
-            if (joinMsg.role !== 'guide') {
-              // Hacı odaya girdiğinde Rehbere varlığını bildirir
-              this._publishMqtt({
-                _msgId: 'hello-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-                type: 'p2p-pilgrim-hello',
-                senderClientId: this._clientId,
-                clientId: this._clientId,
-                name: joinMsg.name || 'Hacı Misafir',
-                phone: joinMsg.phone || '',
-                lang: joinMsg.lang || 'tr',
-                joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-              });
-            } else {
-              // Rehber odaya girdiğinde mevcut hacılardan durum ister
-              this._publishMqtt({
-                _msgId: 'gping-' + Date.now(),
-                type: 'p2p-guide-ping',
-                senderClientId: this._clientId,
-                guideName: joinMsg.name || 'Ömer Ali Gültekin'
-              });
-            }
-          });
+          // Rehber ve Admin her zaman Global SOS kanalını da dinler (hangi turda olursa olsun kayıp hacıyı görür!)
+          if (isAdminMode || (joinMsg && joinMsg.role === 'guide')) {
+            client.subscribe(GLOBAL_SOS_TOPIC, { qos: 0 });
+          }
+
+          if (joinMsg) {
+            client.subscribe(topic, { qos: 0 }, () => {
+              if (joinMsg.role !== 'guide') {
+                this._publishMqtt({
+                  _msgId: 'hello-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                  type: 'p2p-pilgrim-hello',
+                  senderClientId: this._clientId,
+                  clientId: this._clientId,
+                  name: joinMsg.name || 'Hacı Misafir',
+                  phone: joinMsg.phone || '',
+                  lang: joinMsg.lang || 'tr',
+                  joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+                });
+              } else {
+                this._publishMqtt({
+                  _msgId: 'gping-' + Date.now(),
+                  type: 'p2p-guide-ping',
+                  senderClientId: this._clientId,
+                  guideName: joinMsg.name || 'Ömer Ali Gültekin'
+                });
+              }
+            });
+          }
         });
 
         client.on('message', (t, payloadBuf) => {
           try {
             const msg = JSON.parse(payloadBuf.toString());
             if (!msg || msg.senderClientId === this._clientId) return;
+            if (t === GLOBAL_SOS_TOPIC) {
+              if (msg.type === 'sos-alert' || msg.type === 'sos-resolved') {
+                this._deliverIncomingMessage(msg);
+              }
+              return;
+            }
             this._handleCloudBusMessage(msg);
           } catch {}
         });
       });
     }
 
-    _publishMqtt(obj) {
-      if (this._mqttClient && this._mqttClient.connected && this._mqttTopic) {
+    _publishMqtt(obj, customTopic = null) {
+      const targetTopic = customTopic || this._mqttTopic;
+      if (this._mqttClient && this._mqttClient.connected && targetTopic) {
         try {
-          this._mqttClient.publish(this._mqttTopic, JSON.stringify({
+          this._mqttClient.publish(targetTopic, JSON.stringify({
             ...obj,
             senderClientId: this._clientId
           }), { qos: 0 });
@@ -228,7 +224,6 @@
     _handleCloudBusMessage(msg) {
       const role = this._joinContext ? this._joinContext.role : 'pilgrim';
 
-      // Rehber ping attığında hacı kendini tekrar tanıtır
       if (msg.type === 'p2p-guide-ping' && role !== 'guide' && this._joinContext) {
         this._publishMqtt({
           _msgId: 'hello-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
@@ -291,12 +286,13 @@
           const cid = msg.senderClientId;
           const p = this._pilgrimMeta.get(cid);
           const alertItem = {
-            id: 'sos-' + Date.now(),
-            tourCode: this._joinContext ? this._joinContext.tourCode : 'RY-KASIM',
-            pilgrimName: p ? p.name : 'Hacı Misafir',
-            phone: (p && p.phone) || msg.phone || '+90 538 399 96 66',
+            id: msg.alertId || ('sos-' + Date.now()),
+            tourCode: msg.tourCode || (this._joinContext ? this._joinContext.tourCode : 'RY-KASIM'),
+            pilgrimName: msg.pilgrimName || (p ? p.name : 'Hacı Misafir'),
+            phone: msg.phone || (p && p.phone) || '+90 538 399 96 66',
             lat: Number(msg.lat) || 21.4225,
             lng: Number(msg.lng) || 39.8262,
+            accuracy: msg.accuracy || null,
             locationNote: msg.locationNote || 'Canlı Cihaz GPS Konumu',
             createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
             status: 'active'
@@ -314,7 +310,6 @@
           return;
         }
       } else {
-        // Hacı (Pilgrim) rolü:
         if (msg.type === 'audio-chunk') {
           this._deliverIncomingMessage(msg);
           return;
@@ -387,11 +382,13 @@
         }
         if (parsed.type === 'join') {
           this._joinContext = parsed;
-          this._initMqttBus(parsed);
+          this._initMqttBus(parsed, false);
+        } else if (parsed.type === 'admin-subscribe') {
+          this._isAdmin = true;
+          this._initMqttBus(null, true);
         }
       }
 
-      // 1. Native WebSocket açıksa gönder
       if (!this._isRelay) {
         if (this._native && this._native.readyState === 1) {
           this._native.send(typeof parsed === 'object' ? JSON.stringify(parsed) : data);
@@ -401,7 +398,6 @@
 
       if (!parsed) return;
 
-      // 2. Kalıcı WSS Bulut Otobüsü (MQTT over WSS) üzerinden ANINDA (<35ms) gönder!
       if (this._joinContext && this._joinContext.role === 'guide') {
         if (parsed.type === 'audio-chunk') {
           this._publishMqtt({
@@ -440,13 +436,38 @@
           this._broadcastP2PRoomState();
         }
       } else {
-        // Hacı -> Rehber'e gönder (El Kaldır, SOS, Söz Verilmiş Hacı Sesi)
         if (parsed.type === 'audio-chunk') {
           this._publishMqtt({
             ...parsed,
             speakerRole: 'pilgrim',
             speakerName: (this._joinContext && this._joinContext.name) || 'Hacı Misafir'
           });
+        } else if (parsed.type === 'sos-trigger') {
+          const enrichedSos = {
+            ...parsed,
+            alertId: 'sos-' + Date.now(),
+            tourCode: (this._joinContext && this._joinContext.tourCode) || 'RY-KASIM',
+            pilgrimName: (this._joinContext && this._joinContext.name) || 'Hacı Misafir',
+            phone: (this._joinContext && this._joinContext.phone) || '+90 538 399 96 66'
+          };
+          this._publishMqtt(enrichedSos);
+          // Global SOS kanalına da yayınla ki Rehber/Acente hangi sekmede olursa olsun anında görsün!
+          this._publishMqtt({
+            _msgId: parsed._msgId,
+            type: 'sos-alert',
+            alert: {
+              id: enrichedSos.alertId,
+              tourCode: enrichedSos.tourCode,
+              pilgrimName: enrichedSos.pilgrimName,
+              phone: enrichedSos.phone,
+              lat: Number(parsed.lat),
+              lng: Number(parsed.lng),
+              accuracy: parsed.accuracy || null,
+              locationNote: parsed.locationNote || 'Canlı Cihaz GPS Konumu',
+              createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+              status: 'active'
+            }
+          }, GLOBAL_SOS_TOPIC);
         } else {
           this._publishMqtt({
             ...parsed,
@@ -455,7 +476,6 @@
         }
       }
 
-      // 3. /api/ws-relay HTTP Yedeği (Single-Flight: aynı anda sadece 1 istek)
       if (this._sendQueue.length >= 16) this._sendQueue.shift();
       this._sendQueue.push(parsed);
       if (!this._inFlight) {

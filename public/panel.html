@@ -595,22 +595,36 @@
       `).join('');
 
       // SOS Lists
-      const sosHtml = (appState.sosAlerts || []).map((s) => `
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:14px; border-radius:12px; background:${s.status === 'active' ? '#fff5f5' : 'var(--color-ground)'}; border:1.5px solid ${s.status === 'active' ? 'var(--color-danger)' : 'var(--color-hairline)'}; margin-bottom:8px;">
-          <div>
-            <div style="font-weight:800; color:${s.status === 'active' ? 'var(--color-danger)' : 'var(--color-ink)'};">
-              ${s.status === 'active' ? '🚨 AKTİF ALARM' : '✅ ÇÖZÜLDÜ'} — ${s.pilgrimName} (${s.tourCode})
+      const sosHtml = (appState.sosAlerts || []).map((s) => {
+        const lat = Number(s.lat) || 21.4225;
+        const lng = Number(s.lng) || 39.8262;
+        const bbox = `${(lng - 0.003).toFixed(5)}%2C${(lat - 0.002).toFixed(5)}%2C${(lng + 0.003).toFixed(5)}%2C${(lat + 0.002).toFixed(5)}`;
+        const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
+        const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+        return `
+        <div style="display:flex; flex-direction:column; gap:10px; padding:14px; border-radius:12px; background:${s.status === 'active' ? '#fff5f5' : 'var(--color-ground)'}; border:1.5px solid ${s.status === 'active' ? 'var(--color-danger)' : 'var(--color-hairline)'}; margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div>
+              <div style="font-weight:800; color:${s.status === 'active' ? 'var(--color-danger)' : 'var(--color-ink)'};">
+                ${s.status === 'active' ? '🚨 AKTİF ALARM' : '✅ ÇÖZÜLDÜ'} — ${s.pilgrimName} (${s.tourCode})
+              </div>
+              <div style="font-size:0.84rem; color:var(--color-muted);">
+                📞 ${s.phone} • 📍 ${s.locationNote} (${lat.toFixed(5)}, ${lng.toFixed(5)}) • 🕒 ${s.createdAt}
+              </div>
             </div>
-            <div style="font-size:0.84rem; color:var(--color-muted);">
-              📞 ${s.phone} • 📍 ${s.locationNote} (${Number(s.lat).toFixed(4)}, ${Number(s.lng).toFixed(4)}) • 🕒 ${s.createdAt}
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">🧭 Yol Tarifi</a>
+              <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">🗺️ Harita</a>
+              ${s.status === 'active' ? `<button class="btn btn-primary btn-sm" onclick="resolveSosAdmin('${s.id}')">Çözüldü İşaretle</button>` : ''}
             </div>
           </div>
-          <div style="display:flex; gap:8px;">
-            <a href="https://www.google.com/maps?q=${s.lat},${s.lng}" target="_blank" class="btn btn-outline btn-sm">🗺️ Harita</a>
-            ${s.status === 'active' ? `<button class="btn btn-primary btn-sm" onclick="resolveSosAdmin('${s.id}')">Çözüldü İşaretle</button>` : ''}
-          </div>
+          ${s.status === 'active' ? `
+          <div style="border-radius:10px; overflow:hidden; border:1px solid #fca5a5; height:190px; background:#f8fafc;">
+            <iframe src="${osmUrl}" style="width:100%; height:100%; border:0;" loading="lazy"></iframe>
+          </div>` : ''}
         </div>
-      `).join('');
+      `;
+      }).join('');
       document.getElementById('overviewSosBox').innerHTML = sosHtml || 'SOS kaydı yok.';
       document.getElementById('fullSosList').innerHTML = sosHtml || 'SOS kaydı yok.';
 
@@ -675,7 +689,12 @@
           renderAll();
         }
         if ((msg.type === 'sos-alert' || msg.type === 'sos-resolved') && appState) {
-          if (msg.sosAlerts) appState.sosAlerts = msg.sosAlerts;
+          if (msg.sosAlerts) {
+            appState.sosAlerts = msg.sosAlerts;
+          } else if (msg.alert) {
+            appState.sosAlerts = (appState.sosAlerts || []).filter((s) => s.id !== msg.alert.id);
+            appState.sosAlerts.unshift(msg.alert);
+          }
           renderAll();
         }
         if (msg.type === 'new-announcement' && msg.announcement && appState) {

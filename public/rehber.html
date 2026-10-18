@@ -250,7 +250,9 @@
         }
 
         if (msg.type === 'sos-alert' && msg.alert) {
+          activeSosAlerts = activeSosAlerts.filter((a) => a.id !== msg.alert.id);
           activeSosAlerts.unshift(msg.alert);
+          playSosEmergencyTone();
           renderSosBanner();
         }
 
@@ -546,6 +548,30 @@
       document.getElementById('annMsgInput').value = '';
     }
 
+    function playSosEmergencyTone() {
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!audioCtx) audioCtx = new AudioContextClass();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        [880, 660, 880].forEach((freq, idx) => {
+          setTimeout(() => {
+            try {
+              const osc = audioCtx.createOscillator();
+              const g = audioCtx.createGain();
+              osc.type = 'triangle';
+              osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+              g.gain.setValueAtTime(0.18, audioCtx.currentTime);
+              g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.22);
+              osc.connect(g);
+              g.connect(audioCtx.destination);
+              osc.start();
+              osc.stop(audioCtx.currentTime + 0.23);
+            } catch {}
+          }, idx * 240);
+        });
+      } catch {}
+    }
+
     function renderSosBanner() {
       const el = document.getElementById('sosAlertContainer');
       if (!activeSosAlerts.length) {
@@ -553,22 +579,37 @@
         return;
       }
       el.style.display = 'block';
-      el.innerHTML = activeSosAlerts.map((a) => `
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-          <div>
-            <div style="color:var(--color-danger); font-weight:800; font-size:1.05rem;">
-              🚨 ACİL SOS KONUM ALARMI — ${a.pilgrimName} (${a.phone})
+      el.innerHTML = activeSosAlerts.map((a) => {
+        const lat = Number(a.lat) || 21.4225;
+        const lng = Number(a.lng) || 39.8262;
+        const bbox = `${(lng - 0.003).toFixed(5)}%2C${(lat - 0.002).toFixed(5)}%2C${(lng + 0.003).toFixed(5)}%2C${(lat + 0.002).toFixed(5)}`;
+        const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
+        const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+        return `
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+            <div>
+              <div style="color:var(--color-danger); font-weight:800; font-size:1.06rem;">
+                🚨 ACİL SOS KONUM ALARMI — ${a.pilgrimName} (${a.phone}) ${a.tourCode ? `<span class="badge badge-gold" style="margin-left:6px;">${a.tourCode}</span>` : ''}
+              </div>
+              <div style="font-size:0.88rem; color:var(--color-ink); margin-top:4px;">
+                📍 <strong>Açık Konum:</strong> ${a.locationNote}<br/>
+                🧭 <strong>GPS Koordinat:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)} ${a.accuracy ? `(±${a.accuracy}m)` : ''} • 🕒 ${a.createdAt}
+              </div>
             </div>
-            <div style="font-size:0.88rem; color:var(--color-ink); margin-top:4px;">
-              📍 <strong>Konum:</strong> ${a.locationNote} (${Number(a.lat).toFixed(4)}, ${Number(a.lng).toFixed(4)}) • 🕒 ${a.createdAt}
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">🧭 Yol Tarifi Aç (Google Maps)</a>
+              <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">🗺️ Haritada Gör</a>
+              <a href="tel:${a.phone}" class="btn btn-outline btn-sm">📞 Hemen Ara</a>
+              <button class="btn btn-primary btn-sm" onclick="resolveSos('${a.id}')">✅ Hacıya Ulaşıldı</button>
             </div>
           </div>
-          <div style="display:flex; gap:8px;">
-            <a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" class="btn btn-outline btn-sm">🗺️ Haritada Aç</a>
-            <button class="btn btn-primary btn-sm" onclick="resolveSos('${a.id}')">✅ Hacıya Ulaşıldı</button>
+          <div style="border-radius:12px; overflow:hidden; border:2px solid #fca5a5; height:210px; background:#f8fafc;">
+            <iframe src="${osmUrl}" style="width:100%; height:100%; border:0;" loading="lazy"></iframe>
           </div>
         </div>
-      `).join('<hr style="margin:10px 0; border-color:#fecaca;"/>');
+      `;
+      }).join('<hr style="margin:14px 0; border-color:#fecaca;"/>');
     }
 
     async function resolveSos(id) {
@@ -576,7 +617,7 @@
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolvedBy: document.getElementById('guideNameSelect').value })
-      });
+      }).catch(() => {});
       activeSosAlerts = activeSosAlerts.filter((a) => a.id !== id);
       renderSosBanner();
     }

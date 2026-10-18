@@ -787,6 +787,11 @@ app.get('/api/qr', async (req, res) => {
 // ======================== STATIC & PAGE ROUTES ========================
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.get('/favicon.ico', (req, res) => {
+  res.type('image/svg+xml');
+  res.sendFile(path.join(__dirname, 'public', 'icons', 'icon-512.svg'));
+});
+
 const routeMap = {
   '/': 'index.html',
   '/dinle': 'dinle.html',

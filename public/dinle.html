@@ -809,12 +809,38 @@
       }
     }
 
-    // 3-Second Hold SOS Button
+    // 3-Second Hold SOS Button + Real Phone GPS & Reverse Geocoding
     let sosInterval = null;
     let sosProgress = 0;
+    let cachedGpsPos = null;
+    let gpsWatchId = null;
+
+    function prewarmGpsPosition() {
+      if (!navigator.geolocation) return;
+      try {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            cachedGpsPos = pos;
+          },
+          () => {},
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 15000 }
+        );
+        if (!gpsWatchId) {
+          gpsWatchId = navigator.geolocation.watchPosition(
+            (pos) => {
+              cachedGpsPos = pos;
+            },
+            () => {},
+            { enableHighAccuracy: true, maximumAge: 5000 }
+          );
+        }
+      } catch {}
+    }
 
     function startSosHold(ev) {
       if (ev && ev.cancelable) ev.preventDefault();
+      // Doğrudan dokunma (touchstart/mousedown) anında GPS izin penceresini tetikle
+      prewarmGpsPosition();
       if (sosInterval) clearInterval(sosInterval);
       sosProgress = 0;
       const fill = document.getElementById('sosHoldFill');
@@ -837,31 +863,178 @@
       document.getElementById('sosHoldFill').style.width = '0%';
     }
 
-    function triggerSosEmergency() {
+    async function reverseGeocodeAddress(lat, lng) {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&accept-language=tr`
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data && data.display_name) {
+          const parts = data.display_name.split(',').map((s) => s.trim());
+          return parts.slice(0, 4).join(', ');
+        }
+      } catch {}
+      return null;
+    }
+
+    async function getPhoneRealGpsPosition() {
+      if (cachedGpsPos && cachedGpsPos.coords && (Date.now() - cachedGpsPos.timestamp < 30000)) {
+        return {
+          lat: cachedGpsPos.coords.latitude,
+          lng: cachedGpsPos.coords.longitude,
+          accuracy: Math.round(cachedGpsPos.coords.accuracy || 10),
+          source: 'gps'
+        };
+      }
+
+      if (!navigator.geolocation) {
+        throw new Error('NO_GEOLOCATION');
+      }
+
+      // 1. Deneme: Yüksek Hassasiyetli Telefon GPS Uydusu (15 saniye süre tanı ki kullanıcı "İzin Ver" diyebilsin)
+      try {
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 10000
+          });
+        });
+        cachedGpsPos = pos;
+        return {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy || 12),
+          source: 'gps'
+        };
+      } catch (err1) {
+        if (err1 && err1.code === 1) {
+          throw err1; // Kullanıcı konum iznini reddetti (PERMISSION_DENIED)
+        }
+        // 2. Deneme: Kapalı alan / Hücresel & Wi-Fi Konumu
+        const pos2 = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: false,
+            timeout: 10000,
+            maximumAge: 60000
+          });
+        });
+        cachedGpsPos = pos2;
+        return {
+          lat: pos2.coords.latitude,
+          lng: pos2.coords.longitude,
+          accuracy: Math.round(pos2.coords.accuracy || 35),
+          source: 'network'
+        };
+      }
+    }
+
+    async function triggerSosEmergency() {
       document.getElementById('sosHoldFill').style.width = '100%';
       playNotificationChime();
-      const sendCoords = (lat, lng, note) => {
+
+      const msgEl = document.getElementById('sosStatusMsg');
+      msgEl.style.display = 'block';
+      msgEl.innerHTML = `📡 <strong>Telefonunuzun Canlı GPS Konumu Alınıyor...</strong><br/>Ekranda konum izni penceresi çıkarsa lütfen <strong>"İzin Ver"</strong> seçeneğine dokunun.`;
+
+      const deliverSosPayload = async (lat, lng, accuracy, note, permWarning = '') => {
+        const tourCode = (currentTour && currentTour.code) || document.getElementById('tourCodeInput').value.trim().toUpperCase() || 'RY-KASIM';
+        const pilgrimName = document.getElementById('pilgrimNameInput').value.trim() || 'Hacı Misafir';
+        const phone = document.getElementById('pilgrimPhoneInput').value.trim() || '+90 538 399 96 66';
+
+        // 1. WebSocket & WSS Global SOS Otobüsü üzerinden anında gönder
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
             type: 'sos-trigger',
+            tourCode,
+            pilgrimName,
+            phone,
             lat,
             lng,
+            accuracy,
             locationNote: note
           }));
         }
-        const msgEl = document.getElementById('sosStatusMsg');
-        msgEl.style.display = 'block';
-        msgEl.innerHTML = `✅ <strong>ACİL DURUM KONUMUNUZ İLETİLDİ!</strong><br/>Koordinat: ${lat.toFixed(4)}, ${lng.toFixed(4)} (${note}). Rıdvan Yılmaz Hoca ve Beytullah Bey ekranına alarm düştü, lütfen bulunduğunuz noktada bekleyiniz.`;
+
+        // 2. REST API üzerinden de kaydet
+        fetch('/api/sos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tourCode,
+            pilgrimName,
+            phone,
+            lat,
+            lng,
+            locationNote: note
+          })
+        }).catch(() => {});
+
+        const gmapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+        const bbox = `${(lng - 0.003).toFixed(5)}%2C${(lat - 0.002).toFixed(5)}%2C${(lng + 0.003).toFixed(5)}%2C${(lat + 0.002).toFixed(5)}`;
+        const osmEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
+        const waText = encodeURIComponent(
+          `🚨 *ACİL SOS KONUM BİLDİRİMİ (RıdvanSes)*\n` +
+          `👤 *Hacı:* ${pilgrimName}\n` +
+          `🕋 *Kafile:* ${tourCode}\n` +
+          `📍 *Adres:* ${note}\n` +
+          `🗺️ *Canlı Harita Konumu:* ${gmapsUrl}`
+        );
+
+        msgEl.innerHTML = `
+          <div style="margin-bottom:8px;">
+            ✅ <strong>CANLI KONUMUNUZ REHBER HOCAMIZA İLETİLDİ!</strong>
+          </div>
+          ${permWarning ? `<div style="background:#fef3c7; color:#92400e; padding:8px 10px; border-radius:8px; font-size:0.78rem; margin-bottom:8px;">${permWarning}</div>` : ''}
+          <div style="font-size:0.84rem; margin-bottom:6px;">
+            📍 <strong>Açık Adres:</strong> ${note}<br/>
+            🧭 <strong>GPS Koordinat:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)} ${accuracy ? `(±${accuracy}m hassasiyet)` : ''}
+          </div>
+          <div style="border-radius:10px; overflow:hidden; border:1px solid #fca5a5; margin:8px 0; height:170px;">
+            <iframe src="${osmEmbedUrl}" style="width:100%; height:100%; border:0;" loading="lazy"></iframe>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+            <a href="${gmapsUrl}" target="_blank" class="btn btn-outline btn-sm" style="flex:1; background:#fff;">🗺️ Google Haritalar'da Aç</a>
+            <a href="https://wa.me/905383999666?text=${waText}" target="_blank" class="btn btn-primary btn-sm" style="flex:1;">💬 WhatsApp'tan da Gönder</a>
+          </div>
+        `;
       };
 
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => sendCoords(pos.coords.latitude, pos.coords.longitude, 'Canlı Cihaz GPS Konumu'),
-          () => sendCoords(21.4225, 39.8262, 'Mescid-i Haram — Kral Abdülaziz Kapısı Yakını (Varsayılan Konum)'),
-          { timeout: 3500 }
+      try {
+        const gps = await getPhoneRealGpsPosition();
+        const streetAddr = await reverseGeocodeAddress(gps.lat, gps.lng);
+        const note = streetAddr
+          ? `${streetAddr} (Canlı Telefon GPS ±${gps.accuracy}m)`
+          : `Canlı Telefon GPS Konumu (±${gps.accuracy}m Hassasiyet)`;
+        await deliverSosPayload(gps.lat, gps.lng, gps.accuracy, note);
+      } catch (err) {
+        // Eğer telefondan konum izni reddedildiyse veya GPS kapalıysa, IP tabanlı gerçek şehir konumunu al ve kullanıcıyı uyar
+        let fallbackLat = 40.1885;
+        let fallbackLng = 29.0610;
+        let fallbackCity = 'Bursa, Türkiye';
+        try {
+          const ipRes = await fetch('https://ipwho.is/');
+          const ipData = await ipRes.json();
+          if (ipData && ipData.latitude && ipData.longitude) {
+            fallbackLat = Number(ipData.latitude);
+            fallbackLng = Number(ipData.longitude);
+            fallbackCity = [ipData.city, ipData.region, ipData.country].filter(Boolean).join(', ');
+          }
+        } catch {}
+
+        const warnText =
+          err && err.code === 1
+            ? `⚠️ Telefon tarayıcınızda <strong>Konum (GPS) İzni Reddedilmiş</strong>. Tam sokak noktanız için adres çubuğunun yanındaki 🔒 simgesine dokunup <strong>Konum → İzin Ver</strong> yapın ve tekrar basın.`
+            : `⚠️ Telefonunuzun GPS servisi kapalı olduğu için yaklaşık ağ konumu (${fallbackCity}) gönderildi. Tam nokta için telefonunuzda Konum (GPS) özelliğini açın.`;
+
+        await deliverSosPayload(
+          fallbackLat,
+          fallbackLng,
+          null,
+          `${fallbackCity} (Yaklaşık Ağ Konumu — GPS İzni Bekleniyor)`,
+          warnText
         );
-      } else {
-        sendCoords(21.4225, 39.8262, 'Mescid-i Haram — Kral Abdülaziz Kapısı Yakını');
       }
     }
 
