@@ -252,9 +252,6 @@
           <button type="button" id="toggleAudioBtn" class="btn btn-gold" style="flex:1;" onclick="toggleAudioPlayback()">
             🔊 Sesi Aç / Rehberi Dinle
           </button>
-          <button type="button" class="btn btn-outline btn-sm" style="background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);" onclick="playDemoVoiceGuide()">
-            🗣️ Siyer Sesli Rehber
-          </button>
         </div>
 
         <div style="display:flex; align-items:center; gap:10px; font-size:0.82rem; color:#cbd5e1; margin-bottom:14px;">
@@ -322,7 +319,7 @@
       <div class="card" style="margin-bottom:18px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
           <h3 style="font-size:1.08rem;">📿 Tavaf, Sa'y ve Telbiye Duaları</h3>
-          <span class="badge badge-gold">Sesli Okunuş</span>
+          <span class="badge badge-gold">Arapça • Okunuş • Anlamı</span>
         </div>
         <div id="prayersList"></div>
       </div>
@@ -696,21 +693,6 @@
       setTimeout(() => playGentleHarmonyNote(880), 140);
     }
 
-    function playDemoVoiceGuide() {
-      ensureAudioContext();
-      if (!isAudioListening) toggleAudioPlayback();
-      const text = "Kıymetli Rıdvan Yılmaz Turizm misafirlerimiz, Hacerül Esved hizasına geldik. Bismillahi vallahu ekber diyerek Kabe-i Muazzama'yı selamlıyor ve tavafımıza başlıyoruz. Lütfen kafilemizden ayrılmayalım.";
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = 'tr-TR';
-        u.rate = 0.96;
-        window.speechSynthesis.speak(u);
-      } else {
-        playNotificationChime();
-      }
-    }
-
     function animateSpectrumFromLevel(level) {
       const bars = specContainer.querySelectorAll('.spectrum-bar');
       bars.forEach((b, i) => {
@@ -1077,23 +1059,12 @@
         <div class="prayer-card">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <strong style="font-size:0.94rem; color:var(--color-emerald-night);">${p.title}</strong>
-            <button type="button" class="btn btn-outline btn-sm" style="padding:4px 10px; font-size:0.75rem;" onclick="speakPrayer('${p.reading.replace(/'/g, "\\'")}')">🔊 Dinle</button>
           </div>
           <div class="arabic-text">${p.arabic}</div>
           <div style="font-size:0.84rem; font-weight:600; color:var(--color-emerald-deep); margin-bottom:4px;"><em>${p.reading}</em></div>
           <div style="font-size:0.82rem; color:var(--color-muted);"><strong>Anlamı:</strong> ${p.meaning}</div>
         </div>
       `).join('');
-    }
-
-    function speakPrayer(text) {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = 'tr-TR';
-        u.rate = 0.9;
-        window.speechSynthesis.speak(u);
-      }
     }
 
     function leaveRoom() {
