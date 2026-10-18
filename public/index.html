@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="/css/style.css" />
   <style>
     .hero {
-      padding: 64px 0 72px;
+      padding: 56px 0 64px;
       position: relative;
       overflow: hidden;
     }
@@ -22,35 +22,37 @@
       align-items: center;
     }
     .hero-title {
-      font-size: clamp(2.2rem, 4vw, 3.35rem);
+      font-size: clamp(1.75rem, 4.2vw, 3.25rem);
       color: var(--color-emerald-night);
-      margin: 18px 0 18px;
+      margin: 16px 0 16px;
       letter-spacing: -0.02em;
+      line-height: 1.22;
     }
     .hero-title span {
       color: var(--color-emerald-deep);
       text-decoration: underline;
       text-decoration-color: var(--color-gold);
-      text-underline-offset: 6px;
+      text-decoration-thickness: 2.5px;
+      text-underline-offset: 4px;
     }
     .hero-lead {
-      font-size: 1.12rem;
+      font-size: 1.05rem;
       color: var(--color-muted);
-      margin-bottom: 28px;
+      margin-bottom: 24px;
       max-width: 600px;
     }
     .quick-join-box {
       background: #fff;
       border: 2px solid var(--color-emerald-deep);
       border-radius: var(--radius-xl);
-      padding: 22px;
+      padding: 20px;
       box-shadow: var(--shadow-soft);
-      margin-bottom: 22px;
+      margin-bottom: 20px;
     }
     .code-pills {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 7px;
       margin-top: 12px;
     }
     .code-pill {
@@ -58,11 +60,13 @@
       border-radius: 999px;
       background: var(--color-ground);
       border: 1px solid var(--color-hairline);
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       font-weight: 700;
       color: var(--color-emerald-night);
       cursor: pointer;
       transition: all 0.15s;
+      line-height: 1.3;
+      text-align: left;
     }
     .code-pill:hover {
       background: var(--color-emerald-deep);
@@ -70,16 +74,16 @@
       border-color: var(--color-emerald-deep);
     }
     .section {
-      padding: 72px 0;
+      padding: 68px 0;
       border-top: 1px solid var(--color-hairline);
     }
     .section-header {
       text-align: center;
       max-width: 720px;
-      margin: 0 auto 48px;
+      margin: 0 auto 44px;
     }
     .section-title {
-      font-size: clamp(1.8rem, 3vw, 2.5rem);
+      font-size: clamp(1.5rem, 3.2vw, 2.4rem);
       color: var(--color-emerald-night);
       margin-top: 10px;
       margin-bottom: 12px;
@@ -136,6 +140,29 @@
     @media (max-width: 960px) {
       .hero-grid {
         grid-template-columns: 1fr;
+        gap: 24px;
+      }
+    }
+    @media (max-width: 768px) {
+      .hero {
+        padding: 20px 0 36px;
+      }
+      .hero-lead {
+        font-size: 0.94rem;
+        margin-bottom: 18px;
+      }
+      .quick-join-box {
+        padding: 15px;
+        border-radius: 16px;
+      }
+      .section {
+        padding: 38px 0;
+      }
+      .section-header {
+        margin-bottom: 26px;
+      }
+      .footer {
+        padding: 36px 0 28px;
       }
     }
   </style>
@@ -185,17 +212,17 @@
 
         <!-- Üyeliksiz Hızlı Katılım Kutusu -->
         <div class="quick-join-box">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <span class="label" style="margin:0; font-size:0.95rem;">🎧 Hacı (Dinleyici) Hızlı Katılım — Üyelik Gerekmez</span>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+            <span class="label" style="margin:0; font-size:0.92rem;">🎧 Hacı (Dinleyici) Hızlı Katılım — Üyelik Gerekmez</span>
             <span class="badge badge-live"><span class="live-dot"></span> Canlı Odalar Aktif</span>
           </div>
           <form id="quickJoinForm" style="display:flex; gap:10px; flex-wrap:wrap;">
-            <input type="text" id="quickTourCode" class="input" style="flex:1; min-width:180px; font-weight:700; text-transform:uppercase;" placeholder="Kafile Kodu (Örn: RY-2026)" value="RY-2026" required />
-            <input type="text" id="quickPilgrimName" class="input" style="flex:1; min-width:180px;" placeholder="Adınız Soyadınız (İsteğe Bağlı)" />
-            <button type="submit" class="btn btn-primary">Canlı Yayına Bağlan →</button>
+            <input type="text" id="quickTourCode" class="input" style="flex:1 1 160px; font-weight:700; text-transform:uppercase;" placeholder="Kafile Kodu (Örn: RY-2026)" value="RY-2026" required />
+            <input type="text" id="quickPilgrimName" class="input" style="flex:1 1 160px;" placeholder="Adınız Soyadınız (İsteğe Bağlı)" />
+            <button type="submit" class="btn btn-primary" style="flex:1 1 200px;">Canlı Yayına Bağlan →</button>
           </form>
           <div class="code-pills">
-            <span style="font-size:0.78rem; color:var(--color-muted); align-self:center;">Aktif Rıdvan Yılmaz Kafile Kodları:</span>
+            <span style="font-size:0.78rem; color:var(--color-muted); align-self:center; width:100%;">Aktif Rıdvan Yılmaz Kafile Kodları:</span>
             <button type="button" class="code-pill" style="border-color:var(--color-gold); background:var(--color-gold-soft);" onclick="setQuickCode('RY-KASIM')">✨ RY-KASIM (13-14 Kasım • Ömer Ali Gültekin)</button>
             <button type="button" class="code-pill" onclick="setQuickCode('RY-2026')">RY-2026 (26 Haziran Siyer)</button>
             <button type="button" class="code-pill" onclick="setQuickCode('RY-GENCLIK')">RY-GENCLIK (8 Temmuz Gençlik)</button>
@@ -204,7 +231,7 @@
           </div>
         </div>
 
-        <div style="display:flex; gap:18px; flex-wrap:wrap; font-size:0.88rem; color:var(--color-muted); font-weight:600;">
+        <div style="display:flex; gap:12px; flex-wrap:wrap; font-size:0.84rem; color:var(--color-muted); font-weight:600;">
           <span>✔️ Uygulama İndirmeden Web'den Çalışır</span>
           <span>✔️ El Kaldır & Soru Sor (Çift Yönlü Ses)</span>
           <span>✔️ 3 Sn Basılı Tut Canlı GPS SOS</span>
@@ -213,50 +240,50 @@
 
       <!-- Sağ: Canlı Yayın Önizleme Kartı -->
       <div class="card-dark star-field-dark">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:18px;">
           <span class="badge" style="background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(74,222,128,0.4);">
             <span class="live-dot"></span> CANLI YAYIN • RY-2026
           </span>
-          <span style="font-size:0.82rem; color:#d4af37; font-weight:700;">~35ms Ultra Düşük Gecikme</span>
+          <span style="font-size:0.8rem; color:#d4af37; font-weight:700;">~35ms Ultra Düşük Gecikme</span>
         </div>
 
-        <div style="display:flex; align-items:center; gap:14px; margin-bottom:20px;">
-          <div style="width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg,#d4af37,#9a7b1c); display:flex; align-items:center; justify-content:center; font-size:1.5rem; font-weight:800; color:#0a3d30;">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:18px;">
+          <div style="width:52px; height:52px; flex-shrink:0; border-radius:50%; background:linear-gradient(135deg,#d4af37,#9a7b1c); display:flex; align-items:center; justify-content:center; font-size:1.35rem; font-weight:800; color:#0a3d30;">
             RY
           </div>
-          <div>
-            <div style="font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em; color:#d4af37; font-weight:700;">Baş Rehber & Kurucu</div>
-            <h3 style="font-size:1.35rem; color:#fff;">Rıdvan Yılmaz Hoca</h3>
-            <div style="font-size:0.85rem; color:#cbd5e1;">26 Haziran 2026 Siyer Umresi • Rayhaan Al Mashaer Hotel</div>
+          <div style="min-width:0;">
+            <div style="font-size:0.74rem; text-transform:uppercase; letter-spacing:0.06em; color:#d4af37; font-weight:700;">Baş Rehber & Kurucu</div>
+            <h3 style="font-size:1.25rem; color:#fff;">Rıdvan Yılmaz Hoca</h3>
+            <div style="font-size:0.82rem; color:#cbd5e1;">26 Haziran 2026 Siyer Umresi • Rayhaan Al Mashaer Hotel</div>
           </div>
         </div>
 
-        <div style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:16px; margin-bottom:18px;">
-          <div style="font-size:0.76rem; color:#94a3b8; margin-bottom:4px;">ŞU AN ANLATILAN BÖLÜM</div>
-          <div style="font-weight:700; color:#f8fafc; font-size:0.98rem;" id="heroLiveTopic">
+        <div style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:14px; margin-bottom:16px;">
+          <div style="font-size:0.74rem; color:#94a3b8; margin-bottom:4px;">ŞU AN ANLATILAN BÖLÜM</div>
+          <div style="font-weight:700; color:#f8fafc; font-size:0.94rem;" id="heroLiveTopic">
             Kâbe-i Muazzama Tavaf Duaları & Hacerü'l-Esved Selamlaması
           </div>
-          <div class="spectrum" id="heroSpectrum" style="margin-top:14px;"></div>
+          <div class="spectrum" id="heroSpectrum" style="margin-top:12px;"></div>
         </div>
 
-        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:22px; text-align:center;">
-          <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px;">
-            <div style="font-size:1.3rem; font-weight:800; color:#d4af37;" id="heroListenersCount">42</div>
-            <div style="font-size:0.74rem; color:#cbd5e1;">Bağlı Hacı</div>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:18px; text-align:center;">
+          <div style="background:rgba(255,255,255,0.05); padding:10px 6px; border-radius:10px;">
+            <div style="font-size:1.2rem; font-weight:800; color:#d4af37;" id="heroListenersCount">42</div>
+            <div style="font-size:0.72rem; color:#cbd5e1;">Bağlı Hacı</div>
           </div>
-          <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px;">
-            <div style="font-size:1.3rem; font-weight:800; color:#4ade80;">3 Oda</div>
-            <div style="font-size:0.74rem; color:#cbd5e1;">Genel / Siyer / Hanımlar</div>
+          <div style="background:rgba(255,255,255,0.05); padding:10px 6px; border-radius:10px;">
+            <div style="font-size:1.2rem; font-weight:800; color:#4ade80;">3 Oda</div>
+            <div style="font-size:0.72rem; color:#cbd5e1;">Genel / Siyer / Hanımlar</div>
           </div>
-          <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:10px;">
-            <div style="font-size:1.3rem; font-weight:800; color:#fff;">6 Dil</div>
-            <div style="font-size:0.74rem; color:#cbd5e1;">TR • AR • EN • FR • ID • UR</div>
+          <div style="background:rgba(255,255,255,0.05); padding:10px 6px; border-radius:10px;">
+            <div style="font-size:1.2rem; font-weight:800; color:#fff;">6 Dil</div>
+            <div style="font-size:0.72rem; color:#cbd5e1;">TR • AR • EN • FR • ID • UR</div>
           </div>
         </div>
 
-        <div style="display:flex; gap:10px;">
-          <a href="/dinle?code=RY-2026" class="btn btn-gold" style="flex:1;">🎧 Hacı Olarak Dinle</a>
-          <a href="/rehber?code=RY-2026" class="btn btn-outline" style="flex:1; background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);">🎙️ Hoca Konsolunu Aç</a>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <a href="/dinle?code=RY-2026" class="btn btn-gold" style="flex:1 1 140px;">🎧 Hacı Olarak Dinle</a>
+          <a href="/rehber?code=RY-2026" class="btn btn-outline" style="flex:1 1 140px; background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);">🎙️ Hoca Konsolunu Aç</a>
         </div>
       </div>
     </div>
@@ -322,14 +349,14 @@
                 <span class="live-dot"></span> ODA KODU: RY-KASIM
               </span>
             </div>
-            <h3 style="font-size:1.75rem; color:#fff; margin-bottom:10px;">
+            <h3 style="font-size:clamp(1.22rem, 3.8vw, 1.75rem); color:#fff; margin-bottom:10px; line-height:1.28;">
               🌙 Rıdvan Yılmaz Turizm Tecrübesiyle • 🎙️ Ömer Ali Gültekin Rehberliğinde…
             </h3>
-            <p style="color:#e2e8f0; font-size:0.95rem; margin-bottom:14px;">
+            <p style="color:#e2e8f0; font-size:0.92rem; margin-bottom:14px;">
               🤍 Bir ömür unutulmayacak hatıralar biriktirmek, gönlümüzü Kâbe’nin huzuruyla buluşturmak ve Peygamber Efendimizin ﷺ izinde manevi bir yolculuğa çıkmak için hazır mısınız?
               Belki de yıllardır ettiğiniz duaların kabulüne vesile olacak o yolculuk, bu Kasım’da sizi bekliyor…
             </p>
-            <div style="display:flex; gap:10px; flex-wrap:wrap; font-size:0.86rem; color:#f3d266; font-weight:700;">
+            <div style="display:flex; gap:8px; flex-wrap:wrap; font-size:0.84rem; color:#f3d266; font-weight:700;">
               <span>📅 13-14 Kasım 2026</span>
               <span>•</span>
               <span>⏳ 10 Günlük Umre Programı</span>
@@ -339,17 +366,17 @@
               <span>✨ Konaklama, yemek ve tüm hizmetler dahil kampanyalı fiyatlarla</span>
             </div>
           </div>
-          <div style="background:rgba(255,255,255,0.07); border:1px solid rgba(212,175,55,0.35); border-radius:16px; padding:20px;">
-            <div style="font-size:0.78rem; color:#f3d266; font-weight:800; text-transform:uppercase; margin-bottom:6px;">
+          <div style="background:rgba(255,255,255,0.07); border:1px solid rgba(212,175,55,0.35); border-radius:16px; padding:16px;">
+            <div style="font-size:0.76rem; color:#f3d266; font-weight:800; text-transform:uppercase; margin-bottom:6px;">
               KAFILE CANLI SES & KAYIT MERKEZİ
             </div>
-            <div style="font-size:1.05rem; font-weight:700; color:#fff; margin-bottom:4px;">🎙️ Rehber: Ömer Ali Gültekin</div>
-            <div style="font-size:0.88rem; color:#cbd5e1; margin-bottom:14px;">📞 Bilgi ve Kayıt: <strong>0 538 399 96 66</strong> • 📍 Rıdvan Yılmaz Turizm</div>
+            <div style="font-size:1.02rem; font-weight:700; color:#fff; margin-bottom:4px;">🎙️ Rehber: Ömer Ali Gültekin</div>
+            <div style="font-size:0.85rem; color:#cbd5e1; margin-bottom:14px;">📞 Bilgi ve Kayıt: <strong>0 538 399 96 66</strong> • 📍 Rıdvan Yılmaz Turizm</div>
             <div style="display:flex; flex-direction:column; gap:8px;">
               <a href="/dinle?code=RY-KASIM" class="btn btn-gold" style="width:100%;">🎧 RY-KASIM Canlı Ses Odasına Katıl</a>
-              <div style="display:flex; gap:8px;">
-                <a href="/rehber?code=RY-KASIM" class="btn btn-outline btn-sm" style="flex:1; background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);">🎙️ Hoca Yayını</a>
-                <a href="/yaka-karti?code=RY-KASIM" class="btn btn-outline btn-sm" style="flex:1; background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);">🪪 Yaka Kartı QR</a>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <a href="/rehber?code=RY-KASIM" class="btn btn-outline btn-sm" style="flex:1 1 120px; background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);">🎙️ Hoca Yayını</a>
+                <a href="/yaka-karti?code=RY-KASIM" class="btn btn-outline btn-sm" style="flex:1 1 120px; background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);">🪪 Yaka Kartı QR</a>
               </div>
             </div>
           </div>

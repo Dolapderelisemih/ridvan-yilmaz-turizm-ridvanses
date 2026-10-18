@@ -49,6 +49,8 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
       padding: 12px 14px;
       border-radius: 12px;
       background: var(--color-ground);
@@ -67,6 +69,10 @@
       .console-grid {
         grid-template-columns: 1fr;
       }
+      .console-wrap {
+        margin: 16px auto 48px;
+        padding: 0 14px;
+      }
     }
   </style>
 </head>
@@ -82,7 +88,7 @@
         </div>
       </a>
       <div class="nav-actions">
-        <a href="/dinle" target="_blank" class="btn btn-outline btn-sm">🎧 Hacı Ekranını Yeni Sekmede Aç</a>
+        <a href="/dinle" target="_blank" class="btn btn-outline btn-sm">🎧 Hacı Ekranı</a>
         <a href="/panel" class="btn btn-primary btn-sm">🛡️ Acente Paneli</a>
         <button type="button" onclick="ryLogout()" class="btn btn-outline btn-sm">🚪 Çıkış Yap</button>
       </div>

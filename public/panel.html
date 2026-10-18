@@ -91,13 +91,39 @@
       .dashboard-layout {
         grid-template-columns: 1fr;
       }
+      .sidebar {
+        display: flex;
+        overflow-x: auto;
+        gap: 6px;
+        padding: 10px 14px;
+        border-right: none;
+        border-bottom: 1px solid rgba(212, 175, 55, 0.25);
+        -webkit-overflow-scrolling: touch;
+      }
+      .sidebar > div, .sidebar > hr {
+        display: none;
+      }
+      .side-btn {
+        width: auto;
+        white-space: nowrap;
+        margin-bottom: 0;
+        padding: 9px 12px;
+        font-size: 0.8rem;
+      }
+      .side-btn.active {
+        border-left: none;
+        border-bottom: 2px solid var(--color-gold);
+      }
+      .main-area {
+        padding: 16px 14px 48px;
+      }
     }
   </style>
 </head>
 <body class="star-field">
 
   <header class="navbar">
-    <div class="container navbar-inner" style="max-width:100%; padding:0 28px;">
+    <div class="container navbar-inner" style="max-width:100%;">
       <a href="/" class="brand">
         <img src="https://ridvanyilmazturizm.com/wp-content/uploads/2025/09/logo-ridvan-yilmaz.png" alt="Logo" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">

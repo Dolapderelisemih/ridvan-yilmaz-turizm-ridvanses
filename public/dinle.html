@@ -102,6 +102,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
       gap: 12px;
       box-shadow: var(--shadow-soft);
     }
@@ -129,8 +130,8 @@
           <span class="brand-sub"><span class="live-dot"></span> Hacı Canlı Rehber Ekranı</span>
         </div>
       </a>
-      <div style="display:flex; gap:6px;">
-        <button type="button" class="btn btn-gold btn-sm" onclick="triggerPwaInstall()">📲 Uygulamayı Yükle</button>
+      <div class="nav-actions">
+        <button type="button" id="navPwaInstallBtn" class="btn btn-gold btn-sm" onclick="triggerPwaInstall()">📲 Uygulamayı Yükle</button>
         <a href="/rehber" class="btn btn-outline btn-sm">🎙️ Rehber</a>
       </div>
     </div>
@@ -149,14 +150,14 @@
 
     <!-- TELEFONA UYGULAMA OLARAK İNDİR (PWA BANNER) -->
     <div class="pwa-install-banner" id="pwaInstallBanner">
-      <div style="display:flex; align-items:center; gap:10px;">
-        <img src="/icons/icon-512.svg" alt="RıdvanSes" style="width:42px; height:42px; border-radius:10px;" />
-        <div>
-          <div style="font-weight:800; font-size:0.92rem; color:#f3d266;">📲 RıdvanSes'i Telefonunuza Yükleyin</div>
-          <div style="font-size:0.78rem; color:#e2e8f0;">Uygulama mağazası şifresi gerekmeden tek dokunuşla ana ekrana ekleyin.</div>
+      <div style="display:flex; align-items:center; gap:10px; flex:1 1 210px; min-width:0;">
+        <img src="/icons/icon-512.svg" alt="RıdvanSes" style="width:40px; height:40px; flex-shrink:0; border-radius:10px;" />
+        <div style="min-width:0;">
+          <div style="font-weight:800; font-size:0.9rem; color:#f3d266;">📲 RıdvanSes'i Telefonunuza Yükleyin</div>
+          <div style="font-size:0.76rem; color:#e2e8f0; line-height:1.35;">Uygulama mağazası şifresi gerekmeden tek dokunuşla ana ekrana ekleyin.</div>
         </div>
       </div>
-      <button type="button" class="btn btn-gold btn-sm" style="white-space:nowrap;" onclick="triggerPwaInstall()">
+      <button type="button" class="btn btn-gold btn-sm" style="white-space:nowrap; flex:1 0 auto;" onclick="triggerPwaInstall()">
         Telefona Kur
       </button>
     </div>
@@ -1080,6 +1081,19 @@
     // 1. PWA KURULUM (TELEFONA UYGULAMA OLARAK YÜKLE) & SERVICE WORKER
     // =========================================================================
     let deferredInstallPrompt = null;
+
+    // Eğer kullanıcı uygulamayı zaten ana ekrana eklemişse (Standalone PWA Modu), kurulum afişini gizle
+    (function hidePwaBannerIfStandalone() {
+      const isStandalone =
+        (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+        window.navigator.standalone === true;
+      if (isStandalone) {
+        const banner = document.getElementById('pwaInstallBanner');
+        const navBtn = document.getElementById('navPwaInstallBtn');
+        if (banner) banner.style.display = 'none';
+        if (navBtn) navBtn.style.display = 'none';
+      }
+    })();
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
