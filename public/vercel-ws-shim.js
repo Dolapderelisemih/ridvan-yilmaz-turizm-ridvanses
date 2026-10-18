@@ -329,30 +329,35 @@
 
     _broadcastP2PRoomState() {
       if (!this._joinContext || this._joinContext.role !== 'guide') return;
-      const pilgrims = Array.from(this._pilgrimMeta.values());
-      const tourCode = this._joinContext.tourCode || 'RY-KASIM';
-      const baseCount = tourCode === 'RY-KASIM' ? 38 : tourCode === 'RY-2026' ? 42 : 0;
-      const roomObj = {
-        tourCode,
-        roomId: this._joinContext.roomId || 'genel',
-        guideName: this._joinContext.name || 'Ömer Ali Gültekin',
-        isLive: true,
-        currentTopic:
-          tourCode === 'RY-KASIM'
-            ? 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk'
-            : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti',
-        connectedPilgrims: pilgrims,
-        totalListeners: pilgrims.length + baseCount,
-        realListenerCount: pilgrims.length,
-        raisedHandsCount: pilgrims.filter((x) => x.handRaised).length
-      };
-      const payload = {
-        _msgId: 'rs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-        type: 'room-state',
-        room: roomObj
-      };
-      this._deliverIncomingMessage(payload);
-      this._publishMqtt(payload);
+      if (this._roomStateTimer) return;
+      this._roomStateTimer = setTimeout(() => {
+        this._roomStateTimer = null;
+        if (!this._joinContext || this._joinContext.role !== 'guide') return;
+        const pilgrims = Array.from(this._pilgrimMeta.values());
+        const tourCode = this._joinContext.tourCode || 'RY-KASIM';
+        const baseCount = tourCode === 'RY-KASIM' ? 38 : tourCode === 'RY-2026' ? 42 : 0;
+        const roomObj = {
+          tourCode,
+          roomId: this._joinContext.roomId || 'genel',
+          guideName: this._joinContext.name || 'Ömer Ali Gültekin',
+          isLive: true,
+          currentTopic:
+            tourCode === 'RY-KASIM'
+              ? 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk'
+              : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti',
+          connectedPilgrims: pilgrims,
+          totalListeners: pilgrims.length + baseCount,
+          realListenerCount: pilgrims.length,
+          raisedHandsCount: pilgrims.filter((x) => x.handRaised).length
+        };
+        const payload = {
+          _msgId: 'rs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          type: 'room-state',
+          room: roomObj
+        };
+        this._deliverIncomingMessage(payload);
+        this._publishMqtt(payload);
+      }, 180);
     }
 
     _deliverIncomingMessage(msg) {
@@ -490,8 +495,12 @@
 
     async _flushAndPoll() {
       if (this.readyState !== 1 || this._inFlight) return;
-      this._inFlight = true;
       const batch = this._sendQueue.splice(0, this._sendQueue.length);
+      // MQTT WSS bağlıyken ve gönderilecek kuyruk mesajı yokken gereksiz HTTP GET sorgusu atma (yüzlerce hacı bağlandığında Vercel Serverless kotasını korur)
+      if (batch.length === 0 && this._mqttClient && this._mqttClient.connected) {
+        return;
+      }
+      this._inFlight = true;
       try {
         let res;
         if (batch.length > 0) {

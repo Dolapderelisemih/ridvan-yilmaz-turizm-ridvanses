@@ -172,12 +172,17 @@ function broadcastToAdmins(payload) {
 }
 
 function broadcastRoomState(room) {
-  const state = serializeRoom(room);
-  broadcastToRoom(room, { type: 'room-state', room: state });
-  broadcastToAdmins({
-    type: 'admin-rooms-update',
-    rooms: Array.from(liveRooms.values()).map(serializeRoom)
-  });
+  if (!room) return;
+  if (room._broadcastTimer) return;
+  room._broadcastTimer = setTimeout(() => {
+    room._broadcastTimer = null;
+    const state = serializeRoom(room);
+    broadcastToRoom(room, { type: 'room-state', room: state });
+    broadcastToAdmins({
+      type: 'admin-rooms-update',
+      rooms: Array.from(liveRooms.values()).map(serializeRoom)
+    });
+  }, 100);
 }
 
 let clientSeq = 1;
@@ -269,7 +274,8 @@ function processClientJsonMessage(ctx, msg) {
           samples: msg.samples,
           pcm16: msg.pcm16 || null,
           level: msg.level || 0,
-          synthNote: msg.synthNote || null
+          synthNote: msg.synthNote || null,
+          sentAt: msg.sentAt || Date.now()
         },
         ws
       );
