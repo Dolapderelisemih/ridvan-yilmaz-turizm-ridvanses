@@ -247,6 +247,7 @@ function processClientJsonMessage(ctx, msg) {
       currentRoom.isLive = Boolean(msg.isLive);
       currentRoom.broadcastMode = msg.broadcastMode || (currentRoom.isLive ? 'mic' : 'idle');
       if (msg.topic) currentRoom.currentTopic = msg.topic;
+      if (msg.guidePeerId) currentRoom.guidePeerId = msg.guidePeerId;
       if (currentRoom.isLive) {
         currentRoom.startedAt = Date.now();
       }
@@ -266,6 +267,7 @@ function processClientJsonMessage(ctx, msg) {
           speakerRole: sender.role,
           sampleRate: msg.sampleRate || 16000,
           samples: msg.samples,
+          pcm16: msg.pcm16 || null,
           level: msg.level || 0,
           synthNote: msg.synthNote || null
         },
@@ -437,8 +439,11 @@ function getOrCreateRelaySession(clientId) {
 }
 
 app.post('/api/ws-relay', (req, res) => {
-  const { clientId, messages } = req.body || {};
+  const { clientId, messages, joinContext } = req.body || {};
   const session = getOrCreateRelaySession(clientId);
+  if (!session.currentRoom && joinContext && joinContext.type === 'join') {
+    processClientJsonMessage(session, joinContext);
+  }
   const list = Array.isArray(messages) ? messages : req.body?.message ? [req.body.message] : [];
   for (const msg of list) {
     if (msg && typeof msg === 'object') {
@@ -451,6 +456,15 @@ app.post('/api/ws-relay', (req, res) => {
 
 app.get('/api/ws-relay', (req, res) => {
   const session = getOrCreateRelaySession(req.query.clientId);
+  if (!session.currentRoom && req.query.tourCode) {
+    processClientJsonMessage(session, {
+      type: 'join',
+      tourCode: req.query.tourCode,
+      roomId: req.query.roomId || 'genel',
+      role: req.query.role || 'pilgrim',
+      name: req.query.name || ''
+    });
+  }
   const drained = session.outbox.splice(0, session.outbox.length);
   return res.json({ clientId: session.clientId, messages: drained });
 });

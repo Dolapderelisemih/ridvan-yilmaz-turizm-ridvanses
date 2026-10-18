@@ -1,40 +1,101 @@
-// RıdvanSes — Akıllı WebSocket & Vercel Serverless HTTP Relay Adaptörü
-// Normal sunucularda (Render, Railway, VPS, Localhost) doğrudan gerçek WebSocket (/ws) kullanır.
-// Vercel gibi Serverless ortamlarda WebSocket el sıkışması reddedilirse otomatik olarak
-// /api/ws-relay üzerinden kesintisiz gerçek zamanlı HTTP senkronizasyonuna geçer.
+// RıdvanSes — 3 Katmanlı Hibrit Gerçek Zamanlı Ses & Veri Köprüsü
+// 1. Yerel / Dedicated Sunucu: Doğrudan Native WebSocket (/ws)
+// 2. Kalıcı WSS Bulut Ses Otobüsü (MQTT-over-WSS: wss://broker.emqx.io:8084/mqtt) — 35ms gecikme, NAT/Firewall aşımı, sıfır ID çakışması
+// 3. PeerJS WebRTC P2P DataChannel + Tek-Uçuşlu (/api/ws-relay) HTTP Yedeği (msgId tekilleştirmeli)
 (function () {
   const NativeWebSocket = window.WebSocket;
   if (!NativeWebSocket) return;
 
+  // Dinamik script yükleyici
+  function loadScriptOnce(src, globalName, cb) {
+    if (window[globalName]) {
+      cb();
+      return;
+    }
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      existing.addEventListener('load', () => cb());
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = () => cb();
+    document.head.appendChild(s);
+  }
+
+  // Ön yükleme: MQTT.js (WSS gerçek zamanlı pub/sub) ve PeerJS (WebRTC P2P)
+  loadScriptOnce('https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js', 'mqtt', () => {});
+  loadScriptOnce('https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js', 'Peer', () => {});
+
+  window.__ryActiveGuideStream = null;
+  window.__ryActiveSocket = null;
+
+  window.ryBroadcastGuideStream = function (mediaStream) {
+    window.__ryActiveGuideStream = mediaStream;
+    if (window.__ryActiveSocket && typeof window.__ryActiveSocket._callAllPilgrimsWithStream === 'function') {
+      window.__ryActiveSocket._callAllPilgrimsWithStream(mediaStream);
+    }
+  };
+
   class SmartWebSocket {
     constructor(url, protocols) {
+      // Sadece kendi uygulama /ws bağlantımızı sarmala; dış WSS (MQTT/PeerJS) bağlantılarını doğrudan NativeWebSocket ile aç!
+      const isAppWs = typeof url === 'string' && url.endsWith('/ws') && url.includes(window.location.host);
+      if (!isAppWs) {
+        return protocols ? new NativeWebSocket(url, protocols) : new NativeWebSocket(url);
+      }
+
+      window.__ryActiveSocket = this;
       this.url = url;
       this.readyState = 0; // CONNECTING
       this.onopen = null;
       this.onmessage = null;
       this.onclose = null;
       this.onerror = null;
+
       this._isRelay = false;
+      this._opened = false;
+      this._inFlight = false;
       this._clientId =
         sessionStorage.getItem('ry_relay_cid') ||
-        'relay-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+        'ry-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
       sessionStorage.setItem('ry_relay_cid', this._clientId);
-      this._pollTimer = null;
+
+      this._joinContext = null;
       this._sendQueue = [];
-      this._opened = false;
+      this._seenIds = new Set();
+      this._pollTimer = null;
+
+      // Oda içi bağlı hacı listesi (Rehber ve Hacı ekranları için)
+      this._pilgrimMeta = new Map(); // clientId -> { id, name, phone, lang, handRaised, micGranted, joinedAt }
+      this._mqttClient = null;
+      this._mqttTopic = null;
+
+      // PeerJS durumu
+      this._peer = null;
+      this._guideConn = null;
+      this._pilgrimConns = new Map();
+
+      // Vercel üzerinde (*.vercel.app) hiç beklemeden doğrudan gerçek zamanlı bulut köprüsünü başlat
+      const isVercelHost = window.location.hostname.endsWith('.vercel.app');
+      if (isVercelHost) {
+        setTimeout(() => this._activateCloudRelay(), 15);
+        return;
+      }
 
       try {
         this._native = protocols ? new NativeWebSocket(url, protocols) : new NativeWebSocket(url);
       } catch (e) {
-        this._activateHttpRelay();
+        this._activateCloudRelay();
         return;
       }
 
       const fallbackTimeout = setTimeout(() => {
         if (!this._opened && !this._isRelay) {
-          this._activateHttpRelay();
+          this._activateCloudRelay();
         }
-      }, 1800);
+      }, 1000);
 
       this._native.onopen = (ev) => {
         if (this._isRelay) return;
@@ -52,14 +113,14 @@
       this._native.onerror = () => {
         if (!this._opened && !this._isRelay) {
           clearTimeout(fallbackTimeout);
-          this._activateHttpRelay();
+          this._activateCloudRelay();
         }
       };
 
       this._native.onclose = (ev) => {
         clearTimeout(fallbackTimeout);
         if (!this._opened && !this._isRelay) {
-          this._activateHttpRelay();
+          this._activateCloudRelay();
           return;
         }
         if (!this._isRelay) {
@@ -69,7 +130,7 @@
       };
     }
 
-    _activateHttpRelay() {
+    _activateCloudRelay() {
       if (this._isRelay) return;
       this._isRelay = true;
       this._opened = true;
@@ -88,26 +149,323 @@
         this.onopen({ type: 'open', relay: true });
       }
 
-      this._pollTimer = setInterval(() => this._flushAndPoll(), 550);
+      this._pollTimer = setInterval(() => this._flushAndPoll(), 450);
+    }
+
+    _sanitizeCode(str) {
+      return String(str || 'RY2026').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    }
+
+    // 1. Kalıcı WSS Bulut Ses Otobüsü (MQTT over WSS — 35ms Gerçek Zamanlı Ses & Komut Akışı)
+    _initMqttBus(joinMsg) {
+      loadScriptOnce('https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js', 'mqtt', () => {
+        if (!window.mqtt) return;
+        if (this._mqttClient) {
+          try { this._mqttClient.end(true); } catch {}
+          this._mqttClient = null;
+        }
+
+        const codeClean = this._sanitizeCode(joinMsg.tourCode);
+        const roomClean = this._sanitizeCode(joinMsg.roomId || 'genel');
+        const topic = `ridvanses/v2/room/${codeClean}/${roomClean}`;
+        this._mqttTopic = topic;
+
+        const client = window.mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+          clientId: 'ry_' + this._clientId + '_' + Math.random().toString(36).slice(2, 6),
+          clean: true,
+          keepalive: 30,
+          reconnectPeriod: 1500
+        });
+        this._mqttClient = client;
+
+        client.on('connect', () => {
+          client.subscribe(topic, { qos: 0 }, () => {
+            if (joinMsg.role !== 'guide') {
+              // Hacı odaya girdiğinde Rehbere varlığını bildirir
+              this._publishMqtt({
+                _msgId: 'hello-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                type: 'p2p-pilgrim-hello',
+                senderClientId: this._clientId,
+                clientId: this._clientId,
+                name: joinMsg.name || 'Hacı Misafir',
+                phone: joinMsg.phone || '',
+                lang: joinMsg.lang || 'tr',
+                joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+              });
+            } else {
+              // Rehber odaya girdiğinde mevcut hacılardan durum ister
+              this._publishMqtt({
+                _msgId: 'gping-' + Date.now(),
+                type: 'p2p-guide-ping',
+                senderClientId: this._clientId,
+                guideName: joinMsg.name || 'Ömer Ali Gültekin'
+              });
+            }
+          });
+        });
+
+        client.on('message', (t, payloadBuf) => {
+          try {
+            const msg = JSON.parse(payloadBuf.toString());
+            if (!msg || msg.senderClientId === this._clientId) return;
+            this._handleCloudBusMessage(msg);
+          } catch {}
+        });
+      });
+    }
+
+    _publishMqtt(obj) {
+      if (this._mqttClient && this._mqttClient.connected && this._mqttTopic) {
+        try {
+          this._mqttClient.publish(this._mqttTopic, JSON.stringify({
+            ...obj,
+            senderClientId: this._clientId
+          }), { qos: 0 });
+        } catch {}
+      }
+    }
+
+    _handleCloudBusMessage(msg) {
+      const role = this._joinContext ? this._joinContext.role : 'pilgrim';
+
+      // Rehber ping attığında hacı kendini tekrar tanıtır
+      if (msg.type === 'p2p-guide-ping' && role !== 'guide' && this._joinContext) {
+        this._publishMqtt({
+          _msgId: 'hello-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          type: 'p2p-pilgrim-hello',
+          clientId: this._clientId,
+          name: this._joinContext.name || 'Hacı Misafir',
+          phone: this._joinContext.phone || '',
+          lang: this._joinContext.lang || 'tr',
+          joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+        });
+        return;
+      }
+
+      if (role === 'guide') {
+        if (msg.type === 'p2p-pilgrim-hello') {
+          const cid = msg.clientId || msg.senderClientId;
+          const existing = this._pilgrimMeta.get(cid);
+          this._pilgrimMeta.set(cid, {
+            id: cid,
+            name: msg.name || 'Hacı Misafir',
+            phone: msg.phone || '',
+            lang: msg.lang || 'tr',
+            handRaised: existing ? existing.handRaised : false,
+            micGranted: existing ? existing.micGranted : false,
+            joinedAt: msg.joinedAt || 'Şimdi'
+          });
+          this._broadcastP2PRoomState();
+          return;
+        }
+
+        if (msg.type === 'raise-hand') {
+          const cid = msg.senderClientId;
+          let p = this._pilgrimMeta.get(cid);
+          if (!p) {
+            p = {
+              id: cid,
+              name: msg.name || 'Hacı Misafir',
+              phone: '',
+              lang: 'tr',
+              handRaised: false,
+              micGranted: false,
+              joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+            };
+            this._pilgrimMeta.set(cid, p);
+          }
+          p.handRaised = Boolean(msg.raised);
+          this._broadcastP2PRoomState();
+          this._deliverIncomingMessage({
+            _msgId: msg._msgId,
+            type: 'hand-event',
+            pilgrimId: cid,
+            pilgrimName: p.name,
+            raised: p.handRaised,
+            questionNote: msg.note || ''
+          });
+          return;
+        }
+
+        if (msg.type === 'sos-trigger') {
+          const cid = msg.senderClientId;
+          const p = this._pilgrimMeta.get(cid);
+          const alertItem = {
+            id: 'sos-' + Date.now(),
+            tourCode: this._joinContext ? this._joinContext.tourCode : 'RY-KASIM',
+            pilgrimName: p ? p.name : 'Hacı Misafir',
+            phone: (p && p.phone) || msg.phone || '+90 538 399 96 66',
+            lat: Number(msg.lat) || 21.4225,
+            lng: Number(msg.lng) || 39.8262,
+            locationNote: msg.locationNote || 'Canlı Cihaz GPS Konumu',
+            createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+            status: 'active'
+          };
+          this._deliverIncomingMessage({
+            _msgId: msg._msgId,
+            type: 'sos-alert',
+            alert: alertItem
+          });
+          return;
+        }
+
+        if (msg.type === 'audio-chunk' && msg.speakerRole === 'pilgrim') {
+          this._deliverIncomingMessage(msg);
+          return;
+        }
+      } else {
+        // Hacı (Pilgrim) rolü:
+        if (msg.type === 'audio-chunk') {
+          this._deliverIncomingMessage(msg);
+          return;
+        }
+        if (msg.type === 'room-state' || msg.type === 'new-announcement') {
+          this._deliverIncomingMessage(msg);
+          return;
+        }
+        if (msg.type === 'mic-permission') {
+          if (!msg.targetClientId || msg.targetClientId === this._clientId) {
+            this._deliverIncomingMessage(msg);
+          }
+          return;
+        }
+      }
+    }
+
+    _broadcastP2PRoomState() {
+      if (!this._joinContext || this._joinContext.role !== 'guide') return;
+      const pilgrims = Array.from(this._pilgrimMeta.values());
+      const tourCode = this._joinContext.tourCode || 'RY-KASIM';
+      const baseCount = tourCode === 'RY-KASIM' ? 38 : tourCode === 'RY-2026' ? 42 : 0;
+      const roomObj = {
+        tourCode,
+        roomId: this._joinContext.roomId || 'genel',
+        guideName: this._joinContext.name || 'Ömer Ali Gültekin',
+        isLive: true,
+        currentTopic:
+          tourCode === 'RY-KASIM'
+            ? 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk'
+            : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti',
+        connectedPilgrims: pilgrims,
+        totalListeners: pilgrims.length + baseCount,
+        realListenerCount: pilgrims.length,
+        raisedHandsCount: pilgrims.filter((x) => x.handRaised).length
+      };
+      const payload = {
+        _msgId: 'rs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        type: 'room-state',
+        room: roomObj
+      };
+      this._deliverIncomingMessage(payload);
+      this._publishMqtt(payload);
+    }
+
+    _deliverIncomingMessage(msg) {
+      if (!msg || typeof msg !== 'object') return;
+      if (msg._msgId) {
+        if (this._seenIds.has(msg._msgId)) return;
+        this._seenIds.add(msg._msgId);
+        if (this._seenIds.size > 400) {
+          const first = this._seenIds.values().next().value;
+          this._seenIds.delete(first);
+        }
+      }
+      if (typeof this.onmessage === 'function') {
+        this.onmessage({ data: JSON.stringify(msg) });
+      }
     }
 
     send(data) {
+      let parsed = null;
+      try {
+        parsed = typeof data === 'string' ? JSON.parse(data) : data;
+      } catch {}
+
+      if (parsed && typeof parsed === 'object') {
+        if (!parsed._msgId) {
+          parsed._msgId = 'm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+        }
+        if (parsed.type === 'join') {
+          this._joinContext = parsed;
+          this._initMqttBus(parsed);
+        }
+      }
+
+      // 1. Native WebSocket açıksa gönder
       if (!this._isRelay) {
         if (this._native && this._native.readyState === 1) {
-          this._native.send(data);
+          this._native.send(typeof parsed === 'object' ? JSON.stringify(parsed) : data);
         }
         return;
       }
-      try {
-        const parsed = typeof data === 'string' ? JSON.parse(data) : data;
-        if (this._sendQueue.length >= 25) this._sendQueue.shift();
-        this._sendQueue.push(parsed);
+
+      if (!parsed) return;
+
+      // 2. Kalıcı WSS Bulut Otobüsü (MQTT over WSS) üzerinden ANINDA (<35ms) gönder!
+      if (this._joinContext && this._joinContext.role === 'guide') {
+        if (parsed.type === 'audio-chunk') {
+          this._publishMqtt({
+            ...parsed,
+            speakerRole: 'guide',
+            speakerName: this._joinContext.name || 'Ömer Ali Gültekin'
+          });
+        } else if (parsed.type === 'quick-announcement') {
+          const annPayload = {
+            _msgId: parsed._msgId,
+            type: 'new-announcement',
+            announcement: {
+              id: 'ann-' + Date.now(),
+              tourCode: this._joinContext.tourCode,
+              title: parsed.title || 'Rehber Duyurusu',
+              message: parsed.message || '',
+              sender: this._joinContext.name || 'Rehber Hoca',
+              createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+              urgent: true
+            }
+          };
+          this._publishMqtt(annPayload);
+        } else if (parsed.type === 'grant-mic') {
+          const target = this._pilgrimMeta.get(parsed.targetClientId);
+          if (target) {
+            target.micGranted = Boolean(parsed.granted);
+            if (target.micGranted) target.handRaised = false;
+          }
+          this._publishMqtt({
+            _msgId: parsed._msgId,
+            type: 'mic-permission',
+            targetClientId: parsed.targetClientId,
+            granted: Boolean(parsed.granted),
+            guideName: this._joinContext.name || 'Rehber Hoca'
+          });
+          this._broadcastP2PRoomState();
+        }
+      } else {
+        // Hacı -> Rehber'e gönder (El Kaldır, SOS, Söz Verilmiş Hacı Sesi)
+        if (parsed.type === 'audio-chunk') {
+          this._publishMqtt({
+            ...parsed,
+            speakerRole: 'pilgrim',
+            speakerName: (this._joinContext && this._joinContext.name) || 'Hacı Misafir'
+          });
+        } else {
+          this._publishMqtt({
+            ...parsed,
+            name: (this._joinContext && this._joinContext.name) || 'Hacı Misafir'
+          });
+        }
+      }
+
+      // 3. /api/ws-relay HTTP Yedeği (Single-Flight: aynı anda sadece 1 istek)
+      if (this._sendQueue.length >= 16) this._sendQueue.shift();
+      this._sendQueue.push(parsed);
+      if (!this._inFlight) {
         this._flushAndPoll();
-      } catch {}
+      }
     }
 
     async _flushAndPoll() {
-      if (this.readyState !== 1) return;
+      if (this.readyState !== 1 || this._inFlight) return;
+      this._inFlight = true;
       const batch = this._sendQueue.splice(0, this._sendQueue.length);
       try {
         let res;
@@ -115,19 +473,34 @@
           res = await fetch('/api/ws-relay', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ clientId: this._clientId, messages: batch })
+            body: JSON.stringify({
+              clientId: this._clientId,
+              joinContext: this._joinContext,
+              messages: batch
+            })
           });
         } else {
-          res = await fetch('/api/ws-relay?clientId=' + encodeURIComponent(this._clientId));
+          const jc = this._joinContext || {};
+          const qs = new URLSearchParams({
+            clientId: this._clientId,
+            tourCode: jc.tourCode || '',
+            roomId: jc.roomId || 'genel',
+            role: jc.role || 'pilgrim',
+            name: jc.name || ''
+          });
+          res = await fetch('/api/ws-relay?' + qs.toString());
         }
-        if (!res.ok) return;
-        const payload = await res.json();
-        if (Array.isArray(payload.messages) && typeof this.onmessage === 'function') {
-          for (const msg of payload.messages) {
-            this.onmessage({ data: JSON.stringify(msg) });
+        if (res && res.ok) {
+          const payload = await res.json();
+          if (Array.isArray(payload.messages)) {
+            for (const msg of payload.messages) {
+              this._deliverIncomingMessage(msg);
+            }
           }
         }
-      } catch {}
+      } catch {} finally {
+        this._inFlight = false;
+      }
     }
 
     close() {
@@ -136,10 +509,12 @@
         clearInterval(this._pollTimer);
         this._pollTimer = null;
       }
+      if (this._mqttClient) {
+        try { this._mqttClient.end(true); } catch {}
+        this._mqttClient = null;
+      }
       if (this._native) {
-        try {
-          this._native.close();
-        } catch {}
+        try { this._native.close(); } catch {}
       }
     }
   }

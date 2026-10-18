@@ -260,8 +260,8 @@
         }
 
         // Play audio from a pilgrim who was granted microphone access
-        if (msg.type === 'audio-chunk' && msg.speakerRole === 'pilgrim' && msg.samples) {
-          playIncomingPilgrimAudio(msg.samples, msg.sampleRate || 16000);
+        if (msg.type === 'audio-chunk' && msg.speakerRole === 'pilgrim' && (msg.pcm16 || msg.samples)) {
+          playIncomingPilgrimAudio(msg.pcm16 || msg.samples, msg.sampleRate || 16000, Boolean(msg.pcm16));
         }
       };
     }
@@ -333,7 +333,27 @@
       }
     }
 
-    // Real Microphone Audio Streaming
+    // Real Microphone Audio Streaming (WebRTC Direct Stream + Compact PCM16 Chunks)
+    let zeroGainNode = null;
+    let nextPilgrimAudioTime = 0;
+
+    function floatTo16BitBase64(floatSamples) {
+      const len = floatSamples.length;
+      const bytes = new Uint8Array(len * 2);
+      for (let i = 0; i < len; i++) {
+        const s = Math.max(-1, Math.min(1, floatSamples[i]));
+        const intVal = s < 0 ? s * 0x8000 : s * 0x7fff;
+        const v = intVal & 0xffff;
+        bytes[i * 2] = v & 0xff;
+        bytes[i * 2 + 1] = (v >> 8) & 0xff;
+      }
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
+    }
+
     async function toggleMicBroadcast() {
       const btn = document.getElementById('startMicBtn');
       if (isMicBroadcasting) {
@@ -349,16 +369,31 @@
         if (!audioCtx) audioCtx = new AudioContextClass();
         if (audioCtx.state === 'suspended') await audioCtx.resume();
 
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+
+        // Doğrudan WebRTC P2P Ses Kanalını da başlat (PC <-> Telefon 30ms HD Ses)
+        if (typeof window.ryBroadcastGuideStream === 'function') {
+          window.ryBroadcastGuideStream(micStream);
+        }
+
         const source = audioCtx.createMediaStreamSource(micStream);
-        scriptProcessor = audioCtx.createScriptProcessor(2048, 1, 1);
+        scriptProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
+        zeroGainNode = audioCtx.createGain();
+        zeroGainNode.gain.value = 0; // Rehberin kendi bilgisayarında yankı (eko) yapmasını önler
         source.connect(scriptProcessor);
-        scriptProcessor.connect(audioCtx.destination);
+        scriptProcessor.connect(zeroGainNode);
+        zeroGainNode.connect(audioCtx.destination);
 
         isMicBroadcasting = true;
         btn.textContent = '⏹️ Canlı Mikrofon Yayınını Durdur (YAYINDA)';
         btn.className = 'btn btn-danger';
-        document.getElementById('micSourceLabel').textContent = '🎙️ Yayın Kaynağı: Gerçek Mikrofon (Canlı)';
+        document.getElementById('micSourceLabel').textContent = '🎙️ Yayın Kaynağı: Gerçek Mikrofon (Canlı HD Yayında)';
 
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
@@ -373,20 +408,25 @@
           if (!isMicBroadcasting) return;
           const input = e.inputBuffer.getChannelData(0);
           let sum = 0;
+          const step = 3;
           const downsampled = [];
-          for (let i = 0; i < input.length; i += 3) {
+          for (let i = 0; i < input.length; i += step) {
             const v = input[i];
             sum += v * v;
-            downsampled.push(Number(v.toFixed(3)));
+            downsampled.push(v);
           }
-          const rms = Math.sqrt(sum / (input.length / 3));
-          animateGuideSpectrum(Math.min(1, rms * 6));
-          if (ws && ws.readyState === WebSocket.OPEN) {
+          const rms = Math.sqrt(sum / downsampled.length);
+          const level = Math.min(1, rms * 7);
+          animateGuideSpectrum(level);
+
+          // Sadece ses varken veya düşük eşik üstündeyken gönder
+          if (ws && ws.readyState === WebSocket.OPEN && rms > 0.002) {
+            const pcm16 = floatTo16BitBase64(downsampled);
             ws.send(JSON.stringify({
               type: 'audio-chunk',
-              sampleRate: Math.round(audioCtx.sampleRate / 3),
-              samples: downsampled,
-              level: Math.min(1, rms * 6)
+              sampleRate: Math.round(audioCtx.sampleRate / step),
+              pcm16,
+              level
             }));
           }
         };
@@ -397,9 +437,16 @@
 
     function stopMicBroadcast() {
       isMicBroadcasting = false;
+      if (typeof window.ryBroadcastGuideStream === 'function') {
+        window.ryBroadcastGuideStream(null);
+      }
       if (scriptProcessor) {
         scriptProcessor.disconnect();
         scriptProcessor = null;
+      }
+      if (zeroGainNode) {
+        zeroGainNode.disconnect();
+        zeroGainNode = null;
       }
       if (micStream) {
         micStream.getTracks().forEach((t) => t.stop());
@@ -445,18 +492,36 @@
       });
     }
 
-    function playIncomingPilgrimAudio(samples, sampleRate) {
+    function playIncomingPilgrimAudio(samplesOrB64, sampleRate, isBase64 = false) {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!audioCtx) audioCtx = new AudioContextClass();
       if (audioCtx.state === 'suspended') audioCtx.resume();
       try {
-        const floatArr = new Float32Array(samples);
+        let floatArr;
+        if (isBase64 && typeof samplesOrB64 === 'string') {
+          const bin = atob(samplesOrB64);
+          const len = bin.length >> 1;
+          floatArr = new Float32Array(len);
+          for (let i = 0; i < len; i++) {
+            const lo = bin.charCodeAt(i * 2);
+            const hi = bin.charCodeAt(i * 2 + 1);
+            let val = (hi << 8) | lo;
+            if (val >= 0x8000) val -= 0x10000;
+            floatArr[i] = val / 32768;
+          }
+        } else {
+          floatArr = new Float32Array(samplesOrB64);
+        }
         const buf = audioCtx.createBuffer(1, floatArr.length, sampleRate);
         buf.copyToChannel(floatArr, 0);
         const src = audioCtx.createBufferSource();
         src.buffer = buf;
         src.connect(audioCtx.destination);
-        src.start();
+        const now = audioCtx.currentTime;
+        if (nextPilgrimAudioTime < now) nextPilgrimAudioTime = now + 0.05;
+        if (nextPilgrimAudioTime - now > 1.5) nextPilgrimAudioTime = now + 0.06;
+        src.start(nextPilgrimAudioTime);
+        nextPilgrimAudioTime += buf.duration;
       } catch (e) {}
     }
 

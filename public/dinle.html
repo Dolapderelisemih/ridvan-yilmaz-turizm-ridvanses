@@ -479,6 +479,12 @@
 
     document.getElementById('joinForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      // Kullanıcının "Canlı Yayına Bağlan" dokunuşuyla ses motorunu hemen kilitten çıkar ve aktif et!
+      ensureAudioContext();
+      if (!isAudioListening) {
+        toggleAudioPlayback();
+      }
+
       const code = document.getElementById('tourCodeInput').value.trim().toUpperCase();
       const roomId = document.getElementById('roomSelect').value;
       const name = document.getElementById('pilgrimNameInput').value.trim() || 'Hacı Misafir';
@@ -558,8 +564,10 @@
         if (msg.type === 'audio-chunk') {
           animateSpectrumFromLevel(msg.level || 0.5);
           if (isAudioListening) {
-            if (msg.samples && msg.samples.length) {
-              playPcmSamples(msg.samples, msg.sampleRate || 16000);
+            if (msg.pcm16) {
+              playPcmSamples(msg.pcm16, msg.sampleRate || 16000, true);
+            } else if (msg.samples && msg.samples.length) {
+              playPcmSamples(msg.samples, msg.sampleRate || 16000, false);
             } else if (msg.synthNote) {
               playGentleHarmonyNote(msg.synthNote);
             }
@@ -603,9 +611,11 @@
       ensureAudioContext();
       isAudioListening = !isAudioListening;
       const btn = document.getElementById('toggleAudioBtn');
+      const webrtcEl = document.getElementById('ryWebrtcRemoteAudio');
       if (isAudioListening) {
         btn.textContent = '🔇 Sesi Kapat (Canlı Yayın Dinleniyor)';
         btn.className = 'btn btn-primary';
+        if (webrtcEl) webrtcEl.muted = false;
         playNotificationChime();
         startBackgroundKeepAliveAudio();
         requestWakeLock();
@@ -613,6 +623,7 @@
       } else {
         btn.textContent = '🔊 Sesi Aç / Rehberi Dinle';
         btn.className = 'btn btn-gold';
+        if (webrtcEl) webrtcEl.muted = true;
         if (window.speechSynthesis) window.speechSynthesis.cancel();
         stopBackgroundKeepAliveAudio();
       }
@@ -624,16 +635,43 @@
       if (gainNode) gainNode.gain.value = volumeMultiplier;
     }
 
-    function playPcmSamples(samples, sampleRate) {
+    let nextAudioTime = 0;
+
+    function playPcmSamples(samplesOrB64, sampleRate = 16000, isBase64 = false) {
+      ensureAudioContext();
       if (!audioCtx || !gainNode) return;
       try {
-        const floatArr = new Float32Array(samples);
+        let floatArr;
+        if (isBase64 && typeof samplesOrB64 === 'string') {
+          const bin = atob(samplesOrB64);
+          const len = bin.length >> 1;
+          floatArr = new Float32Array(len);
+          for (let i = 0; i < len; i++) {
+            const lo = bin.charCodeAt(i * 2);
+            const hi = bin.charCodeAt(i * 2 + 1);
+            let val = (hi << 8) | lo;
+            if (val >= 0x8000) val -= 0x10000;
+            floatArr[i] = val / 32768;
+          }
+        } else {
+          floatArr = new Float32Array(samplesOrB64);
+        }
+        if (!floatArr.length) return;
         const buffer = audioCtx.createBuffer(1, floatArr.length, sampleRate);
         buffer.copyToChannel(floatArr, 0);
         const source = audioCtx.createBufferSource();
         source.buffer = buffer;
         source.connect(gainNode);
-        source.start();
+
+        const now = audioCtx.currentTime;
+        if (nextAudioTime < now) {
+          nextAudioTime = now + 0.05;
+        }
+        if (nextAudioTime - now > 1.4) {
+          nextAudioTime = now + 0.06;
+        }
+        source.start(nextAudioTime);
+        nextAudioTime += buffer.duration;
       } catch (e) {}
     }
 
@@ -705,25 +743,49 @@
     }
 
     // Pilgrim Two-Way Microphone when granted permission by Guide
+    let pilgrimZeroGain = null;
+    function floatTo16BitBase64Pilgrim(floatSamples) {
+      const len = floatSamples.length;
+      const bytes = new Uint8Array(len * 2);
+      for (let i = 0; i < len; i++) {
+        const s = Math.max(-1, Math.min(1, floatSamples[i]));
+        const intVal = s < 0 ? s * 0x8000 : s * 0x7fff;
+        const v = intVal & 0xffff;
+        bytes[i * 2] = v & 0xff;
+        bytes[i * 2 + 1] = (v >> 8) & 0xff;
+      }
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
+    }
+
     async function startPilgrimMicBroadcast() {
       try {
         ensureAudioContext();
-        pilgrimMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        pilgrimMicStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        });
         const source = audioCtx.createMediaStreamSource(pilgrimMicStream);
-        pilgrimProcessor = audioCtx.createScriptProcessor(2048, 1, 1);
+        pilgrimProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
+        pilgrimZeroGain = audioCtx.createGain();
+        pilgrimZeroGain.gain.value = 0;
         source.connect(pilgrimProcessor);
-        pilgrimProcessor.connect(audioCtx.destination);
+        pilgrimProcessor.connect(pilgrimZeroGain);
+        pilgrimZeroGain.connect(audioCtx.destination);
         pilgrimProcessor.onaudioprocess = (e) => {
           if (!micGranted || !ws || ws.readyState !== WebSocket.OPEN) return;
           const input = e.inputBuffer.getChannelData(0);
           const downsampled = [];
           for (let i = 0; i < input.length; i += 3) {
-            downsampled.push(Number(input[i].toFixed(3)));
+            downsampled.push(input[i]);
           }
+          const pcm16 = floatTo16BitBase64Pilgrim(downsampled);
           ws.send(JSON.stringify({
             type: 'audio-chunk',
             sampleRate: Math.round(audioCtx.sampleRate / 3),
-            samples: downsampled,
+            pcm16,
             level: 0.7
           }));
         };
@@ -736,6 +798,10 @@
       if (pilgrimProcessor) {
         pilgrimProcessor.disconnect();
         pilgrimProcessor = null;
+      }
+      if (pilgrimZeroGain) {
+        pilgrimZeroGain.disconnect();
+        pilgrimZeroGain = null;
       }
       if (pilgrimMicStream) {
         pilgrimMicStream.getTracks().forEach((t) => t.stop());
