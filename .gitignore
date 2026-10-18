@@ -1,0 +1,7 @@
+node_modules/
+rea/
+rea-umrahvoice-analysis.json
+.env
+.vercel/
+*.log
+.DS_Store

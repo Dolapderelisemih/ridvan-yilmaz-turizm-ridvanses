@@ -1,0 +1,131 @@
+{
+  "available": true,
+  "evidence_id": "ev_0a8e845af3a8ec92933242283a62cebd8a89d296e1812c855112da423a42d2b2",
+  "provider": {
+    "id": "rea-javascript-application",
+    "name": "REA JavaScript application analyzer",
+    "version": "1"
+  },
+  "root_artifact_sha256": "9c7e0acca19c76ccb6af48e3e658065d384eb8b916e0151f604041c10059525f",
+  "inventory_graph_sha256": "2fc1445bc4abcae2457429d8710256ab607eef9f7261566207cfc7f082e86a76",
+  "totalNodes": 39,
+  "totalEdges": 48,
+  "nodeKindCounts": {
+    "artifact": 8,
+    "electron-renderer": 6,
+    "unknown": 6,
+    "javascript-module": 9,
+    "javascript-asset": 5,
+    "storage": 2,
+    "endpoint": 3
+  },
+  "endpoints": [
+    {
+      "endpoint_kind": "network",
+      "value": "/api/demo-request",
+      "mechanism": "call:fetch"
+    },
+    {
+      "endpoint_kind": "network",
+      "value": "/api/login",
+      "mechanism": "call:fetch"
+    },
+    {
+      "endpoint_kind": "network",
+      "value": "/api/forgot-password",
+      "mechanism": "call:fetch"
+    }
+  ],
+  "storage": [
+    {
+      "storage_kind": "local-storage",
+      "name": "umrahvoice_token",
+      "mechanism": "call:localStorage.setItem"
+    },
+    {
+      "storage_kind": "local-storage",
+      "name": "umrahvoice_user",
+      "mechanism": "call:localStorage.setItem"
+    }
+  ],
+  "artifacts": [
+    {
+      "kind": "artifact",
+      "label": "iletisim.html",
+      "bytes": 22255,
+      "sha256": "c9eb5a3cbbafcb487317234b8aa121396daade185659a82954d2bdd5da6d3a47"
+    },
+    {
+      "kind": "artifact",
+      "label": "acente-kafile-yonetim-sistemi.html",
+      "bytes": 17874,
+      "sha256": "5117371f959a202e321f5779a2224351975cb5000159c439170e39d6f04135ce"
+    },
+    {
+      "kind": "artifact",
+      "label": "login.html",
+      "bytes": 9769,
+      "sha256": "4d262f3740782e3a4d36524eeb2bc259f7369973e02e0fb115dc4f772c59e568"
+    },
+    {
+      "kind": "javascript-asset",
+      "label": "iletisim-inline-2.js",
+      "bytes": 2746,
+      "sha256": "5f6085aa3c038653f6afc1617e2660f2811bf4a2a404951467ea45a2c53e1a78"
+    },
+    {
+      "kind": "artifact",
+      "label": "nasil-calisir.html",
+      "bytes": 17802,
+      "sha256": "69d71931113d5349b6daefd6fa6a0d95ef95a672d0fe1f9e2bf782081fea3160"
+    },
+    {
+      "kind": "javascript-asset",
+      "label": "nasil-calisir-inline-1.js",
+      "bytes": 243,
+      "sha256": "e16cbe597d4c81eb181632ad42b2cc29b6260170cbcf8f9440bd82c20424a53f"
+    },
+    {
+      "kind": "artifact",
+      "label": "sifremi-unuttum.html",
+      "bytes": 9435,
+      "sha256": "c10c1743a4cf9b19c413944696e8f75490a3da88f63d418ac279f8df21b2da55"
+    },
+    {
+      "kind": "artifact",
+      "label": "manifest.json",
+      "bytes": 274,
+      "sha256": "08cc7aa96e34dd11fbc2c4c2f84df137bd1b1c634575cc6c9ba09f0698cd0444"
+    },
+    {
+      "kind": "javascript-asset",
+      "label": "sifremi-unuttum-inline-1.js",
+      "bytes": 2578,
+      "sha256": "cc9288ced8837a9e833b1730eab0899957c4aae430a32c0e06e05e3ca07e6702"
+    },
+    {
+      "kind": "javascript-asset",
+      "label": "build/assets/app-DTFceB-g.js",
+      "bytes": 146884,
+      "sha256": "d7ebc776250273a3ec3cdf8b4c6fbe9a33861d42976f143b338a3fbcc247c242"
+    },
+    {
+      "kind": "artifact",
+      "label": "artifact root",
+      "bytes": 0,
+      "sha256": "9c7e0acca19c76ccb6af48e3e658065d384eb8b916e0151f604041c10059525f"
+    },
+    {
+      "kind": "javascript-asset",
+      "label": "login-inline-1.js",
+      "bytes": 3181,
+      "sha256": "5853ce7c46659dd6d3930f8904225dc5f12a67ca1e270685767881024401d15f"
+    },
+    {
+      "kind": "artifact",
+      "label": "index.html",
+      "bytes": 50459,
+      "sha256": "25d0776445d8eb6ec6277df156d85d9d53ce231f80d87befe58ae468de55d895"
+    }
+  ]
+}

@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rıdvan Yılmaz Turizm — RıdvanSes Sistem Kullanım Rehberi</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap');
+
+    @page {
+      size: A4 portrait;
+      margin: 10mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #1b2622;
+      background: #f7f1e6;
+      line-height: 1.45;
+      font-size: 10pt;
+    }
+
+    .no-print-bar {
+      background: #0a3d30;
+      color: #fff;
+      padding: 14px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      border-bottom: 2px solid #d4af37;
+    }
+
+    .no-print-bar a, .no-print-bar button {
+      background: #d4af37;
+      color: #0a3d30;
+      font-weight: 800;
+      padding: 8px 16px;
+      border-radius: 99px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    .page {
+      width: 190mm;
+      height: 274mm;
+      margin: 12px auto;
+      background: #ffffff;
+      border: 1.5px solid #e4d9c3;
+      border-radius: 16px;
+      padding: 11mm 12mm 9mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      page-break-after: always;
+      page-break-inside: avoid;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(10, 61, 48, 0.08);
+    }
+
+    .page:last-child {
+      page-break-after: auto;
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+      }
+      .no-print-bar {
+        display: none !important;
+      }
+      .page {
+        margin: 0;
+        width: 100%;
+        height: 275mm;
+        box-shadow: none;
+        border: 1px solid #d8cbb3;
+      }
+    }
+
+    h1, h2, h3 {
+      font-family: 'Fraunces', Georgia, serif;
+      color: #0a3d30;
+    }
+
+    .banner-dark {
+      background: linear-gradient(135deg, #0a3d30, #0f5a47);
+      color: #ffffff;
+      border: 2px solid #d4af37;
+      border-radius: 14px;
+      padding: 15px 18px;
+      margin-bottom: 12px;
+    }
+
+    .gold-pill {
+      display: inline-block;
+      background: #f6ecd0;
+      color: #7c5e08;
+      border: 1px solid #d4af37;
+      padding: 3px 10px;
+      border-radius: 99px;
+      font-size: 8.5pt;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+    }
+
+    .emerald-pill {
+      display: inline-block;
+      background: #dcebe4;
+      color: #0a3d30;
+      padding: 3px 10px;
+      border-radius: 99px;
+      font-size: 8.5pt;
+      font-weight: 800;
+    }
+
+    .box {
+      background: #f7f1e6;
+      border: 1px solid #e4d9c3;
+      border-radius: 12px;
+      padding: 13px 15px;
+      margin-bottom: 11px;
+    }
+
+    .box-white {
+      background: #ffffff;
+      border: 1.5px solid #0f5a47;
+      border-radius: 12px;
+      padding: 13px 15px;
+      margin-bottom: 11px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .step-row {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      background: #f7f1e6;
+      border: 1px solid #e4d9c3;
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+
+    .step-circle {
+      min-width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      background: #0f5a47;
+      color: #f3d266;
+      font-family: 'Fraunces', serif;
+      font-weight: 700;
+      font-size: 12pt;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .page-footer {
+      border-top: 1px solid #e4d9c3;
+      padding-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 8.5pt;
+      color: #5c5a52;
+      font-weight: 600;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+      font-size: 9.5pt;
+    }
+
+    th, td {
+      border: 1px solid #dfd3bc;
+      padding: 8px 10px;
+      text-align: left;
+    }
+
+    th {
+      background: #efe6d3;
+      color: #0a3d30;
+      font-weight: 800;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="no-print-bar">
+    <div>
+      <strong>📘 Rıdvan Yılmaz Turizm — RıdvanSes Sistem Kullanım Rehberi (PDF Versiyonu)</strong>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <a href="/Ridvan_Yilmaz_Turizm_RidvanSes_Kullanim_Rehberi.pdf" download>⬇️ PDF Dosyasını İndir</a>
+      <button onclick="window.print()">🖨️ Yazdır</button>
+      <a href="/" style="background:transparent; color:#fff; border:1px solid rgba(255,255,255,0.4);">← Ana Sayfaya Dön</a>
+    </div>
+  </div>
+
+  <!-- ======================== SAYFA 1: GENEL BAKIŞ & SİSTEM MANTIĞI ======================== -->
+  <section class="page">
+    <div>
+      <div class="banner-dark">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <span style="color:#f3d266; font-weight:800; font-size:9pt; letter-spacing:0.06em;">
+            🕋 RIDVAN YILMAZ TURİZM • KALPLERE DOKUNAN YOLCULUKLAR
+          </span>
+          <span style="background:rgba(255,255,255,0.14); padding:3px 10px; border-radius:99px; font-size:8.5pt; color:#4ade80; font-weight:700;">
+            ADIM ADIM PRATİK KULLANIM KILAVUZU
+          </span>
+        </div>
+        <h1 style="color:#ffffff; font-size:20pt; line-height:1.2; margin-bottom:8px;">
+          RıdvanSes Canlı Rehberlik ve Kafile Yönetim Sistemi Nasıl Çalışır?
+        </h1>
+        <p style="color:#e2e8f0; font-size:10pt;">
+          Bu rehber; acente yönetimimizin, rehber hocalarımızın ve umre misafirlerimizin (hacılarımızın) sistemi hiçbir teknik bilgiye ihtiyaç duymadan en basit şekilde nasıl kullanacağını anlatır.
+        </p>
+      </div>
+
+      <div class="box-white" style="margin-bottom:14px;">
+        <span class="gold-pill">1. EN BASİT ANLAMIYLA BU SİSTEM NEDİR?</span>
+        <p style="margin-top:6px; font-size:10pt;">
+          Eskiden umre turlarında hacılara dağıtılan, şarjı biten, ağır şarj çantalarıyla taşınan, Kâbe kalabalığında cızırtı yapan ve kaybolduğunda döviz bazlı cezası olan <strong>telsiz kulaklık cihazlarının yerine geçen dijital ses sistemidir.</strong>
+        </p>
+        <p style="margin-top:6px; font-size:10pt; color:#0f5a47; font-weight:700;">
+          👉 Hocamız kendi telefonundan konuşur; hacılarımız ise kendi cep telefonlarına kulaklıklarını takarak hocamızın sesini sanki yanındaymış gibi net dinler!
+        </p>
+      </div>
+
+      <h3 style="font-size:13pt; margin-bottom:8px;">2. Sistem 3 Kişi Arasında Nasıl Çalışır? (Tek Bakışta Özet)</h3>
+      <div class="grid-3" style="margin-bottom:14px;">
+        <div class="box" style="border-top:4px solid #0f5a47;">
+          <div style="font-weight:800; color:#0a3d30; font-size:10.5pt; margin-bottom:4px;">🛡️ 1. Acente (Ofis)</div>
+          <p style="font-size:9.2pt; color:#334155;">
+            Yönetim panelinden tur kodunu (Örn: <strong>RY-KASIM</strong> veya <strong>RY-2026</strong>) açar. Tek tuşla <strong>Yaka Kartı QR Kodlarını</strong> yazdırır ve <strong>WhatsApp</strong> grubuna davet linkini atar.
+          </p>
+        </div>
+        <div class="box" style="border-top:4px solid #d4af37;">
+          <div style="font-weight:800; color:#0a3d30; font-size:10.5pt; margin-bottom:4px;">🎙️ 2. Rehber Hoca</div>
+          <p style="font-size:9.2pt; color:#334155;">
+            <strong>Rıdvan Yılmaz Hoca</strong> veya <strong>Ömer Ali Gültekin Hoca</strong> telefonundan Rehber ekranını açıp <strong>"Canlı Yayını Başlat"</strong> tuşuna basar ve duaları okur.
+          </p>
+        </div>
+        <div class="box" style="border-top:4px solid #16a34a;">
+          <div style="font-weight:800; color:#0a3d30; font-size:10.5pt; margin-bottom:4px;">🎧 3. Hacı Misafir</div>
+          <p style="font-size:9.2pt; color:#334155;">
+            Yaka kartındaki karekodu okutur veya WhatsApp linkine dokunur. <strong>Şifre girmeden, üye olmadan</strong> <em>"Sesi Aç"</em> der ve telefonu cebine koyup tavafını yapar.
+          </p>
+        </div>
+      </div>
+
+      <h3 style="font-size:13pt; margin-bottom:8px;">3. Sistemdeki 4 Ana Ekran ve Adresleri</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Ekran Adı</th>
+            <th>Kim Kullanır?</th>
+            <th>Ne İşe Yarar?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>1. Hacı Dinleme Ekranı</strong><br/><code>/dinle</code></td>
+            <td>Tüm Umre Misafirlerimiz (Hacılar)</td>
+            <td>Canlı sesi dinleme, el kaldırıp soru sorma, kaybolunca 3 sn basılı tutup SOS konum gönderme, duaları okuma.</td>
+          </tr>
+          <tr>
+            <td><strong>2. Rehber Yayın Konsolu</strong><br/><code>/rehber</code></td>
+            <td>Rıdvan Yılmaz Hoca, Ömer Ali Gültekin ve Rehberler</td>
+            <td>Mikrofonla canlı yayın açma, el kaldıran hacıya söz verme, anlık duyuru atma ve kayıp hacıyı haritada görme.</td>
+          </tr>
+          <tr>
+            <td><strong>3. Acente Yönetim Paneli</strong><br/><code>/panel</code></td>
+            <td>Bursa Merkez Ofis / Beytullah Bey</td>
+            <td>Yeni umre kafilesi oluşturma, Yaka Kartı QR Kodu ve WhatsApp davet mesajı üretme, tüm odaları izleme.</td>
+          </tr>
+          <tr>
+            <td><strong>4. Yaka Kartı Yazdırma</strong><br/><code>/yaka-karti</code></td>
+            <td>Acente Operasyon Ekibi</td>
+            <td>Her hacının boynuna asacağı QR kodlu, otel ve acil telefon bilgili A4 yaka kartlarını tek tıkla yazdırma.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="page-footer">
+      <span>Rıdvan Yılmaz Turizm — RıdvanSes Kullanım Rehberi</span>
+      <span>Bilgi & Kayıt: 0 538 399 96 66 • Osmangazi / Bursa</span>
+      <span>Sayfa 1 / 4</span>
+    </div>
+  </section>
+
+  <!-- ======================== SAYFA 2: ACENTE VE REHBER HOCA KILAVUZU ======================== -->
+  <section class="page">
+    <div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <span class="emerald-pill">BÖLÜM 1 & 2: ACENTE YÖNETİMİ VE REHBER HOCA KILAVUZU</span>
+        <span style="font-size:9pt; font-weight:700; color:#0f5a47;">Rıdvan Yılmaz Turizm</span>
+      </div>
+
+      <h2 style="font-size:15pt; margin-bottom:8px;">A. Acente Yönetimi (Ofis) Umre Öncesi Ne Yapacak?</h2>
+      <p style="font-size:9.6pt; color:#5c5a52; margin-bottom:10px;">
+        Umre kafilesi yola çıkmadan önce ofiste sadece <strong>3 dakikada</strong> şu 3 adım uygulanır:
+      </p>
+
+      <div class="step-row">
+        <div class="step-circle">1</div>
+        <div>
+          <strong style="color:#0a3d30;">Kafileyi ve Kodu Oluşturun (<code>/panel</code>):</strong>
+          <div style="font-size:9.5pt; color:#334155;">
+            Acente Paneline girip <strong>"Kafile & Tur Yönetimi"</strong> sekmesinden turu ekleyin. Örneğin 13-14 Kasım 2026 Kasım Umresi için <strong><code>RY-KASIM</code></strong> kodu ve rehber olarak <strong>Ömer Ali Gültekin</strong> tanımlanmıştır.
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div class="step-circle">2</div>
+        <div>
+          <strong style="color:#0a3d30;">Hacı Yaka Kartlarını Yazdırın (<code>🪪 QR & WhatsApp</code> Sekmesi):</strong>
+          <div style="font-size:9.5pt; color:#334155;">
+            Panelde kafilenin yanındaki <strong>"🖨️ Yaka Kartı"</strong> butonuna basın. Açılan A4 sayfasında her hacı için üzerinde <strong>QR Kod</strong>, Mekke/Medine otel adı ve acil numara bulunan kartları yazdırıp yaka poşetlerine koyun.
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row" style="margin-bottom:16px;">
+        <div class="step-circle">3</div>
+        <div>
+          <strong style="color:#0a3d30;">Kafile WhatsApp Grubuna Davet Mesajını Gönderin:</strong>
+          <div style="font-size:9.5pt; color:#334155;">
+            Paneldeki <strong>"💬 WhatsApp'ta Paylaş"</strong> butonuna basın. Sistem otomatik olarak hazır davet mesajını ve doğrudan katılım linkini (Örn: <code>.../dinle?code=RY-KASIM</code>) WhatsApp grubuna gönderir.
+          </div>
+        </div>
+      </div>
+
+      <hr style="border:none; border-top:1.5px dashed #d8cbb3; margin:14px 0;" />
+
+      <h2 style="font-size:15pt; margin-bottom:8px;">B. Rehber Hocamız Mekke ve Medine'de Ne Yapacak?</h2>
+      <p style="font-size:9.6pt; color:#5c5a52; margin-bottom:10px;">
+        <strong>Rıdvan Yılmaz Hoca</strong> veya <strong>Ömer Ali Gültekin Hoca</strong> tavaf veya ziyaret başlarken telefonundan <code>/rehber</code> ekranını açar:
+      </p>
+
+      <div class="grid-2">
+        <div class="box-white">
+          <div style="font-weight:800; color:#0f5a47; margin-bottom:4px;">🎙️ 1. Canlı Yayını Başlatma</div>
+          <p style="font-size:9.2pt;">
+            Kafile kodunu (Örn: <strong>RY-KASIM</strong> veya <strong>RY-2026</strong>) seçer ve <strong>"Gerçek Mikrofonla Canlı Yayını Başlat"</strong> butonuna basar. Ekrandaki ses çubukları hareket etmeye başladığında tüm hacılar hocamızı duyar.
+          </p>
+        </div>
+
+        <div class="box-white">
+          <div style="font-weight:800; color:#0f5a47; margin-bottom:4px;">✋ 2. Hacıya Söz Verme (Soru-Cevap)</div>
+          <p style="font-size:9.2pt;">
+            Bir hacı soru sormak için telefonundan <strong>"El Kaldır"</strong> yaptığında hocanın ekranında en üstte sarı renkle görünür. Hoca <strong>"🎙️ Söz Ver"</strong> tuşuna basınca hacının sesi açılır; sorusu bitince <strong>"🔇 Sözü Bitir"</strong> tuşuna basılır.
+          </p>
+        </div>
+
+        <div class="box-white">
+          <div style="font-weight:800; color:#0f5a47; margin-bottom:4px;">📢 3. Tek Tuşla Kafile Duyurusu</div>
+          <p style="font-size:9.2pt;">
+            <em>"15 dk sonra otel lobisinde toplanıyoruz"</em> veya <em>"Tavaf namazı için Makam-ı İbrahim arkasına geçiyoruz"</em> hazır butonlarına basarak tüm hacıların telefonuna sesli uyarı mesajı gönderir.
+          </p>
+        </div>
+
+        <div class="box-white">
+          <div style="font-weight:800; color:#c92a2a; margin-bottom:4px;">🚨 4. Kayıp Hacı (SOS) Harita Takibi</div>
+          <p style="font-size:9.2pt;">
+            Kalabalıkta kaybolan bir hacı SOS butonuna bastığında hocanın ekranında kırmızı alarm çıkar. <strong>"🗺️ Haritada Aç"</strong> tuşuna basılarak hacının tam GPS noktasını Google Haritalar'da görür ve yanına ulaşır.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Rıdvan Yılmaz Turizm — RıdvanSes Kullanım Rehberi</span>
+      <span>Bilgi & Kayıt: 0 538 399 96 66 • Osmangazi / Bursa</span>
+      <span>Sayfa 2 / 4</span>
+    </div>
+  </section>
+
+  <!-- ======================== SAYFA 3: HACI MİSAFİRLERİMİZ İÇİN KILAVUZ ======================== -->
+  <section class="page">
+    <div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <span class="gold-pill">BÖLÜM 3: HACI MİSAFİRLERİMİZ İÇİN 3 ADIMDA KULLANIM</span>
+        <span style="font-size:9pt; font-weight:700; color:#0f5a47;">Yaşlı Dostu • Şifresiz • Üyeliksiz</span>
+      </div>
+
+      <h2 style="font-size:15.5pt; margin-bottom:8px;">C. Hacılarımız Telefonlarında Nasıl Kullanacak?</h2>
+      <p style="font-size:9.8pt; color:#334155; margin-bottom:12px;">
+        Hacılarımızın e-posta yazmasına, şifre oluşturmasına veya uygulama mağazası şifresi bilmesine <strong>hiç gerek yoktur.</strong>
+      </p>
+
+      <div class="step-row">
+        <div class="step-circle">1</div>
+        <div>
+          <strong style="color:#0a3d30; font-size:10.5pt;">Yaka Kartındaki QR Kodu Okutun veya WhatsApp Linkine Dokunun:</strong>
+          <div style="font-size:9.5pt; color:#334155; margin-top:2px;">
+            Hacı telefonunun kamerasını boynundaki yaka kartında bulunan <strong>Karekoda (QR)</strong> tutar ya da WhatsApp grubuna atılan linke dokunur. Kafile kodu (Örn: <strong>RY-KASIM</strong>) otomatik yazılı gelir; sadece <strong>"🎧 Canlı Yayına Bağlan"</strong> tuşuna basar.
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div class="step-circle">2</div>
+        <div>
+          <strong style="color:#0a3d30; font-size:10.5pt;">Kulaklığı Takıp "🔊 Sesi Aç / Rehberi Dinle" Tuşuna Basın:</strong>
+          <div style="font-size:9.5pt; color:#334155; margin-top:2px;">
+            Sesi açtığı anda <strong>🔒 Tavaf Kesintisiz Modu (WakeLock & Kilit Ekranı Oynatıcısı)</strong> otomatik devreye girer. Hacı telefonunu cebine veya çantasına koysa bile ses kesilmez. İsterse <strong>Ses Güçlendirici</strong> çubuğunu <strong>%200</strong> seviyesine çekerek kalabalıkta sesi yükseltebilir.
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row" style="margin-bottom:14px;">
+        <div class="step-circle">3</div>
+        <div>
+          <strong style="color:#0a3d30; font-size:10.5pt;">Telefona Uygulama Olarak Kurma (İsteğe Bağlı Tek Dokunuş):</strong>
+          <div style="font-size:9.5pt; color:#334155; margin-top:2px;">
+            Ekranın üstündeki <strong>"📲 Telefona Kur / Uygulamayı Yükle"</strong> butonuna basıldığında RıdvanSes, telefonun ana ekranına uygulama ikonu olarak yerleşir.
+          </div>
+        </div>
+      </div>
+
+      <h3 style="font-size:13pt; margin-bottom:8px;">Hacı Ekranındaki Özel Butonlar Ne İşe Yarar?</h3>
+      <div class="grid-2" style="margin-bottom:14px;">
+        <div class="box" style="border-left:4px solid #0f5a47;">
+          <div style="font-weight:800; color:#0a3d30;">✋ El Kaldır / Hocadan Söz İste</div>
+          <p style="font-size:9.2pt; margin-top:4px;">
+            Tavafta veya Siyer sohbetinde hocamıza soru sormak isteyen hacı bu butona dokunur. Hoca onay verdiğinde hacının ekranı yeşile döner ve sorusunu doğrudan sorar.
+          </p>
+        </div>
+
+        <div class="box" style="border-left:4px solid #c92a2a; background:#fff5f5;">
+          <div style="font-weight:800; color:#c92a2a;">🚨 ACİL DURUM / KAYBOLDUM (3 Sn Basılı Tut)</div>
+          <p style="font-size:9.2pt; margin-top:4px;">
+            Yanlışlıkla basılmasını önlemek için <strong>3 saniye basılı tutulur</strong>. Dolunca hacının canlı GPS konumu anında Hocanın ve Acentenin ekranına düşer.
+          </p>
+        </div>
+
+        <div class="box" style="border-left:4px solid #d4af37;">
+          <div style="font-weight:800; color:#0a3d30;">📿 Sesli Tavaf, Sa'y ve Telbiye Duaları</div>
+          <p style="font-size:9.2pt; margin-top:4px;">
+            Ekranın alt kısmında Hacerü'l-Esved, Rabbenâ, Safa-Merve ve Telbiye dualarının Arapçası, Türkçe okunuşu, anlamı ve <strong>"🔊 Dinle"</strong> sesli okuma butonu yer alır.
+          </p>
+        </div>
+
+        <div class="box" style="border-left:4px solid #2563eb;">
+          <div style="font-weight:800; color:#0a3d30;">🌍 6 Dil Desteği (TR, AR, EN, FR, ID, UR)</div>
+          <p style="font-size:9.2pt; margin-top:4px;">
+            Üstteki bayraklara dokunarak ekran anında Türkçe, Arapça, İngilizce, Fransızca, Endonezce veya Urducaya çevrilebilir.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Rıdvan Yılmaz Turizm — RıdvanSes Kullanım Rehberi</span>
+      <span>Bilgi & Kayıt: 0 538 399 96 66 • Osmangazi / Bursa</span>
+      <span>Sayfa 3 / 4</span>
+    </div>
+  </section>
+
+  <!-- ======================== SAYFA 4: KASIM UMRESİ ÖRNEĞİ & SAHA İPUÇLARI ======================== -->
+  <section class="page">
+    <div>
+      <div class="banner-dark" style="margin-bottom:14px;">
+        <div style="font-size:9pt; color:#f3d266; font-weight:800; margin-bottom:4px;">
+          🕋✨ AKTİF ÖRNEK KAFILE: KASIM UMRESİ – KUTSAL TOPRAKLARA MANEVİ YOLCULUK ✨🕋
+        </div>
+        <h2 style="color:#ffffff; font-size:15pt; margin-bottom:8px;">
+          13–14 Kasım 2026 Kasım Umresi (Kod: RY-KASIM)
+        </h2>
+        <div class="grid-2" style="align-items:center; gap:16px;">
+          <div style="font-size:9.5pt; color:#f1f5f9;">
+            <p style="margin-bottom:6px;">
+              🤍 Bir ömür unutulmayacak hatıralar biriktirmek, gönlümüzü Kâbe’nin huzuruyla buluşturmak ve Peygamber Efendimizin ﷺ izinde manevi bir yolculuğa çıkmak için hazırlandı.
+            </p>
+            <div style="display:flex; flex-direction:column; gap:3px; color:#f3d266; font-weight:700;">
+              <span>🎙️ Rehber Hoca: Ömer Ali Gültekin</span>
+              <span>📅 Tarih: 13–14 Kasım 2026 (10 Günlük Program)</span>
+              <span>🕋 Plan: 8 Gün Mekke | 🌹 2 Gün Medine</span>
+              <span>✨ Konaklama, yemek ve tüm hizmetler dahil kampanyalı fiyatlar</span>
+              <span>📞 Bilgi ve Kayıt: 0 538 399 96 66 — Rıdvan Yılmaz Turizm</span>
+            </div>
+          </div>
+          <div style="background:#ffffff; color:#0a3d30; border-radius:14px; padding:12px; text-align:center;">
+            <img id="kasimQrImg" src="data:image/png;base64,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" alt="RY-KASIM QR" style="width:120px; height:120px; display:block; margin:0 auto 6px;" />
+            <div style="font-weight:800; font-size:9.5pt; color:#0f5a47;">KAFİLE KODU: RY-KASIM</div>
+            <div style="font-size:8pt; color:#5c5a52;">Kamerayla okutarak Kasım Umresi odasına bağlanın</div>
+          </div>
+        </div>
+      </div>
+
+      <h3 style="font-size:13pt; margin-bottom:8px;">D. Mekke ve Medine'de Gerçek Kullanım İçin 4 Altın Tavsiye</h3>
+
+      <div class="step-row">
+        <div class="step-circle">✓</div>
+        <div>
+          <strong style="color:#0a3d30;">1. Hocamız İçin Kablosuz Yaka Mikrofonu Kullanın:</strong>
+          <div style="font-size:9.3pt; color:#334155;">
+            Rehber hocamızın telefonuna küçük bir <strong>kablosuz yaka mikrofonu (Type-C veya Lightning)</strong> takılması, Kâbe tavafındaki çevre gürültüsünü keser ve hocamızın sesini hacılara stüdyo netliğinde iletir.
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div class="step-circle">✓</div>
+        <div>
+          <strong style="color:#0a3d30;">2. İnternet Paketi Tüketimi Çok Düşüktür (~12 MB / Saat):</strong>
+          <div style="font-size:9.3pt; color:#334155;">
+            Sistem sadece ses verisi aktardığı için video gibi kota bitirmez. 1 saatlik kesintisiz tavaf yayını sadece <strong>12–15 MB</strong> internet harcar. Standart umre dolaşım (roaming) veya Suudi SIM/eSIM paketleri fazlasıyla yeterlidir.
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div class="step-circle">✓</div>
+        <div>
+          <strong style="color:#0a3d30;">3. Türkiye'den Yola Çıkmadan Önce Otel veya Havalimanında 1 Kez Giriş Yaptırın:</strong>
+          <div style="font-size:9.3pt; color:#334155;">
+            Kafile havalimanında beklerken veya Mekke otel lobisinde ilk gün WhatsApp linkine tıklatıp <strong>"📲 Telefona Kur"</strong> yaptırırsanız, umre boyunca tüm hacılarımız tek dokunuşla yayına girer.
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div class="step-circle">✓</div>
+        <div>
+          <strong style="color:#0a3d30;">4. Canlı Sunucu Adresi (<code>https://ses.ridvanyilmazturizm.com</code>):</strong>
+          <div style="font-size:9.3pt; color:#334155;">
+            Sistem kendi bilgisayarınızda <code>http://localhost:3000</code> adresinde çalışmaktadır. Saha kullanımı için alan adınızın alt alan adına (<code>https://ses.ridvanyilmazturizm.com</code>) SSL sertifikalı olarak kurulduğunda dünyanın her yerinden telefonlarla doğrudan kullanılır.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Rıdvan Yılmaz Turizm — Reyhan, 8. Park Sk. Baycan Plaza No:10 K:4 D:2, Osmangazi/Bursa</span>
+      <span>Tel / WhatsApp: +90 538 399 96 66</span>
+      <span>Sayfa 4 / 4</span>
+    </div>
+  </section>
+
+</body>
+</html>

@@ -1,0 +1,40 @@
+{
+  "name": "Rıdvan Yılmaz Turizm — RıdvanSes Canlı Rehber",
+  "short_name": "RıdvanSes",
+  "description": "Rıdvan Yılmaz Turizm Siyer Umresi Canlı Sesli Rehberlik, Söz İsteme ve Acil Konum (SOS) Uygulaması",
+  "start_url": "/dinle?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f1e6",
+  "theme_color": "#0f5a47",
+  "lang": "tr",
+  "icons": [
+    {
+      "src": "/icons/icon-512.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "RY-2026 Canlı Yayına Katıl",
+      "short_name": "RY-2026 Dinle",
+      "description": "26 Haziran 2026 Siyer Umresi Canlı Ses Odası",
+      "url": "/dinle?code=RY-2026"
+    },
+    {
+      "name": "Rehber (Hoca) Yayın Konsolu",
+      "short_name": "Hoca Yayını",
+      "description": "Rehber Canlı Mikrofon ve Kafile Kontrol Ekranı",
+      "url": "/rehber"
+    },
+    {
+      "name": "Acente Yönetim Paneli",
+      "short_name": "Yönetim Paneli",
+      "description": "Kafile, QR Kod ve SOS Yönetim Merkezi",
+      "url": "/panel"
+    }
+  ]
+}

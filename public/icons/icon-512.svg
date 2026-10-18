@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f5a47"/>
+      <stop offset="100%" stop-color="#06281f"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f3d266"/>
+      <stop offset="100%" stop-color="#b8911e"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- 8-Pointed Islamic Star (Rub el Hizb) -->
+  <g stroke="url(#gold)" stroke-width="10" fill="none" opacity="0.85">
+    <rect x="116" y="116" width="280" height="280" rx="18"/>
+    <rect x="116" y="116" width="280" height="280" rx="18" transform="rotate(45 256 256)"/>
+  </g>
+  <!-- Center Circle & Kaaba / Audio Wave motif -->
+  <circle cx="256" cy="256" r="106" fill="#072b22" stroke="url(#gold)" stroke-width="6"/>
+  <text x="256" y="252" text-anchor="middle" font-family="Georgia, serif" font-size="88" font-weight="bold" fill="url(#gold)">RY</text>
+  <text x="256" y="302" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#f7f1e6" letter-spacing="3">RIDVANSES</text>
+</svg>

@@ -1,0 +1,363 @@
+{
+  "agency": {
+    "name": "Rıdvan Yılmaz Turizm",
+    "systemName": "RıdvanSes",
+    "slogan": "Kalplere Dokunan Yolculuklar — Dijital Sesli Rehberlik ve Kafile Yönetim Sistemi",
+    "founded": 2023,
+    "logo": "https://ridvanyilmazturizm.com/wp-content/uploads/2025/09/logo-ridvan-yilmaz.png",
+    "website": "https://ridvanyilmazturizm.com/",
+    "phone": "+90 538 399 96 66",
+    "whatsapp": "https://wa.me/message/CJWE6YVQAIPKN1",
+    "email": "info@ridvanyilmazturizm.com",
+    "address": "Reyhan, 8. Park Sk. Baycan Plaza No:10 K:4 D:2, 16030 Osmangazi/Bursa",
+    "leadGuide": "Rıdvan Yılmaz Hoca",
+    "operationsLead": "Beytullah Bey"
+  },
+  "guides": [
+    {
+      "id": "guide-1",
+      "name": "Rıdvan Yılmaz Hoca",
+      "title": "Kurucu & Baş Siyer Rehberi",
+      "phone": "+90 538 399 96 66",
+      "email": "ridvan@ridvanyilmazturizm.com",
+      "specialty": "Siyer-i Nebi Sohbetleri, Tavaf & Umre Menasiki",
+      "status": "live",
+      "assignedTour": "RY-2026"
+    },
+    {
+      "id": "guide-2",
+      "name": "Beytullah Bey",
+      "title": "Kafile Operasyon & Kayıt Sorumlusu",
+      "phone": "+90 538 399 96 66",
+      "email": "beytullah@ridvanyilmazturizm.com",
+      "specialty": "Otel, Transfer, İrşad Koordinasyonu ve Kafile Yönetimi",
+      "status": "online",
+      "assignedTour": "RY-GENCLIK"
+    },
+    {
+      "id": "guide-3",
+      "name": "Hafız Mehmet Efendi",
+      "title": "Medine & Ravza Rehberi",
+      "phone": "+90 538 399 96 67",
+      "email": "mehmet@ridvanyilmazturizm.com",
+      "specialty": "Mescid-i Nebevi, Uhud, Hendek ve Medine Ziyaretleri",
+      "status": "online",
+      "assignedTour": "RY-EYLUL"
+    },
+    {
+      "id": "guide-4",
+      "name": "Ayşe Hoca Hanım",
+      "title": "Hanımlar İrşad & Fıkıh Rehberi",
+      "phone": "+90 538 399 96 68",
+      "email": "ayse@ridvanyilmazturizm.com",
+      "specialty": "Hanımlara Özel Umre Fıkhı ve Ravza Ziyaretleri",
+      "status": "online",
+      "assignedTour": "RY-2026"
+    },
+    {
+      "id": "guide-5",
+      "name": "Ömer Ali Gültekin",
+      "title": "Kasım Umresi Kafile & Manevi Yolculuk Rehberi",
+      "phone": "+90 538 399 96 66",
+      "email": "omerali@ridvanyilmazturizm.com",
+      "specialty": "Kasım Umresi Manevi Yolculuk, Kâbe Tavaf & Peygamber Efendimizin ﷺ İzinde Siyer Rehberliği",
+      "status": "live",
+      "assignedTour": "RY-KASIM"
+    }
+  ],
+  "hotels": [
+    {
+      "id": "hotel-1",
+      "name": "Rayhaan Al Mashaer Hotel",
+      "city": "Mekke-i Mükerreme",
+      "stars": 4,
+      "distance": "Mescid-i Haram'a 7/24 Ücretsiz Servis & Yakın Mesafe",
+      "features": ["Türk Damak Tadına Uygun Açık Büfe", "Geniş Lobi & Sohbet Salonu", "7/24 Rehber Masası"],
+      "coordinates": { "lat": 21.4185, "lng": 39.8321 }
+    },
+    {
+      "id": "hotel-2",
+      "name": "Masarat Ajyad Almas Hotel",
+      "city": "Mekke-i Mükerreme",
+      "stars": 4,
+      "distance": "Ecyad Bölgesi - Kâbe'ye Yürüme / Kısa Servis Mesafesi",
+      "features": ["Gençlik ve Siyer Kafilelerine Özel Salon", "Hızlı Wi-Fi", "Ecyad Merkezi Konum"],
+      "coordinates": { "lat": 21.4192, "lng": 39.8289 }
+    },
+    {
+      "id": "hotel-3",
+      "name": "Emaar Elite Hotel",
+      "city": "Mekke-i Mükerreme",
+      "stars": 4,
+      "distance": "Mescid-i Haram Yakını Konforlu Konaklama",
+      "features": ["Aile Odaları", "Siyer Sohbet Alanı", "24 Saat İkram"],
+      "coordinates": { "lat": 21.4168, "lng": 39.8312 }
+    },
+    {
+      "id": "hotel-4",
+      "name": "Mekke Anjum Hotel",
+      "city": "Mekke-i Mükerreme",
+      "stars": 5,
+      "distance": "Kâbe Avlusuna Sıfır - Özel Tünel Girişli (5 Yıldızlı)",
+      "features": ["5 Yıldızlı Lüks Konaklama", "Harem Avlusuna Direkt Çıkış", "Zengin Açık Büfe"],
+      "coordinates": { "lat": 21.4248, "lng": 39.8215 }
+    },
+    {
+      "id": "hotel-5",
+      "name": "Medine Merkezi Ravza Otelleri",
+      "city": "Medine-i Münevvere",
+      "stars": 4,
+      "distance": "Mescid-i Nebevî Avlusuna 150-300m Yürüme Mesafesi",
+      "features": ["Ravza-i Mutahhara'ya Yürüme Mesafesi", "Siyer Dersleri Salonu", "Türk Mutfağı"],
+      "coordinates": { "lat": 24.4709, "lng": 39.6112 }
+    }
+  ],
+  "tours": [
+    {
+      "id": "tour-kasim-2026",
+      "code": "RY-KASIM",
+      "name": "🕋 Kasım Umresi — Kutsal Topraklara Manevi Yolculuk",
+      "dateText": "13-14 Kasım 2026",
+      "duration": "10 Gün (8 Gün Mekke | 2 Gün Medine)",
+      "guideId": "guide-5",
+      "guideName": "Ömer Ali Gültekin",
+      "makkahHotel": "8 Gün Mekke Konaklama (Yemek & Tüm Hizmetler Dahil)",
+      "madinahHotel": "2 Gün Medine-i Münevvere Konaklama",
+      "pin": "",
+      "pinProtected": false,
+      "status": "live",
+      "capacity": 90,
+      "registeredCount": 68,
+      "description": "Ömer Ali Gültekin rehberliğinde, Rıdvan Yılmaz Turizm tecrübesiyle 8 Gün Mekke ve 2 Gün Medine (10 Günlük) konaklama, yemek ve tüm hizmetler dahil kampanyalı Kasım Umresi manevi yolculuğu.",
+      "rooms": [
+        { "id": "genel", "name": "Kasım Umresi Ana Kafile & Tavaf Yayını", "guide": "Ömer Ali Gültekin", "active": true },
+        { "id": "siyer", "name": "Peygamber Efendimizin ﷺ İzinde Manevi Sohbet", "guide": "Ömer Ali Gültekin", "active": true }
+      ]
+    },
+    {
+      "id": "tour-1",
+      "code": "RY-2026",
+      "name": "26 Haziran 2026 Siyer Umresi (14/20 Günlük)",
+      "dateText": "26 Haziran 2026",
+      "duration": "14 / 20 Gün",
+      "guideId": "guide-1",
+      "guideName": "Rıdvan Yılmaz Hoca",
+      "makkahHotel": "Rayhaan Al Mashaer Hotel",
+      "madinahHotel": "Medine Merkezi Ravza Oteli",
+      "pin": "",
+      "pinProtected": false,
+      "status": "live",
+      "capacity": 120,
+      "registeredCount": 94,
+      "description": "Rıdvan Yılmaz Hoca eşliğinde adım adım Asr-ı Saadet izinde Siyer Umresi, Tavaf duaları ve Mekke-Medine ziyaretleri.",
+      "rooms": [
+        { "id": "genel", "name": "Genel Kafile & Tavaf Yayını", "guide": "Rıdvan Yılmaz Hoca", "active": true },
+        { "id": "siyer", "name": "Siyer-i Nebi Sohbet Odası", "guide": "Rıdvan Yılmaz Hoca", "active": true },
+        { "id": "hanimlar", "name": "Hanımlar İrşad & Fıkıh Odası", "guide": "Ayşe Hoca Hanım", "active": false }
+      ]
+    },
+    {
+      "id": "tour-2",
+      "code": "RY-GENCLIK",
+      "name": "8 Temmuz 2026 Gençlik Siyer Umresi",
+      "dateText": "8 Temmuz 2026",
+      "duration": "15 Gün",
+      "guideId": "guide-2",
+      "guideName": "Rıdvan Yılmaz Hoca & Beytullah Bey",
+      "makkahHotel": "Masarat Ajyad Almas Hotel",
+      "madinahHotel": "Medine Merkezi Ravza Oteli",
+      "pin": "",
+      "pinProtected": false,
+      "status": "active",
+      "capacity": 85,
+      "registeredCount": 72,
+      "description": "Genç kardeşlerimizle Uhud'dan Hira'ya, Sevr'den Kâbe'ye heyecan ve muhabbet dolu Gençlik Siyer Umresi.",
+      "rooms": [
+        { "id": "genel", "name": "Gençlik Kafilesi Ana Yayın", "guide": "Rıdvan Yılmaz Hoca", "active": true },
+        { "id": "soru-cevap", "name": "Gençlerle Soru-Cevap & Sohbet", "guide": "Beytullah Bey", "active": false }
+      ]
+    },
+    {
+      "id": "tour-3",
+      "code": "RY-EYLUL",
+      "name": "5 Eylül 2026 Siyer Umresi (10 Gün Mekke - 10 Gün Medine)",
+      "dateText": "5 Eylül 2026",
+      "duration": "20 Gün (10 Mekke + 10 Medine)",
+      "guideId": "guide-3",
+      "guideName": "Rıdvan Yılmaz Hoca & Hafız Mehmet Efendi",
+      "makkahHotel": "Emaar Elite Hotel",
+      "madinahHotel": "Medine Merkezi Ravza Oteli",
+      "pin": "",
+      "pinProtected": false,
+      "status": "active",
+      "capacity": 90,
+      "registeredCount": 64,
+      "description": "10 gün Mekke-i Mükerreme ve 10 gün Medine-i Münevvere'de dolu dolu ibadet ve Siyer-i Nebi programı.",
+      "rooms": [
+        { "id": "genel", "name": "Ana Kafile Rehberlik Odası", "guide": "Rıdvan Yılmaz Hoca", "active": true }
+      ]
+    },
+    {
+      "id": "tour-4",
+      "code": "RY-5YILDIZ",
+      "name": "5 Ekim 2026 5 Yıldızlı Siyer Umresi",
+      "dateText": "5 Ekim 2026",
+      "duration": "10 / 14 Gün",
+      "guideId": "guide-1",
+      "guideName": "Rıdvan Yılmaz Hoca",
+      "makkahHotel": "Mekke Anjum Hotel (5★)",
+      "madinahHotel": "Medine 5★ Merkezi Otel",
+      "pin": "2026",
+      "pinProtected": false,
+      "status": "active",
+      "capacity": 60,
+      "registeredCount": 48,
+      "description": "Harem avlusuna yürüme mesafesinde 5 yıldızlı Anjum Otel konforuyla Siyer Umresi.",
+      "rooms": [
+        { "id": "genel", "name": "VIP Kafile Canlı Rehberlik", "guide": "Rıdvan Yılmaz Hoca", "active": true }
+      ]
+    },
+    {
+      "id": "tour-5",
+      "code": "RY-ARALIK",
+      "name": "11 Aralık 2026 Kış Siyer Umresi",
+      "dateText": "11 Aralık 2026",
+      "duration": "15 Gün",
+      "guideId": "guide-1",
+      "guideName": "Rıdvan Yılmaz Hoca",
+      "makkahHotel": "Rayhaan Al Mashaer Hotel",
+      "madinahHotel": "Medine Merkezi Ravza Oteli",
+      "pin": "",
+      "pinProtected": false,
+      "status": "upcoming",
+      "capacity": 100,
+      "registeredCount": 53,
+      "description": "Aralık ayının serin ikliminde derinlikli Siyer sohbetleri ve huzurlu Umre ibadeti.",
+      "rooms": [
+        { "id": "genel", "name": "Genel Kafile Yayını", "guide": "Rıdvan Yılmaz Hoca", "active": false }
+      ]
+    },
+    {
+      "id": "tour-6",
+      "code": "RY-SOMESTR",
+      "name": "15 Ocak 2027 Sömestr Siyer Umresi",
+      "dateText": "15 Ocak 2027",
+      "duration": "15 Gün",
+      "guideId": "guide-1",
+      "guideName": "Rıdvan Yılmaz Hoca",
+      "makkahHotel": "Emaar Elite Hotel",
+      "madinahHotel": "Medine Merkezi Ravza Oteli",
+      "pin": "",
+      "pinProtected": false,
+      "status": "upcoming",
+      "capacity": 110,
+      "registeredCount": 41,
+      "description": "Yarıyıl tatilinde ailece ve çocuklarımızla unutulmaz bir Siyer Umresi.",
+      "rooms": [
+        { "id": "genel", "name": "Aile & Sömestr Kafilesi", "guide": "Rıdvan Yılmaz Hoca", "active": false }
+      ]
+    },
+    {
+      "id": "tour-7",
+      "code": "RY-SEVVAL",
+      "name": "12 Mart 2027 & 23 Mart 2027 Şevval Siyer Umresi",
+      "dateText": "12 Mart / 23 Mart 2027",
+      "duration": "10 / 15 Gün",
+      "guideId": "guide-1",
+      "guideName": "Rıdvan Yılmaz Hoca",
+      "makkahHotel": "Mekke Anjum Hotel (5★)",
+      "madinahHotel": "Medine Merkezi Ravza Oteli",
+      "pin": "",
+      "pinProtected": false,
+      "status": "upcoming",
+      "capacity": 95,
+      "registeredCount": 38,
+      "description": "Ramazan sonrası mübarek Şevval ayında 10 ve 15 günlük Siyer Umresi programları.",
+      "rooms": [
+        { "id": "genel", "name": "Şevval Kafilesi Ana Yayın", "guide": "Rıdvan Yılmaz Hoca", "active": false }
+      ]
+    }
+  ],
+  "announcements": [
+    {
+      "id": "ann-kasim-1",
+      "tourCode": "RY-KASIM",
+      "title": "🕋 Kasım Umresi — Kutsal Topraklara Manevi Yolculuk",
+      "message": "13-14 Kasım 2026 (8 Gün Mekke | 2 Gün Medine) 10 günlük Kasım Umresi kafilemizde Ömer Ali Gültekin hocamızın canlı rehberlik odası (RY-KASIM) aktiftir. Bilgi ve kayıt: 0 538 399 96 66.",
+      "sender": "Ömer Ali Gültekin",
+      "createdAt": "15:00",
+      "urgent": true
+    },
+    {
+      "id": "ann-1",
+      "tourCode": "RY-2026",
+      "title": "İkindi Namazı Sonrası Tavaf & Siyer Sohbeti",
+      "message": "Kıymetli misafirlerimiz, saat 16:30'da Rayhaan Al Mashaer Otel lobisinde toplanarak Kâbe-i Muazzama'ya geçiyoruz. Kulaklıklarınızı telefonunuza takıp RY-2026 odasına bağlanmayı unutmayınız.",
+      "sender": "Rıdvan Yılmaz Hoca",
+      "createdAt": "14:15",
+      "urgent": false
+    },
+    {
+      "id": "ann-2",
+      "tourCode": "RY-2026",
+      "title": "Sevr Dağı ve Arafat Ziyaret Otobüsleri",
+      "message": "Yarın sabah 07:30'da Mekke çevre ziyaretlerimiz (Sevr Dağı, Arafat, Müzdelife, Mina ve Cemerat) için 1, 2 ve 3 numaralı otobüslerimiz otel önünden hareket edecektir.",
+      "sender": "Beytullah Bey (Operasyon)",
+      "createdAt": "11:40",
+      "urgent": true
+    },
+    {
+      "id": "ann-3",
+      "tourCode": "RY-GENCLIK",
+      "title": "Gençlik Kafilesi Uhud & Okçular Tepesi Dersi",
+      "message": "Genç kardeşlerimizle Okçular Tepesi'nde Rıdvan Yılmaz Hocamızın canlı Siyer dersi başlayacaktır. Canlı yayın odamız aktiftir.",
+      "sender": "Rıdvan Yılmaz Hoca",
+      "createdAt": "09:30",
+      "urgent": false
+    }
+  ],
+  "sosAlerts": [
+    {
+      "id": "sos-sample-1",
+      "tourCode": "RY-2026",
+      "pilgrimName": "Hacı Ahmet Demir",
+      "phone": "+90 532 411 22 33",
+      "lat": 21.4229,
+      "lng": 39.8257,
+      "locationNote": "Mescid-i Haram — Kral Abdülaziz Kapısı (Kapı No: 1) Yakını",
+      "createdAt": "13:52",
+      "status": "resolved",
+      "resolvedBy": "Beytullah Bey"
+    }
+  ],
+  "siyerPoints": [
+    {
+      "id": "sp-1",
+      "title": "Hacerü'l-Esved & Tavaf Başlangıç Duası",
+      "arabic": "بِسْمِ اللَّهِ وَاللَّهُ أَكْبَرُ، اللَّهُمَّ إِيمَانًا بِكَ وَتَصْدِيقًا بِكِتَابِكَ وَوَفَاءً بِعَهْدِكَ وَاتِّبَاعًا لِسُنَّةِ نَبِيِّكَ مُحَمَّدٍ ﷺ",
+      "reading": "Bismillâhi vallâhu ekber. Allâhümme îmânen bike ve tasdîkan bi-kitâbike ve vefâen bi-ahdike vettibâan li-sünneti nebiyyike Muhammedin (s.a.v.).",
+      "meaning": "Allah'ın adıyla, Allah en büyüktür. Allah'ım, Sana iman ederek, kitabını tasdik ederek, ahdimi yerine getirerek ve Peygamberin Hz. Muhammed'in (s.a.v.) sünnetine uyarak tavafa başlıyorum."
+    },
+    {
+      "id": "sp-2",
+      "title": "Rükn-ü Yemânî ile Hacerü'l-Esved Arası (Rabbenâ) Duası",
+      "arabic": "رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً وَفِي الْآخِرَةِ حَسَنَةً وَقِنَا عَذَابَ النَّارِ",
+      "reading": "Rabbenâ âtinâ fi'd-dünyâ haseneten ve fi'l-âhirati haseneten ve kınâ azâbe'n-nâr.",
+      "meaning": "Rabbimiz! Bize dünyada da iyilik ve güzellik ver, ahirette de iyilik ve güzellik ver ve bizi ateş azabından koru."
+    },
+    {
+      "id": "sp-3",
+      "title": "Safa ve Merve (Sa'y) Başlangıç Duası",
+      "arabic": "إِنَّ الصَّفَا وَالْمَرْوَةَ مِن شَعَائِرِ اللَّهِ ۖ أَبْدَأُ بِمَا بَدَأَ اللَّهُ بِهِ",
+      "reading": "İnne's-Safâ ve'l-Mervete min şeâirillâh. Ebdeü bimâ bedeallâhu bih.",
+      "meaning": "Şüphesiz Safa ile Merve Allah'ın şiarlarındandır (nişanelerindendir). Allah'ın başladığı yerden (Safa'dan) başlıyorum."
+    },
+    {
+      "id": "sp-4",
+      "title": "Telbiye",
+      "arabic": "لَبَّيْكَ اللَّهُمَّ لَبَّيْكَ، لَبَّيْكَ لَا شَرِيكَ لَكَ لَبَّيْكَ، إِنَّ الْحَمْدَ وَالنِّعْمَةَ لَكَ وَالْمُلْكَ، لَا شَرِيكَ لَكَ",
+      "reading": "Lebbeyk Allâhümme lebbeyk. Lebbeyke lâ şerîke leke lebbeyk. İnne'l-hamde ve'n-ni'mete leke ve'l-mülk, lâ şerîke lek.",
+      "meaning": "Buyur Allah'ım buyur! Emrindeyim buyur! Senin hiçbir ortağın yoktur. Şüphesiz hamd Senin, nimet Senin, mülk Senindir. Senin hiçbir ortağın yoktur."
+    }
+  ]
+}

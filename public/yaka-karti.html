@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Baskıya Hazır Hacı Yaka Kartı & QR Kod | Rıdvan Yılmaz Turizm</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .print-toolbar {
+      background: var(--color-emerald-night);
+      color: #fff;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .badges-sheet {
+      max-width: 920px;
+      margin: 28px auto;
+      padding: 0 16px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+    }
+    .neck-badge {
+      background: #fff;
+      border: 2px solid var(--color-emerald-deep);
+      border-radius: 22px;
+      overflow: hidden;
+      box-shadow: var(--shadow-soft);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      page-break-inside: avoid;
+    }
+    .badge-top {
+      background: linear-gradient(145deg, var(--color-emerald-night), var(--color-emerald-deep));
+      color: #fff;
+      padding: 18px 20px;
+      text-align: center;
+      border-bottom: 3px solid var(--color-gold);
+      position: relative;
+    }
+    .lanyard-slot {
+      width: 56px;
+      height: 10px;
+      border-radius: 99px;
+      background: var(--color-ground);
+      border: 1.5px solid var(--color-gold);
+      margin: 0 auto 12px;
+    }
+    .badge-body {
+      padding: 20px;
+      text-align: center;
+    }
+    .qr-box {
+      width: 168px;
+      height: 168px;
+      margin: 12px auto;
+      padding: 8px;
+      border: 2px dashed var(--color-emerald-deep);
+      border-radius: 16px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .qr-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .badge-footer {
+      background: var(--color-ground);
+      border-top: 1px solid var(--color-hairline);
+      padding: 12px 16px;
+      font-size: 0.78rem;
+      text-align: center;
+      color: var(--color-emerald-night);
+      font-weight: 700;
+    }
+    @media print {
+      .print-toolbar {
+        display: none !important;
+      }
+      body {
+        background: #fff !important;
+      }
+      .badges-sheet {
+        margin: 0;
+        max-width: 100%;
+      }
+    }
+    @media (max-width: 720px) {
+      .badges-sheet {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body class="star-field">
+
+  <div class="print-toolbar">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <strong>🪪 Rıdvan Yılmaz Turizm — Hacı Yaka Kartı & Canlı Ses QR Kod Üretici</strong>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <select id="tourCodePicker" class="select" style="width:auto; padding:7px 12px; font-size:0.85rem;" onchange="updateBadges()">
+        <option value="RY-KASIM">RY-KASIM (13-14 Kasım Umresi • Ömer Ali Gültekin)</option>
+        <option value="RY-2026">RY-2026 (26 Haziran Siyer Umresi)</option>
+        <option value="RY-GENCLIK">RY-GENCLIK (8 Temmuz Gençlik Umresi)</option>
+        <option value="RY-EYLUL">RY-EYLUL (5 Eylül 10+10 Gün Siyer)</option>
+        <option value="RY-5YILDIZ">RY-5YILDIZ (5 Ekim 5★ Anjum)</option>
+      </select>
+      <input type="text" id="customPilgrimInput" class="input" style="width:210px; padding:7px 12px; font-size:0.85rem;" placeholder="Özel İsim (İsteğe bağlı)" oninput="updateBadges()" />
+      <button class="btn btn-gold btn-sm" onclick="window.print()">🖨️ A4 Yaka Kartlarını Yazdır / PDF Kaydet</button>
+      <a href="/panel" class="btn btn-outline btn-sm" style="color:#fff; border-color:rgba(255,255,255,0.3); background:transparent;">← Panele Dön</a>
+    </div>
+  </div>
+
+  <div class="badges-sheet" id="badgesContainer"></div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('code')) {
+      const sel = document.getElementById('tourCodePicker');
+      const code = params.get('code').toUpperCase();
+      if (!Array.from(sel.options).some((o) => o.value === code)) {
+        const opt = document.createElement('option');
+        opt.value = code;
+        opt.textContent = code;
+        sel.appendChild(opt);
+      }
+      sel.value = code;
+    }
+    if (params.get('name')) {
+      document.getElementById('customPilgrimInput').value = params.get('name');
+    }
+
+    let toursData = [];
+    async function init() {
+      const res = await fetch('/api/bootstrap');
+      const data = await res.json();
+      toursData = data.tours || [];
+      updateBadges();
+    }
+
+    async function updateBadges() {
+      const code = document.getElementById('tourCodePicker').value;
+      const customName = document.getElementById('customPilgrimInput').value.trim();
+      const tour = toursData.find((t) => t.code === code) || {
+        code,
+        name: '2026 Siyer Umresi Kafilesi',
+        guideName: 'Rıdvan Yılmaz Hoca',
+        makkahHotel: 'Rayhaan Al Mashaer Hotel',
+        madinahHotel: 'Medine Merkezi Ravza Oteli'
+      };
+
+      const qrRes = await fetch(`/api/qr?code=${encodeURIComponent(code)}`);
+      const qrJson = await qrRes.json();
+
+      const samplePilgrims = customName
+        ? [customName, `${customName} (Refakatçi)`, 'Hacı Mustafa Kaya', 'Hacı Hatice Demir']
+        : ['Hacı Mustafa Kaya', 'Hacı Fatma Yıldırım', 'Hacı Ahmet Demir', 'Hacı Ayşe Çelik'];
+
+      const container = document.getElementById('badgesContainer');
+      container.innerHTML = samplePilgrims.map((pName, idx) => `
+        <div class="neck-badge">
+          <div class="badge-top">
+            <div class="lanyard-slot"></div>
+            <div style="font-size:0.74rem; color:#d4af37; font-weight:800; letter-spacing:0.08em;">RIDVAN YILMAZ TURİZM • BURSA</div>
+            <div style="font-family:var(--font-display); font-size:1.15rem; font-weight:700; margin-top:2px;">${tour.name}</div>
+          </div>
+
+          <div class="badge-body">
+            <div style="font-size:0.74rem; color:var(--color-muted); font-weight:700; text-transform:uppercase;">UMRE MİSAFİRİ / HACI</div>
+            <div style="font-family:var(--font-display); font-size:1.45rem; font-weight:700; color:var(--color-emerald-night); margin:2px 0 8px;">
+              ${pName}
+            </div>
+
+            <span class="badge badge-gold" style="font-size:0.84rem;">KAFİLE KODU: ${tour.code}</span>
+
+            <div class="qr-box">
+              <img src="${qrJson.dataUrl}" alt="QR Code ${tour.code}" />
+            </div>
+
+            <div style="font-size:0.8rem; color:var(--color-muted); max-width:260px; margin:0 auto 12px;">
+              📱 <strong>Canlı Sesli Rehberlik:</strong> Telefon kameranızı QR koda okutarak <strong>${tour.guideName}</strong> canlı anlatımına şifresiz bağlanın.
+            </div>
+
+            <div style="background:var(--color-ground); border-radius:10px; padding:10px; font-size:0.78rem; text-align:left; display:flex; flex-direction:column; gap:3px;">
+              <div>🎙️ <strong>Baş Rehber:</strong> ${tour.guideName}</div>
+              <div>🕋 <strong>Mekke Otel:</strong> ${tour.makkahHotel}</div>
+              <div>🕌 <strong>Medine Otel:</strong> ${tour.madinahHotel}</div>
+            </div>
+          </div>
+
+          <div class="badge-footer">
+            🚨 ACİL / KAYIP İLETİŞİM (WHATSAPP): +90 538 399 96 66
+          </div>
+        </div>
+      `).join('');
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Acente & Rehber Girişi | Rıdvan Yılmaz Turizm — RıdvanSes</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body class="star-field">
+
+  <header class="navbar">
+    <div class="container navbar-inner">
+      <a href="/" class="brand">
+        <img src="https://ridvanyilmazturizm.com/wp-content/uploads/2025/09/logo-ridvan-yilmaz.png" alt="Logo" class="brand-logo" onerror="this.style.display='none'" />
+        <div class="brand-text">
+          <span class="brand-title">Rıdvan Yılmaz Turizm</span>
+          <span class="brand-sub">Acente & Rehber Yönetim Girişi</span>
+        </div>
+      </a>
+      <a href="/" class="btn btn-outline btn-sm">← Ana Sayfaya Dön</a>
+    </div>
+  </header>
+
+  <main style="max-width:440px; margin:60px auto; padding:0 16px;">
+    <div class="card">
+      <div style="text-align:center; margin-bottom:20px;">
+        <span class="badge badge-gold">YETKİLİ GİRİŞİ</span>
+        <h2 style="margin-top:8px; color:var(--color-emerald-night);">Yönetim Paneline Giriş</h2>
+        <p style="font-size:0.86rem; color:var(--color-muted); margin-top:4px;">
+          Hacılarımızın giriş yapmasına gerek yoktur; hacılarımız doğrudan <a href="/dinle" style="color:var(--color-emerald-deep); font-weight:700; text-decoration:underline;">Kafile Kodu</a> ile katılabilir.
+        </p>
+      </div>
+
+      <form id="loginForm" style="display:flex; flex-direction:column; gap:14px;">
+        <div>
+          <label class="label">E-Posta Adresi</label>
+          <input type="email" id="email" class="input" value="info@ridvanyilmazturizm.com" required />
+        </div>
+        <div>
+          <label class="label">Şifre</label>
+          <input type="password" id="password" class="input" value="ridvan2026" required />
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Giriş Yap ve Panele Geç →</button>
+      </form>
+
+      <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--color-hairline); display:flex; gap:8px;">
+        <a href="/panel" class="btn btn-outline btn-sm" style="flex:1;">🛡️ Acente Paneli</a>
+        <a href="/rehber" class="btn btn-gold btn-sm" style="flex:1;">🎙️ Rehber Konsolu</a>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        window.location.href = '/panel';
+      }
+    });
+  </script>
+</body>
+</html>

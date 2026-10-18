@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="tr" id="htmlRoot">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f5a47" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
+  <link rel="apple-touch-icon" href="/icons/icon-512.svg" />
+  <title>Hacı Canlı Dinleme Ekranı | Rıdvan Yılmaz Turizm — RıdvanSes</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <script src="/vercel-ws-shim.js"></script>
+  <style>
+    .app-shell {
+      max-width: 560px;
+      margin: 24px auto 60px;
+      padding: 0 16px;
+    }
+    .lang-bar {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      margin-bottom: 16px;
+    }
+    .lang-btn {
+      padding: 6px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--color-hairline);
+      background: #fff;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .lang-btn.active {
+      background: var(--color-emerald-deep);
+      color: #fff;
+      border-color: var(--color-emerald-deep);
+    }
+    .sos-hold-btn {
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      padding: 16px;
+      border-radius: 16px;
+      border: 2px solid var(--color-danger);
+      background: var(--color-danger-soft);
+      color: var(--color-danger);
+      font-weight: 800;
+      font-size: 0.98rem;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+      text-align: center;
+      transition: transform 0.1s;
+    }
+    .sos-hold-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 0%;
+      background: rgba(201, 42, 42, 0.28);
+      transition: width 0.05s linear;
+      pointer-events: none;
+    }
+    .mic-granted-banner {
+      background: linear-gradient(135deg, #15803d, #166534);
+      color: #fff;
+      padding: 16px;
+      border-radius: 14px;
+      margin-bottom: 16px;
+      display: none;
+      animation: pulse-live 1.5s infinite;
+    }
+    .prayer-card {
+      background: var(--color-ground);
+      border: 1px solid var(--color-hairline);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .arabic-text {
+      font-size: 1.35rem;
+      line-height: 1.8;
+      text-align: right;
+      color: var(--color-emerald-night);
+      font-family: 'Traditional Arabic', 'Amiri', serif;
+      margin: 8px 0;
+    }
+    .pwa-install-banner {
+      background: linear-gradient(135deg, var(--color-emerald-night), var(--color-emerald-deep));
+      color: #fff;
+      border: 1.5px solid var(--color-gold);
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      box-shadow: var(--shadow-soft);
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 61, 48, 0.65);
+      backdrop-filter: blur(4px);
+      z-index: 999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+  </style>
+</head>
+<body class="star-field">
+
+  <header class="navbar">
+    <div class="container navbar-inner" style="max-width:560px;">
+      <a href="/" class="brand">
+        <img src="https://ridvanyilmazturizm.com/wp-content/uploads/2025/09/logo-ridvan-yilmaz.png" alt="Logo" class="brand-logo" onerror="this.style.display='none'" />
+        <div class="brand-text">
+          <span class="brand-title" style="font-size:1.02rem;">Rıdvan Yılmaz Turizm</span>
+          <span class="brand-sub"><span class="live-dot"></span> Hacı Canlı Rehber Ekranı</span>
+        </div>
+      </a>
+      <div style="display:flex; gap:6px;">
+        <button type="button" class="btn btn-gold btn-sm" onclick="triggerPwaInstall()">📲 Uygulamayı Yükle</button>
+        <a href="/rehber" class="btn btn-outline btn-sm">🎙️ Rehber</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <!-- 6 Dil Seçici -->
+    <div class="lang-bar">
+      <button class="lang-btn active" onclick="setLang('tr', this)">🇹🇷 Türkçe</button>
+      <button class="lang-btn" onclick="setLang('ar', this)">🇸🇦 العربية</button>
+      <button class="lang-btn" onclick="setLang('en', this)">🇬🇧 English</button>
+      <button class="lang-btn" onclick="setLang('fr', this)">🇫🇷 Français</button>
+      <button class="lang-btn" onclick="setLang('id', this)">🇮🇩 Indonesia</button>
+      <button class="lang-btn" onclick="setLang('ur', this)">🇵🇰 اردو</button>
+    </div>
+
+    <!-- TELEFONA UYGULAMA OLARAK İNDİR (PWA BANNER) -->
+    <div class="pwa-install-banner" id="pwaInstallBanner">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <img src="/icons/icon-512.svg" alt="RıdvanSes" style="width:42px; height:42px; border-radius:10px;" />
+        <div>
+          <div style="font-weight:800; font-size:0.92rem; color:#f3d266;">📲 RıdvanSes'i Telefonunuza Yükleyin</div>
+          <div style="font-size:0.78rem; color:#e2e8f0;">Uygulama mağazası şifresi gerekmeden tek dokunuşla ana ekrana ekleyin.</div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-gold btn-sm" style="white-space:nowrap;" onclick="triggerPwaInstall()">
+        Telefona Kur
+      </button>
+    </div>
+
+    <!-- ADIM 1: KAFİLE KODUYLA GİRİŞ KARTI -->
+    <div id="joinView" class="card">
+      <div style="text-align:center; margin-bottom:18px;">
+        <span class="badge badge-gold" id="i18n_badge">🎧 ÜYELİKSİZ ANINDA KATILIM</span>
+        <h2 style="margin-top:10px; font-size:1.55rem; color:var(--color-emerald-night);" id="i18n_joinTitle">
+          Kafile Canlı Yayınına Katıl
+        </h2>
+        <p style="font-size:0.88rem; color:var(--color-muted); margin-top:4px;" id="i18n_joinSub">
+          Rıdvan Yılmaz Turizm tarafından verilen kafile kodunu girerek hocamızın sesini canlı dinleyin.
+        </p>
+      </div>
+
+      <form id="joinForm" style="display:flex; flex-direction:column; gap:14px;">
+        <div>
+          <label class="label" id="i18n_codeLabel">Kafile / Tur Kodu *</label>
+          <input type="text" id="tourCodeInput" class="input" style="font-size:1.2rem; font-weight:800; text-transform:uppercase; text-align:center; letter-spacing:0.06em;" value="RY-2026" required />
+          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+            <button type="button" class="code-pill" style="padding:4px 10px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-gold); background:var(--color-gold-soft); font-weight:700; cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='RY-KASIM'">✨ RY-KASIM (13-14 Kasım • Ömer Ali Gültekin)</button>
+            <button type="button" class="code-pill" style="padding:4px 10px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-hairline); cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='RY-2026'">RY-2026 (26 Haziran)</button>
+            <button type="button" class="code-pill" style="padding:4px 10px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-hairline); cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='RY-GENCLIK'">RY-GENCLIK</button>
+            <button type="button" class="code-pill" style="padding:4px 10px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-hairline); cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='RY-EYLUL'">RY-EYLUL</button>
+            <button type="button" class="code-pill" style="padding:4px 10px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-hairline); cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='RY-5YILDIZ'">RY-5YILDIZ</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="label" id="i18n_roomLabel">Yayın Odası Seçimi</label>
+          <select id="roomSelect" class="select">
+            <option value="genel">🕋 Genel Kafile & Tavaf Yayını (Rıdvan Yılmaz Hoca)</option>
+            <option value="siyer">🕌 Siyer-i Nebi Sohbet Odası (Rıdvan Yılmaz Hoca)</option>
+            <option value="hanimlar">🧕 Hanımlar İrşad & Fıkıh Odası (Ayşe Hoca Hanım)</option>
+          </select>
+        </div>
+
+        <div class="grid-2" style="gap:10px;">
+          <div>
+            <label class="label" id="i18n_nameLabel">Adınız Soyadınız</label>
+            <input type="text" id="pilgrimNameInput" class="input" placeholder="Örn: Hacı Mustafa Kaya" />
+          </div>
+          <div>
+            <label class="label" id="i18n_phoneLabel">Telefon Numaranız (SOS İçin)</label>
+            <input type="tel" id="pilgrimPhoneInput" class="input" placeholder="+90 5XX XXX XX XX" />
+          </div>
+        </div>
+
+        <div id="joinError" style="display:none; padding:10px; border-radius:8px; background:var(--color-danger-soft); color:var(--color-danger); font-size:0.86rem; font-weight:600;"></div>
+
+        <button type="submit" class="btn btn-primary" style="width:100%; padding:15px; font-size:1.02rem;" id="i18n_joinBtn">
+          🎧 Canlı Yayına Bağlan
+        </button>
+      </form>
+    </div>
+
+    <!-- ADIM 2: CANLI DİNLEME EKRANI -->
+    <div id="liveView" style="display:none;">
+      <!-- Mikrofon Söz Hakkı Verildi Banner -->
+      <div id="micGrantedBanner" class="mic-granted-banner">
+        <div style="font-weight:800; font-size:1.05rem;">🎙️ Söz Hakkı Verildi — Mikrofonunuz Açık!</div>
+        <div style="font-size:0.85rem; opacity:0.92; margin-top:4px;">
+          Rıdvan Yılmaz Hoca size söz verdi. Sorunuzu şu an doğrudan hocamıza ve kafileye sorabilirsiniz.
+        </div>
+      </div>
+
+      <!-- Ana Canlı Ses Kartı -->
+      <div class="card-dark star-field-dark" style="margin-bottom:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <span class="badge" id="liveBadge" style="background:rgba(34,197,94,0.22); color:#4ade80; border:1px solid rgba(74,222,128,0.4);">
+            <span class="live-dot"></span> <span id="i18n_liveStatus">CANLI YAYIN AKTİF</span>
+          </span>
+          <span style="font-size:0.8rem; color:#d4af37; font-weight:700;" id="activeTourBadge">RY-2026</span>
+        </div>
+
+        <h3 style="font-size:1.25rem; color:#fff; margin-bottom:4px;" id="liveTourTitle">26 Haziran 2026 Siyer Umresi</h3>
+        <div style="font-size:0.88rem; color:#cbd5e1; margin-bottom:16px;">
+          🎙️ <strong id="liveGuideName">Rıdvan Yılmaz Hoca</strong> • 👥 <span id="liveListenerCount">43</span> Dinleyici
+        </div>
+
+        <!-- Konu & Frekans Görselleştirici -->
+        <div style="background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.14); border-radius:14px; padding:14px; margin-bottom:16px;">
+          <div style="font-size:0.74rem; color:#d4af37; font-weight:700; text-transform:uppercase;">ŞU ANKİ ANLATIM / BÖLÜM</div>
+          <div style="font-size:0.95rem; font-weight:700; color:#fff; margin-top:3px;" id="liveTopicText">
+            Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti
+          </div>
+          <div class="spectrum" id="listenerSpectrum" style="margin-top:12px;"></div>
+        </div>
+
+        <!-- Ses Aç / Kapat & Ses Seviyesi Yükseltici -->
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">
+          <button type="button" id="toggleAudioBtn" class="btn btn-gold" style="flex:1;" onclick="toggleAudioPlayback()">
+            🔊 Sesi Aç / Rehberi Dinle
+          </button>
+          <button type="button" class="btn btn-outline btn-sm" style="background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);" onclick="playDemoVoiceGuide()">
+            🗣️ Siyer Sesli Rehber
+          </button>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:10px; font-size:0.82rem; color:#cbd5e1; margin-bottom:14px;">
+          <span>🔈 Ses Güçlendirici:</span>
+          <input type="range" id="volumeSlider" min="0" max="200" value="120" style="flex:1; accent-color:#d4af37;" oninput="updateVolume(this.value)" />
+          <span id="volumeLabel" style="font-weight:700; color:#d4af37;">%120</span>
+        </div>
+
+        <!-- TAVAF MODU: EKRAN KİLİDİ KORUYUCU (WAKELOCK) & ARKA PLAN SES OYNATICISI -->
+        <div style="background:rgba(15, 90, 71, 0.45); border:1px solid rgba(212, 175, 55, 0.35); border-radius:12px; padding:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div>
+              <div style="font-size:0.82rem; font-weight:800; color:#f3d266;" id="wakeLockStatusTitle">
+                🔒 Tavaf Kesintisiz Modu: Hazır
+              </div>
+              <div style="font-size:0.74rem; color:#cbd5e1;" id="wakeLockStatusSub">
+                Telefon cebinizdeyken veya ekran kilitliyken sesin kesilmemesini sağlar.
+              </div>
+            </div>
+            <button type="button" id="wakeLockBtn" class="btn btn-outline btn-sm" style="background:rgba(255,255,255,0.12); color:#fff; border-color:rgba(255,255,255,0.3); font-size:0.76rem;" onclick="toggleWakeLockMode()">
+              🔓 Ekran Kilidini Önle
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gizli Arka Plan Ses Koruyucu (iOS / Android Tuş Kilidi Keep-Alive) -->
+      <audio id="bgKeepAliveAudio" loop playsinline style="display:none;"></audio>
+
+      <!-- İKİ YÖNLÜ ETKİLEŞİM: SÖZ İSTE (EL KALDIR) & SOS -->
+      <div class="card" style="margin-bottom:18px;">
+        <h3 style="font-size:1.08rem; margin-bottom:12px;" id="i18n_interactionTitle">Hocamızla İletişim & Acil Durum</h3>
+
+        <div style="margin-bottom:14px;">
+          <input type="text" id="handNoteInput" class="input" style="margin-bottom:8px; font-size:0.88rem;" placeholder="Hocamıza sorunuz varsa kısaca yazabilirsiniz (İsteğe bağlı)..." />
+          <button type="button" id="raiseHandBtn" class="btn btn-primary" style="width:100%;" onclick="toggleRaiseHand()">
+            ✋ <span id="i18n_raiseHandBtn">El Kaldır / Hocadan Söz İste</span>
+          </button>
+        </div>
+
+        <!-- 3 Saniye Basılı Tut SOS Butonu -->
+        <div>
+          <div class="sos-hold-btn" id="sosHoldBtn"
+               onmousedown="startSosHold()" onmouseup="cancelSosHold()" onmouseleave="cancelSosHold()"
+               ontouchstart="startSosHold(event)" ontouchend="cancelSosHold()">
+            <div class="sos-hold-fill" id="sosHoldFill"></div>
+            <span style="position:relative; z-index:2;" id="sosBtnText">
+              🚨 ACİL DURUM / KAYBOLDUM (3 Sn Basılı Tutun)
+            </span>
+          </div>
+          <div id="sosStatusMsg" style="display:none; margin-top:8px; padding:10px; border-radius:10px; background:#dcfce7; color:#166534; font-size:0.84rem; font-weight:700;"></div>
+        </div>
+      </div>
+
+      <!-- CANLI DUYURULAR -->
+      <div class="card" style="margin-bottom:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h3 style="font-size:1.08rem;" id="i18n_annTitle">📢 Kafile Canlı Duyuruları</h3>
+          <span class="badge badge-emerald">Anlık Bildirim</span>
+        </div>
+        <div id="announcementsList" style="display:flex; flex-direction:column; gap:10px;"></div>
+      </div>
+
+      <!-- TAVAF VE SİYER DUALARI REHBERİ -->
+      <div class="card" style="margin-bottom:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h3 style="font-size:1.08rem;">📿 Tavaf, Sa'y ve Telbiye Duaları</h3>
+          <span class="badge badge-gold">Sesli Okunuş</span>
+        </div>
+        <div id="prayersList"></div>
+      </div>
+
+      <button type="button" class="btn btn-outline" style="width:100%;" onclick="leaveRoom()">
+        ← Kafile Kodunu Değiştir / Odadan Ayrıl
+      </button>
+    </div>
+  </main>
+
+  <script>
+    // 6-Language Dictionary
+    const I18N = {
+      tr: {
+        dir: 'ltr',
+        badge: '🎧 ÜYELİKSİZ ANINDA KATILIM',
+        joinTitle: 'Kafile Canlı Yayınına Katıl',
+        joinSub: 'Rıdvan Yılmaz Turizm tarafından verilen kafile kodunu girerek hocamızın sesini canlı dinleyin.',
+        codeLabel: 'Kafile / Tur Kodu *',
+        roomLabel: 'Yayın Odası Seçimi',
+        nameLabel: 'Adınız Soyadınız',
+        phoneLabel: 'Telefon Numaranız (SOS İçin)',
+        joinBtn: '🎧 Canlı Yayına Bağlan',
+        liveStatus: 'CANLI YAYIN AKTİF',
+        interactionTitle: 'Hocamızla İletişim & Acil Durum',
+        raiseHandBtn: 'El Kaldır / Hocadan Söz İste',
+        annTitle: '📢 Kafile Canlı Duyuruları'
+      },
+      ar: {
+        dir: 'rtl',
+        badge: '🎧 انضمام فوري بدون تسجيل',
+        joinTitle: 'انضم إلى البث المباشر للحملة',
+        joinSub: 'أدخل رمز القافلة الخاص بشركة رضوان يلماز للسياحة للاستماع إلى المرشد مباشرة.',
+        codeLabel: 'رمز القافلة / الرحلة *',
+        roomLabel: 'اختر غرفة البث',
+        nameLabel: 'الاسم الكامل',
+        phoneLabel: 'رقم الهاتف (لطوارئ SOS)',
+        joinBtn: '🎧 اتصال بالبث المباشر',
+        liveStatus: 'البث المباشر نشط',
+        interactionTitle: 'التواصل مع المرشد والطوارئ',
+        raiseHandBtn: 'رفع اليد / طلب الكلمة للسؤال',
+        annTitle: '📢 إعلانات القافلة المباشرة'
+      },
+      en: {
+        dir: 'ltr',
+        badge: '🎧 INSTANT JOIN WITHOUT SIGNUP',
+        joinTitle: 'Join Live Umrah Group Broadcast',
+        joinSub: 'Enter your Rıdvan Yılmaz Tourism tour code to listen to your guide in real time.',
+        codeLabel: 'Tour / Group Code *',
+        roomLabel: 'Select Broadcast Room',
+        nameLabel: 'Your Full Name',
+        phoneLabel: 'Phone Number (For SOS)',
+        joinBtn: '🎧 Connect to Live Audio',
+        liveStatus: 'LIVE BROADCAST ACTIVE',
+        interactionTitle: 'Guide Interaction & Emergency SOS',
+        raiseHandBtn: 'Raise Hand / Request to Speak',
+        annTitle: '📢 Live Group Announcements'
+      },
+      fr: {
+        dir: 'ltr',
+        badge: '🎧 ACCÈS DIRECT SANS INSCRIPTION',
+        joinTitle: 'Rejoindre le Direct du Groupe Omra',
+        joinSub: 'Entrez le code de groupe Rıdvan Yılmaz Tourisme pour écouter le guide en direct.',
+        codeLabel: 'Code du Groupe *',
+        roomLabel: 'Salle de Diffusion',
+        nameLabel: 'Nom et Prénom',
+        phoneLabel: 'Téléphone (Pour SOS)',
+        joinBtn: '🎧 Se Connecter au Direct',
+        liveStatus: 'DIFFUSION EN DIRECT',
+        interactionTitle: 'Interaction & Urgence SOS',
+        raiseHandBtn: 'Lever la Main / Demander la Parole',
+        annTitle: '📢 Annonces du Groupe'
+      },
+      id: {
+        dir: 'ltr',
+        badge: '🎧 GABUNG LANGSUNG TANPA DAFTAR',
+        joinTitle: 'Gabung Siaran Langsung Rombongan Umrah',
+        joinSub: 'Masukkan kode rombongan Rıdvan Yılmaz Turizm untuk mendengarkan pembimbing secara langsung.',
+        codeLabel: 'Kode Rombongan / Tur *',
+        roomLabel: 'Pilih Ruang Siaran',
+        nameLabel: 'Nama Lengkap Anda',
+        phoneLabel: 'Nomor Telepon (Untuk SOS)',
+        joinBtn: '🎧 Hubungkan ke Audio Langsung',
+        liveStatus: 'SIARAN LANGSUNG AKTIF',
+        interactionTitle: 'Interaksi Pembimbing & Darurat',
+        raiseHandBtn: 'Angkat Tangan / Minta Bicara',
+        annTitle: '📢 Pengumuman Rombongan'
+      },
+      ur: {
+        dir: 'rtl',
+        badge: '🎧 بغیر رجسٹریشن فوری شمولیت',
+        joinTitle: 'قافلے کی لائیو نشریات میں شامل ہوں',
+        joinSub: 'رضوان یلماز ٹورزم کا قافلہ کوڈ درج کریں اور اپنے معلم کی آواز براہ راست سنیں۔',
+        codeLabel: 'قافلہ / ٹور کوڈ *',
+        roomLabel: 'نشریاتی کمرہ منتخب کریں',
+        nameLabel: 'آپ کا پورا نام',
+        phoneLabel: 'فون نمبر (ایمرجنسی کے لیے)',
+        joinBtn: '🎧 لائیو آڈیو سے جڑیں',
+        liveStatus: 'لائیو نشریات جاری ہے',
+        interactionTitle: 'معلم سے رابطہ اور ایمرجنسی',
+        raiseHandBtn: 'ہاتھ اٹھائیں / سوال کی اجازت مانگیں',
+        annTitle: '📢 قافلے کے فوری اعلانات'
+      }
+    };
+
+    let currentLang = 'tr';
+    function setLang(lang, btnEl) {
+      currentLang = I18N[lang] ? lang : 'tr';
+      const dict = I18N[currentLang];
+      document.getElementById('htmlRoot').setAttribute('dir', dict.dir);
+      document.getElementById('htmlRoot').setAttribute('lang', currentLang);
+      document.querySelectorAll('.lang-btn').forEach((b) => b.classList.remove('active'));
+      if (btnEl) btnEl.classList.add('active');
+
+      Object.keys(dict).forEach((k) => {
+        const el = document.getElementById(`i18n_${k}`);
+        if (el) el.textContent = dict[k];
+      });
+    }
+
+    // Initialize spectrum bars
+    const specContainer = document.getElementById('listenerSpectrum');
+    for (let i = 0; i < 24; i++) {
+      const b = document.createElement('div');
+      b.className = 'spectrum-bar';
+      b.style.height = '8px';
+      specContainer.appendChild(b);
+    }
+
+    let ws = null;
+    let audioCtx = null;
+    let gainNode = null;
+    let isAudioListening = false;
+    let volumeMultiplier = 1.2;
+    let handRaised = false;
+    let micGranted = false;
+    let pilgrimMicStream = null;
+    let pilgrimProcessor = null;
+    let currentTour = null;
+
+    // Parse URL query params
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('code')) {
+      document.getElementById('tourCodeInput').value = urlParams.get('code').toUpperCase();
+    }
+    if (urlParams.get('name')) {
+      document.getElementById('pilgrimNameInput').value = urlParams.get('name');
+    }
+    if (urlParams.get('lang') && I18N[urlParams.get('lang')]) {
+      const targetLang = urlParams.get('lang');
+      const btn = Array.from(document.querySelectorAll('.lang-btn')).find((b) => b.getAttribute('onclick').includes(`'${targetLang}'`));
+      setLang(targetLang, btn);
+    }
+
+    document.getElementById('joinForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = document.getElementById('tourCodeInput').value.trim().toUpperCase();
+      const roomId = document.getElementById('roomSelect').value;
+      const name = document.getElementById('pilgrimNameInput').value.trim() || 'Hacı Misafir';
+      const phone = document.getElementById('pilgrimPhoneInput').value.trim() || '+90 538 000 00 00';
+
+      const errEl = document.getElementById('joinError');
+      errEl.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/join-tour', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          errEl.textContent = data.message || 'Kafile bulunamadı.';
+          errEl.style.display = 'block';
+          return;
+        }
+
+        currentTour = data.tour;
+        document.getElementById('joinView').style.display = 'none';
+        document.getElementById('liveView').style.display = 'block';
+
+        document.getElementById('activeTourBadge').textContent = `${currentTour.code} • ${roomId.toUpperCase()}`;
+        document.getElementById('liveTourTitle').textContent = currentTour.name;
+        document.getElementById('liveGuideName').textContent = currentTour.guideName;
+
+        renderAnnouncements(data.announcements || []);
+        renderPrayers(data.siyerPoints || []);
+
+        connectWebSocket(currentTour.code, roomId, name, phone);
+      } catch (err) {
+        errEl.textContent = 'Sunucu bağlantısı kurulamadı.';
+        errEl.style.display = 'block';
+      }
+    });
+
+    function connectWebSocket(tourCode, roomId, name, phone) {
+      if (ws) ws.close();
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${window.location.host}/ws`);
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          type: 'join',
+          role: 'pilgrim',
+          tourCode,
+          roomId,
+          name,
+          phone,
+          lang: currentLang
+        }));
+      };
+
+      ws.onmessage = (event) => {
+        if (event.data instanceof Blob) return;
+        let msg;
+        try {
+          msg = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+
+        if (msg.type === 'joined' || msg.type === 'room-state') {
+          const r = msg.room;
+          if (r) {
+            document.getElementById('liveGuideName').textContent = r.guideName;
+            document.getElementById('liveListenerCount').textContent = r.totalListeners;
+            document.getElementById('liveTopicText').textContent = r.currentTopic;
+          }
+          if (msg.announcements) renderAnnouncements(msg.announcements);
+          if (msg.siyerPoints) renderPrayers(msg.siyerPoints);
+        }
+
+        if (msg.type === 'audio-chunk') {
+          animateSpectrumFromLevel(msg.level || 0.5);
+          if (isAudioListening) {
+            if (msg.samples && msg.samples.length) {
+              playPcmSamples(msg.samples, msg.sampleRate || 16000);
+            } else if (msg.synthNote) {
+              playGentleHarmonyNote(msg.synthNote);
+            }
+          }
+        }
+
+        if (msg.type === 'mic-permission') {
+          micGranted = Boolean(msg.granted);
+          const banner = document.getElementById('micGrantedBanner');
+          if (micGranted) {
+            banner.style.display = 'block';
+            startPilgrimMicBroadcast();
+          } else {
+            banner.style.display = 'none';
+            stopPilgrimMicBroadcast();
+          }
+        }
+
+        if (msg.type === 'new-announcement' && msg.announcement) {
+          prependAnnouncement(msg.announcement);
+          playNotificationChime();
+          sendServiceWorkerNotification(msg.announcement.title, msg.announcement.message);
+        }
+      };
+    }
+
+    function ensureAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContextClass();
+        gainNode = audioCtx.createGain();
+        gainNode.gain.value = volumeMultiplier;
+        gainNode.connect(audioCtx.destination);
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function toggleAudioPlayback() {
+      ensureAudioContext();
+      isAudioListening = !isAudioListening;
+      const btn = document.getElementById('toggleAudioBtn');
+      if (isAudioListening) {
+        btn.textContent = '🔇 Sesi Kapat (Canlı Yayın Dinleniyor)';
+        btn.className = 'btn btn-primary';
+        playNotificationChime();
+        startBackgroundKeepAliveAudio();
+        requestWakeLock();
+        updateMediaSessionMetadata();
+      } else {
+        btn.textContent = '🔊 Sesi Aç / Rehberi Dinle';
+        btn.className = 'btn btn-gold';
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
+        stopBackgroundKeepAliveAudio();
+      }
+    }
+
+    function updateVolume(val) {
+      volumeMultiplier = Number(val) / 100;
+      document.getElementById('volumeLabel').textContent = `%${val}`;
+      if (gainNode) gainNode.gain.value = volumeMultiplier;
+    }
+
+    function playPcmSamples(samples, sampleRate) {
+      if (!audioCtx || !gainNode) return;
+      try {
+        const floatArr = new Float32Array(samples);
+        const buffer = audioCtx.createBuffer(1, floatArr.length, sampleRate);
+        buffer.copyToChannel(floatArr, 0);
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(gainNode);
+        source.start();
+      } catch (e) {}
+    }
+
+    function playGentleHarmonyNote(freq = 440) {
+      if (!audioCtx || !gainNode) return;
+      const osc = audioCtx.createOscillator();
+      const env = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      env.gain.setValueAtTime(0.001, audioCtx.currentTime);
+      env.gain.exponentialRampToValueAtTime(0.08, audioCtx.currentTime + 0.04);
+      env.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+      osc.connect(env);
+      env.connect(gainNode);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.36);
+    }
+
+    function playNotificationChime() {
+      ensureAudioContext();
+      playGentleHarmonyNote(587.33);
+      setTimeout(() => playGentleHarmonyNote(880), 140);
+    }
+
+    function playDemoVoiceGuide() {
+      ensureAudioContext();
+      if (!isAudioListening) toggleAudioPlayback();
+      const text = "Kıymetli Rıdvan Yılmaz Turizm misafirlerimiz, Hacerül Esved hizasına geldik. Bismillahi vallahu ekber diyerek Kabe-i Muazzama'yı selamlıyor ve tavafımıza başlıyoruz. Lütfen kafilemizden ayrılmayalım.";
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'tr-TR';
+        u.rate = 0.96;
+        window.speechSynthesis.speak(u);
+      } else {
+        playNotificationChime();
+      }
+    }
+
+    function animateSpectrumFromLevel(level) {
+      const bars = specContainer.querySelectorAll('.spectrum-bar');
+      bars.forEach((b, i) => {
+        const h = Math.min(42, Math.max(6, (level * 36) + Math.sin(Date.now() / 120 + i) * 12));
+        b.style.height = `${h.toFixed(0)}px`;
+      });
+    }
+
+    setInterval(() => {
+      if (isAudioListening) {
+        animateSpectrumFromLevel(0.45);
+      }
+    }, 140);
+
+    // El Kaldır / Söz İste
+    function toggleRaiseHand() {
+      handRaised = !handRaised;
+      const btn = document.getElementById('raiseHandBtn');
+      const note = document.getElementById('handNoteInput').value.trim();
+      if (handRaised) {
+        btn.className = 'btn btn-gold';
+        btn.innerHTML = '⏳ Söz Talebiniz Rıdvan Yılmaz Hocamıza İletildi (İptal İçin Dokunun)';
+      } else {
+        btn.className = 'btn btn-primary';
+        btn.innerHTML = '✋ El Kaldır / Hocadan Söz İste';
+      }
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'raise-hand', raised: handRaised, note }));
+      }
+    }
+
+    // Pilgrim Two-Way Microphone when granted permission by Guide
+    async function startPilgrimMicBroadcast() {
+      try {
+        ensureAudioContext();
+        pilgrimMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const source = audioCtx.createMediaStreamSource(pilgrimMicStream);
+        pilgrimProcessor = audioCtx.createScriptProcessor(2048, 1, 1);
+        source.connect(pilgrimProcessor);
+        pilgrimProcessor.connect(audioCtx.destination);
+        pilgrimProcessor.onaudioprocess = (e) => {
+          if (!micGranted || !ws || ws.readyState !== WebSocket.OPEN) return;
+          const input = e.inputBuffer.getChannelData(0);
+          const downsampled = [];
+          for (let i = 0; i < input.length; i += 3) {
+            downsampled.push(Number(input[i].toFixed(3)));
+          }
+          ws.send(JSON.stringify({
+            type: 'audio-chunk',
+            sampleRate: Math.round(audioCtx.sampleRate / 3),
+            samples: downsampled,
+            level: 0.7
+          }));
+        };
+      } catch (e) {
+        console.warn('Mikrofon izni alınamadı, simülasyon modu aktif:', e.message);
+      }
+    }
+
+    function stopPilgrimMicBroadcast() {
+      if (pilgrimProcessor) {
+        pilgrimProcessor.disconnect();
+        pilgrimProcessor = null;
+      }
+      if (pilgrimMicStream) {
+        pilgrimMicStream.getTracks().forEach((t) => t.stop());
+        pilgrimMicStream = null;
+      }
+    }
+
+    // 3-Second Hold SOS Button
+    let sosInterval = null;
+    let sosProgress = 0;
+
+    function startSosHold(ev) {
+      if (ev && ev.cancelable) ev.preventDefault();
+      if (sosInterval) clearInterval(sosInterval);
+      sosProgress = 0;
+      const fill = document.getElementById('sosHoldFill');
+      sosInterval = setInterval(() => {
+        sosProgress += 3.5;
+        fill.style.width = `${Math.min(100, sosProgress)}%`;
+        if (sosProgress >= 100) {
+          clearInterval(sosInterval);
+          sosInterval = null;
+          triggerSosEmergency();
+        }
+      }, 100);
+    }
+
+    function cancelSosHold() {
+      if (sosInterval) {
+        clearInterval(sosInterval);
+        sosInterval = null;
+      }
+      document.getElementById('sosHoldFill').style.width = '0%';
+    }
+
+    function triggerSosEmergency() {
+      document.getElementById('sosHoldFill').style.width = '100%';
+      playNotificationChime();
+      const sendCoords = (lat, lng, note) => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'sos-trigger',
+            lat,
+            lng,
+            locationNote: note
+          }));
+        }
+        const msgEl = document.getElementById('sosStatusMsg');
+        msgEl.style.display = 'block';
+        msgEl.innerHTML = `✅ <strong>ACİL DURUM KONUMUNUZ İLETİLDİ!</strong><br/>Koordinat: ${lat.toFixed(4)}, ${lng.toFixed(4)} (${note}). Rıdvan Yılmaz Hoca ve Beytullah Bey ekranına alarm düştü, lütfen bulunduğunuz noktada bekleyiniz.`;
+      };
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => sendCoords(pos.coords.latitude, pos.coords.longitude, 'Canlı Cihaz GPS Konumu'),
+          () => sendCoords(21.4225, 39.8262, 'Mescid-i Haram — Kral Abdülaziz Kapısı Yakını (Varsayılan Konum)'),
+          { timeout: 3500 }
+        );
+      } else {
+        sendCoords(21.4225, 39.8262, 'Mescid-i Haram — Kral Abdülaziz Kapısı Yakını');
+      }
+    }
+
+    function renderAnnouncements(list) {
+      const container = document.getElementById('announcementsList');
+      if (!list.length) {
+        container.innerHTML = `<div style="font-size:0.86rem; color:var(--color-muted);">Henüz duyuru bulunmuyor.</div>`;
+        return;
+      }
+      container.innerHTML = list.map((a) => `
+        <div style="padding:12px; border-radius:10px; background:${a.urgent ? 'var(--color-gold-soft)' : 'var(--color-ground)'}; border:1px solid var(--color-hairline);">
+          <div style="display:flex; justify-content:space-between; font-size:0.76rem; font-weight:700; color:var(--color-emerald-deep);">
+            <span>${a.sender}</span>
+            <span>🕒 ${a.createdAt}</span>
+          </div>
+          <div style="font-weight:800; font-size:0.95rem; margin:3px 0;">${a.title}</div>
+          <div style="font-size:0.86rem; color:var(--color-ink);">${a.message}</div>
+        </div>
+      `).join('');
+    }
+
+    function prependAnnouncement(a) {
+      const container = document.getElementById('announcementsList');
+      const div = document.createElement('div');
+      div.style.cssText = 'padding:12px; border-radius:10px; background:var(--color-gold-soft); border:2px solid var(--color-gold);';
+      div.innerHTML = `
+        <div style="display:flex; justify-content:space-between; font-size:0.76rem; font-weight:700; color:var(--color-emerald-deep);">
+          <span>🔔 YENİ DUYURU • ${a.sender}</span>
+          <span>🕒 ${a.createdAt}</span>
+        </div>
+        <div style="font-weight:800; font-size:0.95rem; margin:3px 0;">${a.title}</div>
+        <div style="font-size:0.86rem; color:var(--color-ink);">${a.message}</div>
+      `;
+      container.prepend(div);
+    }
+
+    function renderPrayers(points) {
+      const container = document.getElementById('prayersList');
+      container.innerHTML = points.map((p) => `
+        <div class="prayer-card">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong style="font-size:0.94rem; color:var(--color-emerald-night);">${p.title}</strong>
+            <button type="button" class="btn btn-outline btn-sm" style="padding:4px 10px; font-size:0.75rem;" onclick="speakPrayer('${p.reading.replace(/'/g, "\\'")}')">🔊 Dinle</button>
+          </div>
+          <div class="arabic-text">${p.arabic}</div>
+          <div style="font-size:0.84rem; font-weight:600; color:var(--color-emerald-deep); margin-bottom:4px;"><em>${p.reading}</em></div>
+          <div style="font-size:0.82rem; color:var(--color-muted);"><strong>Anlamı:</strong> ${p.meaning}</div>
+        </div>
+      `).join('');
+    }
+
+    function speakPrayer(text) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'tr-TR';
+        u.rate = 0.9;
+        window.speechSynthesis.speak(u);
+      }
+    }
+
+    function leaveRoom() {
+      if (ws) ws.close();
+      isAudioListening = false;
+      stopBackgroundKeepAliveAudio();
+      releaseWakeLock();
+      document.getElementById('liveView').style.display = 'none';
+      document.getElementById('joinView').style.display = 'block';
+    }
+
+    // =========================================================================
+    // 1. PWA KURULUM (TELEFONA UYGULAMA OLARAK YÜKLE) & SERVICE WORKER
+    // =========================================================================
+    let deferredInstallPrompt = null;
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+    });
+
+    async function triggerPwaInstall() {
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        const choice = await deferredInstallPrompt.userChoice;
+        if (choice.outcome === 'accepted') {
+          document.getElementById('pwaInstallBanner').style.display = 'none';
+        }
+        deferredInstallPrompt = null;
+        return;
+      }
+      document.getElementById('pwaModal').style.display = 'flex';
+    }
+
+    function closePwaModal() {
+      document.getElementById('pwaModal').style.display = 'none';
+    }
+
+    async function enableNotificationPermission() {
+      if (!('Notification' in window)) {
+        alert('Tarayıcınız bildirimleri desteklemiyor.');
+        return;
+      }
+      const perm = await Notification.requestPermission();
+      if (perm === 'granted') {
+        sendServiceWorkerNotification('RıdvanSes Bildirimleri Aktif', 'Kafile duyuruları ve toplanma saatleri telefonunuza anında düşecektir.');
+      }
+    }
+
+    function sendServiceWorkerNotification(title, body) {
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'SHOW_NOTIFICATION',
+          title,
+          body
+        });
+      }
+    }
+
+    // =========================================================================
+    // 2. TAVAF KESİNTİSİZ MODU: WAKELOCK API + KİLİT EKRANI MEDIASESSION + KEEP-ALIVE WAV
+    // =========================================================================
+    let wakeLockSentinel = null;
+    let wakeLockDesired = true;
+
+    async function requestWakeLock() {
+      wakeLockDesired = true;
+      const titleEl = document.getElementById('wakeLockStatusTitle');
+      const subEl = document.getElementById('wakeLockStatusSub');
+      const btnEl = document.getElementById('wakeLockBtn');
+
+      if ('wakeLock' in navigator) {
+        try {
+          wakeLockSentinel = await navigator.wakeLock.request('screen');
+          if (titleEl) titleEl.textContent = '🟢 Tavaf Kesintisiz Modu Aktif (Ekran Kapanmaz)';
+          if (subEl) subEl.textContent = 'WakeLock + Kilit Ekranı Medya Oynatıcısı devrede. Ses kesilmez.';
+          if (btnEl) btnEl.textContent = '🔒 Tavaf Koruyucu Açık';
+          wakeLockSentinel.addEventListener('release', () => {
+            if (titleEl && !wakeLockDesired) {
+              titleEl.textContent = '🟡 Kilit Ekranı Arka Plan Modu';
+            }
+          });
+          return;
+        } catch (err) {}
+      }
+      if (titleEl) titleEl.textContent = '🟢 Kilit Ekranı Arka Plan Ses Koruyucu Aktif';
+      if (subEl) subEl.textContent = 'MediaSession ve arka plan ses kanalı ile tuş kilidinde dinleme aktif.';
+      if (btnEl) btnEl.textContent = '🔒 Koruyucu Açık';
+    }
+
+    async function releaseWakeLock() {
+      wakeLockDesired = false;
+      if (wakeLockSentinel) {
+        try {
+          await wakeLockSentinel.release();
+        } catch (e) {}
+        wakeLockSentinel = null;
+      }
+      const titleEl = document.getElementById('wakeLockStatusTitle');
+      const btnEl = document.getElementById('wakeLockBtn');
+      if (titleEl) titleEl.textContent = '⚪ Tavaf Ekran Kilidi Koruyucu Kapalı';
+      if (btnEl) btnEl.textContent = '🔓 Ekran Kilidini Önle';
+    }
+
+    function toggleWakeLockMode() {
+      if (wakeLockSentinel || wakeLockDesired) {
+        releaseWakeLock();
+      } else {
+        requestWakeLock();
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && wakeLockDesired && isAudioListening) {
+        requestWakeLock();
+      }
+    });
+
+    // Generate a 1-second silent/sub-audible WAV DataURI so <audio loop> keeps mobile OS audio session alive on lock screen
+    function createSilentWavDataUri() {
+      const sampleRate = 8000;
+      const numSamples = sampleRate;
+      const buffer = new ArrayBuffer(44 + numSamples * 2);
+      const view = new DataView(buffer);
+      const writeStr = (offset, str) => {
+        for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+      };
+      writeStr(0, 'RIFF');
+      view.setUint32(4, 36 + numSamples * 2, true);
+      writeStr(8, 'WAVE');
+      writeStr(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeStr(36, 'data');
+      view.setUint32(40, numSamples * 2, true);
+      for (let i = 0; i < numSamples; i++) {
+        view.setInt16(44 + i * 2, 1, true);
+      }
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      return 'data:audio/wav;base64,' + btoa(binary);
+    }
+
+    function startBackgroundKeepAliveAudio() {
+      const audioEl = document.getElementById('bgKeepAliveAudio');
+      if (!audioEl) return;
+      if (!audioEl.src) {
+        audioEl.src = createSilentWavDataUri();
+      }
+      audioEl.play().catch(() => {});
+    }
+
+    function stopBackgroundKeepAliveAudio() {
+      const audioEl = document.getElementById('bgKeepAliveAudio');
+      if (audioEl) audioEl.pause();
+    }
+
+    function updateMediaSessionMetadata() {
+      if (!('mediaSession' in navigator)) return;
+      const title = document.getElementById('liveTopicText')?.textContent?.trim() || 'Canlı Tavaf & Siyer Rehberliği';
+      const artist = document.getElementById('liveGuideName')?.textContent?.trim() || 'Rıdvan Yılmaz Hoca';
+      const album = document.getElementById('liveTourTitle')?.textContent?.trim() || 'Rıdvan Yılmaz Turizm';
+
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title,
+        artist: `${artist} (${currentTour ? currentTour.code : 'RY-2026'})`,
+        album,
+        artwork: [
+          { src: '/icons/icon-512.svg', sizes: '512x512', type: 'image/svg+xml' }
+        ]
+      });
+
+      navigator.mediaSession.playbackState = isAudioListening ? 'playing' : 'paused';
+      navigator.mediaSession.setActionHandler('play', () => {
+        if (!isAudioListening) toggleAudioPlayback();
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        if (isAudioListening) toggleAudioPlayback();
+      });
+      navigator.mediaSession.setActionHandler('stop', () => {
+        if (isAudioListening) toggleAudioPlayback();
+      });
+    }
+  </script>
+
+  <!-- PWA TELEFONA KURULUM REHBER MODALI -->
+  <div class="modal-backdrop" id="pwaModal" onclick="if(event.target===this)closePwaModal()">
+    <div class="card" style="max-width:440px; width:100%;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 style="font-size:1.2rem; color:var(--color-emerald-night);">📲 RıdvanSes'i Telefonunuza Kurun</h3>
+        <button type="button" class="btn btn-outline btn-sm" onclick="closePwaModal()">✕</button>
+      </div>
+      <p style="font-size:0.88rem; color:var(--color-muted); margin-bottom:14px;">
+        App Store veya Google Play şifresi gerekmeden uygulamayı telefonunuzun ana ekranına ekleyebilirsiniz:
+      </p>
+      <div style="background:var(--color-ground); padding:12px; border-radius:12px; margin-bottom:10px; font-size:0.86rem;">
+        <strong>🤖 Android (Chrome / Samsung):</strong><br/>
+        Sağ üstteki <strong>⋮ (Üç Nokta)</strong> menüsüne dokunup <strong>"Uygulamayı Yükle"</strong> veya <strong>"Ana Ekrana Ekle"</strong> seçeneğine basın.
+      </div>
+      <div style="background:var(--color-ground); padding:12px; border-radius:12px; margin-bottom:14px; font-size:0.86rem;">
+        <strong>🍏 iPhone (Safari):</strong><br/>
+        Alt menüdeki <strong>Paylaş (⬆️)</strong> butonuna dokunun ve <strong>"Ana Ekrana Ekle (➕)"</strong> seçeneğine basın.
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="btn btn-gold" style="flex:1;" onclick="enableNotificationPermission()">🔔 Bildirim İzni Ver</button>
+        <button type="button" class="btn btn-primary" style="flex:1;" onclick="closePwaModal()">Tamam</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
