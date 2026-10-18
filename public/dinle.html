@@ -879,6 +879,23 @@
       return btoa(binary);
     }
 
+    let pilgrimWorkletLoaded = false;
+
+    function handlePilgrimMicFloatChunk(input) {
+      if (!micGranted || !ws || ws.readyState !== WebSocket.OPEN || !audioCtx) return;
+      const downsampled = [];
+      for (let i = 0; i < input.length; i += 3) {
+        downsampled.push(input[i]);
+      }
+      const pcm16 = floatTo16BitBase64Pilgrim(downsampled);
+      ws.send(JSON.stringify({
+        type: 'audio-chunk',
+        sampleRate: Math.round(audioCtx.sampleRate / 3),
+        pcm16,
+        level: 0.7
+      }));
+    }
+
     async function startPilgrimMicBroadcast() {
       try {
         ensureAudioContext();
@@ -886,27 +903,30 @@
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, latency: 0 }
         });
         const source = audioCtx.createMediaStreamSource(pilgrimMicStream);
-        pilgrimProcessor = audioCtx.createScriptProcessor(1024, 1, 1);
         pilgrimZeroGain = audioCtx.createGain();
         pilgrimZeroGain.gain.value = 0;
-        source.connect(pilgrimProcessor);
-        pilgrimProcessor.connect(pilgrimZeroGain);
-        pilgrimZeroGain.connect(audioCtx.destination);
-        pilgrimProcessor.onaudioprocess = (e) => {
-          if (!micGranted || !ws || ws.readyState !== WebSocket.OPEN) return;
-          const input = e.inputBuffer.getChannelData(0);
-          const downsampled = [];
-          for (let i = 0; i < input.length; i += 3) {
-            downsampled.push(input[i]);
+
+        if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
+          if (!pilgrimWorkletLoaded) {
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js');
+            pilgrimWorkletLoaded = true;
           }
-          const pcm16 = floatTo16BitBase64Pilgrim(downsampled);
-          ws.send(JSON.stringify({
-            type: 'audio-chunk',
-            sampleRate: Math.round(audioCtx.sampleRate / 3),
-            pcm16,
-            level: 0.7
-          }));
-        };
+          pilgrimProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
+          pilgrimProcessor.port.onmessage = (ev) => {
+            if (ev && ev.data) handlePilgrimMicFloatChunk(ev.data);
+          };
+          source.connect(pilgrimProcessor);
+          pilgrimProcessor.connect(pilgrimZeroGain);
+          pilgrimZeroGain.connect(audioCtx.destination);
+        } else {
+          pilgrimProcessor = audioCtx.createScriptProcessor(1024, 1, 1);
+          source.connect(pilgrimProcessor);
+          pilgrimProcessor.connect(pilgrimZeroGain);
+          pilgrimZeroGain.connect(audioCtx.destination);
+          pilgrimProcessor.onaudioprocess = (e) => {
+            handlePilgrimMicFloatChunk(e.inputBuffer.getChannelData(0));
+          };
+        }
       } catch (e) {
         console.warn('Mikrofon izni alınamadı, simülasyon modu aktif:', e.message);
       }
@@ -914,7 +934,10 @@
 
     function stopPilgrimMicBroadcast() {
       if (pilgrimProcessor) {
-        pilgrimProcessor.disconnect();
+        try {
+          if (pilgrimProcessor.port) pilgrimProcessor.port.onmessage = null;
+          pilgrimProcessor.disconnect();
+        } catch {}
         pilgrimProcessor = null;
       }
       if (pilgrimZeroGain) {

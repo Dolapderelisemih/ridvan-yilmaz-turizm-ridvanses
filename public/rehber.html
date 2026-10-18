@@ -439,6 +439,34 @@
       return btoa(binary);
     }
 
+    let workletModuleLoaded = false;
+
+    function handleGuideMicFloatChunk(input) {
+      if (!isMicBroadcasting || !audioCtx) return;
+      let sum = 0;
+      const step = 3;
+      const downsampled = [];
+      for (let i = 0; i < input.length; i += step) {
+        const v = input[i];
+        sum += v * v;
+        downsampled.push(v);
+      }
+      const rms = Math.sqrt(sum / downsampled.length);
+      const level = Math.min(1, rms * 7);
+      animateGuideSpectrum(level);
+
+      // Sadece ses varken veya düşük eşik üstündeyken gönder
+      if (ws && ws.readyState === WebSocket.OPEN && rms > 0.002) {
+        const pcm16 = floatTo16BitBase64(downsampled);
+        ws.send(JSON.stringify({
+          type: 'audio-chunk',
+          sampleRate: Math.round(audioCtx.sampleRate / step),
+          pcm16,
+          level
+        }));
+      }
+    }
+
     async function toggleMicBroadcast() {
       const btn = document.getElementById('startMicBtn');
       if (isMicBroadcasting) {
@@ -470,17 +498,35 @@
         }
 
         const source = audioCtx.createMediaStreamSource(micStream);
-        scriptProcessor = audioCtx.createScriptProcessor(1024, 1, 1);
         zeroGainNode = audioCtx.createGain();
         zeroGainNode.gain.value = 0; // Rehberin kendi bilgisayarında yankı (eko) yapmasını önler
-        source.connect(scriptProcessor);
-        scriptProcessor.connect(zeroGainNode);
-        zeroGainNode.connect(audioCtx.destination);
+
+        if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
+          if (!workletModuleLoaded) {
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js');
+            workletModuleLoaded = true;
+          }
+          scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
+          scriptProcessor.port.onmessage = (ev) => {
+            if (ev && ev.data) handleGuideMicFloatChunk(ev.data);
+          };
+          source.connect(scriptProcessor);
+          scriptProcessor.connect(zeroGainNode);
+          zeroGainNode.connect(audioCtx.destination);
+        } else {
+          scriptProcessor = audioCtx.createScriptProcessor(1024, 1, 1);
+          source.connect(scriptProcessor);
+          scriptProcessor.connect(zeroGainNode);
+          zeroGainNode.connect(audioCtx.destination);
+          scriptProcessor.onaudioprocess = (e) => {
+            handleGuideMicFloatChunk(e.inputBuffer.getChannelData(0));
+          };
+        }
 
         isMicBroadcasting = true;
         btn.textContent = '⏹️ Canlı Mikrofon Yayınını Durdur (YAYINDA)';
         btn.className = 'btn btn-danger';
-        document.getElementById('micSourceLabel').textContent = '🎙️ Yayın Kaynağı: Gerçek Mikrofon (Ultra Düşük Gecikme ~35ms)';
+        document.getElementById('micSourceLabel').textContent = '🎙️ Yayın Kaynağı: Gerçek Mikrofon (AudioWorklet ~35ms)';
 
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
@@ -490,33 +536,6 @@
             topic: document.getElementById('topicInput').value
           }));
         }
-
-        scriptProcessor.onaudioprocess = (e) => {
-          if (!isMicBroadcasting) return;
-          const input = e.inputBuffer.getChannelData(0);
-          let sum = 0;
-          const step = 3;
-          const downsampled = [];
-          for (let i = 0; i < input.length; i += step) {
-            const v = input[i];
-            sum += v * v;
-            downsampled.push(v);
-          }
-          const rms = Math.sqrt(sum / downsampled.length);
-          const level = Math.min(1, rms * 7);
-          animateGuideSpectrum(level);
-
-          // Sadece ses varken veya düşük eşik üstündeyken gönder
-          if (ws && ws.readyState === WebSocket.OPEN && rms > 0.002) {
-            const pcm16 = floatTo16BitBase64(downsampled);
-            ws.send(JSON.stringify({
-              type: 'audio-chunk',
-              sampleRate: Math.round(audioCtx.sampleRate / step),
-              pcm16,
-              level
-            }));
-          }
-        };
       } catch (err) {
         alert('Mikrofon erişimi sağlanamadı. Lütfen tarayıcı mikrofon iznini kontrol ediniz.');
       }
@@ -528,7 +547,10 @@
         window.ryBroadcastGuideStream(null);
       }
       if (scriptProcessor) {
-        scriptProcessor.disconnect();
+        try {
+          if (scriptProcessor.port) scriptProcessor.port.onmessage = null;
+          scriptProcessor.disconnect();
+        } catch {}
         scriptProcessor = null;
       }
       if (zeroGainNode) {
