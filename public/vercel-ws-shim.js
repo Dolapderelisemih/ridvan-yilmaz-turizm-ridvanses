@@ -476,6 +476,11 @@
         }
       }
 
+      // MQTT WSS bağlıyken ses paketlerini (audio-chunk) yavaş HTTP /api/ws-relay kuyruğuna sokma (ağ tıkanıklığını ve 450ms gecikmeli çift paketi önler)
+      if (parsed.type === 'audio-chunk' && this._mqttClient && this._mqttClient.connected) {
+        return;
+      }
+
       if (this._sendQueue.length >= 16) this._sendQueue.shift();
       this._sendQueue.push(parsed);
       if (!this._inFlight) {

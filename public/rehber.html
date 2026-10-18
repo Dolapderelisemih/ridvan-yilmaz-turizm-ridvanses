@@ -386,14 +386,16 @@
 
       try {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (!audioCtx) audioCtx = new AudioContextClass();
+        if (!audioCtx) audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
         if (audioCtx.state === 'suspended') await audioCtx.resume();
 
         micStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true
+            autoGainControl: true,
+            channelCount: 1,
+            latency: 0
           }
         });
 
@@ -403,7 +405,7 @@
         }
 
         const source = audioCtx.createMediaStreamSource(micStream);
-        scriptProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
+        scriptProcessor = audioCtx.createScriptProcessor(1024, 1, 1);
         zeroGainNode = audioCtx.createGain();
         zeroGainNode.gain.value = 0; // Rehberin kendi bilgisayarında yankı (eko) yapmasını önler
         source.connect(scriptProcessor);
@@ -413,7 +415,7 @@
         isMicBroadcasting = true;
         btn.textContent = '⏹️ Canlı Mikrofon Yayınını Durdur (YAYINDA)';
         btn.className = 'btn btn-danger';
-        document.getElementById('micSourceLabel').textContent = '🎙️ Yayın Kaynağı: Gerçek Mikrofon (Canlı HD Yayında)';
+        document.getElementById('micSourceLabel').textContent = '🎙️ Yayın Kaynağı: Gerçek Mikrofon (Ultra Düşük Gecikme ~35ms)';
 
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
@@ -451,7 +453,7 @@
           }
         };
       } catch (err) {
-        alert('Mikrofon erişimi sağlanamadı. "Demo Siyer Ses Akışı Gönder" butonunu kullanarak mikrofonsuz canlı yayın testi yapabilirsiniz.');
+        alert('Mikrofon erişimi sağlanamadı. Lütfen tarayıcı mikrofon iznini kontrol ediniz.');
       }
     }
 
@@ -514,7 +516,7 @@
 
     function playIncomingPilgrimAudio(samplesOrB64, sampleRate, isBase64 = false) {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (!audioCtx) audioCtx = new AudioContextClass();
+      if (!audioCtx) audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
       if (audioCtx.state === 'suspended') audioCtx.resume();
       try {
         let floatArr;
@@ -538,8 +540,8 @@
         src.buffer = buf;
         src.connect(audioCtx.destination);
         const now = audioCtx.currentTime;
-        if (nextPilgrimAudioTime < now) nextPilgrimAudioTime = now + 0.05;
-        if (nextPilgrimAudioTime - now > 1.5) nextPilgrimAudioTime = now + 0.06;
+        if (nextPilgrimAudioTime < now) nextPilgrimAudioTime = now + 0.015;
+        if (nextPilgrimAudioTime - now > 0.12) nextPilgrimAudioTime = now + 0.02;
         src.start(nextPilgrimAudioTime);
         nextPilgrimAudioTime += buf.duration;
       } catch (e) {}

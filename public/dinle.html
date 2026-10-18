@@ -594,7 +594,7 @@
     function ensureAudioContext() {
       if (!audioCtx) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        audioCtx = new AudioContextClass();
+        audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
         gainNode = audioCtx.createGain();
         gainNode.gain.value = volumeMultiplier;
         gainNode.connect(audioCtx.destination);
@@ -662,10 +662,10 @@
 
         const now = audioCtx.currentTime;
         if (nextAudioTime < now) {
-          nextAudioTime = now + 0.05;
+          nextAudioTime = now + 0.015;
         }
-        if (nextAudioTime - now > 1.4) {
-          nextAudioTime = now + 0.06;
+        if (nextAudioTime - now > 0.12) {
+          nextAudioTime = now + 0.02;
         }
         source.start(nextAudioTime);
         nextAudioTime += buffer.duration;
@@ -747,10 +747,10 @@
       try {
         ensureAudioContext();
         pilgrimMicStream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, latency: 0 }
         });
         const source = audioCtx.createMediaStreamSource(pilgrimMicStream);
-        pilgrimProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
+        pilgrimProcessor = audioCtx.createScriptProcessor(1024, 1, 1);
         pilgrimZeroGain = audioCtx.createGain();
         pilgrimZeroGain.gain.value = 0;
         source.connect(pilgrimProcessor);
