@@ -468,6 +468,7 @@
         ws.send(JSON.stringify({
           type: 'audio-chunk',
           seq: ++guideAudioSeq,
+          sentAt: Date.now(),
           sampleRate: Math.round(audioCtx.sampleRate / step),
           pcm16,
           level

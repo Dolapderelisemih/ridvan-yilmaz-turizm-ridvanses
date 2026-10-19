@@ -298,6 +298,7 @@ function processClientJsonMessage(ctx, msg) {
       if (!canSpeak) break;
       const chunkPayload = {
         type: 'audio-chunk',
+        seq: msg.seq || null,
         speakerId: clientId,
         speakerName: sender.name,
         speakerRole: sender.role,
