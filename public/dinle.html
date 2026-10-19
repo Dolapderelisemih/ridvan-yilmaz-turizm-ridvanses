@@ -7,12 +7,12 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
-  <link rel="manifest" href="/manifest.json" />
-  <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
-  <link rel="apple-touch-icon" href="/icons/icon-512.svg" />
+  <link rel="manifest" href="/manifest.json?v=14" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=14" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=14" />
   <title>Hacı Canlı Dinleme Ekranı | Rıdvan Yılmaz Turizm — RıdvanSes</title>
-  <link rel="stylesheet" href="/css/style.css?v=13" />
-  <script src="/vercel-ws-shim.js?v=13"></script>
+  <link rel="stylesheet" href="/css/style.css?v=14" />
+  <script src="/vercel-ws-shim.js?v=14"></script>
   <style>
     .app-shell {
       max-width: 560px;
@@ -124,7 +124,7 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:560px;">
       <a href="/" class="brand">
-        <img src="https://ridvanyilmazturizm.com/wp-content/uploads/2025/09/logo-ridvan-yilmaz.png" alt="Logo" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=14" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <span class="brand-title" style="font-size:1.02rem;">Rıdvan Yılmaz Turizm</span>
           <span class="brand-sub"><span class="live-dot"></span> Hacı Canlı Rehber Ekranı</span>
@@ -151,7 +151,7 @@
     <!-- TELEFONA UYGULAMA OLARAK İNDİR (PWA BANNER) -->
     <div class="pwa-install-banner" id="pwaInstallBanner">
       <div style="display:flex; align-items:center; gap:10px; flex:1 1 210px; min-width:0;">
-        <img src="/icons/icon-512.svg" alt="RıdvanSes" style="width:40px; height:40px; flex-shrink:0; border-radius:10px;" />
+        <img src="/icons/icon-192.png?v=14" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px;" />
         <div style="min-width:0;">
           <div style="font-weight:800; font-size:0.9rem; color:#f3d266;">📲 RıdvanSes'i Telefonunuza Yükleyin</div>
           <div style="font-size:0.76rem; color:#e2e8f0; line-height:1.35;">Uygulama mağazası şifresi gerekmeden tek dokunuşla ana ekrana ekleyin.</div>
@@ -1457,7 +1457,8 @@
         artist: `${artist} (${currentTour ? currentTour.code : 'RY-2026'})`,
         album,
         artwork: [
-          { src: '/icons/icon-512.svg', sizes: '512x512', type: 'image/svg+xml' }
+          { src: '/icons/icon-192.png?v=14', sizes: '192x192', type: 'image/png' },
+          { src: '/icons/icon-512.png?v=14', sizes: '512x512', type: 'image/png' }
         ]
       });
 

@@ -102,14 +102,15 @@ a {
 }
 
 .brand-logo {
-  height: 44px;
+  height: 46px;
   width: auto;
   flex-shrink: 0;
   border-radius: 10px;
   object-fit: contain;
-  background: var(--color-emerald-night);
-  padding: 4px 8px;
-  border: 1px solid rgba(212, 175, 55, 0.4);
+  background: #ffffff;
+  padding: 3px 6px;
+  border: 1.5px solid rgba(212, 175, 55, 0.65);
+  box-shadow: 0 2px 8px rgba(10, 61, 48, 0.08);
 }
 
 .brand-text {

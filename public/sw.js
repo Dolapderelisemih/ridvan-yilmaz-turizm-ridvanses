@@ -1,10 +1,13 @@
-const CACHE_NAME = 'ridvanses-pwa-v13';
+const CACHE_NAME = 'ridvanses-pwa-v14';
 const ASSETS_TO_CACHE = [
   '/',
   '/dinle',
   '/css/style.css',
   '/manifest.json',
-  '/icons/icon-512.svg'
+  '/icons/icon-512.png',
+  '/icons/icon-192.png',
+  '/icons/apple-touch-icon.png',
+  '/icons/app-logo.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -54,8 +57,8 @@ self.addEventListener('message', (event) => {
   if (data.type === 'SHOW_NOTIFICATION' && self.registration.showNotification) {
     self.registration.showNotification(data.title || 'Rıdvan Yılmaz Turizm Duyurusu', {
       body: data.body || '',
-      icon: '/icons/icon-512.svg',
-      badge: '/icons/icon-512.svg',
+      icon: '/icons/icon-512.png',
+      badge: '/icons/icon-192.png',
       vibrate: [200, 100, 200],
       tag: data.tag || 'ridvanses-notify'
     });
