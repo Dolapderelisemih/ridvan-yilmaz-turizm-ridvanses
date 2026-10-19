@@ -278,10 +278,17 @@ function processClientJsonMessage(ctx, msg) {
       } else {
         currentRoom.guideLocation = { active: false };
       }
-      broadcastToRoom(currentRoom, {
+      const locPayload = {
         type: 'guide-location',
         guideLocation: currentRoom.guideLocation
-      });
+      };
+      broadcastToRoom(currentRoom, locPayload);
+      for (const room of liveRooms.values()) {
+        if (room !== currentRoom && !Array.from(room.clients.values()).some((c) => c.role === 'guide')) {
+          room.guideLocation = currentRoom.guideLocation;
+          broadcastToRoom(room, locPayload);
+        }
+      }
       broadcastRoomState(currentRoom);
       break;
     }
@@ -289,22 +296,26 @@ function processClientJsonMessage(ctx, msg) {
     case 'audio-chunk': {
       const canSpeak = sender.role === 'guide' || sender.micGranted;
       if (!canSpeak) break;
-      broadcastToRoom(
-        currentRoom,
-        {
-          type: 'audio-chunk',
-          speakerId: clientId,
-          speakerName: sender.name,
-          speakerRole: sender.role,
-          sampleRate: msg.sampleRate || 16000,
-          samples: msg.samples,
-          pcm16: msg.pcm16 || null,
-          level: msg.level || 0,
-          synthNote: msg.synthNote || null,
-          sentAt: msg.sentAt || Date.now()
-        },
-        ws
-      );
+      const chunkPayload = {
+        type: 'audio-chunk',
+        speakerId: clientId,
+        speakerName: sender.name,
+        speakerRole: sender.role,
+        sampleRate: msg.sampleRate || 16000,
+        samples: msg.samples,
+        pcm16: msg.pcm16 || null,
+        level: msg.level || 0,
+        synthNote: msg.synthNote || null,
+        sentAt: msg.sentAt || Date.now()
+      };
+      broadcastToRoom(currentRoom, chunkPayload, ws);
+      if (sender.role === 'guide') {
+        for (const room of liveRooms.values()) {
+          if (room !== currentRoom && !Array.from(room.clients.values()).some((c) => c.role === 'guide')) {
+            broadcastToRoom(room, chunkPayload, ws);
+          }
+        }
+      }
       break;
     }
 

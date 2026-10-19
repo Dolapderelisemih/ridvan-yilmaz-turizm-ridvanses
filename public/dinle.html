@@ -177,7 +177,7 @@
       <form id="joinForm" style="display:flex; flex-direction:column; gap:14px;">
         <div>
           <label class="label" id="i18n_codeLabel">Kafile / Tur Kodu *</label>
-          <input type="text" id="tourCodeInput" class="input" style="font-size:1.2rem; font-weight:800; text-transform:uppercase; text-align:center; letter-spacing:0.06em;" value="RY-2026" required />
+          <input type="text" id="tourCodeInput" class="input" style="font-size:1.2rem; font-weight:800; text-transform:uppercase; text-align:center; letter-spacing:0.06em;" value="RY-KASIM" required />
           <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
             <button type="button" class="code-pill" style="padding:4px 10px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-gold); background:var(--color-gold-soft); font-weight:700; cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='RY-KASIM'">✨ RY-KASIM (13-14 Kasım • Ömer Ali Gültekin)</button>
             <button type="button" class="code-pill" style="padding:4px 10px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-hairline); cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='RY-2026'">RY-2026 (26 Haziran)</button>
@@ -735,10 +735,23 @@
         gainNode.gain.value = volumeMultiplier;
         gainNode.connect(audioCtx.destination);
       }
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
+      if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+        audioCtx.resume().catch(() => {});
       }
     }
+
+    // Mobil tarayıcılarda (iOS Safari / Android Chrome) ekrana her dokunuşta ses motorunu uyanık tut
+    ['touchstart', 'touchend', 'click'].forEach((evtName) => {
+      document.addEventListener(
+        evtName,
+        () => {
+          if (isAudioListening && audioCtx && audioCtx.state !== 'running') {
+            audioCtx.resume().catch(() => {});
+          }
+        },
+        { passive: true }
+      );
+    });
 
     function toggleAudioPlayback() {
       ensureAudioContext();
@@ -769,6 +782,8 @@
     }
 
     let nextAudioTime = 0;
+    let prevEndSample = 0;
+    let lastPacketReceivedAt = 0;
 
     function playPcmSamples(samplesOrB64, sampleRate = 16000, isBase64 = false) {
       ensureAudioContext();
@@ -790,19 +805,37 @@
           floatArr = new Float32Array(samplesOrB64);
         }
         if (!floatArr.length) return;
+
+        lastPacketReceivedAt = Date.now();
+        const now = audioCtx.currentTime;
+        const isUnderrun = nextAudioTime < now;
+
+        // De-clicking: Yeni konuşma başlangıcında yumuşak fade-in, ardışık paketler arasında sınır yumuşatma
+        if (isUnderrun) {
+          const fadeLen = Math.min(24, floatArr.length);
+          for (let i = 0; i < fadeLen; i++) {
+            floatArr[i] *= i / fadeLen;
+          }
+        } else if (floatArr.length >= 6) {
+          floatArr[0] = prevEndSample * 0.65 + floatArr[0] * 0.35;
+          floatArr[1] = prevEndSample * 0.35 + floatArr[1] * 0.65;
+        }
+        prevEndSample = floatArr[floatArr.length - 1];
+
         const buffer = audioCtx.createBuffer(1, floatArr.length, sampleRate);
         buffer.copyToChannel(floatArr, 0);
         const source = audioCtx.createBufferSource();
         source.buffer = buffer;
         source.connect(gainNode);
 
-        const now = audioCtx.currentTime;
-        if (nextAudioTime < now) {
-          nextAudioTime = now + 0.015;
+        // 85ms Mobil Jitter Tamponu: Wi-Fi / 4G paket dalgalanmalarında sesin kesilmesini tamamen önler
+        if (isUnderrun) {
+          nextAudioTime = now + 0.085;
+        } else if (nextAudioTime - now > 0.55) {
+          // Sadece 550ms üzeri aşırı birikmelerde senkronize et (120ms'de kesip üst üste bindirme!)
+          nextAudioTime = now + 0.095;
         }
-        if (nextAudioTime - now > 0.12) {
-          nextAudioTime = now + 0.02;
-        }
+
         source.start(nextAudioTime);
         nextAudioTime += buffer.duration;
       } catch (e) {}
@@ -832,16 +865,20 @@
     function animateSpectrumFromLevel(level) {
       const bars = specContainer.querySelectorAll('.spectrum-bar');
       bars.forEach((b, i) => {
-        const h = Math.min(42, Math.max(6, (level * 36) + Math.sin(Date.now() / 120 + i) * 12));
+        const h = Math.min(42, Math.max(6, (level * 36) + Math.sin(Date.now() / 120 + i) * 8));
         b.style.height = `${h.toFixed(0)}px`;
       });
     }
 
     setInterval(() => {
-      if (isAudioListening) {
-        animateSpectrumFromLevel(0.45);
+      // Son 350ms içinde gerçek ses paketi gelmediyse spektrumu sakin bekleme konumuna indir
+      if (Date.now() - lastPacketReceivedAt > 350) {
+        const bars = specContainer.querySelectorAll('.spectrum-bar');
+        bars.forEach((b) => {
+          b.style.height = '6px';
+        });
       }
-    }, 140);
+    }, 200);
 
     // El Kaldır / Söz İste
     function toggleRaiseHand() {
@@ -883,14 +920,17 @@
 
     function handlePilgrimMicFloatChunk(input) {
       if (!micGranted || !ws || ws.readyState !== WebSocket.OPEN || !audioCtx) return;
-      const downsampled = [];
-      for (let i = 0; i < input.length; i += 3) {
-        downsampled.push(input[i]);
+      const step = 3;
+      const outLen = Math.floor(input.length / step);
+      const downsampled = new Float32Array(outLen);
+      for (let j = 0; j < outLen; j++) {
+        const idx = j * step;
+        downsampled[j] = (input[idx] + (input[idx + 1] || 0) + (input[idx + 2] || 0)) / 3;
       }
       const pcm16 = floatTo16BitBase64Pilgrim(downsampled);
       ws.send(JSON.stringify({
         type: 'audio-chunk',
-        sampleRate: Math.round(audioCtx.sampleRate / 3),
+        sampleRate: Math.round(audioCtx.sampleRate / step),
         pcm16,
         level: 0.7
       }));

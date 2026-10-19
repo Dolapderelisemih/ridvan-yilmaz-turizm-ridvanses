@@ -29,6 +29,7 @@
   window.__ryActiveSocket = null;
 
   const GLOBAL_SOS_TOPIC = 'ridvanses/v2/global/sos';
+  const GLOBAL_DISCOVERY_TOPIC = 'ridvanses/v2/global/discovery';
 
   class SmartWebSocket {
     constructor(url, protocols) {
@@ -169,25 +170,32 @@
           }
 
           if (joinMsg) {
+            client.subscribe(GLOBAL_DISCOVERY_TOPIC, { qos: 0 });
             client.subscribe(topic, { qos: 0 }, () => {
               if (joinMsg.role !== 'guide') {
-                this._publishMqtt({
+                const helloPayload = {
                   _msgId: 'hello-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
                   type: 'p2p-pilgrim-hello',
                   senderClientId: this._clientId,
                   clientId: this._clientId,
+                  pilgrimTopic: topic,
                   name: joinMsg.name || 'Hacı Misafir',
                   phone: joinMsg.phone || '',
                   lang: joinMsg.lang || 'tr',
                   joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-                });
+                };
+                this._publishMqtt(helloPayload);
+                this._publishMqtt(helloPayload, GLOBAL_DISCOVERY_TOPIC);
               } else {
-                this._publishMqtt({
+                const pingPayload = {
                   _msgId: 'gping-' + Date.now(),
                   type: 'p2p-guide-ping',
                   senderClientId: this._clientId,
+                  activeTopic: topic,
                   guideName: joinMsg.name || 'Ömer Ali Gültekin'
-                });
+                };
+                this._publishMqtt(pingPayload);
+                this._publishMqtt(pingPayload, GLOBAL_DISCOVERY_TOPIC);
               }
             });
           }
@@ -225,20 +233,33 @@
       const role = this._joinContext ? this._joinContext.role : 'pilgrim';
 
       if (msg.type === 'p2p-guide-ping' && role !== 'guide' && this._joinContext) {
-        this._publishMqtt({
+        if (msg.activeTopic && msg.activeTopic !== this._mqttTopic && this._mqttClient && this._mqttClient.connected) {
+          this._mqttClient.subscribe(msg.activeTopic, { qos: 0 });
+        }
+        const helloReply = {
           _msgId: 'hello-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
           type: 'p2p-pilgrim-hello',
           clientId: this._clientId,
+          pilgrimTopic: this._mqttTopic,
           name: this._joinContext.name || 'Hacı Misafir',
           phone: this._joinContext.phone || '',
           lang: this._joinContext.lang || 'tr',
           joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-        });
+        };
+        this._publishMqtt(helloReply, msg.activeTopic || this._mqttTopic);
         return;
       }
 
       if (role === 'guide') {
         if (msg.type === 'p2p-pilgrim-hello') {
+          if (msg.pilgrimTopic && msg.pilgrimTopic !== this._mqttTopic) {
+            this._publishMqtt({
+              _msgId: 'gping-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
+              type: 'p2p-guide-ping',
+              activeTopic: this._mqttTopic,
+              guideName: (this._joinContext && this._joinContext.name) || 'Ömer Ali Gültekin'
+            }, GLOBAL_DISCOVERY_TOPIC);
+          }
           const cid = msg.clientId || msg.senderClientId;
           const existing = this._pilgrimMeta.get(cid);
           this._pilgrimMeta.set(cid, {
