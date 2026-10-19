@@ -29,7 +29,8 @@
   window.__ryActiveSocket = null;
 
   const GLOBAL_SOS_TOPIC = 'ridvanses/v2/global/sos';
-  const GLOBAL_DISCOVERY_TOPIC = 'ridvanses/v2/global/discovery';
+  // Birincil: test.mosquitto.org (ölçüm: %0 kayıp, p50 47ms) • Yedek: broker.emqx.io
+  const CLOUD_BROKERS = ['wss://test.mosquitto.org:8081', 'wss://broker.emqx.io:8084/mqtt'];
 
   class SmartWebSocket {
     constructor(url, protocols) {
@@ -61,7 +62,8 @@
       this._pollTimer = null;
 
       this._pilgrimMeta = new Map();
-      this._mqttClient = null;
+      this._mqttClients = [];
+      this._busSeen = new Set();
       this._mqttTopic = null;
 
       const isVercelHost = window.location.hostname.endsWith('.vercel.app');
@@ -142,90 +144,106 @@
       return String(str || 'RY2026').toUpperCase().replace(/[^A-Z0-9]/g, '');
     }
 
+    _busConnected() {
+      return this._mqttClients.some((c) => c && c.connected);
+    }
+
+    _closeMqttClients() {
+      for (const c of this._mqttClients) {
+        try { c.end(true); } catch {}
+      }
+      this._mqttClients = [];
+    }
+
     _initMqttBus(joinMsg, isAdminMode = false) {
       loadScriptOnce('https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js', 'mqtt', () => {
         if (!window.mqtt) return;
-        if (this._mqttClient) {
-          try { this._mqttClient.end(true); } catch {}
-          this._mqttClient = null;
-        }
+        this._closeMqttClients();
 
+        // Rehber konsolu tek oda ("genel") üzerinden yayın yaptığı için bulut otobüsünde
+        // kafilenin tüm hacıları aynı kafile kanalında buluşur (farklı oda seçen hacı sessiz kalmaz).
         const codeClean = joinMsg ? this._sanitizeCode(joinMsg.tourCode) : 'ALL';
-        const roomClean = joinMsg ? this._sanitizeCode(joinMsg.roomId || 'genel') : 'GENEL';
-        const topic = `ridvanses/v2/room/${codeClean}/${roomClean}`;
+        const topic = `ridvanses/v2/room/${codeClean}/GENEL`;
         this._mqttTopic = topic;
 
-        const client = window.mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
-          clientId: 'ry_' + this._clientId + '_' + Math.random().toString(36).slice(2, 6),
-          clean: true,
-          keepalive: 30,
-          reconnectPeriod: 1500
-        });
-        this._mqttClient = client;
-
-        client.on('connect', () => {
-          // Rehber ve Admin her zaman Global SOS kanalını da dinler (hangi turda olursa olsun kayıp hacıyı görür!)
-          if (isAdminMode || (joinMsg && joinMsg.role === 'guide')) {
-            client.subscribe(GLOBAL_SOS_TOPIC, { qos: 0 });
+        // Ölçüm (30 sn, 23 paket/sn): broker.emqx.io yayıncı başına ~10 mesaj/sn ile sınırlıyor (%54 kayıp);
+        // test.mosquitto.org %0 kayıp / p50 47ms. Ses ve kontrol mesajları HER İKİ brokera birden gider,
+        // alıcı tarafında _msgId ile tekilleştirilir — biri yavaşlarsa/çökerse diğeri sesi taşır.
+        CLOUD_BROKERS.forEach((brokerUrl) => {
+          let client;
+          try {
+            client = window.mqtt.connect(brokerUrl, {
+              clientId: 'ry_' + this._clientId + '_' + Math.random().toString(36).slice(2, 6),
+              clean: true,
+              keepalive: 20,
+              reconnectPeriod: 1200,
+              connectTimeout: 8000
+            });
+          } catch {
+            return;
           }
+          this._mqttClients.push(client);
 
-          if (joinMsg) {
-            client.subscribe(GLOBAL_DISCOVERY_TOPIC, { qos: 0 });
+          client.on('connect', () => {
+            // Rehber ve Admin her zaman Global SOS kanalını da dinler (hangi turda olursa olsun kayıp hacıyı görür!)
+            if (isAdminMode || (joinMsg && joinMsg.role === 'guide')) {
+              client.subscribe(GLOBAL_SOS_TOPIC, { qos: 0 });
+            }
+            if (!joinMsg) return;
             client.subscribe(topic, { qos: 0 }, () => {
               if (joinMsg.role !== 'guide') {
-                const helloPayload = {
-                  _msgId: 'hello-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+                this._publishMqtt({
+                  _msgId: 'hello-' + this._clientId + '-' + Date.now(),
                   type: 'p2p-pilgrim-hello',
-                  senderClientId: this._clientId,
                   clientId: this._clientId,
-                  pilgrimTopic: topic,
                   name: joinMsg.name || 'Hacı Misafir',
                   phone: joinMsg.phone || '',
                   lang: joinMsg.lang || 'tr',
                   joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-                };
-                this._publishMqtt(helloPayload);
-                this._publishMqtt(helloPayload, GLOBAL_DISCOVERY_TOPIC);
+                });
               } else {
-                const pingPayload = {
-                  _msgId: 'gping-' + Date.now(),
+                this._publishMqtt({
+                  _msgId: 'gping-' + this._clientId + '-' + Date.now(),
                   type: 'p2p-guide-ping',
-                  senderClientId: this._clientId,
-                  activeTopic: topic,
                   guideName: joinMsg.name || 'Ömer Ali Gültekin'
-                };
-                this._publishMqtt(pingPayload);
-                this._publishMqtt(pingPayload, GLOBAL_DISCOVERY_TOPIC);
+                });
               }
             });
-          }
-        });
+          });
 
-        client.on('message', (t, payloadBuf) => {
-          try {
-            const msg = JSON.parse(payloadBuf.toString());
-            if (!msg || msg.senderClientId === this._clientId) return;
-            if (t === GLOBAL_SOS_TOPIC) {
-              if (msg.type === 'sos-alert' || msg.type === 'sos-resolved') {
-                this._deliverIncomingMessage(msg);
+          client.on('message', (t, payloadBuf) => {
+            try {
+              const msg = JSON.parse(payloadBuf.toString());
+              if (!msg || msg.senderClientId === this._clientId) return;
+              // Aynı mesaj iki brokerdan da gelir: ilk geleni işle, ikincisini at
+              if (msg._msgId) {
+                if (this._busSeen.has(msg._msgId)) return;
+                this._busSeen.add(msg._msgId);
+                if (this._busSeen.size > 800) {
+                  this._busSeen.delete(this._busSeen.values().next().value);
+                }
               }
-              return;
-            }
-            this._handleCloudBusMessage(msg);
-          } catch {}
+              if (t === GLOBAL_SOS_TOPIC) {
+                if (msg.type === 'sos-alert' || msg.type === 'sos-resolved') {
+                  this._deliverIncomingMessage(msg);
+                }
+                return;
+              }
+              this._handleCloudBusMessage(msg);
+            } catch {}
+          });
         });
       });
     }
 
     _publishMqtt(obj, customTopic = null) {
       const targetTopic = customTopic || this._mqttTopic;
-      if (this._mqttClient && this._mqttClient.connected && targetTopic) {
-        try {
-          this._mqttClient.publish(targetTopic, JSON.stringify({
-            ...obj,
-            senderClientId: this._clientId
-          }), { qos: 0 });
-        } catch {}
+      if (!targetTopic) return;
+      const payload = JSON.stringify({ ...obj, senderClientId: this._clientId });
+      for (const c of this._mqttClients) {
+        if (c && c.connected) {
+          try { c.publish(targetTopic, payload, { qos: 0 }); } catch {}
+        }
       }
     }
 
@@ -233,33 +251,20 @@
       const role = this._joinContext ? this._joinContext.role : 'pilgrim';
 
       if (msg.type === 'p2p-guide-ping' && role !== 'guide' && this._joinContext) {
-        if (msg.activeTopic && msg.activeTopic !== this._mqttTopic && this._mqttClient && this._mqttClient.connected) {
-          this._mqttClient.subscribe(msg.activeTopic, { qos: 0 });
-        }
-        const helloReply = {
-          _msgId: 'hello-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+        this._publishMqtt({
+          _msgId: 'hello-' + this._clientId + '-' + Date.now(),
           type: 'p2p-pilgrim-hello',
           clientId: this._clientId,
-          pilgrimTopic: this._mqttTopic,
           name: this._joinContext.name || 'Hacı Misafir',
           phone: this._joinContext.phone || '',
           lang: this._joinContext.lang || 'tr',
           joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-        };
-        this._publishMqtt(helloReply, msg.activeTopic || this._mqttTopic);
+        });
         return;
       }
 
       if (role === 'guide') {
         if (msg.type === 'p2p-pilgrim-hello') {
-          if (msg.pilgrimTopic && msg.pilgrimTopic !== this._mqttTopic) {
-            this._publishMqtt({
-              _msgId: 'gping-' + Date.now() + '-' + Math.random().toString(36).slice(2, 5),
-              type: 'p2p-guide-ping',
-              activeTopic: this._mqttTopic,
-              guideName: (this._joinContext && this._joinContext.name) || 'Ömer Ali Gültekin'
-            }, GLOBAL_DISCOVERY_TOPIC);
-          }
           const cid = msg.clientId || msg.senderClientId;
           const existing = this._pilgrimMeta.get(cid);
           this._pilgrimMeta.set(cid, {
@@ -529,7 +534,7 @@
       }
 
       // MQTT WSS bağlıyken ses paketlerini (audio-chunk) yavaş HTTP /api/ws-relay kuyruğuna sokma (ağ tıkanıklığını ve 450ms gecikmeli çift paketi önler)
-      if (parsed.type === 'audio-chunk' && this._mqttClient && this._mqttClient.connected) {
+      if (parsed.type === 'audio-chunk' && this._busConnected()) {
         return;
       }
 
@@ -544,7 +549,7 @@
       if (this.readyState !== 1 || this._inFlight) return;
       const batch = this._sendQueue.splice(0, this._sendQueue.length);
       // MQTT WSS bağlıyken ve gönderilecek kuyruk mesajı yokken gereksiz HTTP GET sorgusu atma (yüzlerce hacı bağlandığında Vercel Serverless kotasını korur)
-      if (batch.length === 0 && this._mqttClient && this._mqttClient.connected) {
+      if (batch.length === 0 && this._busConnected()) {
         return;
       }
       this._inFlight = true;
@@ -590,10 +595,7 @@
         clearInterval(this._pollTimer);
         this._pollTimer = null;
       }
-      if (this._mqttClient) {
-        try { this._mqttClient.end(true); } catch {}
-        this._mqttClient = null;
-      }
+      this._closeMqttClients();
       if (this._native) {
         try { this._native.close(); } catch {}
       }

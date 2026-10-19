@@ -25,7 +25,7 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js"></script>
+  <script src="/vercel-ws-shim.js?v=13"></script>
   <style>
     .console-wrap {
       max-width: 1180px;
@@ -440,7 +440,6 @@
     }
 
     let workletModuleLoaded = false;
-    let guideSpeechHangover = 0;
     let guideAudioSeq = 0;
 
     function handleGuideMicFloatChunk(input) {
@@ -451,8 +450,9 @@
       const downsampled = new Float32Array(outLen);
       for (let j = 0; j < outLen; j++) {
         const idx = j * step;
-        // Boxcar anti-aliasing filtre (3 örneğin ortalaması — metalik cızırtıyı önler, sesi berraklaştırır)
-        const v = (input[idx] + (input[idx + 1] || 0) + (input[idx + 2] || 0)) / 3;
+        // Boxcar anti-aliasing filtre + PC mikrofonları için 1.6x netlik kazancı (soft-clip korumalı)
+        const raw = (input[idx] + (input[idx + 1] || 0) + (input[idx + 2] || 0)) / 3;
+        const v = Math.max(-1, Math.min(1, raw * 1.6));
         sum += v * v;
         downsampled[j] = v;
       }
@@ -460,15 +460,8 @@
       const level = Math.min(1, rms * 7);
       animateGuideSpectrum(level);
 
-      // Hangover VAD: Konuşma esnasında kelimeler ve heceler arasındaki nefes boşluklarında
-      // akışı asla kesme (~850ms kesintisiz kuyruk koruma)
-      if (rms > 0.0007) {
-        guideSpeechHangover = 20;
-      } else if (guideSpeechHangover > 0) {
-        guideSpeechHangover--;
-      }
-
-      if (ws && ws.readyState === WebSocket.OPEN && guideSpeechHangover > 0) {
+      // Mikrofon yayını açık olduğu sürece HİÇBİR paketi düşürme (kesintisiz 7/24 radyo akışı)
+      if (ws && ws.readyState === WebSocket.OPEN) {
         const pcm16 = floatTo16BitBase64(downsampled);
         ws.send(JSON.stringify({
           type: 'audio-chunk',
@@ -516,7 +509,7 @@
 
         if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
           if (!workletModuleLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js');
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=13');
             workletModuleLoaded = true;
           }
           scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
@@ -527,7 +520,7 @@
           scriptProcessor.connect(zeroGainNode);
           zeroGainNode.connect(audioCtx.destination);
         } else {
-          scriptProcessor = audioCtx.createScriptProcessor(2048, 1, 1);
+          scriptProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
           source.connect(scriptProcessor);
           scriptProcessor.connect(zeroGainNode);
           zeroGainNode.connect(audioCtx.destination);
@@ -537,10 +530,9 @@
         }
 
         isMicBroadcasting = true;
-        guideSpeechHangover = 20;
         btn.textContent = '⏹️ Canlı Mikrofon Yayınını Durdur (YAYINDA)';
         btn.className = 'btn btn-danger';
-        document.getElementById('micSourceLabel').textContent = '🎙️ Yayın Kaynağı: Gerçek Mikrofon (Kesintisiz HD Ses Akışı)';
+        document.getElementById('micSourceLabel').textContent = '🎙️ Yayın Kaynağı: Gerçek Mikrofon (Çift Omurgalı Kesintisiz HD Akış)';
 
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({

@@ -11,8 +11,8 @@
   <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
   <link rel="apple-touch-icon" href="/icons/icon-512.svg" />
   <title>Hacı Canlı Dinleme Ekranı | Rıdvan Yılmaz Turizm — RıdvanSes</title>
-  <link rel="stylesheet" href="/css/style.css" />
-  <script src="/vercel-ws-shim.js"></script>
+  <link rel="stylesheet" href="/css/style.css?v=13" />
+  <script src="/vercel-ws-shim.js?v=13"></script>
   <style>
     .app-shell {
       max-width: 560px;
@@ -828,12 +828,11 @@
         source.buffer = buffer;
         source.connect(gainNode);
 
-        // 85ms Mobil Jitter Tamponu: Wi-Fi / 4G paket dalgalanmalarında sesin kesilmesini tamamen önler
+        // 120ms Mobil Jitter Tamponu (85ms'lik 4096 örnekli paketler için %0 kesinti garantisi)
         if (isUnderrun) {
-          nextAudioTime = now + 0.085;
-        } else if (nextAudioTime - now > 0.55) {
-          // Sadece 550ms üzeri aşırı birikmelerde senkronize et (120ms'de kesip üst üste bindirme!)
-          nextAudioTime = now + 0.095;
+          nextAudioTime = now + 0.12;
+        } else if (nextAudioTime - now > 0.85) {
+          nextAudioTime = now + 0.14;
         }
 
         source.start(nextAudioTime);
@@ -925,7 +924,8 @@
       const downsampled = new Float32Array(outLen);
       for (let j = 0; j < outLen; j++) {
         const idx = j * step;
-        downsampled[j] = (input[idx] + (input[idx + 1] || 0) + (input[idx + 2] || 0)) / 3;
+        const raw = (input[idx] + (input[idx + 1] || 0) + (input[idx + 2] || 0)) / 3;
+        downsampled[j] = Math.max(-1, Math.min(1, raw * 1.6));
       }
       const pcm16 = floatTo16BitBase64Pilgrim(downsampled);
       ws.send(JSON.stringify({
@@ -948,7 +948,7 @@
 
         if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
           if (!pilgrimWorkletLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js');
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=13');
             pilgrimWorkletLoaded = true;
           }
           pilgrimProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
@@ -959,7 +959,7 @@
           pilgrimProcessor.connect(pilgrimZeroGain);
           pilgrimZeroGain.connect(audioCtx.destination);
         } else {
-          pilgrimProcessor = audioCtx.createScriptProcessor(1024, 1, 1);
+          pilgrimProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
           source.connect(pilgrimProcessor);
           pilgrimProcessor.connect(pilgrimZeroGain);
           pilgrimZeroGain.connect(audioCtx.destination);
