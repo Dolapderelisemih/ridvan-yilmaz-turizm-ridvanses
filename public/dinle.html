@@ -1276,16 +1276,27 @@
     }
 
     // =========================================================================
-    // 1. PWA KURULUM (TELEFONA UYGULAMA OLARAK YÜKLE) & SERVICE WORKER
+    // 1. PWA KURULUM (TELEFONA UYGULAMA OLARAK YÜKLE) & SERVİS WORKER & BİLDİRİMLER
     // =========================================================================
     let deferredInstallPrompt = null;
 
-    // Eğer kullanıcı uygulamayı zaten ana ekrana eklemişse (Standalone PWA Modu), kurulum afişini gizle
-    (function hidePwaBannerIfStandalone() {
-      const isStandalone =
+    function isIosDevice() {
+      return (
+        /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+      );
+    }
+
+    function isStandaloneApp() {
+      return (
         (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
-        window.navigator.standalone === true;
-      if (isStandalone) {
+        window.navigator.standalone === true
+      );
+    }
+
+    // Kullanıcı uygulamayı zaten ana ekrandan açmışsa (PWA Standalone), yükleme butonlarını gizle
+    (function checkPwaStandalone() {
+      if (isStandaloneApp()) {
         const banner = document.getElementById('pwaInstallBanner');
         const navBtn = document.getElementById('navPwaInstallBtn');
         if (banner) banner.style.display = 'none';
@@ -1304,16 +1315,56 @@
       deferredInstallPrompt = e;
     });
 
+    function showAppToast(msg, duration = 4000) {
+      const t = document.getElementById('appToast');
+      if (!t) {
+        alert(msg);
+        return;
+      }
+      t.innerHTML = msg;
+      t.style.display = 'block';
+      t.style.opacity = '1';
+      if (window.__toastTimer) clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => {
+        t.style.opacity = '0';
+        setTimeout(() => { t.style.display = 'none'; }, 260);
+      }, duration);
+    }
+
     async function triggerPwaInstall() {
       if (deferredInstallPrompt) {
         deferredInstallPrompt.prompt();
         const choice = await deferredInstallPrompt.userChoice;
-        if (choice.outcome === 'accepted') {
-          document.getElementById('pwaInstallBanner').style.display = 'none';
+        if (choice && choice.outcome === 'accepted') {
+          const banner = document.getElementById('pwaInstallBanner');
+          if (banner) banner.style.display = 'none';
         }
         deferredInstallPrompt = null;
         return;
       }
+
+      // Cihaza göre modal içeriğini özelleştir
+      const isIos = isIosDevice();
+      const iosBlock = document.getElementById('iosInstallBlock');
+      const androidBlock = document.getElementById('androidInstallBlock');
+      const actionBtn = document.getElementById('pwaModalActionBtn');
+
+      if (isIos) {
+        if (iosBlock) iosBlock.style.display = 'block';
+        if (androidBlock) androidBlock.style.display = 'none';
+        if (actionBtn) {
+          actionBtn.innerHTML = '🍏 iPhone Bildirim Bilgisi';
+          actionBtn.className = 'btn btn-gold';
+        }
+      } else {
+        if (iosBlock) iosBlock.style.display = 'none';
+        if (androidBlock) androidBlock.style.display = 'block';
+        if (actionBtn) {
+          actionBtn.innerHTML = '🔔 Bildirim İzni Ver';
+          actionBtn.className = 'btn btn-gold';
+        }
+      }
+
       document.getElementById('pwaModal').style.display = 'flex';
     }
 
@@ -1321,14 +1372,63 @@
       document.getElementById('pwaModal').style.display = 'none';
     }
 
-    async function enableNotificationPermission() {
-      if (!('Notification' in window)) {
-        alert('Tarayıcınız bildirimleri desteklemiyor.');
+    async function handlePwaModalAction() {
+      const isIos = isIosDevice();
+      const isStandalone = isStandaloneApp();
+
+      // Apple iOS Safari sekmesindeyken (Ana ekrana henüz eklenmemişse)
+      if (isIos && !isStandalone) {
+        showAppToast(
+          '🍏 <strong>iPhone Bilgilendirmesi:</strong><br/>Apple kuralı gereği bildirimler Safari sekmesinde değil, uygulamayı <strong>Ana Ekrana Ekle ( ➕ )</strong> yaptıktan sonra aktifleşir. Lütfen yukarıdaki adımları uygulayınız.',
+          6000
+        );
         return;
       }
-      const perm = await Notification.requestPermission();
-      if (perm === 'granted') {
-        sendServiceWorkerNotification('RıdvanSes Bildirimleri Aktif', 'Kafile duyuruları ve toplanma saatleri telefonunuza anında düşecektir.');
+
+      // Android veya Ana Ekrana Eklenmiş iPhone (iOS 16.4+)
+      await enableNotificationPermission();
+    }
+
+    async function enableNotificationPermission() {
+      if (!('Notification' in window)) {
+        if (isIosDevice() && !isStandaloneApp()) {
+          showAppToast(
+            '🍏 <strong>iPhone Bilgilendirmesi:</strong><br/>Apple güvenlik politikası gereği bildirim alabilmek için lütfen önce alt menüdeki <strong>Paylaş (⬆️) > Ana Ekrana Ekle (➕)</strong> adımlarını tamamlayınız.',
+            6000
+          );
+        } else {
+          showAppToast('ℹ️ Cihazınız web anlık bildirimlerini desteklememektedir. Sesli canlı yayın ve konum takibiniz kesintisiz çalışmaktadır.', 5000);
+        }
+        return;
+      }
+
+      try {
+        let perm = Notification.permission;
+        if (perm === 'granted') {
+          showAppToast('✅ Bildirim izni zaten açık! Kafile duyuruları telefonunuza gelecektir.', 3500);
+          sendServiceWorkerNotification('RıdvanSes Bildirimleri Aktif', 'Kafile duyuruları ve toplanma saatleri telefonunuza anında düşecektir.');
+          closePwaModal();
+          return;
+        }
+
+        // Modern Promise & Eski Callback uyumluluğu
+        if (typeof Notification.requestPermission === 'function') {
+          try {
+            perm = await Notification.requestPermission();
+          } catch (e) {
+            perm = await new Promise((res) => Notification.requestPermission(res));
+          }
+        }
+
+        if (perm === 'granted') {
+          sendServiceWorkerNotification('RıdvanSes Bildirimleri Aktif', 'Kafile duyuruları ve toplanma saatleri telefonunuza anında düşecektir.');
+          showAppToast('🔔 Bildirim izni başarıyla verildi!', 4000);
+          closePwaModal();
+        } else if (perm === 'denied') {
+          showAppToast('⚠️ Bildirim izni engellenmiş. Telefon Ayarları > RıdvanSes > Bildirimler bölümünden izin verebilirsiniz.', 6000);
+        }
+      } catch (err) {
+        showAppToast('Bildirim izni alınırken bir sorun oluştu.', 3500);
       }
     }
 
@@ -1475,26 +1575,61 @@
     }
   </script>
 
+  <!-- IN-APP TOAST BILDIRIM KUTUSU -->
+  <div id="appToast" style="position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:10000; display:none; background:var(--color-emerald-night); color:#fff; border:1.5px solid var(--color-gold); border-radius:18px; padding:14px 22px; font-size:0.88rem; font-weight:600; line-height:1.5; box-shadow:0 12px 36px rgba(10,61,48,0.35); text-align:center; max-width:92%; width:auto; pointer-events:auto; transition:opacity 0.25s ease;"></div>
+
   <!-- PWA TELEFONA KURULUM REHBER MODALI -->
   <div class="modal-backdrop" id="pwaModal" onclick="if(event.target===this)closePwaModal()">
     <div class="card" style="max-width:440px; width:100%;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <h3 style="font-size:1.2rem; color:var(--color-emerald-night);">📲 RıdvanSes'i Telefonunuza Kurun</h3>
+        <h3 style="font-size:1.2rem; color:var(--color-emerald-night); margin:0;">📲 RıdvanSes'i Telefonunuza Kurun</h3>
         <button type="button" class="btn btn-outline btn-sm" onclick="closePwaModal()">✕</button>
       </div>
-      <p style="font-size:0.88rem; color:var(--color-muted); margin-bottom:14px;">
-        App Store veya Google Play şifresi gerekmeden uygulamayı telefonunuzun ana ekranına ekleyebilirsiniz:
+
+      <p style="font-size:0.86rem; color:var(--color-muted); margin-bottom:14px; line-height:1.4;">
+        App Store veya Google Play şifresi girmeden uygulamayı ana ekranınıza ekleyerek tek dokunuşla canlı yayına katılabilirsiniz:
       </p>
-      <div style="background:var(--color-ground); padding:12px; border-radius:12px; margin-bottom:10px; font-size:0.86rem;">
-        <strong>🤖 Android (Chrome / Samsung):</strong><br/>
-        Sağ üstteki <strong>⋮ (Üç Nokta)</strong> menüsüne dokunup <strong>"Uygulamayı Yükle"</strong> veya <strong>"Ana Ekrana Ekle"</strong> seçeneğine basın.
+
+      <!-- IPHONE ÖZEL BLOK -->
+      <div id="iosInstallBlock" style="background:#f0fdf4; border:1.5px solid #16a34a; padding:14px; border-radius:14px; margin-bottom:14px;">
+        <div style="display:flex; align-items:center; gap:8px; font-weight:800; font-size:0.96rem; color:#14532d; margin-bottom:10px;">
+          <span>🍏 iPhone (Safari) 4 Adımda Kurulum:</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:9px; font-size:0.86rem; color:#166534; line-height:1.45;">
+          <div style="display:flex; gap:9px; align-items:flex-start;">
+            <span style="background:#15803d; color:#fff; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800; flex-shrink:0; margin-top:1px;">1</span>
+            <span>Safari alt menüsündeki <strong>Paylaş ( <span style="font-size:1.15rem; vertical-align:middle;">⬆️</span> )</strong> simgesine dokunun.</span>
+          </div>
+          <div style="display:flex; gap:9px; align-items:flex-start;">
+            <span style="background:#15803d; color:#fff; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800; flex-shrink:0; margin-top:1px;">2</span>
+            <span>Açılan menüyü yukarı kaydırıp <strong>"Ana Ekrana Ekle ( ➕ )"</strong> seçeneğine basın.</span>
+          </div>
+          <div style="display:flex; gap:9px; align-items:flex-start;">
+            <span style="background:#15803d; color:#fff; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800; flex-shrink:0; margin-top:1px;">3</span>
+            <span>Sağ üst köşedeki <strong>"Ekle"</strong> butonuna dokunun.</span>
+          </div>
+          <div style="display:flex; gap:9px; align-items:flex-start;">
+            <span style="background:#15803d; color:#fff; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800; flex-shrink:0; margin-top:1px;">4</span>
+            <span>Ana ekranınıza gelen <strong>RıdvanSes</strong> logosundan giriş yaptığınızda bildirimler ve ses kesintisiz çalışacaktır.</span>
+          </div>
+        </div>
+        <div style="margin-top:10px; padding-top:8px; border-top:1px dashed rgba(22,163,74,0.35); font-size:0.78rem; color:#14532d; line-height:1.4;">
+          💡 <em>Apple güvenlik kuralı gereği, iPhone'da bildirimler Safari sekmesinde değil, uygulamayı ana ekrana ekledikten sonra aktif hale gelir.</em>
+        </div>
       </div>
-      <div style="background:var(--color-ground); padding:12px; border-radius:12px; margin-bottom:14px; font-size:0.86rem;">
-        <strong>🍏 iPhone (Safari):</strong><br/>
-        Alt menüdeki <strong>Paylaş (⬆️)</strong> butonuna dokunun ve <strong>"Ana Ekrana Ekle (➕)"</strong> seçeneğine basın.
+
+      <!-- ANDROID ÖZEL BLOK -->
+      <div id="androidInstallBlock" style="background:var(--color-ground); padding:14px; border-radius:14px; margin-bottom:14px; font-size:0.86rem; border:1px solid var(--color-hairline);">
+        <strong style="color:var(--color-emerald-night); font-size:0.92rem;">🤖 Android (Chrome / Samsung):</strong><br/>
+        <p style="margin:6px 0 0; color:var(--color-ink); line-height:1.45;">
+          Sağ üstteki <strong>⋮ (Üç Nokta)</strong> menüsüne dokunup <strong>"Uygulamayı Yükle"</strong> veya <strong>"Ana Ekrana Ekle"</strong> seçeneğine basınız.
+        </p>
       </div>
+
       <div style="display:flex; gap:8px;">
-        <button type="button" class="btn btn-gold" style="flex:1;" onclick="enableNotificationPermission()">🔔 Bildirim İzni Ver</button>
+        <button type="button" class="btn btn-gold" id="pwaModalActionBtn" style="flex:1;" onclick="handlePwaModalAction()">
+          🔔 Bildirim İzni Ver
+        </button>
         <button type="button" class="btn btn-primary" style="flex:1;" onclick="closePwaModal()">Tamam</button>
       </div>
     </div>
