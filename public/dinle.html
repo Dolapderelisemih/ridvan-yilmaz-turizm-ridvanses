@@ -593,9 +593,16 @@
             if (typeof r.guideLocation !== 'undefined') {
               renderGuideLiveLocation(r.guideLocation);
             }
+            if (typeof r.qnaEnabled !== 'undefined') {
+              updateQnaStateInPilgrimUi(r.qnaEnabled);
+            }
           }
           if (msg.announcements) renderAnnouncements(msg.announcements);
           if (msg.siyerPoints) renderPrayers(msg.siyerPoints);
+        }
+
+        if (msg.type === 'qna-state') {
+          updateQnaStateInPilgrimUi(msg.enabled);
         }
 
         if (msg.type === 'guide-location') {
@@ -604,7 +611,7 @@
 
         if (msg.type === 'audio-chunk') {
           animateSpectrumFromLevel(msg.level || 0.5);
-          if (isAudioListening) {
+          if (isAudioListening && !micGranted) {
             if (msg.pcm16) {
               playPcmSamples(msg.pcm16, msg.sampleRate || 16000, true);
             } else if (msg.samples && msg.samples.length) {
@@ -620,10 +627,16 @@
           const banner = document.getElementById('micGrantedBanner');
           if (micGranted) {
             banner.style.display = 'block';
+            // Telefon hoparlörünün mikrofona yankı yapıp sesi doğramasını önlemek için dinlemeyi sessize al
+            if (gainNode) gainNode.gain.value = 0;
             startPilgrimMicBroadcast();
+            showAppToast('🎙️ Rehber hocamız size söz verdi! Mikrofonunuz açık, sorunuzu sorabilirsiniz.', 5000);
           } else {
             banner.style.display = 'none';
             stopPilgrimMicBroadcast();
+            // Söz bitince dinleme sesini tekrar orijinal seviyesine geri aç
+            if (gainNode) gainNode.gain.value = volumeMultiplier;
+            showAppToast('🔇 Söz süreniz tamamlandı. Rehber yayınını dinlemeye devam ediyorsunuz.', 4000);
           }
         }
 
@@ -880,7 +893,39 @@
     }, 200);
 
     // El Kaldır / Söz İste
+    let isQnaActiveOnServer = true;
+
+    function updateQnaStateInPilgrimUi(enabled) {
+      isQnaActiveOnServer = typeof enabled === 'undefined' ? true : Boolean(enabled);
+      const btn = document.getElementById('raiseHandBtn');
+      const input = document.getElementById('handNoteInput');
+      if (btn) {
+        if (isQnaActiveOnServer) {
+          btn.disabled = false;
+          btn.style.opacity = '1';
+          btn.style.cursor = 'pointer';
+          if (!handRaised) {
+            btn.className = 'btn btn-primary';
+            btn.innerHTML = '✋ <span id="i18n_raiseHandBtn">El Kaldır / Hocadan Söz İste</span>';
+          }
+          if (input) input.placeholder = 'Hocamıza sorunuz varsa kısaca yazabilirsiniz (İsteğe bağlı)...';
+        } else {
+          handRaised = false;
+          btn.disabled = true;
+          btn.style.opacity = '0.65';
+          btn.style.cursor = 'not-allowed';
+          btn.className = 'btn btn-outline';
+          btn.innerHTML = '🔒 Söz İsteme Kapalı (Tavaf / Sohbet Esnası)';
+          if (input) input.placeholder = 'Rehber hocamız şu an söz istemeyi kilitledi.';
+        }
+      }
+    }
+
     function toggleRaiseHand() {
+      if (!isQnaActiveOnServer) {
+        showAppToast('🔒 Rehber hocamız şu an söz istemeyi kapattı.', 3500);
+        return;
+      }
       handRaised = !handRaised;
       const btn = document.getElementById('raiseHandBtn');
       const note = document.getElementById('handNoteInput').value.trim();
@@ -898,6 +943,8 @@
 
     // Pilgrim Two-Way Microphone when granted permission by Guide
     let pilgrimZeroGain = null;
+    let pilgrimAudioSeq = 0;
+
     function floatTo16BitBase64Pilgrim(floatSamples) {
       const len = floatSamples.length;
       const bytes = new Uint8Array(len * 2);
@@ -925,14 +972,18 @@
       for (let j = 0; j < outLen; j++) {
         const idx = j * step;
         const raw = (input[idx] + (input[idx + 1] || 0) + (input[idx + 2] || 0)) / 3;
-        downsampled[j] = Math.max(-1, Math.min(1, raw * 1.6));
+        // Telefon mikrofonları için 1.8x soft-clipping kazanç (net, pürüzsüz ve yüksek ses)
+        downsampled[j] = Math.max(-1, Math.min(1, raw * 1.8));
       }
       const pcm16 = floatTo16BitBase64Pilgrim(downsampled);
       ws.send(JSON.stringify({
         type: 'audio-chunk',
+        seq: ++pilgrimAudioSeq,
+        sentAt: Date.now(),
+        speakerRole: 'pilgrim',
         sampleRate: Math.round(audioCtx.sampleRate / step),
         pcm16,
-        level: 0.7
+        level: 0.8
       }));
     }
 

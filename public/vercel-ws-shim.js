@@ -340,7 +340,7 @@
           this._deliverIncomingMessage(msg);
           return;
         }
-        if (msg.type === 'room-state' || msg.type === 'new-announcement' || msg.type === 'guide-location') {
+        if (msg.type === 'room-state' || msg.type === 'new-announcement' || msg.type === 'guide-location' || msg.type === 'qna-state') {
           this._deliverIncomingMessage(msg);
           return;
         }
@@ -375,7 +375,8 @@
           connectedPilgrims: pilgrims,
           totalListeners: pilgrims.length + baseCount,
           realListenerCount: pilgrims.length,
-          raisedHandsCount: pilgrims.filter((x) => x.handRaised).length
+          raisedHandsCount: pilgrims.filter((x) => x.handRaised).length,
+          qnaEnabled: typeof this._qnaEnabled === 'undefined' ? true : this._qnaEnabled
         };
         const payload = {
           _msgId: 'rs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
@@ -489,6 +490,20 @@
             targetClientId: parsed.targetClientId,
             granted: Boolean(parsed.granted),
             guideName: this._joinContext.name || 'Rehber Hoca'
+          });
+          this._broadcastP2PRoomState();
+        } else if (parsed.type === 'set-qna-state') {
+          this._qnaEnabled = Boolean(parsed.enabled);
+          if (!this._qnaEnabled) {
+            for (const p of this._pilgrimMeta.values()) {
+              p.handRaised = false;
+              p.micGranted = false;
+            }
+          }
+          this._publishMqtt({
+            _msgId: parsed._msgId,
+            type: 'qna-state',
+            enabled: this._qnaEnabled
           });
           this._broadcastP2PRoomState();
         }

@@ -126,7 +126,8 @@ function serializeRoom(room) {
     connectedGuides: guides,
     totalListeners: pilgrims.length + baseCount,
     realListenerCount: pilgrims.length,
-    raisedHandsCount: pilgrims.filter((p) => p.handRaised).length
+    raisedHandsCount: pilgrims.filter((p) => p.handRaised).length,
+    qnaEnabled: typeof room.qnaEnabled === 'undefined' ? true : Boolean(room.qnaEnabled)
   };
 }
 
@@ -364,6 +365,32 @@ function processClientJsonMessage(ctx, msg) {
         }
         broadcastRoomState(currentRoom);
       }
+      break;
+    }
+
+    case 'set-qna-state': {
+      if (sender.role !== 'guide') break;
+      currentRoom.qnaEnabled = Boolean(msg.enabled);
+      if (!currentRoom.qnaEnabled) {
+        // Söz isteme kapatıldığında el kaldıranları temizle ve mikrofonu olanların sözünü bitir
+        for (const p of currentRoom.clients.values()) {
+          p.handRaised = false;
+          if (p.micGranted) {
+            p.micGranted = false;
+            if (p.ws.readyState === WebSocket.OPEN) {
+              p.ws.send(JSON.stringify({ type: 'mic-permission', granted: false, guideName: sender.name }));
+            }
+          }
+        }
+        currentRoom.activeSpeakerClientId = null;
+        currentRoom.activeSpeakerName = null;
+      }
+      const qnaPayload = {
+        type: 'qna-state',
+        enabled: currentRoom.qnaEnabled
+      };
+      broadcastToRoom(currentRoom, qnaPayload);
+      broadcastRoomState(currentRoom);
       break;
     }
 
