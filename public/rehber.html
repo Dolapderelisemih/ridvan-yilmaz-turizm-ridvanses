@@ -365,6 +365,17 @@
           playIncomingPilgrimAudio(msg.pcm16 || msg.samples, msg.sampleRate || 16000, Boolean(msg.pcm16));
         }
       };
+
+      ws.onclose = () => {
+        console.warn('Rehber bağlantısı kapandı, 2 sn içinde otomatik yeniden bağlanılacak...');
+        setTimeout(() => {
+          if (!isMicBroadcasting) connectGuideWs();
+        }, 2000);
+      };
+
+      ws.onerror = (e) => {
+        console.error('Rehber WebSocket hatası:', e);
+      };
     }
 
     connectGuideWs();
@@ -538,15 +549,18 @@
         if (!audioCtx) audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
         if (audioCtx.state === 'suspended') await audioCtx.resume();
 
-        micStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 1,
-            latency: 0
-          }
-        });
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            }
+          });
+        } catch (strictErr) {
+          console.warn('Gelişmiş mikrofon ayarı kabul edilmedi, temel ses kullanılıyor:', strictErr);
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
 
         // Doğrudan WebRTC P2P Ses Kanalını da başlat (PC <-> Telefon 30ms HD Ses)
         if (typeof window.ryBroadcastGuideStream === 'function') {
@@ -557,19 +571,26 @@
         zeroGainNode = audioCtx.createGain();
         zeroGainNode.gain.value = 0; // Rehberin kendi bilgisayarında yankı (eko) yapmasını önler
 
+        let workletSuccess = false;
         if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
-          if (!workletModuleLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=13');
-            workletModuleLoaded = true;
+          try {
+            if (!workletModuleLoaded) {
+              await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=14');
+              workletModuleLoaded = true;
+            }
+            scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
+            scriptProcessor.port.onmessage = (ev) => {
+              if (ev && ev.data) handleGuideMicFloatChunk(ev.data);
+            };
+            source.connect(scriptProcessor);
+            scriptProcessor.connect(zeroGainNode);
+            zeroGainNode.connect(audioCtx.destination);
+            workletSuccess = true;
+          } catch (workletErr) {
+            console.warn('AudioWorklet yüklenemedi, ScriptProcessor fallback devrede:', workletErr);
           }
-          scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
-          scriptProcessor.port.onmessage = (ev) => {
-            if (ev && ev.data) handleGuideMicFloatChunk(ev.data);
-          };
-          source.connect(scriptProcessor);
-          scriptProcessor.connect(zeroGainNode);
-          zeroGainNode.connect(audioCtx.destination);
-        } else {
+        }
+        if (!workletSuccess) {
           scriptProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
           source.connect(scriptProcessor);
           scriptProcessor.connect(zeroGainNode);
@@ -584,16 +605,30 @@
         btn.className = 'btn btn-danger';
         document.getElementById('micSourceLabel').textContent = '🎙️ Yayın Kaynağı: Gerçek Mikrofon (Çift Omurgalı Kesintisiz HD Akış)';
 
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'guide-stream-state',
-            isLive: true,
-            broadcastMode: 'mic',
-            topic: document.getElementById('topicInput').value
-          }));
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          connectGuideWs();
         }
+        setTimeout(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'guide-stream-state',
+              isLive: true,
+              broadcastMode: 'mic',
+              topic: document.getElementById('topicInput').value
+            }));
+          }
+        }, 150);
       } catch (err) {
-        alert('Mikrofon erişimi sağlanamadı. Lütfen tarayıcı mikrofon iznini kontrol ediniz.');
+        console.error('Mikrofon başlatma hatası:', err);
+        let errorMsg = 'Mikrofon başlatılamadı: ' + (err.message || err.name);
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          errorMsg = 'Tarayıcı mikrofon iznini engelledi. Lütfen adres çubuğundaki kilit simgesine tıklayıp mikrofona izin veriniz.';
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          errorMsg = 'Bilgisayarınızda bağlı bir mikrofon bulunamadı! Lütfen bir kulaklık/mikrofon takınız veya telefonunuzdan deneyiniz.';
+        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+          errorMsg = 'Mikrofon şu anda başka bir program (Zoom, Discord vb.) tarafından kullanılıyor.';
+        }
+        alert(errorMsg);
       }
     }
 
