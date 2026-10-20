@@ -724,36 +724,43 @@
     loadReaReport();
 
     // Real-time Admin WebSocket
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsHost = window.location.host.includes('vercel.app')
-      ? 'ses.ridvanyilmazturizm.com'
-      : window.location.host;
-    const adminWs = new WebSocket(`${proto}//${wsHost}/ws`);
-    adminWs.onopen = () => {
-      adminWs.send(JSON.stringify({ type: 'admin-subscribe' }));
-    };
-    adminWs.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data);
-        if (msg.type === 'admin-rooms-update' && appState) {
-          appState.liveRooms = msg.rooms;
-          renderAll();
-        }
-        if ((msg.type === 'sos-alert' || msg.type === 'sos-resolved') && appState) {
-          if (msg.sosAlerts) {
-            appState.sosAlerts = msg.sosAlerts;
-          } else if (msg.alert) {
-            appState.sosAlerts = (appState.sosAlerts || []).filter((s) => s.id !== msg.alert.id);
-            appState.sosAlerts.unshift(msg.alert);
+    function connectAdminWs() {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsHost = window.location.host.includes('vercel.app')
+        ? 'ses.ridvanyilmazturizm.com'
+        : window.location.host;
+      const adminWs = new WebSocket(`${proto}//${wsHost}/ws`);
+      adminWs.onopen = () => {
+        adminWs.send(JSON.stringify({ type: 'admin-subscribe' }));
+      };
+      adminWs.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === 'admin-rooms-update' && appState) {
+            appState.liveRooms = msg.rooms;
+            renderAll();
           }
-          renderAll();
-        }
-        if (msg.type === 'new-announcement' && msg.announcement && appState) {
-          appState.announcements.unshift(msg.announcement);
-          renderAll();
-        }
-      } catch (e) {}
-    };
+          if ((msg.type === 'sos-alert' || msg.type === 'sos-resolved') && appState) {
+            if (msg.sosAlerts) {
+              appState.sosAlerts = msg.sosAlerts;
+            } else if (msg.alert) {
+              appState.sosAlerts = (appState.sosAlerts || []).filter((s) => s.id !== msg.alert.id);
+              appState.sosAlerts.unshift(msg.alert);
+            }
+            renderAll();
+          }
+          if (msg.type === 'new-announcement' && msg.announcement && appState) {
+            appState.announcements.unshift(msg.announcement);
+            renderAll();
+          }
+        } catch (e) {}
+      };
+      adminWs.onclose = () => {
+        setTimeout(connectAdminWs, 2500);
+      };
+      adminWs.onerror = () => {};
+    }
+    connectAdminWs();
 
     // Forms
     document.getElementById('createTourForm').addEventListener('submit', async (e) => {

@@ -650,6 +650,18 @@
           sendServiceWorkerNotification(msg.announcement.title, msg.announcement.message);
         }
       };
+
+      ws.onclose = () => {
+        console.warn('Hacı WebSocket bağlantısı kapandı, 2 sn içinde otomatik yeniden bağlanılacak...');
+        if (window._ryWsReconnectTimeout) clearTimeout(window._ryWsReconnectTimeout);
+        window._ryWsReconnectTimeout = setTimeout(() => {
+          connectWebSocket(tourCode, roomId, name, phone);
+        }, 2000);
+      };
+
+      ws.onerror = (err) => {
+        console.error('Hacı WebSocket hatası:', err);
+      };
     }
 
     let wasGuideLocationActive = false;

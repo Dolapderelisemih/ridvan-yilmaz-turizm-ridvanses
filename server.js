@@ -6,6 +6,14 @@ const os = require('os');
 const { WebSocketServer, WebSocket } = require('ws');
 const QRCode = require('qrcode');
 
+process.on('uncaughtException', (err) => {
+  console.error('[CRITICAL] Uncaught Exception:', err.message, err.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[CRITICAL] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
@@ -436,6 +444,11 @@ function processClientJsonMessage(ctx, msg) {
 
 // WebSocket Connection Handler
 wss.on('connection', (ws) => {
+  ws.isAlive = true;
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
+
   const ctx = {
     clientId: `client-${Date.now()}-${clientSeq++}`,
     ws,
@@ -477,6 +490,23 @@ wss.on('connection', (ws) => {
       broadcastRoomState(ctx.currentRoom);
     }
   });
+});
+
+// 30-Second Ping/Pong Heartbeat to prune zombie/dropped connections from mobile networks
+const heartbeatTimer = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    try {
+      ws.ping();
+    } catch {}
+  });
+}, 30000);
+
+wss.on('close', () => {
+  clearInterval(heartbeatTimer);
 });
 
 // Serverless HTTP Realtime Relay Endpoint (Vercel Fallback)
