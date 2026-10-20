@@ -726,7 +726,7 @@
     // Real-time Admin WebSocket
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsHost = window.location.host.includes('vercel.app')
-      ? '130.110.100.41.sslip.io'
+      ? 'ses.ridvanyilmazturizm.com'
       : window.location.host;
     const adminWs = new WebSocket(`${proto}//${wsHost}/ws`);
     adminWs.onopen = () => {
