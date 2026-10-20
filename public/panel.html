@@ -725,7 +725,10 @@
 
     // Real-time Admin WebSocket
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const adminWs = new WebSocket(`${proto}//${window.location.host}/ws`);
+    const wsHost = window.location.host.includes('vercel.app')
+      ? '130.110.100.41.sslip.io'
+      : window.location.host;
+    const adminWs = new WebSocket(`${proto}//${wsHost}/ws`);
     adminWs.onopen = () => {
       adminWs.send(JSON.stringify({ type: 'admin-subscribe' }));
     };

@@ -561,7 +561,10 @@
     function connectWebSocket(tourCode, roomId, name, phone) {
       if (ws) ws.close();
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      ws = new WebSocket(`${proto}//${window.location.host}/ws`);
+      const wsHost = window.location.host.includes('vercel.app')
+        ? '130.110.100.41.sslip.io'
+        : window.location.host;
+      ws = new WebSocket(`${proto}//${wsHost}/ws`);
 
       ws.onopen = () => {
         ws.send(JSON.stringify({
