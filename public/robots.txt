@@ -1,0 +1,20 @@
+User-agent: *
+Allow: /$
+Allow: /css/
+Allow: /icons/
+Allow: /manifest.json
+Allow: /sw.js
+Allow: /Ridvan_Yilmaz_Turizm_RidvanSes_Kullanim_Rehberi.pdf
+Disallow: /dinle
+Disallow: /dinle?*
+Disallow: /haci
+Disallow: /rehber
+Disallow: /hoca
+Disallow: /panel
+Disallow: /acente-kafile-yonetim-sistemi
+Disallow: /login
+Disallow: /yaka-karti
+Disallow: /api/
+Disallow: /ws
+
+Sitemap: https://ses.ridvanyilmazturizm.com/sitemap.xml

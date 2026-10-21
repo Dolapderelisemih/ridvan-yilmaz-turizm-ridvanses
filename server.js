@@ -22,6 +22,18 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Güvenlik Başlıkları (Security Headers)
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
 const DATA_FILE = path.join(__dirname, 'data', 'seed.json');
 const RUNTIME_FILE = process.env.VERCEL
   ? path.join(os.tmpdir(), 'ridvanses-runtime.json')
@@ -945,6 +957,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/favicon.ico', (req, res) => {
   res.type('image/svg+xml');
   res.sendFile(path.join(__dirname, 'public', 'icons', 'icon-512.svg'));
+});
+
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain');
+  res.sendFile(path.join(__dirname, 'public', 'robots.txt'));
+});
+
+app.get('/sitemap.xml', (req, res) => {
+  res.type('application/xml');
+  res.sendFile(path.join(__dirname, 'public', 'sitemap.xml'));
 });
 
 const routeMap = {
