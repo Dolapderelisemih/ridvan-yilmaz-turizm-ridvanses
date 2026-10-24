@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>Selamet Turizm — Özel Sistem ve Teknik Tanıtım Dosyası</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Cinzel:wght@600;700;800&display=swap');
+
+    @page {
+      size: A4 portrait;
+      margin: 0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #1e293b;
+      background: #ffffff;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      height: 297mm;
+      padding: 18mm 20mm 16mm 20mm;
+      position: relative;
+      page-break-after: always;
+      display: flex;
+      flex-direction: column;
+      background: #ffffff;
+      overflow: hidden;
+    }
+
+    /* Page Header & Footer */
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 10px;
+      border-bottom: 1.5px solid #e2e8f0;
+      margin-bottom: 16px;
+    }
+    .header-logo {
+      font-size: 14px;
+      font-weight: 800;
+      color: #0b3d2c;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .header-tag {
+      font-size: 10px;
+      font-weight: 700;
+      color: #c59b27;
+      background: #fef9ed;
+      padding: 3px 9px;
+      border-radius: 99px;
+      border: 1px solid #f9e2ab;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .page-footer {
+      margin-top: auto;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 9.5px;
+      color: #64748b;
+    }
+
+    /* Typography Utilities */
+    h1, h2, h3, h4 {
+      color: #0c2b20;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .text-gold { color: #b3891d; }
+    .text-emerald { color: #0b3d2c; }
+    .text-muted { color: #64748b; }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-gold {
+      background: #fdf3d8;
+      color: #92400e;
+      border: 1px solid #f6d28b;
+    }
+    .badge-emerald {
+      background: #ecfdf5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+    }
+    .badge-dark {
+      background: #0c2b20;
+      color: #f8fafc;
+    }
+
+    /* Card Containers */
+    .card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .card-emerald {
+      background: linear-gradient(135deg, #09261c 0%, #0c3829 100%);
+      color: #ffffff;
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 8px 20px rgba(9, 38, 28, 0.15);
+    }
+    .card-gold-glow {
+      background: #ffffff;
+      border: 1.5px solid #f3d489;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 4px 15px rgba(197, 155, 39, 0.08);
+      margin-bottom: 14px;
+    }
+
+    /* Grid Layouts */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+    }
+
+    /* Table */
+    table.compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      margin: 10px 0 16px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+    }
+    table.compare-table th {
+      padding: 10px 12px;
+      background: #0c2b20;
+      color: #ffffff;
+      font-weight: 700;
+      text-align: left;
+    }
+    table.compare-table th:last-child {
+      background: #b3891d;
+    }
+    table.compare-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      vertical-align: middle;
+    }
+    table.compare-table tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+    table.compare-table td.col-new {
+      background: #f0fdf4 !important;
+      font-weight: 700;
+      color: #065f46;
+    }
+
+    /* Cover Page Specific Styles */
+    .cover-page {
+      background: linear-gradient(150deg, #061a13 0%, #0c2b20 40%, #082219 100%);
+      color: #ffffff;
+      padding: 24mm 22mm 20mm 22mm;
+      justify-content: space-between;
+    }
+    .cover-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(197, 155, 39, 0.2);
+      border: 1px solid #c59b27;
+      color: #facc15;
+      padding: 6px 14px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .cover-title {
+      font-family: 'Cinzel', serif;
+      font-size: 30px;
+      font-weight: 800;
+      line-height: 1.25;
+      color: #ffffff;
+      margin-top: 18px;
+      letter-spacing: 0.01em;
+    }
+    .cover-title span {
+      color: #facc15;
+      background: linear-gradient(90deg, #facc15, #f59e0b);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .cover-subtitle {
+      font-size: 14.5px;
+      color: #cbd5e1;
+      line-height: 1.6;
+      margin-top: 14px;
+      max-width: 540px;
+      font-weight: 500;
+    }
+    .cover-box {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 14px;
+      padding: 18px 20px;
+      backdrop-filter: blur(10px);
+    }
+    .cover-meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .cover-meta-item label {
+      font-size: 10px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      display: block;
+      margin-bottom: 3px;
+    }
+    .cover-meta-item p {
+      font-size: 13.5px;
+      color: #ffffff;
+      font-weight: 700;
+    }
+
+    /* List items */
+    .feature-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+    .feature-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      font-size: 12px;
+    }
+    .feature-list li .f-icon {
+      font-size: 14px;
+      line-height: 1;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    /* Stat Box */
+    .stat-pill {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      padding: 12px 14px;
+      text-align: center;
+    }
+    .stat-pill .num {
+      font-size: 22px;
+      font-weight: 800;
+      color: #0c2b20;
+      line-height: 1.1;
+    }
+    .stat-pill .lbl {
+      font-size: 10px;
+      color: #64748b;
+      font-weight: 700;
+      margin-top: 4px;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================= PAGE 1: GÖRKEMLİ KAPAK ================= -->
+  <div class="page cover-page">
+    <div>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span class="cover-badge">🕋 ÖZEL TEKNİK & KURUMSAL DOSYA</span>
+        <span style="font-size:11px; color:#94a3b8; font-weight:600;">Ekim 2026 • Versiyon 2.4</span>
+      </div>
+
+      <div style="margin-top:35px;">
+        <p style="color:#facc15; font-size:13px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase;">
+          SELAMET TURİZM YÖNETİMİNE ÖZEL
+        </p>
+        <h1 class="cover-title">
+          Yeni Nesil <span>Dijital Sesli Rehberlik</span> & Akıllı Kafile Yönetim Altyapısı
+        </h1>
+        <p class="cover-subtitle">
+          Hac ve Umre organizasyonlarında klasik telsiz kulaklık cihazı kiralama, taşıma, kayıp ve şarj yükünü tamamen ortadan kaldıran; Suudi Arabistan (Cidde) yerel bulut sunucu omurgasıyla çalışan sıfır gecikmeli dijital ekosistem.
+        </p>
+      </div>
+
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:24px;">
+        <div style="background:rgba(250,204,21,0.12); border:1px solid rgba(250,204,21,0.4); padding:6px 12px; border-radius:8px; font-size:11px; color:#fde047; font-weight:700;">
+          ⚡ Suudi Arabistan (Cidde) Özel Dedicated Sunucu
+        </div>
+        <div style="background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.4); padding:6px 12px; border-radius:8px; font-size:11px; color:#86efac; font-weight:700;">
+          ✔️ 0 TL Donanım Yatırımı / Kişisel Telefonla Dinleme
+        </div>
+        <div style="background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.4); padding:6px 12px; border-radius:8px; font-size:11px; color:#7dd3fc; font-weight:700;">
+          🚨 Canlı GPS Kayıp Hacı SOS Takibi
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="cover-box">
+        <div class="cover-meta-grid">
+          <div class="cover-meta-item">
+            <label>Hazırlanan Kurum</label>
+            <p>Selamet Turizm Hac ve Umre Operasyon Koordinatörlüğü</p>
+          </div>
+          <div class="cover-meta-item">
+            <label>Teknoloji Sağlayıcı</label>
+            <p>RıdvanSes — Umre Ses Teknolojileri Grubu</p>
+          </div>
+          <div class="cover-meta-item">
+            <label>Özel Tanımlı Kafile Kodu</label>
+            <p style="color:#facc15; font-family:monospace; font-size:15px;">SELAMET-2026</p>
+          </div>
+          <div class="cover-meta-item">
+            <label>Teknik Koordinatör / Doğrudan Hat</label>
+            <p>Semih Bey • 0545 787 03 48</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:center; font-size:10px; color:#94a3b8;">
+        <span>🔒 BU DOSYA SELAMET TURİZM İLE TİCARİ VE TEKNİK PAYLAŞIM AMACIYLA HAZIRLANMIŞTIR.</span>
+        <span>Sayfa 1 / 4</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= PAGE 2: PROBLEM, ÇÖZÜM & KARŞILAŞTIRMA ================= -->
+  <div class="page">
+    <div class="page-header">
+      <div class="header-logo">🕋 SELAMET TURİZM <span>• TEKNİK TANITIM</span></div>
+      <div class="header-tag">BÖLÜM 1: OPERASYONEL DÖNÜŞÜM</div>
+    </div>
+
+    <div>
+      <h2 style="font-size:18px; margin-bottom:6px;">Neden Geleneksel Kulaklık & Telsiz Cihazları Tarih Oldu?</h2>
+      <p style="color:#475569; font-size:12px; margin-bottom:14px;">
+        Yıllardır hac ve umre turlarında kullanılan fiziksel telsiz rehber cihazları hem acentelere astronomik kiralama ve kayıp maliyetleri yüklemekte, hem de Suudi Arabistan havalimanı gümrüklerinde ciddi operasyonel krizlere yol açmaktadır.
+      </p>
+
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th style="width:25%;">Özellik / Kriter</th>
+            <th style="width:37%;">Eski Telsiz & Donanım Cihazları</th>
+            <th style="width:38%;">Selamet Turizm Akıllı Ses Sistemi</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Donanım / Cihaz Maliyeti</strong></td>
+            <td>Her tur için yüzbinlerce lira kiralama veya satın alma bedeli.</td>
+            <td class="col-new">0 TL Donanım Maliyeti. Hacıların kendi akıllı telefonu kullanılır.</td>
+          </tr>
+          <tr>
+            <td><strong>Taşıma & Suudi Gümrüğü</strong></td>
+            <td>Valizlerce ağır şarj çantası, Cidde/Medine gümrüğünde el koyma riski.</td>
+            <td class="col-new">Sıfır donanım. Gümrük kontrolü yok, bavul taşıma derdi yok.</td>
+          </tr>
+          <tr>
+            <td><strong>Çekim Mesafesi</strong></td>
+            <td>50-80 metre sonra cızırtı, kopma ve frekans karışması.</td>
+            <td class="col-new">Sınırsız Kapsama. Hacı 2 km geride veya otelde olsa dahi net duyar.</td>
+          </tr>
+          <tr>
+            <td><strong>Şarj & Hijyen Zahmeti</strong></td>
+            <td>Her gece otelde 100 cihazı tek tek şarja takma; kirli kulaklık şikayeti.</td>
+            <td class="col-new">Her hacı kendi kişisel kulaklığını kullanır; sıfır şarj operasyonu.</td>
+          </tr>
+          <tr>
+            <td><strong>Kaybolma & Kırılma Riski</strong></td>
+            <td>Kayıp başına 1.500 - 2.000 TL ceza veya acente zararı.</td>
+            <td class="col-new">%0 Kayıp Riski. Ortada kaybolacak fiziksel cihaz yoktur.</td>
+          </tr>
+          <tr>
+            <td><strong>İletişim Yönü</strong></td>
+            <td>Yalnızca tek yönlü (Hoca anlatır, hacı dinler, soru soramaz).</td>
+            <td class="col-new">Çift Yönlü. Hacı tek tıkla el kaldırıp soru sorabilir, mikrofonu açılır.</td>
+          </tr>
+          <tr>
+            <td><strong>Kayıp Hacı Güvenliği</strong></td>
+            <td>Hiçbir GPS veya konum özelliği yoktur. Hacı kalabalıkta kaybolur.</td>
+            <td class="col-new">Acil SOS Butonu: Hacı bastığı anda haritada canlı noktasal konumu görünür.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="grid-3" style="margin-top:14px;">
+        <div class="stat-pill">
+          <div class="num" style="color:#059669;">%100</div>
+          <div class="lbl">Sıfır Donanım Yükü</div>
+        </div>
+        <div class="stat-pill">
+          <div class="num" style="color:#d97706;">&lt; 25 ms</div>
+          <div class="lbl">Yerel Ses Gecikmesi</div>
+        </div>
+        <div class="stat-pill">
+          <div class="num" style="color:#2563eb;">500+</div>
+          <div class="lbl">Stres Testi Kapasitesi</div>
+        </div>
+      </div>
+
+      <div class="card-gold-glow" style="margin-top:16px;">
+        <h4 style="font-size:12.5px; color:#92400e; margin-bottom:4px;">💡 Hacılar İçin Sıfır Zorluk: Uygulama İndirmek Yok!</h4>
+        <p style="font-size:11.5px; color:#475569; line-height:1.5;">
+          Yaşlı veya teknolojiyle arası zayıf hacılarımız için App Store / Google Play'e girip uygulama indirme, şifre oluşturma veya kayıt olma zorunluluğu <strong>tamamen kaldırılmıştır</strong>. Hacı yalnızca Selamet Turizm yaka kartındaki QR kodu telefon kamerasıyla okutur; 2 saniye içinde ses doğrudan kulaklığına akar.
+        </p>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Selamet Turizm Özel Teknik Çözüm Dosyası</span>
+      <span>Sayfa 2 / 4</span>
+    </div>
+  </div>
+
+  <!-- ================= PAGE 3: CİDDE BULUT SUNUCUSU & TEKNİK ALTYAPI ================= -->
+  <div class="page">
+    <div class="page-header">
+      <div class="header-logo">🕋 SELAMET TURİZM <span>• TEKNİK TANITIM</span></div>
+      <div class="header-tag">BÖLÜM 2: CİDDE DEDICATED BULUT ALTYAPISI</div>
+    </div>
+
+    <div>
+      <h2 style="font-size:18px; margin-bottom:6px;">Selamet Turizm'e Özel Cidde Dedicated Bulut Mimarisi</h2>
+      <p style="color:#475569; font-size:12px; margin-bottom:14px;">
+        Sistemimizin piyasadaki amatör video konferans veya radyo yayınlarından en büyük farkı; <strong>Suudi Arabistan sınırları içerisinde konuşlandırılmış kurumsal sunucu altyapımızdır.</strong>
+      </p>
+
+      <div class="card-emerald">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <span class="badge badge-gold">🇸🇦 SUUDİ ARABİSTAN MERKEZLİ ÖZEL SUNUCU</span>
+          <span style="font-size:11px; color:#a7f3d0; font-family:monospace;">ORACLE CLOUD JEDDAH DC</span>
+        </div>
+        <h3 style="color:#ffffff; font-size:15px; margin-bottom:8px;">Selamet Turizm İçin Özel Tahsis Edilen Cidde Sunucu Örneği</h3>
+        <p style="font-size:11.5px; color:#e2e8f0; line-height:1.55;">
+          Selamet Turizm kafileleri başladığında sistemimiz Türkiye veya Avrupa üzerinden dolaşmaz. Suudi Arabistan (Cidde) Veri Merkezi'nde doğrudan acentenize özel izole bir sanal sunucu örneği (Dedicated Instance) devreye alınır. 
+          Kâbe-i Muazzama ve Medine-i Münevvere'deki Suudi mobil operatörleri (STC, Mobily, Zain) ile doğrudan yerel peering omurgasında haberleşilir.
+        </p>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h4 style="font-size:13px; margin-bottom:8px; color:#0c2b20;">⚡ 15–25 ms Ultra Düşük Gecikme</h4>
+          <p style="font-size:11.5px; color:#64748b; line-height:1.5;">
+            Ses akışı Mekke'den çıkıp Türkiye'ye gitmeden, doğrudan Cidde sunucumuz üzerinden yerel baz istasyonuyla hacının kulağına ulaşır. İnsan beyninin algılayamayacağı 25 milisaniyelik bu hız sayesinde rehber hoca ile hacı arasında <strong>tamamen senkron canlı bir ses köprüsü</strong> kurulur.
+          </p>
+        </div>
+
+        <div class="card">
+          <h4 style="font-size:13px; margin-bottom:8px; color:#0c2b20;">🏆 500+ Kişilik Canlı Stres Testi Onayı</h4>
+          <p style="font-size:11.5px; color:#64748b; line-height:1.5;">
+            Sistemimiz 500 eşzamanlı aktif hacı dinleyicisi ile 1 saatlik kesintisiz tavaf ses simülasyonundan geçirilmiştir. <strong>175.500 ses paketi %100 teslimat başarısıyla</strong>, sıfır paket kaybı ve sıfır takılma ile tescillenmiştir. En kalabalık tavaflarda bile donma yaşanmaz.
+          </p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <h4 style="font-size:13px; margin-bottom:10px; color:#0c2b20;">🛡️ Selamet Turizm'e Özel Güvenlik ve Kafile Özellikleri</h4>
+        <div class="grid-2" style="gap:10px;">
+          <div>
+            <ul class="feature-list">
+              <li>
+                <span class="f-icon">🚨</span>
+                <div>
+                  <strong>Noktasal Canlı GPS & SOS Butonu:</strong><br/>
+                  <span class="text-muted">Kaybolan hacı 3 saniye basılı tuttuğunda rehberin haritasına Kâbe avlusundaki noktasal konumu düşer.</span>
+                </div>
+              </li>
+              <li>
+                <span class="f-icon">📢</span>
+                <div>
+                  <strong>Toplu Push Duyuru & Lobi Çağrısı:</strong><br/>
+                  <span class="text-muted">"Saat 16:30'da otel lobisinde toplanıyoruz" anonsu tüm bağlı telefonların ekranına sesli ve yazılı anında iletilir.</span>
+                </div>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <ul class="feature-list">
+              <li>
+                <span class="f-icon">✋</span>
+                <div>
+                  <strong>El Kaldırma & Canlı Soru-Cevap:</strong><br/>
+                  <span class="text-muted">Rehber dilerse soru-cevap seansı açabilir. Hacı el kaldırır, rehber hoca tek tıkla söz vererek tüm kafileye dinletir.</span>
+                </div>
+              </li>
+              <li>
+                <span class="f-icon">📖</span>
+                <div>
+                  <strong>Tavaf Duaları & Siyer Kütüphanesi:</strong><br/>
+                  <span class="text-muted">Hacerü'l-Esved, Rükn-ü Yemânî, Makam-ı İbrahim duaları Arapça, Türkçe okunuş ve manasıyla ekranda hazırdır.</span>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div style="background:#f1f5f9; border-radius:10px; padding:10px 14px; font-size:11px; color:#475569; display:flex; justify-content:space-between; align-items:center;">
+        <span><strong>Altyapı SLA Güvencesi:</strong> %99.9 Kesintisiz Yayın</span>
+        <span><strong>Veri Güvenliği:</strong> 256-bit SSL / TLS Kriptolama</span>
+        <span><strong>Ses Kodeği:</strong> 16 kHz HD Kristal Netlik</span>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Selamet Turizm Özel Teknik Çözüm Dosyası</span>
+      <span>Sayfa 3 / 4</span>
+    </div>
+  </div>
+
+  <!-- ================= PAGE 4: SELAMET TURİZM TEST ALANI & TEKLİF ================= -->
+  <div class="page">
+    <div class="page-header">
+      <div class="header-logo">🕋 SELAMET TURİZM <span>• TEKNİK TANITIM</span></div>
+      <div class="header-tag">BÖLÜM 3: SİZE ÖZEL DEMO & TEKLİF</div>
+    </div>
+
+    <div>
+      <h2 style="font-size:18px; margin-bottom:6px;">Selamet Turizm İçin Hazırlanan Canlı Test Ortamı</h2>
+      <p style="color:#475569; font-size:12px; margin-bottom:14px;">
+        Sistemi hemen şimdi kendi telefonunuzdan veya bilgisayarınızdan canlı olarak deneyebilmeniz için Selamet Turizm adına özel bir test kafilesi ve rehber yayın odası aktif edilmiştir.
+      </p>
+
+      <div class="card-gold-glow">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <span class="badge badge-gold">🌟 CANLI TEST KAFİLE BİLGİLERİ</span>
+          <span style="font-size:11px; font-weight:800; color:#0c2b20;">KAFİLE KODU: SELAMET-2026</span>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:9px; font-size:11.5px;">
+          <div style="display:flex; justify-content:space-between; padding-bottom:6px; border-bottom:1px solid #f1f5f9;">
+            <span style="color:#64748b;">🎧 Hacı Olarak Dinleme Ekranı:</span>
+            <strong style="color:#0b3d2c;">https://ses.ridvanyilmazturizm.com/dinle?code=SELAMET-2026</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding-bottom:6px; border-bottom:1px solid #f1f5f9;">
+            <span style="color:#64748b;">🎙️ Rehber (Hoca) Yayın Konsolu:</span>
+            <strong style="color:#0b3d2c;">https://ses.ridvanyilmazturizm.com/rehber?code=SELAMET-2026</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding-bottom:6px; border-bottom:1px solid #f1f5f9;">
+            <span style="color:#64748b;">🛡️ Selamet Turizm Yönetim Paneli:</span>
+            <strong style="color:#0b3d2c;">https://ses.ridvanyilmazturizm.com/panel</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span style="color:#64748b;">🔑 Yönetici Yetkili Giriş:</span>
+            <span style="font-family:monospace; font-weight:700; color:#b45309;">info@selametturizm.com &nbsp;|&nbsp; Şifre: selamet2026</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SIFIR RİSKLİ TEKLİF -->
+      <div class="card" style="border:2px solid #059669; background:#f0fdf4; margin-top:14px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+          <span style="font-size:20px;">🤝</span>
+          <h3 style="font-size:15px; color:#065f46;">Selamet Turizm'e Özel Teklif: İlk Umrenizde Sıfır Risk!</h3>
+        </div>
+        <p style="font-size:12px; color:#166534; line-height:1.6; margin-bottom:12px;">
+          Selamet Turizm olarak yeni sezonda ilk umre kafilenizde sistemimizi <strong>tamamen ÜCRETSİZ</strong> olarak sahada test edebilirsiniz. 
+          Suudi Arabistan Cidde sunucu kurulumu, acentenize özel logo ve kafile tanımlamaları, yaka kartı QR kodları tarafımızdan eksiksiz teslim edilecektir.
+        </p>
+        <div style="background:#ffffff; border:1px solid #bbf7d0; border-radius:8px; padding:10px 14px; font-size:11.5px; color:#14532d; font-weight:600;">
+          ✨ Hacılarınızın memnuniyetini, rehber hocalarınızın rahatlığını ve sıfır donanım konforunu sahada bizzat yaşayın; memnun kaldığınız takdirde iş birliğimizi sezonluk anlaşmaya dönüştürelim.
+        </div>
+      </div>
+
+      <!-- İLETİŞİM KUTUSU -->
+      <div class="card-emerald" style="margin-top:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h4 style="color:#facc15; font-size:14px; margin-bottom:4px;">Doğrudan İletişim & Kurulum Talebi</h4>
+            <p style="font-size:12px; color:#e2e8f0;">
+              Sistem tanıtımı, özel sunucu yapılandırması ve canlı test için bizi dilediğiniz an arayabilirsiniz.
+            </p>
+            <p style="font-size:14px; font-weight:800; color:#ffffff; margin-top:8px;">
+              📞 Semih Bey: <span style="color:#facc15;">0545 787 03 48</span>
+            </p>
+          </div>
+          <div style="text-align:right;">
+            <div style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); border-radius:10px; padding:8px 14px; font-size:11px; color:#ffffff;">
+              <span>🌐 ses.ridvanyilmazturizm.com</span><br/>
+              <span style="color:#94a3b8;">Hac & Umre Ses Teknolojileri</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Selamet Turizm Özel Teknik Çözüm Dosyası</span>
+      <span>Sayfa 4 / 4</span>
+    </div>
+  </div>
+
+</body>
+</html>
