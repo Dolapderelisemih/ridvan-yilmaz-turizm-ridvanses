@@ -1,0 +1,402 @@
+[
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-002",
+    "firmaAdi": "Semerşah Turizm",
+    "email": "info@semersahturizm.com",
+    "messageId": "<38719708-17c1-0fed-23bd-92b93f5e96c7@gmail.com>",
+    "timestamp": "2026-10-23T20:52:42.336Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-003",
+    "firmaAdi": "İkram Turizm",
+    "email": "info@ikramturizm.com",
+    "messageId": "<4394ae48-bffa-0b5f-08e2-72e7ef2a65ea@gmail.com>",
+    "timestamp": "2026-10-23T20:53:38.491Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-004",
+    "firmaAdi": "Nirvana Turizm (Hac & Umre)",
+    "email": "info@nirvanaturizm.com.tr",
+    "messageId": "<82705655-680d-3e92-36f9-1268c2b1466f@gmail.com>",
+    "timestamp": "2026-10-23T20:54:37.549Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-005",
+    "firmaAdi": "Hisar Turizm",
+    "email": "info@hisarturizm.com.tr",
+    "messageId": "<8f15ff8a-d95c-8cf2-a70c-a8783ffd0762@gmail.com>",
+    "timestamp": "2026-10-23T20:55:33.268Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-006",
+    "firmaAdi": "Burak Turizm",
+    "email": "info@buraktur.com",
+    "messageId": "<faf15a60-8334-ed9c-5d15-a90ead01f655@gmail.com>",
+    "timestamp": "2026-10-23T20:56:37.908Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-007",
+    "firmaAdi": "Alkuş Turizm",
+    "email": "info@alkusturizm.com.tr",
+    "messageId": "<4d1f3087-ac5b-10d3-2548-acfc99bd5e6c@gmail.com>",
+    "timestamp": "2026-10-23T20:57:48.877Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-008",
+    "firmaAdi": "Akyol Turizm",
+    "email": "iletisim@akyolturizm.com.tr",
+    "messageId": "<f524fd36-4460-e1c4-988d-f70df73c8e53@gmail.com>",
+    "timestamp": "2026-10-23T20:58:48.135Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-009",
+    "firmaAdi": "Yeşil Turizm",
+    "email": "info@yesilturizm.com.tr",
+    "messageId": "<8d734122-9e44-70d0-7230-0f6e7efe278e@gmail.com>",
+    "timestamp": "2026-10-23T20:59:43.502Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-010",
+    "firmaAdi": "Pusula Turizm",
+    "email": "info@pusulatur.com.tr",
+    "messageId": "<d8736d55-cce3-17b8-6582-543c285f8723@gmail.com>",
+    "timestamp": "2026-10-23T21:00:42.246Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-011",
+    "firmaAdi": "99 Turizm",
+    "email": "info@99turizm.com.tr",
+    "messageId": "<6d547c22-80fb-db92-7f1b-5b8e1bf41e21@gmail.com>",
+    "timestamp": "2026-10-23T21:01:38.911Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-012",
+    "firmaAdi": "Hennes Tour",
+    "email": "info@hennestour.com",
+    "messageId": "<b0be3fd9-802e-a71c-33c4-98f99acdf345@gmail.com>",
+    "timestamp": "2026-10-23T21:02:36.212Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-013",
+    "firmaAdi": "Hennes Tour (Bursa Şubesi)",
+    "email": "bursa@hennestour.com",
+    "messageId": "<58ca13ff-0fb9-695b-e6d6-312aa12ae5d0@gmail.com>",
+    "timestamp": "2026-10-23T21:03:31.881Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-014",
+    "firmaAdi": "Gazi Turizm",
+    "email": "destek@gaziturizm.com",
+    "messageId": "<da6f9520-f18d-c6c5-d67b-d9ebfbbe25cb@gmail.com>",
+    "timestamp": "2026-10-23T21:04:33.508Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-015",
+    "firmaAdi": "Suffa Turizm (Suffa Tour)",
+    "email": "info@suffatour.com",
+    "messageId": "<7df04fc2-c7ea-3055-81de-211a31ee23af@gmail.com>",
+    "timestamp": "2026-10-23T21:05:39.239Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-016",
+    "firmaAdi": "Öz Mihmandar Turizm",
+    "email": "info@mihmandartur.com.tr",
+    "messageId": "<60eadcdf-c417-fc95-9bb7-59c7e27ae59b@gmail.com>",
+    "timestamp": "2026-10-23T21:06:33.050Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-017",
+    "firmaAdi": "Fazilet Turizm",
+    "email": "faziletturizm@gmail.com",
+    "messageId": "<41013000-de32-ef80-2859-5fb38d4ad5b7@gmail.com>",
+    "timestamp": "2026-10-23T21:07:38.072Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-018",
+    "firmaAdi": "Erkam Turizm",
+    "email": "bilgi@erkamtur.com",
+    "messageId": "<8cc52ba9-daad-9bbe-03fc-ef42e792613c@gmail.com>",
+    "timestamp": "2026-10-23T21:08:39.307Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-019",
+    "firmaAdi": "Ebrar Turizm",
+    "email": "info@ebrarturizm.com",
+    "messageId": "<30f97000-20ac-8057-3721-c35dd6ce5712@gmail.com>",
+    "timestamp": "2026-10-23T21:09:45.163Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-020",
+    "firmaAdi": "Melikoğlu Turizm",
+    "email": "bilgi@melikogluturizm.com",
+    "messageId": "<48d55ee5-bac1-a4b9-3f6c-8d7af3c860d2@gmail.com>",
+    "timestamp": "2026-10-23T21:10:35.323Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-021",
+    "firmaAdi": "İkbal Turizm",
+    "email": "info@ikbalturizm.com.tr",
+    "messageId": "<1452887a-3197-5698-2993-98966092bbe2@gmail.com>",
+    "timestamp": "2026-10-23T21:11:37.526Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-022",
+    "firmaAdi": "İsra Turizm",
+    "email": "info@isratur.com.tr",
+    "messageId": "<e5a87a3f-f8bd-d784-ebc5-5f0f6bb94167@gmail.com>",
+    "timestamp": "2026-10-23T21:12:26.770Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-023",
+    "firmaAdi": "Hilal Turizm (Hilal Tours)",
+    "email": "bilgi@hilaltours.com.tr",
+    "messageId": "<104cf0a0-60f6-4fd4-7b18-811dada7c037@gmail.com>",
+    "timestamp": "2026-10-23T21:13:16.761Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-024",
+    "firmaAdi": "Nevatur Seyahat Acentesi",
+    "email": "info@nevatur.com.tr",
+    "messageId": "<0126fc40-4f27-3715-4a50-8a475e6d6e2a@gmail.com>",
+    "timestamp": "2026-10-23T21:14:05.411Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-025",
+    "firmaAdi": "Ars Turizm (Asr Turizm)",
+    "email": "info@arsturizm.com",
+    "messageId": "<c682c8e9-f855-914d-874d-2303e5f4e1aa@gmail.com>",
+    "timestamp": "2026-10-23T21:15:03.299Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-026",
+    "firmaAdi": "Vahdet Turizm",
+    "email": "info@vahdetturizm.com",
+    "messageId": "<fb7e6ef7-958f-3f34-f331-0f9a2a8b4be3@gmail.com>",
+    "timestamp": "2026-10-23T21:16:05.607Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-027",
+    "firmaAdi": "Bereket Turizm",
+    "email": "info@bereketturizm.com.tr",
+    "messageId": "<1cde6303-1c29-7be4-d42c-f10578199f9b@gmail.com>",
+    "timestamp": "2026-10-23T21:16:59.526Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-028",
+    "firmaAdi": "Ravza Hac Umre",
+    "email": "info@ravzahacumre.com.tr",
+    "messageId": "<c811dff0-07e2-1abc-6fe3-2335053d662b@gmail.com>",
+    "timestamp": "2026-10-23T21:17:47.697Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-029",
+    "firmaAdi": "Kervan Turizm",
+    "email": "info@kervanturizm.com.tr",
+    "messageId": "<2c6417fe-e13e-6152-6cf2-7021cee5d05a@gmail.com>",
+    "timestamp": "2026-10-23T21:18:36.765Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-030",
+    "firmaAdi": "Uzman Turizm",
+    "email": "info@uzmanturizm.com.tr",
+    "messageId": "<c6769823-79b7-5310-ec92-1cb3af562230@gmail.com>",
+    "timestamp": "2026-10-23T21:19:36.373Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-031",
+    "firmaAdi": "Kıble Turizm",
+    "email": "info@kibleturizm.com.tr",
+    "messageId": "<d8827a13-b7e5-d5ff-1fdd-6fa0f582091d@gmail.com>",
+    "timestamp": "2026-10-23T21:20:24.669Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-032",
+    "firmaAdi": "Berat Turizm",
+    "email": "info@beratturizm.com.tr",
+    "messageId": "<aeb3fc2b-1890-e15f-c9e1-2565ee40e74c@gmail.com>",
+    "timestamp": "2026-10-23T21:21:29.325Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-033",
+    "firmaAdi": "Gülistan Turizm",
+    "email": "info@gulistanturizm.com.tr",
+    "messageId": "<e5a0fae8-5555-cb62-acee-317c1af63009@gmail.com>",
+    "timestamp": "2026-10-23T21:22:16.624Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-034",
+    "firmaAdi": "Ashab Global Turizm",
+    "email": "info@ashabglobalturizm.com",
+    "messageId": "<4bbd7362-22e4-7929-ff5c-f314ca6d56b2@gmail.com>",
+    "timestamp": "2026-10-23T21:23:21.352Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-035",
+    "firmaAdi": "Dostlar Turizm",
+    "email": "info@dostlarturizm.com.tr",
+    "messageId": "<902d1712-ef45-fdb1-d1b2-205b6d5b7659@gmail.com>",
+    "timestamp": "2026-10-23T21:24:18.467Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-004",
+    "firmaAdi": "Nuri Doğan Turizm",
+    "email": "bilgi@nuridoganturizm.com.tr",
+    "messageId": "<ea7a2f94-04ba-e523-1247-13133cf9ecfc@gmail.com>",
+    "timestamp": "2026-10-23T23:03:40.705Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-007",
+    "firmaAdi": "Alkuş Turizm",
+    "email": "bilgi@alkusturizm.com.tr",
+    "messageId": "<63b2fc44-5ea9-a390-91b1-2c7b7a5d6d02@gmail.com>",
+    "timestamp": "2026-10-23T23:04:38.227Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-011",
+    "firmaAdi": "Ensar Turizm (Ensar Tur)",
+    "email": "info@ensartur.com",
+    "messageId": "<d0e46710-53d0-df2c-e16e-825e7174769f@gmail.com>",
+    "timestamp": "2026-10-23T23:05:28.505Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-018",
+    "firmaAdi": "Ekrem Turizm",
+    "email": "hacveumre@ekremturizm.com",
+    "messageId": "<f7ef1390-03ef-49ec-dcef-48a6f2053491@gmail.com>",
+    "timestamp": "2026-10-23T23:06:19.723Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-025",
+    "firmaAdi": "Selamet Turizm",
+    "email": "info@selametturizm.com",
+    "messageId": "<ac970f1a-1a6d-7714-2e42-16fde4b5662d@gmail.com>",
+    "timestamp": "2026-10-23T23:07:14.201Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-028",
+    "firmaAdi": "El Hilal Turizm",
+    "email": "info@elhilalturizm.com",
+    "messageId": "<67ae2e66-2512-99e8-37b1-27b2ab5a8d8b@gmail.com>",
+    "timestamp": "2026-10-23T23:08:14.660Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-034",
+    "firmaAdi": "Ashab Global Turizm",
+    "email": "info@ashabglobal.com",
+    "messageId": "<a9052984-d414-b8cb-c70e-788f914b0125@gmail.com>",
+    "timestamp": "2026-10-23T23:09:20.266Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-035",
+    "firmaAdi": "Ravha Turizm",
+    "email": "info@ravhaturizm.com.tr",
+    "messageId": "<4e10ad16-2517-5eaf-12e2-6fcb8d6d531d@gmail.com>",
+    "timestamp": "2026-10-23T23:10:25.155Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-007",
+    "firmaAdi": "Alkuş Turizm",
+    "email": "fatih@alkusturizm.com",
+    "messageId": "<7fdb7f6f-fc25-aad0-c02f-6b03d51b532e@gmail.com>",
+    "timestamp": "2026-10-24T13:39:58.133Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-028",
+    "firmaAdi": "Ravha Turizm (Ravza Umre Organizasyonu)",
+    "email": "info@ravhaturizm.com.tr",
+    "messageId": "<07859390-d62e-e111-d285-e19952ac1180@gmail.com>",
+    "timestamp": "2026-10-24T13:41:00.370Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-034",
+    "firmaAdi": "Ashab Global Turizm",
+    "email": "info@ashabglobal.com",
+    "messageId": "<5770eead-a3f3-1c7a-d14b-9bce0ca61f5e@gmail.com>",
+    "timestamp": "2026-10-24T13:41:58.677Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-035",
+    "firmaAdi": "Hacılar Turizm (Güzel Dostlar Turizm)",
+    "email": "hacilarturizm@gmail.com",
+    "messageId": "<80131107-c2dd-97b0-013e-1197907741c7@gmail.com>",
+    "timestamp": "2026-10-24T13:43:03.864Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-036",
+    "firmaAdi": "Asr Tour (Asr Turizm)",
+    "email": "info@asrtour.com",
+    "messageId": "<563ab0ed-0168-771e-c230-b6674c971186@gmail.com>",
+    "timestamp": "2026-10-24T13:44:07.151Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-037",
+    "firmaAdi": "Darül Erkam Tur (Erkam Turizm)",
+    "email": "bilgi@darulerkamtur.com",
+    "messageId": "<43fd48d8-d010-1c3e-71a5-bb57320c2ec8@gmail.com>",
+    "timestamp": "2026-10-24T13:45:02.594Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-038",
+    "firmaAdi": "99 Turizm (99 Seyahat)",
+    "email": "alisambur049@gmail.com",
+    "messageId": "<a6dc7814-82c2-ba78-cf26-e540f635732f@gmail.com>",
+    "timestamp": "2026-10-24T13:46:07.087Z"
+  },
+  {
+    "status": "SUCCESS",
+    "agencyId": "AC-039",
+    "firmaAdi": "Safa Turizm (Safa Tur)",
+    "email": "acente@safatur.com.tr",
+    "messageId": "<3f1e1561-0480-154b-8028-3ffca20ecc97@gmail.com>",
+    "timestamp": "2026-10-24T13:47:09.396Z"
+  }
+]
