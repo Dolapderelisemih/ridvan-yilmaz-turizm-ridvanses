@@ -79,13 +79,15 @@ function getOrCreateRoom(tourCode, roomId = 'genel') {
       roomId: rId,
       tourName: tour ? tour.name : code,
       guideName: tour ? tour.guideName : 'Rıdvan Yılmaz Hoca',
-      isLive: code === 'RY-2026' || code === 'RY-KASIM',
-      broadcastMode: code === 'RY-2026' || code === 'RY-KASIM' ? 'demo-synth' : 'idle',
+      isLive: code === 'RY-2026' || code === 'RY-KASIM' || code === 'SELAMET-2026',
+      broadcastMode: code === 'RY-2026' || code === 'RY-KASIM' || code === 'SELAMET-2026' ? 'demo-synth' : 'idle',
       startedAt: Date.now() - 18 * 60 * 1000,
       currentTopic:
-        code === 'RY-KASIM'
-          ? 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk'
-          : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti',
+        code === 'SELAMET-2026'
+          ? 'Selamet Turizm — Canlı Kâbe Tavafı & İrşad Yayını (Demo)'
+          : code === 'RY-KASIM'
+            ? 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk'
+            : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti',
       activeSpeakerClientId: null,
       activeSpeakerName: null,
       guideLocation: null,
@@ -96,6 +98,8 @@ function getOrCreateRoom(tourCode, roomId = 'genel') {
 }
 
 // Initialize default rooms
+getOrCreateRoom('SELAMET-2026', 'genel');
+getOrCreateRoom('SELAMET-2026', 'irshad');
 getOrCreateRoom('RY-KASIM', 'genel');
 getOrCreateRoom('RY-2026', 'genel');
 getOrCreateRoom('RY-2026', 'siyer');
@@ -119,14 +123,16 @@ function serializeRoom(room) {
     else if (c.role === 'pilgrim') pilgrims.push(item);
   }
 
-  // Simulated baseline pilgrims for RY-2026 & RY-KASIM demo realism alongside real connected tabs
+  // Simulated baseline pilgrims for demo realism alongside real connected tabs
   const baseCount =
     room.roomId === 'genel'
-      ? room.tourCode === 'RY-KASIM'
-        ? 38
-        : room.tourCode === 'RY-2026'
-          ? 42
-          : 0
+      ? room.tourCode === 'SELAMET-2026'
+        ? 34
+        : room.tourCode === 'RY-KASIM'
+          ? 38
+          : room.tourCode === 'RY-2026'
+            ? 42
+            : 0
       : 0;
 
   return {
@@ -610,20 +616,33 @@ app.post('/api/login', (req, res) => {
     });
   }
 
-  if (cleanEmail !== ADMIN_USERNAME || cleanPass !== ADMIN_PASSWORD) {
+  let user = null;
+  if (cleanEmail === ADMIN_USERNAME && cleanPass === ADMIN_PASSWORD) {
+    user = {
+      id: 'admin-1',
+      name: 'Rıdvan Yılmaz Turizm (Yetkili)',
+      email: ADMIN_USERNAME,
+      role: 'agency_admin',
+      agency: db.agency.name
+    };
+  } else if (
+    (cleanEmail === 'info@selametturizm.com' || cleanEmail === 'selamet@selametturizm.com' || cleanEmail === 'selamet') &&
+    (cleanPass === 'selamet2026' || cleanPass === 'selamet123')
+  ) {
+    user = {
+      id: 'agency-selamet',
+      name: 'Selamet Turizm (Yetkili)',
+      email: 'info@selametturizm.com',
+      role: 'agency_admin',
+      agency: 'Selamet Turizm',
+      assignedTour: 'SELAMET-2026'
+    };
+  } else {
     return res.status(401).json({
       success: false,
       message: 'Kullanıcı adı veya şifre hatalı! Lütfen yetkili giriş bilgilerinizi kontrol ediniz.'
     });
   }
-
-  const user = {
-    id: 'admin-1',
-    name: 'Rıdvan Yılmaz Turizm (Yetkili)',
-    email: ADMIN_USERNAME,
-    role: 'agency_admin',
-    agency: db.agency.name
-  };
 
   res.setHeader(
     'Set-Cookie',

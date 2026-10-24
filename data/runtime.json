@@ -63,6 +63,16 @@
       "specialty": "Kasım Umresi Manevi Yolculuk, Kâbe Tavaf & Peygamber Efendimizin ﷺ İzinde Siyer Rehberliği",
       "status": "live",
       "assignedTour": "RY-KASIM"
+    },
+    {
+      "id": "guide-selamet",
+      "name": "Selamet Turizm Kafile Rehberi",
+      "title": "Selamet Turizm Baş Rehberi & Kafile Sorumlusu",
+      "phone": "+90 545 787 03 48",
+      "email": "info@selametturizm.com",
+      "specialty": "Kâbe Tavafı, Canlı Dua Yayını, Siyer Anlatımları ve Kafile Koordinasyonu",
+      "status": "live",
+      "assignedTour": "SELAMET-2026"
     }
   ],
   "hotels": [
@@ -72,8 +82,15 @@
       "city": "Mekke-i Mükerreme",
       "stars": 4,
       "distance": "Mescid-i Haram'a 7/24 Ücretsiz Servis & Yakın Mesafe",
-      "features": ["Türk Damak Tadına Uygun Açık Büfe", "Geniş Lobi & Sohbet Salonu", "7/24 Rehber Masası"],
-      "coordinates": { "lat": 21.4185, "lng": 39.8321 }
+      "features": [
+        "Türk Damak Tadına Uygun Açık Büfe",
+        "Geniş Lobi & Sohbet Salonu",
+        "7/24 Rehber Masası"
+      ],
+      "coordinates": {
+        "lat": 21.4185,
+        "lng": 39.8321
+      }
     },
     {
       "id": "hotel-2",
@@ -81,8 +98,15 @@
       "city": "Mekke-i Mükerreme",
       "stars": 4,
       "distance": "Ecyad Bölgesi - Kâbe'ye Yürüme / Kısa Servis Mesafesi",
-      "features": ["Gençlik ve Siyer Kafilelerine Özel Salon", "Hızlı Wi-Fi", "Ecyad Merkezi Konum"],
-      "coordinates": { "lat": 21.4192, "lng": 39.8289 }
+      "features": [
+        "Gençlik ve Siyer Kafilelerine Özel Salon",
+        "Hızlı Wi-Fi",
+        "Ecyad Merkezi Konum"
+      ],
+      "coordinates": {
+        "lat": 21.4192,
+        "lng": 39.8289
+      }
     },
     {
       "id": "hotel-3",
@@ -90,8 +114,15 @@
       "city": "Mekke-i Mükerreme",
       "stars": 4,
       "distance": "Mescid-i Haram Yakını Konforlu Konaklama",
-      "features": ["Aile Odaları", "Siyer Sohbet Alanı", "24 Saat İkram"],
-      "coordinates": { "lat": 21.4168, "lng": 39.8312 }
+      "features": [
+        "Aile Odaları",
+        "Siyer Sohbet Alanı",
+        "24 Saat İkram"
+      ],
+      "coordinates": {
+        "lat": 21.4168,
+        "lng": 39.8312
+      }
     },
     {
       "id": "hotel-4",
@@ -99,8 +130,15 @@
       "city": "Mekke-i Mükerreme",
       "stars": 5,
       "distance": "Kâbe Avlusuna Sıfır - Özel Tünel Girişli (5 Yıldızlı)",
-      "features": ["5 Yıldızlı Lüks Konaklama", "Harem Avlusuna Direkt Çıkış", "Zengin Açık Büfe"],
-      "coordinates": { "lat": 21.4248, "lng": 39.8215 }
+      "features": [
+        "5 Yıldızlı Lüks Konaklama",
+        "Harem Avlusuna Direkt Çıkış",
+        "Zengin Açık Büfe"
+      ],
+      "coordinates": {
+        "lat": 21.4248,
+        "lng": 39.8215
+      }
     },
     {
       "id": "hotel-5",
@@ -108,11 +146,49 @@
       "city": "Medine-i Münevvere",
       "stars": 4,
       "distance": "Mescid-i Nebevî Avlusuna 150-300m Yürüme Mesafesi",
-      "features": ["Ravza-i Mutahhara'ya Yürüme Mesafesi", "Siyer Dersleri Salonu", "Türk Mutfağı"],
-      "coordinates": { "lat": 24.4709, "lng": 39.6112 }
+      "features": [
+        "Ravza-i Mutahhara'ya Yürüme Mesafesi",
+        "Siyer Dersleri Salonu",
+        "Türk Mutfağı"
+      ],
+      "coordinates": {
+        "lat": 24.4709,
+        "lng": 39.6112
+      }
     }
   ],
   "tours": [
+    {
+      "id": "tour-selamet-2026",
+      "code": "SELAMET-2026",
+      "name": "🕋 Selamet Turizm — Özel Umre Kafilesi (Demo & Test)",
+      "dateText": "Kasım - Aralık 2026",
+      "duration": "14 Gün (Mekke - Medine)",
+      "guideId": "guide-selamet",
+      "guideName": "Selamet Turizm Kafile Rehberi",
+      "makkahHotel": "Mekke 5★ Harem Oteli (Kâbe Önü)",
+      "madinahHotel": "Medine Ravza Oteli (Mescid-i Nebevî Yakını)",
+      "pin": "",
+      "pinProtected": false,
+      "status": "live",
+      "capacity": 150,
+      "registeredCount": 46,
+      "description": "Selamet Turizm kafilelerine özel kristal netliğinde dijital sesli rehberlik, anlık tavaf duaları, interaktif el kaldırma/soru-cevap ve noktasal GPS kayıp hacı acil SOS takip sistemi.",
+      "rooms": [
+        {
+          "id": "genel",
+          "name": "Selamet Turizm — Ana Kafile & Tavaf Yayını",
+          "guide": "Selamet Turizm Kafile Rehberi",
+          "active": true
+        },
+        {
+          "id": "irshad",
+          "name": "Manevi Sohbet & Ziyaretler Odası",
+          "guide": "Selamet Turizm Kafile Rehberi",
+          "active": true
+        }
+      ]
+    },
     {
       "id": "tour-kasim-2026",
       "code": "RY-KASIM",
@@ -130,8 +206,18 @@
       "registeredCount": 68,
       "description": "Ömer Ali Gültekin rehberliğinde, Rıdvan Yılmaz Turizm tecrübesiyle 8 Gün Mekke ve 2 Gün Medine (10 Günlük) konaklama, yemek ve tüm hizmetler dahil kampanyalı Kasım Umresi manevi yolculuğu.",
       "rooms": [
-        { "id": "genel", "name": "Kasım Umresi Ana Kafile & Tavaf Yayını", "guide": "Ömer Ali Gültekin", "active": true },
-        { "id": "siyer", "name": "Peygamber Efendimizin ﷺ İzinde Manevi Sohbet", "guide": "Ömer Ali Gültekin", "active": true }
+        {
+          "id": "genel",
+          "name": "Kasım Umresi Ana Kafile & Tavaf Yayını",
+          "guide": "Ömer Ali Gültekin",
+          "active": true
+        },
+        {
+          "id": "siyer",
+          "name": "Peygamber Efendimizin ﷺ İzinde Manevi Sohbet",
+          "guide": "Ömer Ali Gültekin",
+          "active": true
+        }
       ]
     },
     {
@@ -151,9 +237,24 @@
       "registeredCount": 94,
       "description": "Rıdvan Yılmaz Hoca eşliğinde adım adım Asr-ı Saadet izinde Siyer Umresi, Tavaf duaları ve Mekke-Medine ziyaretleri.",
       "rooms": [
-        { "id": "genel", "name": "Genel Kafile & Tavaf Yayını", "guide": "Rıdvan Yılmaz Hoca", "active": true },
-        { "id": "siyer", "name": "Siyer-i Nebi Sohbet Odası", "guide": "Rıdvan Yılmaz Hoca", "active": true },
-        { "id": "hanimlar", "name": "Hanımlar İrşad & Fıkıh Odası", "guide": "Ayşe Hoca Hanım", "active": false }
+        {
+          "id": "genel",
+          "name": "Genel Kafile & Tavaf Yayını",
+          "guide": "Rıdvan Yılmaz Hoca",
+          "active": true
+        },
+        {
+          "id": "siyer",
+          "name": "Siyer-i Nebi Sohbet Odası",
+          "guide": "Rıdvan Yılmaz Hoca",
+          "active": true
+        },
+        {
+          "id": "hanimlar",
+          "name": "Hanımlar İrşad & Fıkıh Odası",
+          "guide": "Ayşe Hoca Hanım",
+          "active": false
+        }
       ]
     },
     {
@@ -173,8 +274,18 @@
       "registeredCount": 72,
       "description": "Genç kardeşlerimizle Uhud'dan Hira'ya, Sevr'den Kâbe'ye heyecan ve muhabbet dolu Gençlik Siyer Umresi.",
       "rooms": [
-        { "id": "genel", "name": "Gençlik Kafilesi Ana Yayın", "guide": "Rıdvan Yılmaz Hoca", "active": true },
-        { "id": "soru-cevap", "name": "Gençlerle Soru-Cevap & Sohbet", "guide": "Beytullah Bey", "active": false }
+        {
+          "id": "genel",
+          "name": "Gençlik Kafilesi Ana Yayın",
+          "guide": "Rıdvan Yılmaz Hoca",
+          "active": true
+        },
+        {
+          "id": "soru-cevap",
+          "name": "Gençlerle Soru-Cevap & Sohbet",
+          "guide": "Beytullah Bey",
+          "active": false
+        }
       ]
     },
     {
@@ -194,7 +305,12 @@
       "registeredCount": 64,
       "description": "10 gün Mekke-i Mükerreme ve 10 gün Medine-i Münevvere'de dolu dolu ibadet ve Siyer-i Nebi programı.",
       "rooms": [
-        { "id": "genel", "name": "Ana Kafile Rehberlik Odası", "guide": "Rıdvan Yılmaz Hoca", "active": true }
+        {
+          "id": "genel",
+          "name": "Ana Kafile Rehberlik Odası",
+          "guide": "Rıdvan Yılmaz Hoca",
+          "active": true
+        }
       ]
     },
     {
@@ -214,7 +330,12 @@
       "registeredCount": 48,
       "description": "Harem avlusuna yürüme mesafesinde 5 yıldızlı Anjum Otel konforuyla Siyer Umresi.",
       "rooms": [
-        { "id": "genel", "name": "VIP Kafile Canlı Rehberlik", "guide": "Rıdvan Yılmaz Hoca", "active": true }
+        {
+          "id": "genel",
+          "name": "VIP Kafile Canlı Rehberlik",
+          "guide": "Rıdvan Yılmaz Hoca",
+          "active": true
+        }
       ]
     },
     {
@@ -234,7 +355,12 @@
       "registeredCount": 53,
       "description": "Aralık ayının serin ikliminde derinlikli Siyer sohbetleri ve huzurlu Umre ibadeti.",
       "rooms": [
-        { "id": "genel", "name": "Genel Kafile Yayını", "guide": "Rıdvan Yılmaz Hoca", "active": false }
+        {
+          "id": "genel",
+          "name": "Genel Kafile Yayını",
+          "guide": "Rıdvan Yılmaz Hoca",
+          "active": false
+        }
       ]
     },
     {
@@ -254,7 +380,12 @@
       "registeredCount": 41,
       "description": "Yarıyıl tatilinde ailece ve çocuklarımızla unutulmaz bir Siyer Umresi.",
       "rooms": [
-        { "id": "genel", "name": "Aile & Sömestr Kafilesi", "guide": "Rıdvan Yılmaz Hoca", "active": false }
+        {
+          "id": "genel",
+          "name": "Aile & Sömestr Kafilesi",
+          "guide": "Rıdvan Yılmaz Hoca",
+          "active": false
+        }
       ]
     },
     {
@@ -274,11 +405,25 @@
       "registeredCount": 38,
       "description": "Ramazan sonrası mübarek Şevval ayında 10 ve 15 günlük Siyer Umresi programları.",
       "rooms": [
-        { "id": "genel", "name": "Şevval Kafilesi Ana Yayın", "guide": "Rıdvan Yılmaz Hoca", "active": false }
+        {
+          "id": "genel",
+          "name": "Şevval Kafilesi Ana Yayın",
+          "guide": "Rıdvan Yılmaz Hoca",
+          "active": false
+        }
       ]
     }
   ],
   "announcements": [
+    {
+      "id": "ann-selamet-1",
+      "tourCode": "SELAMET-2026",
+      "title": "Selamet Turizm Ses Sistemine Hoş Geldiniz",
+      "message": "Kıymetli Selamet Turizm misafirlerimiz; ses sistemimize başarıyla bağlandınız. Kulaklığınızı takarak rehberimizin sesini kristal netliğinde dinleyebilir, soru sormak için \"El Kaldır\" butonunu kullanabilirsiniz.",
+      "sender": "Selamet Turizm Kafile Rehberi",
+      "createdAt": "16:00",
+      "urgent": true
+    },
     {
       "id": "ann-kasim-1",
       "tourCode": "RY-KASIM",
