@@ -118,23 +118,14 @@
             <div>
               <label style="font-size:0.78rem; color:#cbd5e1; font-weight:700; display:block; margin-bottom:4px;">Kafile / Tur Kodu</label>
               <select id="guideTourSelect" class="select" style="background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);" onchange="onTourSelectionChange()">
-                <option value="SELAMET-2026" style="color:#000;">SELAMET-2026 — Selamet Turizm Özel Umresi (Demo)</option>
                 <option value="RY-KASIM" style="color:#000;">RY-KASIM — 13-14 Kasım Umresi (Ömer Ali Gültekin)</option>
-                <option value="RY-2026" style="color:#000;">RY-2026 — 26 Haziran Siyer Umresi</option>
-                <option value="RY-GENCLIK" style="color:#000;">RY-GENCLIK — 8 Temmuz Gençlik Umresi</option>
-                <option value="RY-EYLUL" style="color:#000;">RY-EYLUL — 5 Eylül Siyer Umresi</option>
-                <option value="RY-5YILDIZ" style="color:#000;">RY-5YILDIZ — 5 Ekim 5★ Anjum Umresi</option>
               </select>
             </div>
             <div>
               <label style="font-size:0.78rem; color:#cbd5e1; font-weight:700; display:block; margin-bottom:4px;">Rehber Hoca Seçimi</label>
               <select id="guideNameSelect" class="select" style="background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);" onchange="switchGuideRoom()">
-                <option value="Selamet Turizm Kafile Rehberi" style="color:#000;">Selamet Turizm Kafile Rehberi</option>
                 <option value="Ömer Ali Gültekin" style="color:#000;">Ömer Ali Gültekin (Kasım Umresi Rehberi)</option>
                 <option value="Rıdvan Yılmaz Hoca" style="color:#000;">Rıdvan Yılmaz Hoca (Baş Rehber)</option>
-                <option value="Beytullah Bey" style="color:#000;">Beytullah Bey (Operasyon & Rehber)</option>
-                <option value="Hafız Mehmet Efendi" style="color:#000;">Hafız Mehmet Efendi (Medine Rehberi)</option>
-                <option value="Ayşe Hoca Hanım" style="color:#000;">Ayşe Hoca Hanım (Hanımlar İrşad)</option>
               </select>
             </div>
           </div>
@@ -276,33 +267,47 @@
       const code = document.getElementById('guideTourSelect').value;
       const gSel = document.getElementById('guideNameSelect');
       const topicInput = document.getElementById('topicInput');
-      if (code === 'SELAMET-2026') {
-        gSel.value = 'Selamet Turizm Kafile Rehberi';
-        if (topicInput) topicInput.value = 'Selamet Turizm — Canlı Kâbe Tavafı & İrşad Yayını (Demo)';
-      } else if (code === 'RY-KASIM') {
+      if (code === 'RY-KASIM') {
         gSel.value = 'Ömer Ali Gültekin';
         if (topicInput) topicInput.value = 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk';
-      } else if (gSel.value === 'Ömer Ali Gültekin' || gSel.value === 'Selamet Turizm Kafile Rehberi') {
-        gSel.value = 'Rıdvan Yılmaz Hoca';
+      } else {
         if (topicInput) topicInput.value = 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti';
       }
       switchGuideRoom();
     }
 
     const urlParams = new URLSearchParams(window.location.search);
+
+    // Bootstrap turları dinamik yükle
+    fetch('/api/bootstrap')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data.tours && data.tours.length > 0) {
+          const tSel = document.getElementById('guideTourSelect');
+          const currentVal = tSel.value;
+          tSel.innerHTML = data.tours.map((t) => `<option value="${t.code}" style="color:#000;">${t.code} — ${t.name}</option>`).join('');
+          if (data.tours.some((t) => t.code === currentVal)) {
+            tSel.value = currentVal;
+          }
+        }
+        if (data && data.guides && data.guides.length > 0) {
+          const gSel = document.getElementById('guideNameSelect');
+          const currentG = gSel.value;
+          gSel.innerHTML = data.guides.map((g) => `<option value="${g.name}" style="color:#000;">${g.name} (${g.title || 'Rehber'})</option>`).join('');
+          if (data.guides.some((g) => g.name === currentG)) {
+            gSel.value = currentG;
+          }
+        }
+      })
+      .catch((e) => console.log('Rehber bootstrap err:', e));
+
     if (urlParams.get('code')) {
       const sel = document.getElementById('guideTourSelect');
       const code = urlParams.get('code').toUpperCase();
       if (Array.from(sel.options).some((o) => o.value === code)) {
         sel.value = code;
-        if (code === 'SELAMET-2026') {
-          document.getElementById('guideNameSelect').value = 'Selamet Turizm Kafile Rehberi';
-          const topicInput = document.getElementById('topicInput');
-          if (topicInput) topicInput.value = 'Selamet Turizm — Canlı Kâbe Tavafı & İrşad Yayını (Demo)';
-        } else if (code === 'RY-KASIM') {
+        if (code === 'RY-KASIM') {
           document.getElementById('guideNameSelect').value = 'Ömer Ali Gültekin';
-        } else {
-          document.getElementById('guideNameSelect').value = 'Rıdvan Yılmaz Hoca';
         }
       }
     }

@@ -214,7 +214,7 @@
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
             <h3>🕋 Rıdvan Yılmaz Turizm 2026–2027 Kafile Özeti</h3>
             <div style="display:flex; gap:8px;">
-              <button class="btn btn-gold btn-sm" onclick="openQrGeneratorForTour('RY-2026')">🪪 Yaka Kartı QR & WhatsApp Üretici</button>
+              <button class="btn btn-gold btn-sm" onclick="openQrGeneratorForTour('RY-KASIM')">🪪 Yaka Kartı QR & WhatsApp Üretici</button>
               <button class="btn btn-primary btn-sm" onclick="openTab('tab-tours', document.querySelectorAll('.side-btn')[2])">+ Yeni Kafile Ekle</button>
             </div>
           </div>
@@ -251,7 +251,7 @@
               <div>
                 <label class="label">Kafile Seçiniz</label>
                 <select id="qrTourSelect" class="select" onchange="generateQrAndInvite()">
-                  <option value="RY-2026">RY-2026 — 26 Haziran Siyer Umresi</option>
+                  <option value="RY-KASIM">RY-KASIM — 13-14 Kasım Umresi</option>
                 </select>
               </div>
               <div>
@@ -259,20 +259,19 @@
                 <select id="qrRoomSelect" class="select" onchange="generateQrAndInvite()">
                   <option value="genel">Genel Kafile & Tavaf Yayını</option>
                   <option value="siyer">Siyer-i Nebi Sohbet Odası</option>
-                  <option value="hanimlar">Hanımlar İrşad & Fıkıh Odası</option>
                 </select>
               </div>
             </div>
 
             <div style="text-align:center; background:var(--color-ground); border:2px dashed var(--color-emerald-deep); border-radius:16px; padding:20px; margin-bottom:16px;">
               <img id="qrPreviewImg" src="" alt="Kafile QR Kodu" style="width:210px; height:210px; border-radius:12px; background:#fff; padding:8px; box-shadow:var(--shadow-soft);" />
-              <div style="font-weight:800; color:var(--color-emerald-night); margin-top:10px;" id="qrTourLabel">RY-2026</div>
+              <div style="font-weight:800; color:var(--color-emerald-night); margin-top:10px;" id="qrTourLabel">RY-KASIM</div>
               <div style="font-size:0.8rem; color:var(--color-muted); word-break:break-all; margin-top:4px;" id="qrJoinUrlText"></div>
             </div>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
               <a id="downloadQrBtn" href="#" download="RidvanSes-QR.png" class="btn btn-outline" style="flex:1;">⬇️ QR Resmi İndir (PNG)</a>
-              <a id="openPrintableBadgeBtn" href="/yaka-karti?code=RY-2026" target="_blank" class="btn btn-gold" style="flex:1;">🖨️ A4 Yaka Kartı Yazdır</a>
+              <a id="openPrintableBadgeBtn" href="/yaka-karti?code=RY-KASIM" target="_blank" class="btn btn-gold" style="flex:1;">🖨️ A4 Yaka Kartı Yazdır</a>
             </div>
           </div>
 
@@ -317,8 +316,8 @@
             <form id="createTourForm" style="display:flex; flex-direction:column; gap:12px;">
               <div class="grid-2" style="gap:10px;">
                 <div>
-                  <label class="label">Kafile Kodu (Örn: RY-RAMAZAN)</label>
-                  <input type="text" name="code" class="input" style="text-transform:uppercase; font-weight:700;" placeholder="RY-RAMAZAN" required />
+                  <label class="label">Kafile Kodu (Örn: RY-KASIM)</label>
+                  <input type="text" name="code" class="input" style="text-transform:uppercase; font-weight:700;" placeholder="RY-KASIM" required />
                 </div>
                 <div>
                   <label class="label">Tur Tarihi</label>
@@ -390,7 +389,7 @@
                 </div>
                 <div>
                   <label class="label">Atandığı Kafile Kodu</label>
-                  <input type="text" name="assignedTour" class="input" value="RY-2026" />
+                  <input type="text" name="assignedTour" class="input" value="RY-KASIM" />
                 </div>
               </div>
               <button type="submit" class="btn btn-primary">Rehberi Sisteme Ekle</button>
@@ -412,13 +411,9 @@
             <form id="adminAnnForm" style="display:flex; flex-direction:column; gap:12px;">
               <div>
                 <label class="label">Hedef Kafile</label>
-                <select name="tourCode" class="select">
+                <select name="tourCode" class="select" id="adminAnnTourSelect">
                   <option value="ALL">Tüm Aktif Kafileler (Genel Duyuru)</option>
                   <option value="RY-KASIM">RY-KASIM — 13-14 Kasım Umresi (Ömer Ali Gültekin)</option>
-                  <option value="RY-2026">RY-2026 — 26 Haziran Siyer Umresi</option>
-                  <option value="RY-GENCLIK">RY-GENCLIK — 8 Temmuz Gençlik Umresi</option>
-                  <option value="RY-EYLUL">RY-EYLUL — 5 Eylül Siyer Umresi</option>
-                  <option value="RY-5YILDIZ">RY-5YILDIZ — 5 Ekim 5 Yıldızlı Umre</option>
                 </select>
               </div>
               <div>
@@ -508,7 +503,7 @@
     }
 
     async function generateQrAndInvite() {
-      const code = document.getElementById('qrTourSelect')?.value || 'RY-2026';
+      const code = document.getElementById('qrTourSelect')?.value || (appState && appState.tours && appState.tours[0] ? appState.tours[0].code : 'RY-KASIM');
       const room = document.getElementById('qrRoomSelect')?.value || 'genel';
       try {
         const res = await fetch(`/api/qr?code=${encodeURIComponent(code)}&room=${encodeURIComponent(room)}`);
@@ -563,9 +558,20 @@
       // Populate QR tour dropdown
       const qrSel = document.getElementById('qrTourSelect');
       if (qrSel) {
-        const prev = qrSel.value || 'RY-2026';
+        const prev = qrSel.value || 'RY-KASIM';
         qrSel.innerHTML = appState.tours.map((t) => `<option value="${t.code}">${t.code} — ${t.name}</option>`).join('');
         if (appState.tours.some((t) => t.code === prev)) qrSel.value = prev;
+      }
+
+      // Populate Announcement tour dropdown
+      const annSel = document.getElementById('adminAnnTourSelect');
+      if (annSel) {
+        const prevAnn = annSel.value || 'ALL';
+        annSel.innerHTML = `
+          <option value="ALL">Tüm Aktif Kafileler (Genel Duyuru)</option>
+          ${appState.tours.map((t) => `<option value="${t.code}">${t.code} — ${t.name}</option>`).join('')}
+        `;
+        if (prevAnn === 'ALL' || appState.tours.some((t) => t.code === prevAnn)) annSel.value = prevAnn;
       }
 
       // Live Rooms
@@ -811,7 +817,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tourCode: 'RY-2026',
+          tourCode: 'RY-KASIM',
           pilgrimName: 'Hacı Hasan Çelik (Bursa Kafilesi)',
           phone: '+90 533 888 77 66',
           lat: 21.4232,

@@ -68,7 +68,7 @@ let db = loadState();
 const liveRooms = new Map();
 
 function getOrCreateRoom(tourCode, roomId = 'genel') {
-  const code = String(tourCode || 'RY-2026').toUpperCase().trim();
+  const code = String(tourCode || 'RY-KASIM').toUpperCase().trim();
   const rId = String(roomId || 'genel').trim();
   const key = `${code}:${rId}`;
   if (!liveRooms.has(key)) {
@@ -78,16 +78,14 @@ function getOrCreateRoom(tourCode, roomId = 'genel') {
       tourCode: code,
       roomId: rId,
       tourName: tour ? tour.name : code,
-      guideName: tour ? tour.guideName : 'Rıdvan Yılmaz Hoca',
-      isLive: code === 'RY-2026' || code === 'RY-KASIM' || code === 'SELAMET-2026',
-      broadcastMode: code === 'RY-2026' || code === 'RY-KASIM' || code === 'SELAMET-2026' ? 'demo-synth' : 'idle',
+      guideName: tour ? tour.guideName : 'Ömer Ali Gültekin',
+      isLive: code === 'RY-KASIM',
+      broadcastMode: code === 'RY-KASIM' ? 'demo-synth' : 'idle',
       startedAt: Date.now() - 18 * 60 * 1000,
       currentTopic:
-        code === 'SELAMET-2026'
-          ? 'Selamet Turizm — Canlı Kâbe Tavafı & İrşad Yayını (Demo)'
-          : code === 'RY-KASIM'
-            ? 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk'
-            : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti',
+        code === 'RY-KASIM'
+          ? 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk'
+          : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti',
       activeSpeakerClientId: null,
       activeSpeakerName: null,
       guideLocation: null,
@@ -98,12 +96,8 @@ function getOrCreateRoom(tourCode, roomId = 'genel') {
 }
 
 // Initialize default rooms
-getOrCreateRoom('SELAMET-2026', 'genel');
-getOrCreateRoom('SELAMET-2026', 'irshad');
 getOrCreateRoom('RY-KASIM', 'genel');
-getOrCreateRoom('RY-2026', 'genel');
-getOrCreateRoom('RY-2026', 'siyer');
-getOrCreateRoom('RY-GENCLIK', 'genel');
+getOrCreateRoom('RY-KASIM', 'siyer');
 
 function serializeRoom(room) {
   const pilgrims = [];
@@ -126,13 +120,9 @@ function serializeRoom(room) {
   // Simulated baseline pilgrims for demo realism alongside real connected tabs
   const baseCount =
     room.roomId === 'genel'
-      ? room.tourCode === 'SELAMET-2026'
-        ? 34
-        : room.tourCode === 'RY-KASIM'
-          ? 38
-          : room.tourCode === 'RY-2026'
-            ? 42
-            : 0
+      ? room.tourCode === 'RY-KASIM'
+        ? 38
+        : 0
       : 0;
 
   return {
@@ -233,7 +223,7 @@ function processClientJsonMessage(ctx, msg) {
   }
 
   if (msg.type === 'join') {
-    const tourCode = String(msg.tourCode || 'RY-2026').toUpperCase().trim();
+    const tourCode = String(msg.tourCode || 'RY-KASIM').toUpperCase().trim();
     const roomId = String(msg.roomId || 'genel').trim();
     if (ctx.currentRoom) {
       ctx.currentRoom.clients.delete(clientId);
@@ -245,7 +235,7 @@ function processClientJsonMessage(ctx, msg) {
       ws,
       id: clientId,
       role,
-      name: msg.name || (role === 'guide' ? 'Rıdvan Yılmaz Hoca' : `Hacı Misafir #${clientSeq++}`),
+      name: msg.name || (role === 'guide' ? 'Ömer Ali Gültekin' : `Hacı Misafir #${clientSeq++}`),
       phone: msg.phone || '',
       lang: msg.lang || 'tr',
       handRaised: false,
@@ -635,7 +625,7 @@ app.post('/api/login', (req, res) => {
       email: 'info@selametturizm.com',
       role: 'agency_admin',
       agency: 'Selamet Turizm',
-      assignedTour: 'SELAMET-2026'
+      assignedTour: 'RY-KASIM'
     };
   } else {
     return res.status(401).json({
@@ -711,7 +701,7 @@ app.post('/api/join-tour', (req, res) => {
   if (!tour) {
     return res.status(404).json({
       success: false,
-      message: `"${cleanCode}" koduna ait aktif bir Rıdvan Yılmaz Turizm kafilesi bulunamadı. Örnek kodlar: RY-2026, RY-GENCLIK, RY-EYLUL, RY-5YILDIZ`
+      message: `"${cleanCode}" koduna ait aktif bir Rıdvan Yılmaz Turizm kafilesi bulunamadı. Lütfen geçerli kafile kodunu giriniz (Örn: RY-KASIM).`
     });
   }
   if (tour.pinProtected && tour.pin && String(tour.pin) !== String(pin || '').trim()) {
@@ -762,8 +752,23 @@ app.post('/api/tours', (req, res) => {
 });
 
 app.delete('/api/tours/:id', (req, res) => {
-  db.tours = db.tours.filter((t) => t.id !== req.params.id && t.code !== req.params.id);
+  const targetId = req.params.id;
+  const deletedTour = db.tours.find((t) => t.id === targetId || t.code === targetId);
+  const deletedCode = deletedTour ? deletedTour.code : targetId;
+  db.tours = db.tours.filter((t) => t.id !== targetId && t.code !== targetId);
+  if (deletedCode) {
+    db.announcements = db.announcements.filter((a) => a.tourCode !== deletedCode);
+    for (const [key, room] of liveRooms.entries()) {
+      if (room.tourCode === deletedCode) {
+        liveRooms.delete(key);
+      }
+    }
+  }
   saveState(db);
+  broadcastToAdmins({
+    type: 'admin-rooms-update',
+    rooms: Array.from(liveRooms.values()).map(serializeRoom)
+  });
   res.json({ success: true });
 });
 
@@ -778,7 +783,7 @@ app.post('/api/guides', (req, res) => {
     email: body.email || `rehber${Date.now()}@ridvanyilmazturizm.com`,
     specialty: body.specialty || 'Siyer ve Umre Rehberliği',
     status: 'online',
-    assignedTour: body.assignedTour || 'RY-2026'
+    assignedTour: body.assignedTour || 'RY-KASIM'
   };
   db.guides.push(guide);
   saveState(db);
@@ -790,7 +795,7 @@ app.post('/api/announcements', (req, res) => {
   const body = req.body || {};
   const ann = {
     id: `ann-${Date.now()}`,
-    tourCode: String(body.tourCode || 'RY-2026').toUpperCase(),
+    tourCode: String(body.tourCode || 'RY-KASIM').toUpperCase(),
     title: body.title || 'Kafile Duyurusu',
     message: body.message || '',
     sender: body.sender || 'Rıdvan Yılmaz Turizm Operasyon',
@@ -815,7 +820,7 @@ app.post('/api/sos', (req, res) => {
   const body = req.body || {};
   const alertItem = {
     id: `sos-${Date.now()}`,
-    tourCode: String(body.tourCode || 'RY-2026').toUpperCase(),
+    tourCode: String(body.tourCode || 'RY-KASIM').toUpperCase(),
     pilgrimName: body.pilgrimName || 'Hacı Misafir',
     phone: body.phone || '+90 538 000 00 00',
     lat: Number(body.lat) || 21.4225,
@@ -904,7 +909,7 @@ app.get('/api/rea-report', (req, res) => {
 // 9. QR Code & WhatsApp Invite Generator Endpoint
 app.get('/api/qr', async (req, res) => {
   try {
-    const code = String(req.query.code || 'RY-2026').toUpperCase().trim();
+    const code = String(req.query.code || 'RY-KASIM').toUpperCase().trim();
     const room = String(req.query.room || 'genel').trim();
     const host = req.headers['x-forwarded-host'] || req.get('host') || 'localhost:3000';
     const proto = req.headers['x-forwarded-proto']
@@ -913,12 +918,12 @@ app.get('/api/qr', async (req, res) => {
     const baseUrl = req.query.baseUrl || `${proto}://${host}`;
     const joinUrl = `${baseUrl}/dinle?code=${encodeURIComponent(code)}&room=${encodeURIComponent(room)}`;
 
-    const tour = db.tours.find((t) => t.code.toUpperCase() === code) || {
+    const tour = db.tours.find((t) => t.code.toUpperCase() === code) || db.tours[0] || {
       code,
-      name: `${code} Siyer Umresi Kafilesi`,
-      guideName: 'Rıdvan Yılmaz Hoca',
-      makkahHotel: 'Rayhaan Al Mashaer Hotel',
-      madinahHotel: 'Medine Merkezi Ravza Oteli'
+      name: `Kasım Umresi Kafilesi`,
+      guideName: 'Ömer Ali Gültekin',
+      makkahHotel: '8 Gün Mekke Konaklama',
+      madinahHotel: '2 Gün Medine Konaklama'
     };
 
     const dataUrl = await QRCode.toDataURL(joinUrl, {

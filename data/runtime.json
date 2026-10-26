@@ -15,46 +15,6 @@
   },
   "guides": [
     {
-      "id": "guide-1",
-      "name": "Rıdvan Yılmaz Hoca",
-      "title": "Kurucu & Baş Siyer Rehberi",
-      "phone": "+90 538 399 96 66",
-      "email": "ridvan@ridvanyilmazturizm.com",
-      "specialty": "Siyer-i Nebi Sohbetleri, Tavaf & Umre Menasiki",
-      "status": "live",
-      "assignedTour": "RY-2026"
-    },
-    {
-      "id": "guide-2",
-      "name": "Beytullah Bey",
-      "title": "Kafile Operasyon & Kayıt Sorumlusu",
-      "phone": "+90 538 399 96 66",
-      "email": "beytullah@ridvanyilmazturizm.com",
-      "specialty": "Otel, Transfer, İrşad Koordinasyonu ve Kafile Yönetimi",
-      "status": "online",
-      "assignedTour": "RY-GENCLIK"
-    },
-    {
-      "id": "guide-3",
-      "name": "Hafız Mehmet Efendi",
-      "title": "Medine & Ravza Rehberi",
-      "phone": "+90 538 399 96 67",
-      "email": "mehmet@ridvanyilmazturizm.com",
-      "specialty": "Mescid-i Nebevi, Uhud, Hendek ve Medine Ziyaretleri",
-      "status": "online",
-      "assignedTour": "RY-EYLUL"
-    },
-    {
-      "id": "guide-4",
-      "name": "Ayşe Hoca Hanım",
-      "title": "Hanımlar İrşad & Fıkıh Rehberi",
-      "phone": "+90 538 399 96 68",
-      "email": "ayse@ridvanyilmazturizm.com",
-      "specialty": "Hanımlara Özel Umre Fıkhı ve Ravza Ziyaretleri",
-      "status": "online",
-      "assignedTour": "RY-2026"
-    },
-    {
       "id": "guide-5",
       "name": "Ömer Ali Gültekin",
       "title": "Kasım Umresi Kafile & Manevi Yolculuk Rehberi",
@@ -65,14 +25,14 @@
       "assignedTour": "RY-KASIM"
     },
     {
-      "id": "guide-selamet",
-      "name": "Selamet Turizm Kafile Rehberi",
-      "title": "Selamet Turizm Baş Rehberi & Kafile Sorumlusu",
-      "phone": "+90 545 787 03 48",
-      "email": "info@selametturizm.com",
-      "specialty": "Kâbe Tavafı, Canlı Dua Yayını, Siyer Anlatımları ve Kafile Koordinasyonu",
-      "status": "live",
-      "assignedTour": "SELAMET-2026"
+      "id": "guide-1",
+      "name": "Rıdvan Yılmaz Hoca",
+      "title": "Kurucu & Baş Siyer Rehberi",
+      "phone": "+90 538 399 96 66",
+      "email": "ridvan@ridvanyilmazturizm.com",
+      "specialty": "Siyer-i Nebi Sohbetleri, Tavaf & Umre Menasiki",
+      "status": "online",
+      "assignedTour": "RY-KASIM"
     }
   ],
   "hotels": [
@@ -159,37 +119,6 @@
   ],
   "tours": [
     {
-      "id": "tour-selamet-2026",
-      "code": "SELAMET-2026",
-      "name": "🕋 Selamet Turizm — Özel Umre Kafilesi (Demo & Test)",
-      "dateText": "Kasım - Aralık 2026",
-      "duration": "14 Gün (Mekke - Medine)",
-      "guideId": "guide-selamet",
-      "guideName": "Selamet Turizm Kafile Rehberi",
-      "makkahHotel": "Mekke 5★ Harem Oteli (Kâbe Önü)",
-      "madinahHotel": "Medine Ravza Oteli (Mescid-i Nebevî Yakını)",
-      "pin": "",
-      "pinProtected": false,
-      "status": "live",
-      "capacity": 150,
-      "registeredCount": 46,
-      "description": "Selamet Turizm kafilelerine özel kristal netliğinde dijital sesli rehberlik, anlık tavaf duaları, interaktif el kaldırma/soru-cevap ve noktasal GPS kayıp hacı acil SOS takip sistemi.",
-      "rooms": [
-        {
-          "id": "genel",
-          "name": "Selamet Turizm — Ana Kafile & Tavaf Yayını",
-          "guide": "Selamet Turizm Kafile Rehberi",
-          "active": true
-        },
-        {
-          "id": "irshad",
-          "name": "Manevi Sohbet & Ziyaretler Odası",
-          "guide": "Selamet Turizm Kafile Rehberi",
-          "active": true
-        }
-      ]
-    },
-    {
       "id": "tour-kasim-2026",
       "code": "RY-KASIM",
       "name": "🕋 Kasım Umresi — Kutsal Topraklara Manevi Yolculuk",
@@ -219,262 +148,29 @@
           "active": true
         }
       ]
-    },
-    {
-      "id": "tour-1",
-      "code": "RY-2026",
-      "name": "26 Haziran 2026 Siyer Umresi (14/20 Günlük)",
-      "dateText": "26 Haziran 2026",
-      "duration": "14 / 20 Gün",
-      "guideId": "guide-1",
-      "guideName": "Rıdvan Yılmaz Hoca",
-      "makkahHotel": "Rayhaan Al Mashaer Hotel",
-      "madinahHotel": "Medine Merkezi Ravza Oteli",
-      "pin": "",
-      "pinProtected": false,
-      "status": "live",
-      "capacity": 120,
-      "registeredCount": 94,
-      "description": "Rıdvan Yılmaz Hoca eşliğinde adım adım Asr-ı Saadet izinde Siyer Umresi, Tavaf duaları ve Mekke-Medine ziyaretleri.",
-      "rooms": [
-        {
-          "id": "genel",
-          "name": "Genel Kafile & Tavaf Yayını",
-          "guide": "Rıdvan Yılmaz Hoca",
-          "active": true
-        },
-        {
-          "id": "siyer",
-          "name": "Siyer-i Nebi Sohbet Odası",
-          "guide": "Rıdvan Yılmaz Hoca",
-          "active": true
-        },
-        {
-          "id": "hanimlar",
-          "name": "Hanımlar İrşad & Fıkıh Odası",
-          "guide": "Ayşe Hoca Hanım",
-          "active": false
-        }
-      ]
-    },
-    {
-      "id": "tour-2",
-      "code": "RY-GENCLIK",
-      "name": "8 Temmuz 2026 Gençlik Siyer Umresi",
-      "dateText": "8 Temmuz 2026",
-      "duration": "15 Gün",
-      "guideId": "guide-2",
-      "guideName": "Rıdvan Yılmaz Hoca & Beytullah Bey",
-      "makkahHotel": "Masarat Ajyad Almas Hotel",
-      "madinahHotel": "Medine Merkezi Ravza Oteli",
-      "pin": "",
-      "pinProtected": false,
-      "status": "active",
-      "capacity": 85,
-      "registeredCount": 72,
-      "description": "Genç kardeşlerimizle Uhud'dan Hira'ya, Sevr'den Kâbe'ye heyecan ve muhabbet dolu Gençlik Siyer Umresi.",
-      "rooms": [
-        {
-          "id": "genel",
-          "name": "Gençlik Kafilesi Ana Yayın",
-          "guide": "Rıdvan Yılmaz Hoca",
-          "active": true
-        },
-        {
-          "id": "soru-cevap",
-          "name": "Gençlerle Soru-Cevap & Sohbet",
-          "guide": "Beytullah Bey",
-          "active": false
-        }
-      ]
-    },
-    {
-      "id": "tour-3",
-      "code": "RY-EYLUL",
-      "name": "5 Eylül 2026 Siyer Umresi (10 Gün Mekke - 10 Gün Medine)",
-      "dateText": "5 Eylül 2026",
-      "duration": "20 Gün (10 Mekke + 10 Medine)",
-      "guideId": "guide-3",
-      "guideName": "Rıdvan Yılmaz Hoca & Hafız Mehmet Efendi",
-      "makkahHotel": "Emaar Elite Hotel",
-      "madinahHotel": "Medine Merkezi Ravza Oteli",
-      "pin": "",
-      "pinProtected": false,
-      "status": "active",
-      "capacity": 90,
-      "registeredCount": 64,
-      "description": "10 gün Mekke-i Mükerreme ve 10 gün Medine-i Münevvere'de dolu dolu ibadet ve Siyer-i Nebi programı.",
-      "rooms": [
-        {
-          "id": "genel",
-          "name": "Ana Kafile Rehberlik Odası",
-          "guide": "Rıdvan Yılmaz Hoca",
-          "active": true
-        }
-      ]
-    },
-    {
-      "id": "tour-4",
-      "code": "RY-5YILDIZ",
-      "name": "5 Ekim 2026 5 Yıldızlı Siyer Umresi",
-      "dateText": "5 Ekim 2026",
-      "duration": "10 / 14 Gün",
-      "guideId": "guide-1",
-      "guideName": "Rıdvan Yılmaz Hoca",
-      "makkahHotel": "Mekke Anjum Hotel (5★)",
-      "madinahHotel": "Medine 5★ Merkezi Otel",
-      "pin": "2026",
-      "pinProtected": false,
-      "status": "active",
-      "capacity": 60,
-      "registeredCount": 48,
-      "description": "Harem avlusuna yürüme mesafesinde 5 yıldızlı Anjum Otel konforuyla Siyer Umresi.",
-      "rooms": [
-        {
-          "id": "genel",
-          "name": "VIP Kafile Canlı Rehberlik",
-          "guide": "Rıdvan Yılmaz Hoca",
-          "active": true
-        }
-      ]
-    },
-    {
-      "id": "tour-5",
-      "code": "RY-ARALIK",
-      "name": "11 Aralık 2026 Kış Siyer Umresi",
-      "dateText": "11 Aralık 2026",
-      "duration": "15 Gün",
-      "guideId": "guide-1",
-      "guideName": "Rıdvan Yılmaz Hoca",
-      "makkahHotel": "Rayhaan Al Mashaer Hotel",
-      "madinahHotel": "Medine Merkezi Ravza Oteli",
-      "pin": "",
-      "pinProtected": false,
-      "status": "upcoming",
-      "capacity": 100,
-      "registeredCount": 53,
-      "description": "Aralık ayının serin ikliminde derinlikli Siyer sohbetleri ve huzurlu Umre ibadeti.",
-      "rooms": [
-        {
-          "id": "genel",
-          "name": "Genel Kafile Yayını",
-          "guide": "Rıdvan Yılmaz Hoca",
-          "active": false
-        }
-      ]
-    },
-    {
-      "id": "tour-6",
-      "code": "RY-SOMESTR",
-      "name": "15 Ocak 2027 Sömestr Siyer Umresi",
-      "dateText": "15 Ocak 2027",
-      "duration": "15 Gün",
-      "guideId": "guide-1",
-      "guideName": "Rıdvan Yılmaz Hoca",
-      "makkahHotel": "Emaar Elite Hotel",
-      "madinahHotel": "Medine Merkezi Ravza Oteli",
-      "pin": "",
-      "pinProtected": false,
-      "status": "upcoming",
-      "capacity": 110,
-      "registeredCount": 41,
-      "description": "Yarıyıl tatilinde ailece ve çocuklarımızla unutulmaz bir Siyer Umresi.",
-      "rooms": [
-        {
-          "id": "genel",
-          "name": "Aile & Sömestr Kafilesi",
-          "guide": "Rıdvan Yılmaz Hoca",
-          "active": false
-        }
-      ]
-    },
-    {
-      "id": "tour-7",
-      "code": "RY-SEVVAL",
-      "name": "12 Mart 2027 & 23 Mart 2027 Şevval Siyer Umresi",
-      "dateText": "12 Mart / 23 Mart 2027",
-      "duration": "10 / 15 Gün",
-      "guideId": "guide-1",
-      "guideName": "Rıdvan Yılmaz Hoca",
-      "makkahHotel": "Mekke Anjum Hotel (5★)",
-      "madinahHotel": "Medine Merkezi Ravza Oteli",
-      "pin": "",
-      "pinProtected": false,
-      "status": "upcoming",
-      "capacity": 95,
-      "registeredCount": 38,
-      "description": "Ramazan sonrası mübarek Şevval ayında 10 ve 15 günlük Siyer Umresi programları.",
-      "rooms": [
-        {
-          "id": "genel",
-          "name": "Şevval Kafilesi Ana Yayın",
-          "guide": "Rıdvan Yılmaz Hoca",
-          "active": false
-        }
-      ]
     }
   ],
   "announcements": [
     {
-      "id": "ann-selamet-1",
-      "tourCode": "SELAMET-2026",
-      "title": "Selamet Turizm Ses Sistemine Hoş Geldiniz",
-      "message": "Kıymetli Selamet Turizm misafirlerimiz; ses sistemimize başarıyla bağlandınız. Kulaklığınızı takarak rehberimizin sesini kristal netliğinde dinleyebilir, soru sormak için \"El Kaldır\" butonunu kullanabilirsiniz.",
-      "sender": "Selamet Turizm Kafile Rehberi",
-      "createdAt": "16:00",
-      "urgent": true
-    },
-    {
       "id": "ann-kasim-1",
       "tourCode": "RY-KASIM",
       "title": "🕋 Kasım Umresi — Kutsal Topraklara Manevi Yolculuk",
-      "message": "13-14 Kasım 2026 (8 Gün Mekke | 2 Gün Medine) 10 günlük Kasım Umresi kafilemizde Ömer Ali Gültekin hocamızın canlı rehberlik odası (RY-KASIM) aktiftir. Bilgi ve kayıt: 0 538 399 96 66.",
+      "message": "13-14 Kasım 2026 (8 Gün Mekke | 2 Gün Medine) 10 günlük Kasım Umresi kafilemizde Ömer Ali Gültekin hocamızın canlı rehberlik odası (RY-KASIM) aktiftir. Bilgi ve iletişim: 0 538 399 96 66.",
       "sender": "Ömer Ali Gültekin",
       "createdAt": "15:00",
       "urgent": true
     },
     {
-      "id": "ann-1",
-      "tourCode": "RY-2026",
-      "title": "İkindi Namazı Sonrası Tavaf & Siyer Sohbeti",
-      "message": "Kıymetli misafirlerimiz, saat 16:30'da Rayhaan Al Mashaer Otel lobisinde toplanarak Kâbe-i Muazzama'ya geçiyoruz. Kulaklıklarınızı telefonunuza takıp RY-2026 odasına bağlanmayı unutmayınız.",
-      "sender": "Rıdvan Yılmaz Hoca",
-      "createdAt": "14:15",
-      "urgent": false
-    },
-    {
-      "id": "ann-2",
-      "tourCode": "RY-2026",
-      "title": "Sevr Dağı ve Arafat Ziyaret Otobüsleri",
-      "message": "Yarın sabah 07:30'da Mekke çevre ziyaretlerimiz (Sevr Dağı, Arafat, Müzdelife, Mina ve Cemerat) için 1, 2 ve 3 numaralı otobüslerimiz otel önünden hareket edecektir.",
-      "sender": "Beytullah Bey (Operasyon)",
-      "createdAt": "11:40",
+      "id": "ann-kasim-2",
+      "tourCode": "RY-KASIM",
+      "title": "Sevr Dağı & Arafat Ziyaret Otobüs Hareketi",
+      "message": "Kıymetli misafirlerimiz, Mekke çevre ziyaretlerimiz (Sevr Dağı, Arafat, Müzdelife, Mina) için servis otobüslerimiz otel lobisi önünden hareket edecektir.",
+      "sender": "Ömer Ali Gültekin",
+      "createdAt": "08:30",
       "urgent": true
-    },
-    {
-      "id": "ann-3",
-      "tourCode": "RY-GENCLIK",
-      "title": "Gençlik Kafilesi Uhud & Okçular Tepesi Dersi",
-      "message": "Genç kardeşlerimizle Okçular Tepesi'nde Rıdvan Yılmaz Hocamızın canlı Siyer dersi başlayacaktır. Canlı yayın odamız aktiftir.",
-      "sender": "Rıdvan Yılmaz Hoca",
-      "createdAt": "09:30",
-      "urgent": false
     }
   ],
-  "sosAlerts": [
-    {
-      "id": "sos-sample-1",
-      "tourCode": "RY-2026",
-      "pilgrimName": "Hacı Ahmet Demir",
-      "phone": "+90 532 411 22 33",
-      "lat": 21.4229,
-      "lng": 39.8257,
-      "locationNote": "Mescid-i Haram — Kral Abdülaziz Kapısı (Kapı No: 1) Yakını",
-      "createdAt": "13:52",
-      "status": "resolved",
-      "resolvedBy": "Beytullah Bey"
-    }
-  ],
+  "sosAlerts": [],
   "siyerPoints": [
     {
       "id": "sp-1",

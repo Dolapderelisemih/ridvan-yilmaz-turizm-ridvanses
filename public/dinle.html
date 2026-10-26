@@ -181,22 +181,16 @@
         <div>
           <label class="label" id="i18n_codeLabel">Kafile / Tur Kodu *</label>
           <input type="text" id="tourCodeInput" class="input" style="font-size:1.2rem; font-weight:800; text-transform:uppercase; text-align:center; letter-spacing:0.06em;" value="RY-KASIM" required />
-          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
-            <button type="button" class="code-pill" style="padding:4px 10px; font-size:0.75rem; border-radius:99px; border:1px solid #10b981; background:rgba(16,185,129,0.15); color:#047857; font-weight:800; cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='SELAMET-2026'">🌟 SELAMET-2026 (Selamet Turizm)</button>
+          <div id="tourPillsContainer" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
             <button type="button" class="code-pill" style="padding:4px 10px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-gold); background:var(--color-gold-soft); font-weight:700; cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='RY-KASIM'">✨ RY-KASIM (13-14 Kasım • Ömer Ali Gültekin)</button>
-            <button type="button" class="code-pill" style="padding:4px 10px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-hairline); cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='RY-2026'">RY-2026 (26 Haziran)</button>
-            <button type="button" class="code-pill" style="padding:4px 10px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-hairline); cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='RY-GENCLIK'">RY-GENCLIK</button>
-            <button type="button" class="code-pill" style="padding:4px 10px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-hairline); cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='RY-EYLUL'">RY-EYLUL</button>
-            <button type="button" class="code-pill" style="padding:4px 10px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-hairline); cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='RY-5YILDIZ'">RY-5YILDIZ</button>
           </div>
         </div>
 
         <div>
           <label class="label" id="i18n_roomLabel">Yayın Odası Seçimi</label>
           <select id="roomSelect" class="select">
-            <option value="genel">🕋 Genel Kafile & Tavaf Yayını (Rıdvan Yılmaz Hoca)</option>
-            <option value="siyer">🕌 Siyer-i Nebi Sohbet Odası (Rıdvan Yılmaz Hoca)</option>
-            <option value="hanimlar">🧕 Hanımlar İrşad & Fıkıh Odası (Ayşe Hoca Hanım)</option>
+            <option value="genel">🕋 Kasım Umresi Ana Kafile & Tavaf Yayını (Ömer Ali Gültekin)</option>
+            <option value="siyer">🕌 Siyer-i Nebi Sohbet Odası (Ömer Ali Gültekin)</option>
           </select>
         </div>
 
@@ -235,19 +229,19 @@
           <span class="badge" id="liveBadge" style="background:rgba(34,197,94,0.22); color:#4ade80; border:1px solid rgba(74,222,128,0.4);">
             <span class="live-dot"></span> <span id="i18n_liveStatus">CANLI YAYIN AKTİF</span>
           </span>
-          <span style="font-size:0.8rem; color:#d4af37; font-weight:700;" id="activeTourBadge">RY-2026</span>
+          <span style="font-size:0.8rem; color:#d4af37; font-weight:700;" id="activeTourBadge">RY-KASIM</span>
         </div>
 
-        <h3 style="font-size:1.25rem; color:#fff; margin-bottom:4px;" id="liveTourTitle">26 Haziran 2026 Siyer Umresi</h3>
+        <h3 style="font-size:1.25rem; color:#fff; margin-bottom:4px;" id="liveTourTitle">Kasım Umresi — Kutsal Topraklara Manevi Yolculuk</h3>
         <div style="font-size:0.88rem; color:#cbd5e1; margin-bottom:16px;">
-          🎙️ <strong id="liveGuideName">Rıdvan Yılmaz Hoca</strong> • 👥 <span id="liveListenerCount">43</span> Dinleyici
+          🎙️ <strong id="liveGuideName">Ömer Ali Gültekin</strong> • 👥 <span id="liveListenerCount">38</span> Dinleyici
         </div>
 
         <!-- Konu & Frekans Görselleştirici -->
         <div style="background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.14); border-radius:14px; padding:14px; margin-bottom:16px;">
           <div style="font-size:0.74rem; color:#d4af37; font-weight:700; text-transform:uppercase;">ŞU ANKİ ANLATIM / BÖLÜM</div>
           <div style="font-size:0.95rem; font-weight:700; color:#fff; margin-top:3px;" id="liveTopicText">
-            Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti
+            Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk
           </div>
           <div class="spectrum" id="listenerSpectrum" style="margin-top:12px;"></div>
         </div>
@@ -514,6 +508,24 @@
       const btn = Array.from(document.querySelectorAll('.lang-btn')).find((b) => b.getAttribute('onclick').includes(`'${targetLang}'`));
       setLang(targetLang, btn);
     }
+
+    // Aktif turları ve odaları sunucudan dinamik yükle
+    fetch('/api/bootstrap')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data.tours && data.tours.length > 0) {
+          const container = document.getElementById('tourPillsContainer');
+          if (container) {
+            container.innerHTML = data.tours.map((t) => `
+              <button type="button" class="code-pill" style="padding:4px 10px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-gold); background:var(--color-gold-soft); font-weight:700; cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='${t.code}'">✨ ${t.code} (${t.dateText || t.name})</button>
+            `).join('');
+          }
+          if (!urlParams.get('code')) {
+            document.getElementById('tourCodeInput').value = data.tours[0].code;
+          }
+        }
+      })
+      .catch((e) => console.log('Bootstrap dynamic load err:', e));
 
     document.getElementById('joinForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1624,7 +1636,7 @@
 
       navigator.mediaSession.metadata = new MediaMetadata({
         title,
-        artist: `${artist} (${currentTour ? currentTour.code : 'RY-2026'})`,
+        artist: `${artist} (${currentTour ? currentTour.code : 'RY-KASIM'})`,
         album,
         artwork: [
           { src: '/icons/icon-192.png?v=14', sizes: '192x192', type: 'image/png' },
