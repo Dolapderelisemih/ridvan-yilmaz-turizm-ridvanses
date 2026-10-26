@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=14" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=14" />
-  <title>Rehber (Hoca) Canlı Yayın Konsolu | Rıdvan Yılmaz Turizm — RıdvanSes</title>
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=15" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=15" />
+  <title>Rehber (Hoca) Canlı Yayın Stüdyosu | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/rehber" />
-  <link rel="stylesheet" href="/css/style.css?v=14" />
+  <link rel="stylesheet" href="/css/style.css?v=15" />
   <script>
     (function() {
       const TOKEN = 'ry_auth_v1_987a6b5c4d';
@@ -29,25 +29,105 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=14"></script>
+  <script src="/vercel-ws-shim.js?v=15"></script>
   <style>
     .console-wrap {
-      max-width: 1180px;
-      margin: 28px auto 64px;
-      padding: 0 20px;
+      max-width: 1220px;
+      margin: 28px auto 72px;
+      padding: 0 22px;
     }
     .console-grid {
       display: grid;
       grid-template-columns: 1.15fr 0.85fr;
       gap: 24px;
+      align-items: start;
+    }
+    .studio-deck {
+      background: linear-gradient(155deg, #06231B 0%, #093529 55%, #041913 100%);
+      color: #F8F4EC;
+      border-radius: 24px;
+      padding: 26px;
+      border: 1px solid rgba(197, 160, 89, 0.35);
+      box-shadow: 0 28px 60px rgba(4, 25, 19, 0.28);
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    .studio-deck::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, var(--color-gold), var(--color-gold-light), var(--color-gold), transparent);
+    }
+    .studio-header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding-bottom: 16px;
+      margin-bottom: 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .studio-timer {
+      font-family: 'Plus Jakarta Sans', monospace;
+      font-variant-numeric: tabular-nums;
+      font-size: 1.05rem;
+      color: #E2C785;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      background: rgba(197, 160, 89, 0.14);
+      border: 1px solid rgba(197, 160, 89, 0.3);
+      padding: 5px 12px;
+      border-radius: 99px;
+    }
+    .studio-field-label {
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #A7C4BC;
+      font-weight: 800;
+      display: block;
+      margin-bottom: 6px;
+    }
+    .studio-select,
+    .studio-input {
+      width: 100%;
+      padding: 11px 14px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #FFFFFF;
+      font-family: var(--font-sans);
+      font-size: 0.92rem;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+    .studio-select:focus,
+    .studio-input:focus {
+      outline: none;
+      border-color: var(--color-gold);
+      background: rgba(255, 255, 255, 0.11);
+      box-shadow: 0 0 0 3px rgba(197, 160, 89, 0.2);
+    }
+    .studio-meter-box {
+      background: rgba(0, 0, 0, 0.32);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      padding: 16px 18px;
+      margin-bottom: 18px;
     }
     .sos-banner {
-      background: #fff5f5;
+      background: #FFF5F5;
       border: 2px solid var(--color-danger);
-      border-radius: 16px;
-      padding: 16px 20px;
-      margin-bottom: 20px;
+      border-radius: 20px;
+      padding: 18px 22px;
+      margin-bottom: 24px;
       display: none;
+      box-shadow: 0 16px 36px rgba(185, 28, 28, 0.14);
     }
     .pilgrim-row {
       display: flex;
@@ -55,27 +135,70 @@
       justify-content: space-between;
       flex-wrap: wrap;
       gap: 10px;
-      padding: 12px 14px;
-      border-radius: 12px;
+      padding: 13px 16px;
+      border-radius: 14px;
       background: var(--color-ground);
       border: 1px solid var(--color-hairline);
       margin-bottom: 8px;
+      transition: all 0.18s ease;
+    }
+    .pilgrim-row:hover {
+      border-color: rgba(197, 160, 89, 0.45);
     }
     .pilgrim-row.hand-raised {
       background: var(--color-gold-soft);
       border-color: var(--color-gold);
+      box-shadow: 0 6px 18px rgba(197, 160, 89, 0.15);
     }
     .pilgrim-row.mic-active {
-      background: #dcfce7;
-      border-color: #16a34a;
+      background: #DCFCE7;
+      border-color: #16A34A;
+    }
+    .section-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .section-card-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.15rem;
+      color: var(--color-emerald-night);
+      margin: 0;
+    }
+    .section-icon-badge {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: var(--color-emerald-soft);
+      color: var(--color-emerald-deep);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(11, 70, 54, 0.14);
+      flex-shrink: 0;
+    }
+    .prompter-box {
+      background: var(--color-ground);
+      border: 1px solid var(--color-hairline);
+      border-left: 3px solid var(--color-gold);
+      border-radius: 14px;
+      padding: 16px;
     }
     @media (max-width: 960px) {
       .console-grid {
         grid-template-columns: 1fr;
       }
       .console-wrap {
-        margin: 16px auto 48px;
+        margin: 16px auto 52px;
         padding: 0 14px;
+      }
+      .studio-deck {
+        padding: 20px 18px;
       }
     }
   </style>
@@ -85,16 +208,25 @@
   <header class="navbar">
     <div class="container navbar-inner">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=14" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=15" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
-          <h1 class="brand-title" style="margin:0; font-size:1.15rem; line-height:1.2;">Rıdvan Yılmaz Turizm</h1>
-          <span class="brand-sub"><span class="live-dot"></span> Rehber (Hoca) Canlı Yayın Konsolu</span>
+          <h1 class="brand-title" style="margin:0; font-size:1.12rem; line-height:1.2;">Rıdvan Yılmaz Turizm</h1>
+          <span class="brand-sub"><span class="live-dot"></span> Rehber (Hoca) Canlı Yayın Stüdyosu</span>
         </div>
       </a>
       <div class="nav-actions">
-        <a href="/dinle" target="_blank" class="btn btn-outline btn-sm">🎧 Hacı Ekranı</a>
-        <a href="/panel" class="btn btn-primary btn-sm">🛡️ Acente Paneli</a>
-        <button type="button" onclick="ryLogout()" class="btn btn-outline btn-sm">🚪 Çıkış Yap</button>
+        <a href="/dinle" target="_blank" class="btn btn-outline btn-sm">
+          <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+          Hacı Ekranı
+        </a>
+        <a href="/panel" class="btn btn-primary btn-sm">
+          <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+          Acente Paneli
+        </a>
+        <button type="button" onclick="ryLogout()" class="btn btn-outline btn-sm">
+          <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Çıkış
+        </button>
       </div>
     </div>
   </header>
@@ -104,78 +236,83 @@
     <div id="sosAlertContainer" class="sos-banner"></div>
 
     <div class="console-grid">
-      <!-- SOL SÜTUN: CANLI YAYIN VE MİKROFON KONTROLÜ -->
+      <!-- SOL SÜTUN: CANLI YAYIN STÜDYO MASASI, KONUM VE DUYURU -->
       <div>
-        <div class="card-dark star-field-dark" style="margin-bottom:22px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <span class="badge" id="broadcastStatusBadge" style="background:rgba(34,197,94,0.22); color:#4ade80; border:1px solid rgba(74,222,128,0.4);">
-              <span class="live-dot"></span> <span id="broadcastStatusText">ODA BAĞLANTISI AKTİF</span>
+        <div class="studio-deck star-field-dark">
+          <div class="studio-header-bar">
+            <span class="badge" id="broadcastStatusBadge" style="background:rgba(21,128,61,0.25); color:#4ADE80; border:1px solid rgba(74,222,128,0.4);">
+              <span class="live-dot"></span> <span id="broadcastStatusText">STÜDYO BAĞLANTISI AKTİF</span>
             </span>
-            <span style="font-family:monospace; font-size:1.05rem; color:#d4af37; font-weight:700;" id="broadcastTimer">00:18:42</span>
+            <span class="studio-timer" id="broadcastTimer">CANLI AKÜSTİK DECK</span>
           </div>
 
-          <div class="grid-2" style="gap:12px; margin-bottom:14px;">
+          <div class="grid-2" style="gap:14px; margin-bottom:16px;">
             <div>
-              <label style="font-size:0.78rem; color:#cbd5e1; font-weight:700; display:block; margin-bottom:4px;">Kafile / Tur Kodu</label>
-              <select id="guideTourSelect" class="select" style="background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);" onchange="onTourSelectionChange()">
+              <label class="studio-field-label" for="guideTourSelect">Kafile / Tur Kodu</label>
+              <select id="guideTourSelect" class="studio-select" onchange="onTourSelectionChange()">
                 <option value="RY-KASIM" style="color:#000;">RY-KASIM — 13-14 Kasım Umresi (Ömer Ali Gültekin)</option>
               </select>
             </div>
             <div>
-              <label style="font-size:0.78rem; color:#cbd5e1; font-weight:700; display:block; margin-bottom:4px;">Rehber Hoca Seçimi</label>
-              <select id="guideNameSelect" class="select" style="background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);" onchange="switchGuideRoom()">
+              <label class="studio-field-label" for="guideNameSelect">Rehber Hoca Seçimi</label>
+              <select id="guideNameSelect" class="studio-select" onchange="switchGuideRoom()">
                 <option value="Ömer Ali Gültekin" style="color:#000;">Ömer Ali Gültekin (Kasım Umresi Rehberi)</option>
                 <option value="Rıdvan Yılmaz Hoca" style="color:#000;">Rıdvan Yılmaz Hoca (Baş Rehber)</option>
               </select>
             </div>
           </div>
 
-          <div style="margin-bottom:16px;">
-            <label style="font-size:0.78rem; color:#cbd5e1; font-weight:700; display:block; margin-bottom:4px;">Şu An Anlatılan Siyer / İbadet Başlığı</label>
+          <div style="margin-bottom:18px;">
+            <label class="studio-field-label" for="topicInput">Şu An Anlatılan Siyer / İbadet Başlığı</label>
             <div style="display:flex; gap:8px;">
-              <input type="text" id="topicInput" class="input" style="background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);" value="Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk" />
-              <button type="button" class="btn btn-gold btn-sm" onclick="updateTopic()">Güncelle</button>
+              <input type="text" id="topicInput" class="studio-input" value="Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk" />
+              <button type="button" class="btn btn-gold btn-sm" style="flex-shrink:0;" onclick="updateTopic()">Güncelle</button>
             </div>
           </div>
 
           <!-- Mikrofon Spektrum & Seviye -->
-          <div style="background:rgba(0,0,0,0.28); border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:16px; margin-bottom:18px;">
-            <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:#cbd5e1; margin-bottom:8px;">
-              <span id="micSourceLabel">🎙️ Yayın Kaynağı: Hazır</span>
-              <span id="dbMeterText">Ses Seviyesi: Normal (-12 dB)</span>
+          <div class="studio-meter-box">
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.78rem; color:#CBD5E1; margin-bottom:10px; font-weight:600;">
+              <span id="micSourceLabel">Yayın Kaynağı: Hazır</span>
+              <span id="dbMeterText" style="color:#E2C785;">Ses Seviyesi: Normal (-12 dB)</span>
             </div>
             <div class="spectrum" id="guideSpectrum"></div>
           </div>
 
           <!-- Yayın Başlatma Butonu -->
           <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <button type="button" id="startMicBtn" class="btn btn-gold" style="flex:1; padding:14px;" onclick="toggleMicBroadcast()">
+            <button type="button" id="startMicBtn" class="btn btn-gold" style="flex:1; padding:15px 20px; font-size:0.98rem;" onclick="toggleMicBroadcast()">
               🎙️ Gerçek Mikrofonla Canlı Yayını Başlat
             </button>
           </div>
         </div>
 
         <!-- CANLI REHBER & KAFİLE KONUMU PAYLAŞIMI KARTI -->
-        <div class="card" style="margin-bottom:22px; border:2px solid rgba(15, 90, 71, 0.22);">
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
-            <h3 style="font-size:1.15rem; color:var(--color-emerald-night);">📍 Canlı Rehber & Kafile Konumu Paylaşımı</h3>
-            <span class="badge" id="guideLocStatusBadge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;">
+        <div class="card card-luxury" style="margin-bottom:24px;">
+          <div class="section-card-head">
+            <h3 class="section-card-title">
+              <span class="section-icon-badge">
+                <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              </span>
+              Canlı Rehber & Kafile Konumu
+            </h3>
+            <span class="badge" id="guideLocStatusBadge" style="background:#F1F5F9; color:#475569; border:1px solid #CBD5E1;">
               PAYLAŞIM KAPALI
             </span>
           </div>
-          <p style="font-size:0.84rem; color:var(--color-muted); margin-bottom:12px;">
-            Konum paylaşımını açtığınızda tüm hacılarımız kendi ekranlarında harita üzerinden sizin ve kafilenin tam olarak nerede olduğunu canlı görür, tek dokunuşla yanınıza yol tarifi alabilir. İstediğiniz zaman kapatabilirsiniz.
+          <p style="font-size:0.84rem; color:var(--color-muted); margin-bottom:14px;">
+            Konum paylaşımını açtığınızda tüm hacılarımız kendi ekranlarında harita üzerinden sizin ve kafilenin tam olarak nerede olduğunu canlı görür ve tek dokunuşla yanınıza yol tarifi alabilir.
           </p>
 
-          <div style="margin-bottom:10px;">
-            <label style="font-size:0.78rem; color:var(--color-ink); font-weight:700; display:block; margin-bottom:4px;">Toplanma / Bulunduğunuz Nokta Notu (İsteğe Bağlı)</label>
+          <div style="margin-bottom:12px;">
+            <label class="label" for="guideLocNoteInput">Toplanma / Bulunduğunuz Nokta Notu</label>
             <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-              <button type="button" class="code-pill" onclick="setGuideLocNote('🕋 Kâbe — Kral Abdülaziz Kapısı Önü')">🕋 Kral Abdülaziz Kapısı</button>
-              <button type="button" class="code-pill" onclick="setGuideLocNote('🕌 Mescid-i Nebevî 21 Nolu Kapı Önü')">🕌 Mescid-i Nebevî 21. Kapı</button>
-              <button type="button" class="code-pill" onclick="setGuideLocNote('🏨 Otel Lobisi Toplanma Noktası')">🏨 Otel Lobisi</button>
-              <button type="button" class="code-pill" onclick="setGuideLocNote('🚌 Kafile Ziyaret Otobüsü Yanı')">🚌 Otobüs Yanı</button>
+              <button type="button" class="code-pill" onclick="setGuideLocNote('Kâbe — Kral Abdülaziz Kapısı Önü')">Kral Abdülaziz Kapısı</button>
+              <button type="button" class="code-pill" onclick="setGuideLocNote('Mescid-i Nebevî 21 Nolu Kapı Önü')">Mescid-i Nebevî 21. Kapı</button>
+              <button type="button" class="code-pill" onclick="setGuideLocNote('Otel Lobisi Toplanma Noktası')">Otel Lobisi</button>
+              <button type="button" class="code-pill" onclick="setGuideLocNote('Kafile Ziyaret Otobüsü Yanı')">Ziyaret Otobüsü Yanı</button>
             </div>
-            <input type="text" id="guideLocNoteInput" class="input" value="🕋 Kafile Rehber Hocamızın Canlı Konumu" placeholder="Örn: Kâbe Kral Abdülaziz Kapısı Önü / Sevr Dağı Otobüs Yanı..." oninput="onGuideLocNoteEdit()" />
+            <input type="text" id="guideLocNoteInput" class="input" value="Kafile Rehber Hocamızın Canlı Konumu" placeholder="Örn: Kâbe Kral Abdülaziz Kapısı Önü..." oninput="onGuideLocNoteEdit()" />
           </div>
 
           <div style="display:flex; gap:10px; flex-wrap:wrap;">
@@ -185,16 +322,16 @@
           </div>
 
           <!-- Canlı Konum Açıkken Rehber Önizleme Kutusu -->
-          <div id="guideLocPreviewBox" style="display:none; margin-top:14px; padding:12px; border-radius:12px; background:#ecfdf5; border:1.5px solid #10b981;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
-              <div style="font-size:0.84rem; color:#065f46;">
-                <strong>✅ Konumunuz Şu An Tüm Hacılarla Canlı Paylaşılıyor</strong><br/>
-                📍 <span id="guideLocAddressText">GPS uydusundan konum alınıyor...</span><br/>
-                🧭 <span id="guideLocCoordsText">—</span>
+          <div id="guideLocPreviewBox" style="display:none; margin-top:14px; padding:14px; border-radius:14px; background:#ECFDF5; border:1.5px solid #10B981;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+              <div style="font-size:0.84rem; color:#065F46;">
+                <strong>Konumunuz Şu An Tüm Hacılarla Canlı Paylaşılıyor</strong><br/>
+                <span id="guideLocAddressText">GPS uydusundan konum alınıyor...</span><br/>
+                <span id="guideLocCoordsText" style="font-size:0.78rem; opacity:0.85;">—</span>
               </div>
-              <button type="button" class="btn btn-outline btn-sm" style="background:#fff;" onclick="refreshGuideLocationNow()">🔄 Şimdi Yenile</button>
+              <button type="button" class="btn btn-outline btn-sm" style="background:#fff;" onclick="refreshGuideLocationNow()">Şimdi Yenile</button>
             </div>
-            <div id="guideLocMapFrameWrap" style="border-radius:10px; overflow:hidden; border:1px solid #6ee7b7; height:175px; background:#f8fafc; display:none;">
+            <div id="guideLocMapFrameWrap" style="border-radius:12px; overflow:hidden; border:1px solid #6EE7B7; height:175px; background:#F8FAFC; display:none;">
               <iframe id="guideLocMapIframe" style="width:100%; height:100%; border:0;" loading="lazy"></iframe>
             </div>
           </div>
@@ -202,38 +339,53 @@
 
         <!-- HIZLI DUYURU GÖNDERME KARTI -->
         <div class="card">
-          <h3 style="font-size:1.15rem; margin-bottom:12px;">📢 Kafileye Anlık Push Duyuru Gönder</h3>
+          <div class="section-card-head">
+            <h3 class="section-card-title">
+              <span class="section-icon-badge">
+                <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              </span>
+              Kafileye Anlık Push Duyuru Gönder
+            </h3>
+          </div>
           <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
-            <button type="button" class="code-pill" onclick="fillQuickAnn('Otel Lobisinde Toplanma', 'Kıymetli misafirlerimiz, 15 dakika sonra Rayhaan Al Mashaer Otel lobisinde Kâbe-i Muazzama geçişi için toplanıyoruz.')">🏨 Lobi Toplanma</button>
-            <button type="button" class="code-pill" onclick="fillQuickAnn('Tavaf & Makam-ı İbrahim Namazı', '7. şavtımız tamamlanmak üzere. Tavaf namazımız için Makam-ı İbrahim gerisine geçiyoruz, lütfen kulaklıktan takipte kalınız.')">🕋 Tavaf Namazı</button>
-            <button type="button" class="code-pill" onclick="fillQuickAnn('Sevr & Arafat Otobüs Hareketi', 'Mekke ziyaret otobüslerimiz 10 dakika içinde otel önünden hareket edecektir.')">🚌 Ziyaret Otobüsü</button>
+            <button type="button" class="code-pill" onclick="fillQuickAnn('Otel Lobisinde Toplanma', 'Kıymetli misafirlerimiz, 15 dakika sonra Rayhaan Al Mashaer Otel lobisinde Kâbe-i Muazzama geçişi için toplanıyoruz.')">Lobi Toplanma</button>
+            <button type="button" class="code-pill" onclick="fillQuickAnn('Tavaf & Makam-ı İbrahim Namazı', '7. şavtımız tamamlanmak üzere. Tavaf namazımız için Makam-ı İbrahim gerisine geçiyoruz, lütfen kulaklıktan takipte kalınız.')">Tavaf Namazı</button>
+            <button type="button" class="code-pill" onclick="fillQuickAnn('Sevr & Arafat Otobüs Hareketi', 'Mekke ziyaret otobüslerimiz 10 dakika içinde otel önünden hareket edecektir.')">Ziyaret Otobüsü</button>
           </div>
           <div style="display:flex; flex-direction:column; gap:10px;">
             <input type="text" id="annTitleInput" class="input" placeholder="Duyuru Başlığı" />
             <textarea id="annMsgInput" rows="2" class="textarea" placeholder="Tüm bağlı hacıların ekranına düşecek duyuru metni..."></textarea>
-            <button type="button" class="btn btn-primary" onclick="sendQuickAnnouncement()">🔔 Duyuruyu Tüm Kafileye Gönder</button>
+            <button type="button" class="btn btn-primary" onclick="sendQuickAnnouncement()">
+              <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              Duyuruyu Tüm Kafileye Gönder
+            </button>
           </div>
         </div>
       </div>
 
       <!-- SAĞ SÜTUN: SÖZ İSTEYENLER (EL KALDIRANLAR) & BAĞLI HACILAR -->
       <div>
-        <div class="card" style="margin-bottom:22px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+        <div class="card card-luxury" style="margin-bottom:24px;">
+          <div class="section-card-head">
             <div>
-              <h3 style="font-size:1.18rem; margin:0;">✋ Söz İsteyenler & Bağlı Hacılar</h3>
-              <p style="font-size:0.82rem; color:var(--color-muted); margin:2px 0 0;">El kaldıran hacılara "Söz Ver" diyerek mikrofonlarını açabilirsiniz.</p>
+              <h3 class="section-card-title">
+                <span class="section-icon-badge">
+                  <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </span>
+                Söz İsteyenler & Bağlı Hacılar
+              </h3>
+              <p style="font-size:0.81rem; color:var(--color-muted); margin:4px 0 0;">El kaldıran hacılara "Söz Ver" diyerek mikrofonlarını açabilirsiniz.</p>
             </div>
             <span class="badge badge-gold" id="connectedCountBadge">42 Dinleyici</span>
           </div>
 
           <!-- REHBER SÖZ İSTEME / SORU-CEVAP AÇMA-KAPAMA KONTROLÜ -->
-          <div style="display:flex; justify-content:space-between; align-items:center; background:var(--color-ground); padding:10px 14px; border-radius:12px; border:1px solid var(--color-hairline); margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; background:var(--color-ground); padding:12px 14px; border-radius:14px; border:1px solid var(--color-hairline); margin-bottom:14px; flex-wrap:wrap; gap:8px;">
             <div>
               <div style="font-weight:700; font-size:0.86rem; color:var(--color-emerald-night);">Hacı Söz İsteme (Soru-Cevap):</div>
               <div style="font-size:0.75rem; color:var(--color-muted);" id="qnaStatusSubText">Tavafta karışıklık olmaması için dilediğinizde kapatabilirsiniz.</div>
             </div>
-            <button type="button" id="toggleQnaBtn" class="btn btn-primary btn-sm" style="font-weight:800; padding:6px 14px;" onclick="toggleQnaPermission()">
+            <button type="button" id="toggleQnaBtn" class="btn btn-primary btn-sm" style="font-weight:800; padding:7px 14px;" onclick="toggleQnaPermission()">
               🟢 Söz İsteme Açık
             </button>
           </div>
@@ -242,12 +394,23 @@
         </div>
 
         <div class="card">
-          <h3 style="font-size:1.12rem; margin-bottom:10px;">📿 Hızlı Siyer & Dua Metinleri (Hoca Prompter)</h3>
-          <div style="font-size:0.88rem; color:var(--color-ink); background:var(--color-ground); padding:14px; border-radius:12px; border:1px solid var(--color-hairline);">
-            <div style="font-weight:800; color:var(--color-emerald-deep); margin-bottom:4px;">Hacerü'l-Esved & Tavaf Başlangıç:</div>
-            <p style="margin-bottom:10px;">"Bismillâhi vallâhu ekber. Allâhümme îmânen bike ve tasdîkan bi-kitâbike ve vefâen bi-ahdike vettibâan li-sünneti nebiyyike Muhammedin (s.a.v.)."</p>
-            <div style="font-weight:800; color:var(--color-emerald-deep); margin-bottom:4px;">Rükn-ü Yemânî — Rabbenâ:</div>
-            <p>"Rabbenâ âtinâ fi'd-dünyâ haseneten ve fi'l-âhirati haseneten ve kınâ azâbe'n-nâr."</p>
+          <div class="section-card-head">
+            <h3 class="section-card-title">
+              <span class="section-icon-badge">
+                <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              </span>
+              Hızlı Siyer & Dua Prompter
+            </h3>
+          </div>
+          <div class="prompter-box">
+            <div style="font-weight:800; font-size:0.84rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--color-emerald-deep); margin-bottom:4px;">Hacerü'l-Esved & Tavaf Başlangıç</div>
+            <p style="font-size:0.88rem; color:var(--color-ink); margin-bottom:12px; line-height:1.55;">
+              "Bismillâhi vallâhu ekber. Allâhümme îmânen bike ve tasdîkan bi-kitâbike ve vefâen bi-ahdike vettibâan li-sünneti nebiyyike Muhammedin (s.a.v.)."
+            </p>
+            <div style="font-weight:800; font-size:0.84rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--color-emerald-deep); margin-bottom:4px;">Rükn-ü Yemânî — Rabbenâ</div>
+            <p style="font-size:0.88rem; color:var(--color-ink); margin:0; line-height:1.55;">
+              "Rabbenâ âtinâ fi'd-dünyâ haseneten ve fi'l-âhirati haseneten ve kınâ azâbe'n-nâr."
+            </p>
           </div>
         </div>
       </div>
@@ -468,22 +631,22 @@
       container.innerHTML = allPilgrims.map((p) => `
         <div class="pilgrim-row ${p.handRaised ? 'hand-raised' : ''} ${p.micGranted ? 'mic-active' : ''}">
           <div>
-            <div style="font-weight:700; font-size:0.94rem;">
-              ${p.handRaised ? '✋ ' : p.micGranted ? '🎙️ ' : '🎧 '} ${p.name}
-              ${p.simulated ? '<span style="font-size:0.72rem; color:var(--color-muted);">(Kafilede)</span>' : '<span class="badge badge-live" style="padding:2px 8px; font-size:0.7rem;">Aktif Bağlantı</span>'}
+            <div style="font-weight:700; font-size:0.93rem; color:var(--color-emerald-night); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span>${p.handRaised ? '✋' : p.micGranted ? '🎙️' : '🎧'} ${p.name}</span>
+              ${p.simulated ? '<span style="font-size:0.72rem; color:var(--color-muted); font-weight:600;">(Kafilede)</span>' : '<span class="badge badge-live" style="padding:2px 8px; font-size:0.68rem;">Aktif Bağlantı</span>'}
             </div>
-            <div style="font-size:0.78rem; color:var(--color-muted);">
+            <div style="font-size:0.78rem; color:var(--color-muted); margin-top:2px;">
               ${p.phone || ''} • Katılım: ${p.joinedAt}
-              ${p.handRaised ? ' • <strong style="color:#b45309;">Söz İstiyor!</strong>' : ''}
-              ${p.micGranted ? ' • <strong style="color:#15803d;">Mikrofonu Açık (Konuşuyor)</strong>' : ''}
+              ${p.handRaised ? ' • <strong style="color:#B45309;">Söz İstiyor!</strong>' : ''}
+              ${p.micGranted ? ' • <strong style="color:#15803D;">Mikrofonu Açık (Konuşuyor)</strong>' : ''}
             </div>
           </div>
           <div>
             ${!p.simulated ? (
               p.micGranted
-                ? `<button class="btn btn-danger btn-sm" onclick="grantMic('${p.id}', false)">🔇 Sözü Bitir</button>`
-                : `<button class="btn ${p.handRaised ? 'btn-gold' : 'btn-outline'} btn-sm" onclick="grantMic('${p.id}', true)">🎙️ Söz Ver</button>`
-            ) : `<span style="font-size:0.78rem; color:var(--color-muted);">Dinliyor</span>`}
+                ? `<button class="btn btn-danger btn-sm" onclick="grantMic('${p.id}', false)">Sözü Bitir</button>`
+                : `<button class="btn ${p.handRaised ? 'btn-gold' : 'btn-outline'} btn-sm" onclick="grantMic('${p.id}', true)">Söz Ver</button>`
+            ) : `<span style="font-size:0.76rem; color:var(--color-muted); font-weight:600;">Dinliyor</span>`}
           </div>
         </div>
       `).join('');
@@ -560,7 +723,7 @@
         stopMicBroadcast();
         btn.textContent = '🎙️ Gerçek Mikrofonla Canlı Yayını Başlat';
         btn.className = 'btn btn-gold';
-        document.getElementById('micSourceLabel').textContent = '🎙️ Yayın Kaynağı: Durduruldu';
+        document.getElementById('micSourceLabel').textContent = 'Yayın Kaynağı: Durduruldu';
         return;
       }
 
@@ -595,7 +758,7 @@
         if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
           try {
             if (!workletModuleLoaded) {
-              await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=14');
+              await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=15');
               workletModuleLoaded = true;
             }
             scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
@@ -623,7 +786,7 @@
         isMicBroadcasting = true;
         btn.textContent = '⏹️ Canlı Mikrofon Yayınını Durdur (YAYINDA)';
         btn.className = 'btn btn-danger';
-        document.getElementById('micSourceLabel').textContent = '🎙️ Yayın Kaynağı: Gerçek Mikrofon (Çift Omurgalı Kesintisiz HD Akış)';
+        document.getElementById('micSourceLabel').textContent = 'Yayın Kaynağı: Gerçek Mikrofon (Kesintisiz HD Akış)';
 
         if (!ws || ws.readyState !== WebSocket.OPEN) {
           connectGuideWs();
@@ -679,9 +842,11 @@
       const btn = document.getElementById('startDemoStreamBtn');
       isDemoBroadcasting = !isDemoBroadcasting;
       if (isDemoBroadcasting) {
-        btn.textContent = '⏹️ Demo Ses Akışını Durdur (AKTİF)';
-        btn.className = 'btn btn-primary';
-        document.getElementById('micSourceLabel').textContent = '📡 Yayın Kaynağı: Canlı Demo Ses Akışı';
+        if (btn) {
+          btn.textContent = '⏹️ Demo Ses Akışını Durdur (AKTİF)';
+          btn.className = 'btn btn-primary';
+        }
+        document.getElementById('micSourceLabel').textContent = 'Yayın Kaynağı: Canlı Demo Ses Akışı';
         const notes = [440, 493.88, 523.25, 587.33, 659.25, 587.33, 523.25, 493.88];
         let idx = 0;
         demoInterval = setInterval(() => {
@@ -698,9 +863,11 @@
         }, 420);
       } else {
         clearInterval(demoInterval);
-        btn.textContent = '📡 Demo Siyer Ses Akışı Gönder (Test)';
-        btn.className = 'btn btn-outline';
-        document.getElementById('micSourceLabel').textContent = '🎙️ Yayın Kaynağı: Hazır';
+        if (btn) {
+          btn.textContent = '📡 Demo Siyer Ses Akışı Gönder (Test)';
+          btn.className = 'btn btn-outline';
+        }
+        document.getElementById('micSourceLabel').textContent = 'Yayın Kaynağı: Hazır';
       }
     }
 
@@ -840,27 +1007,27 @@
         <div style="display:flex; flex-direction:column; gap:10px;">
           <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
             <div>
-              <div style="color:var(--color-danger); font-weight:800; font-size:1.06rem;">
-                🚨 ACİL SOS KONUM ALARMI — ${a.pilgrimName} (${a.phone}) ${a.tourCode ? `<span class="badge badge-gold" style="margin-left:6px;">${a.tourCode}</span>` : ''}
+              <div style="color:var(--color-danger); font-weight:800; font-size:1.05rem;">
+                ACİL SOS KONUM ALARMI — ${a.pilgrimName} (${a.phone}) ${a.tourCode ? `<span class="badge badge-gold" style="margin-left:6px;">${a.tourCode}</span>` : ''}
               </div>
-              <div style="font-size:0.88rem; color:var(--color-ink); margin-top:4px;">
-                📍 <strong>Açık Konum:</strong> ${a.locationNote}<br/>
-                🧭 <strong>GPS Koordinat:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)} ${a.accuracy ? `(±${a.accuracy}m)` : ''} • 🕒 ${a.createdAt}
+              <div style="font-size:0.86rem; color:var(--color-ink); margin-top:4px;">
+                <strong>Açık Konum:</strong> ${a.locationNote}<br/>
+                <strong>GPS Koordinat:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)} ${a.accuracy ? `(±${a.accuracy}m)` : ''} • ${a.createdAt}
               </div>
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">🧭 Yol Tarifi Aç (Google Maps)</a>
-              <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">🗺️ Haritada Gör</a>
-              <a href="tel:${a.phone}" class="btn btn-outline btn-sm">📞 Hemen Ara</a>
-              <button class="btn btn-primary btn-sm" onclick="resolveSos('${a.id}')">✅ Hacıya Ulaşıldı</button>
+              <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">Yol Tarifi Aç (Google Maps)</a>
+              <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Haritada Gör</a>
+              <a href="tel:${a.phone}" class="btn btn-outline btn-sm">Hemen Ara</a>
+              <button class="btn btn-primary btn-sm" onclick="resolveSos('${a.id}')">Hacıya Ulaşıldı</button>
             </div>
           </div>
-          <div style="border-radius:12px; overflow:hidden; border:2px solid #fca5a5; height:210px; background:#f8fafc;">
+          <div style="border-radius:12px; overflow:hidden; border:2px solid #FCA5A5; height:210px; background:#F8FAFC;">
             <iframe src="${osmUrl}" style="width:100%; height:100%; border:0;" loading="lazy"></iframe>
           </div>
         </div>
       `;
-      }).join('<hr style="margin:14px 0; border-color:#fecaca;"/>');
+      }).join('<hr style="margin:14px 0; border-color:#FECACA;"/>');
     }
 
     async function resolveSos(id) {
@@ -883,7 +1050,7 @@
 
     function onGuideLocNoteEdit() {
       if (isSharingGuideLocation && lastGuideLocState) {
-        lastGuideLocState.note = document.getElementById('guideLocNoteInput').value.trim() || '🕋 Kafile Rehber Hocamızın Canlı Konumu';
+        lastGuideLocState.note = document.getElementById('guideLocNoteInput').value.trim() || 'Kafile Rehber Hocamızın Canlı Konumu';
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
             type: 'guide-location-update',
@@ -923,7 +1090,7 @@
 
     async function publishGuideCoordinates(lat, lng, accuracy) {
       if (!isSharingGuideLocation) return;
-      const note = document.getElementById('guideLocNoteInput').value.trim() || '🕋 Kafile Rehber Hocamızın Canlı Konumu';
+      const note = document.getElementById('guideLocNoteInput').value.trim() || 'Kafile Rehber Hocamızın Canlı Konumu';
       const address = await reverseGeocodeGuide(lat, lng);
       const timeStr = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -1006,7 +1173,7 @@
         btn.textContent = '📍 Konumumu Kafileyle Canlı Paylaşmayı Aç';
         btn.className = 'btn btn-primary';
         badge.innerHTML = 'PAYLAŞIM KAPALI';
-        badge.style.cssText = 'background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;';
+        badge.style.cssText = 'background:#F1F5F9; color:#475569; border:1px solid #CBD5E1;';
         previewBox.style.display = 'none';
 
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -1023,7 +1190,7 @@
       btn.textContent = '⏹️ Canlı Konum Paylaşımını Kapat (AÇIK)';
       btn.className = 'btn btn-danger';
       badge.innerHTML = '<span class="live-dot"></span> CANLI PAYLAŞILIYOR';
-      badge.style.cssText = 'background:#dcfce7; color:#15803d; border:1px solid #86efac;';
+      badge.style.cssText = 'background:#DCFCE7; color:#15803D; border:1px solid #86EFAC;';
       previewBox.style.display = 'block';
       document.getElementById('guideLocAddressText').textContent = 'Cihazınızın canlı GPS konumu alınıyor, lütfen izin verin...';
 

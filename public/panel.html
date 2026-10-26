@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=14" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=14" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=15" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=15" />
   <title>Acente & Kafile Yönetim Paneli | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/panel" />
-  <link rel="stylesheet" href="/css/style.css?v=14" />
+  <link rel="stylesheet" href="/css/style.css?v=15" />
   <script>
     (function() {
       const TOKEN = 'ry_auth_v1_987a6b5c4d';
@@ -29,61 +29,123 @@
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=14"></script>
+  <script src="/vercel-ws-shim.js?v=15"></script>
   <style>
     .dashboard-layout {
       display: grid;
-      grid-template-columns: 260px 1fr;
-      min-height: calc(100vh - 78px);
+      grid-template-columns: 272px 1fr;
+      min-height: calc(100vh - 76px);
     }
     .sidebar {
-      background: var(--color-emerald-night);
-      color: #f7f1e6;
-      padding: 24px 16px;
-      border-right: 1px solid rgba(212, 175, 55, 0.25);
+      background: linear-gradient(180deg, #06231B 0%, #041913 100%);
+      color: #F7F1E6;
+      padding: 26px 16px;
+      border-right: 1px solid rgba(197, 160, 89, 0.24);
+    }
+    .side-group-title {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--color-gold-light);
+      font-weight: 800;
+      padding: 0 14px 10px;
+      opacity: 0.9;
     }
     .side-btn {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 11px;
       width: 100%;
       padding: 12px 14px;
       border-radius: 12px;
-      border: none;
+      border: 1px solid transparent;
       background: transparent;
-      color: #cbd5e1;
+      color: #CBD5E1;
       font-family: var(--font-sans);
-      font-size: 0.92rem;
+      font-size: 0.88rem;
       font-weight: 600;
       text-align: left;
       cursor: pointer;
       margin-bottom: 6px;
-      transition: all 0.15s;
+      transition: all 0.18s ease;
     }
-    .side-btn:hover, .side-btn.active {
-      background: rgba(212, 175, 55, 0.18);
-      color: #fff;
+    .side-btn svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex-shrink: 0;
+      opacity: 0.85;
+    }
+    .side-btn:hover {
+      background: rgba(255, 255, 255, 0.06);
+      color: #FFFFFF;
     }
     .side-btn.active {
-      border-left: 3px solid var(--color-gold);
+      background: rgba(197, 160, 89, 0.16);
+      border-color: rgba(197, 160, 89, 0.35);
+      color: #FFFFFF;
+      font-weight: 700;
+    }
+    .side-btn.active svg {
+      stroke: var(--color-gold-light);
+      opacity: 1;
     }
     .main-area {
-      padding: 28px 32px 64px;
+      padding: 28px 34px 72px;
       overflow-y: auto;
     }
     .stat-card {
-      background: #fff;
+      background: #FFFFFF;
       border: 1px solid var(--color-hairline);
-      border-radius: 16px;
-      padding: 18px 20px;
+      border-radius: 18px;
+      padding: 20px 22px;
       box-shadow: var(--shadow-soft);
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--color-emerald-deep), var(--color-gold));
+    }
+    .stat-card.stat-danger::before {
+      background: var(--color-danger);
+    }
+    .stat-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+    }
+    .stat-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: var(--color-emerald-soft);
+      color: var(--color-emerald-deep);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
     .stat-val {
-      font-family: var(--font-display);
-      font-size: 2rem;
-      font-weight: 700;
+      font-family: var(--font-sans);
+      font-size: 2.1rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
       color: var(--color-emerald-night);
-      margin-top: 4px;
+      margin: 6px 0 4px;
     }
     .tab-pane {
       display: none;
@@ -101,10 +163,11 @@
         gap: 6px;
         padding: 10px 14px;
         border-right: none;
-        border-bottom: 1px solid rgba(212, 175, 55, 0.25);
+        border-bottom: 1px solid rgba(197, 160, 89, 0.25);
         -webkit-overflow-scrolling: touch;
       }
-      .sidebar > div, .sidebar > hr {
+      .sidebar > .side-group-title,
+      .sidebar > hr {
         display: none;
       }
       .side-btn {
@@ -114,12 +177,8 @@
         padding: 9px 12px;
         font-size: 0.8rem;
       }
-      .side-btn.active {
-        border-left: none;
-        border-bottom: 2px solid var(--color-gold);
-      }
       .main-area {
-        padding: 16px 14px 48px;
+        padding: 18px 14px 52px;
       }
     }
   </style>
@@ -129,73 +188,125 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:100%;">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=14" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=15" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
-          <h1 class="brand-title" style="margin:0; font-size:1.15rem; line-height:1.2;">Rıdvan Yılmaz Turizm — Acente Yönetim Paneli</h1>
+          <h1 class="brand-title" style="margin:0; font-size:1.12rem; line-height:1.2;">Rıdvan Yılmaz Turizm — Acente Yönetim Paneli</h1>
           <span class="brand-sub"><span class="live-dot"></span> Osmangazi / Bursa Merkez Operasyon & Kafile Kontrolü</span>
         </div>
       </a>
       <div class="nav-actions">
-        <a href="/Ridvan_Yilmaz_Turizm_RidvanSes_Kullanim_Rehberi.pdf" target="_blank" class="btn btn-outline btn-sm">📄 Kullanım Rehberi (PDF)</a>
-        <a href="/dinle?code=RY-KASIM" target="_blank" class="btn btn-outline btn-sm">🎧 Hacı Ekranı</a>
-        <a href="/rehber?code=RY-KASIM" target="_blank" class="btn btn-gold btn-sm">🎙️ Rehber Konsolu</a>
-        <button type="button" onclick="ryLogout()" class="btn btn-outline btn-sm">🚪 Çıkış Yap</button>
+        <a href="/Ridvan_Yilmaz_Turizm_RidvanSes_Kullanim_Rehberi.pdf" target="_blank" class="btn btn-outline btn-sm">
+          <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Kullanım Rehberi
+        </a>
+        <a href="/dinle?code=RY-KASIM" target="_blank" class="btn btn-outline btn-sm">
+          <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+          Hacı Ekranı
+        </a>
+        <a href="/rehber?code=RY-KASIM" target="_blank" class="btn btn-gold btn-sm">
+          <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+          Rehber Stüdyosu
+        </a>
+        <button type="button" onclick="ryLogout()" class="btn btn-outline btn-sm">
+          <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Çıkış
+        </button>
       </div>
     </div>
   </header>
 
   <div class="dashboard-layout">
-    <!-- Sol Menü -->
+    <!-- Sol Kurumsal Menü -->
     <aside class="sidebar star-field-dark">
-      <div style="font-size:0.74rem; text-transform:uppercase; letter-spacing:0.08em; color:#d4af37; font-weight:700; padding:0 12px 10px;">
-        Kafile & Yayın Yönetimi
-      </div>
-      <button class="side-btn active" onclick="openTab('tab-overview', this)">📊 Genel Bakış & Canlı Odalar</button>
-      <button class="side-btn" id="sideBtnQr" onclick="openTab('tab-qr', this)">🪪 Yaka Kartı QR & WhatsApp</button>
-      <button class="side-btn" onclick="openTab('tab-tours', this)">🕋 Kafile & Tur Yönetimi</button>
-      <button class="side-btn" onclick="openTab('tab-guides', this)">🎙️ Rehber (Hoca) Yönetimi</button>
-      <button class="side-btn" onclick="openTab('tab-announcements', this)">📢 Toplu Push Duyuru</button>
-      <button class="side-btn" onclick="openTab('tab-sos', this)">🚨 Canlı SOS & Konum Takip</button>
-      <button class="side-btn" onclick="openTab('tab-hotels', this)">🏨 Mekke & Medine Otelleri</button>
-      <hr style="border-color:rgba(255,255,255,0.12); margin:14px 0;" />
-      <div style="font-size:0.74rem; text-transform:uppercase; letter-spacing:0.08em; color:#d4af37; font-weight:700; padding:0 12px 10px;">
-        Sistem & Mühendislik
-      </div>
-      <button class="side-btn" onclick="openTab('tab-rea', this)">🔬 REA (morluto/rea) Analizi</button>
+      <div class="side-group-title">Kafile & Yayın Yönetimi</div>
+      <button class="side-btn active" onclick="openTab('tab-overview', this)">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+        Genel Bakış & Odalar
+      </button>
+      <button class="side-btn" id="sideBtnQr" onclick="openTab('tab-qr', this)">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h7v7h-7z"/></svg>
+        Yaka Kartı QR & Davet
+      </button>
+      <button class="side-btn" onclick="openTab('tab-tours', this)">
+        <svg viewBox="0 0 24 24"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/></svg>
+        Kafile & Tur Yönetimi
+      </button>
+      <button class="side-btn" onclick="openTab('tab-guides', this)">
+        <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+        Rehber (Hoca) Yönetimi
+      </button>
+      <button class="side-btn" onclick="openTab('tab-announcements', this)">
+        <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        Toplu Push Duyuru
+      </button>
+      <button class="side-btn" onclick="openTab('tab-sos', this)">
+        <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        Canlı SOS & Konum Takip
+      </button>
+      <button class="side-btn" onclick="openTab('tab-hotels', this)">
+        <svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+        Mekke & Medine Otelleri
+      </button>
+      <hr style="border-color:rgba(255,255,255,0.1); margin:16px 0;" />
+      <div class="side-group-title">Sistem & Mühendislik</div>
+      <button class="side-btn" onclick="openTab('tab-rea', this)">
+        <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        Sistem Mimari Raporu
+      </button>
     </aside>
 
     <!-- Ana İçerik Alanı -->
     <main class="main-area">
-      <!-- Üst Özet İstatistik Kartları -->
+      <!-- Üst Özet KPI Kartları -->
       <div class="grid-4" style="margin-bottom:28px;">
         <div class="stat-card">
-          <div style="font-size:0.8rem; font-weight:700; color:var(--color-muted);">AKTİF UMRE KAFİLESİ</div>
-          <div class="stat-val" id="statToursCount">7</div>
-          <div style="font-size:0.78rem; color:var(--color-live); font-weight:600;">2026–2027 Siyer Takvimi</div>
+          <div class="stat-head">
+            <span>AKTİF UMRE KAFİLESİ</span>
+            <span class="stat-icon">
+              <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/></svg>
+            </span>
+          </div>
+          <div class="stat-val" id="statToursCount">1</div>
+          <div style="font-size:0.78rem; color:var(--color-live); font-weight:700;">Kasım 2026 Umre Sezonu</div>
         </div>
         <div class="stat-card">
-          <div style="font-size:0.8rem; font-weight:700; color:var(--color-muted);">CANLI DİNLEYEN HACI</div>
-          <div class="stat-val" id="statListenersCount">42</div>
-          <div style="font-size:0.78rem; color:var(--color-emerald-deep); font-weight:600;">Anlık WebSocket Bağlantısı</div>
+          <div class="stat-head">
+            <span>CANLI DİNLEYEN HACI</span>
+            <span class="stat-icon">
+              <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+            </span>
+          </div>
+          <div class="stat-val" id="statListenersCount">48</div>
+          <div style="font-size:0.78rem; color:var(--color-emerald-deep); font-weight:700;">Anlık WebSocket Bağlantısı</div>
         </div>
         <div class="stat-card">
-          <div style="font-size:0.8rem; font-weight:700; color:var(--color-muted);">GÖREVLİ REHBER HOCA</div>
-          <div class="stat-val" id="statGuidesCount">4</div>
-          <div style="font-size:0.78rem; color:var(--color-muted);">Rıdvan Yılmaz Hoca & Ekibi</div>
+          <div class="stat-head">
+            <span>GÖREVLİ REHBER HOCA</span>
+            <span class="stat-icon">
+              <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+            </span>
+          </div>
+          <div class="stat-val" id="statGuidesCount">2</div>
+          <div style="font-size:0.78rem; color:var(--color-muted); font-weight:600;">İrşad & Siyer Kadromuz</div>
         </div>
-        <div class="stat-card" style="border-color:#fecaca;">
-          <div style="font-size:0.8rem; font-weight:700; color:var(--color-danger);">AÇIK SOS KONUM ALARMI</div>
+        <div class="stat-card stat-danger" style="border-color:#FECACA;">
+          <div class="stat-head">
+            <span style="color:var(--color-danger);">AÇIK SOS ALARMI</span>
+            <span class="stat-icon" style="background:#FEE2E2; color:var(--color-danger);">
+              <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            </span>
+          </div>
           <div class="stat-val" style="color:var(--color-danger);" id="statSosCount">0</div>
-          <div style="font-size:0.78rem; color:var(--color-muted);">Canlı GPS Harita Takibi</div>
+          <div style="font-size:0.78rem; color:var(--color-muted); font-weight:600;">Canlı GPS Harita Takibi</div>
         </div>
       </div>
 
       <!-- TAB 1: GENEL BAKIŞ & CANLI ODALAR -->
       <div id="tab-overview" class="tab-pane active">
         <div class="grid-2" style="margin-bottom:24px;">
-          <div class="card">
+          <div class="card card-luxury">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-              <h3>📡 Şu An Açık Canlı Yayın Odaları</h3>
+              <h3 style="font-size:1.15rem; margin:0;">Şu An Açık Canlı Yayın Odaları</h3>
               <span class="badge badge-live"><span class="live-dot"></span> Gerçek Zamanlı</span>
             </div>
             <div id="liveRoomsBox"></div>
@@ -203,18 +314,18 @@
 
           <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-              <h3>🚨 Son SOS Konum Bildirimleri</h3>
+              <h3 style="font-size:1.15rem; margin:0;">Son SOS Konum Bildirimleri</h3>
               <button class="btn btn-danger btn-sm" onclick="simulateSosAlert()">+ Test SOS Alarmı Oluştur</button>
             </div>
             <div id="overviewSosBox"></div>
           </div>
         </div>
 
-        <div class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <h3>🕋 Rıdvan Yılmaz Turizm 2026–2027 Kafile Özeti</h3>
-            <div style="display:flex; gap:8px;">
-              <button class="btn btn-gold btn-sm" onclick="openQrGeneratorForTour('RY-KASIM')">🪪 Yaka Kartı QR & WhatsApp Üretici</button>
+        <div class="card card-luxury">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+            <h3 style="font-size:1.18rem; margin:0;">Rıdvan Yılmaz Turizm Aktif Kafile Özeti</h3>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-gold btn-sm" onclick="openQrGeneratorForTour('RY-KASIM')">Yaka Kartı QR & WhatsApp Üretici</button>
               <button class="btn btn-primary btn-sm" onclick="openTab('tab-tours', document.querySelectorAll('.side-btn')[2])">+ Yeni Kafile Ekle</button>
             </div>
           </div>
@@ -240,9 +351,9 @@
       <!-- TAB QR: YAKA KARTI QR KODU & WHATSAPP DAVET LİNKİ ÜRETİCİ -->
       <div id="tab-qr" class="tab-pane">
         <div class="grid-2">
-          <div class="card">
+          <div class="card card-luxury">
             <span class="badge badge-gold">HACI YAKA KARTI & KAREKOD</span>
-            <h3 style="margin:8px 0 6px;">🪪 Kafile QR Kodu & Baskıya Hazır Yaka Kartı</h3>
+            <h3 style="margin:10px 0 6px;">Kafile QR Kodu & Baskıya Hazır Yaka Kartı</h3>
             <p style="font-size:0.86rem; color:var(--color-muted); margin-bottom:16px;">
               Hacılarımız telefon kamerasını bu karekoda okuttuğunda şifre veya uygulama indirmeden doğrudan o kafilenin canlı ses odasına bağlanır.
             </p>
@@ -263,21 +374,21 @@
               </div>
             </div>
 
-            <div style="text-align:center; background:var(--color-ground); border:2px dashed var(--color-emerald-deep); border-radius:16px; padding:20px; margin-bottom:16px;">
-              <img id="qrPreviewImg" src="" alt="Kafile QR Kodu" style="width:210px; height:210px; border-radius:12px; background:#fff; padding:8px; box-shadow:var(--shadow-soft);" />
-              <div style="font-weight:800; color:var(--color-emerald-night); margin-top:10px;" id="qrTourLabel">RY-KASIM</div>
+            <div style="text-align:center; background:var(--color-ground); border:2px dashed var(--color-emerald-deep); border-radius:16px; padding:22px; margin-bottom:16px;">
+              <img id="qrPreviewImg" src="" alt="Kafile QR Kodu" style="width:210px; height:210px; border-radius:14px; background:#fff; padding:10px; box-shadow:var(--shadow-soft); margin:0 auto;" />
+              <div style="font-weight:800; color:var(--color-emerald-night); margin-top:12px;" id="qrTourLabel">RY-KASIM</div>
               <div style="font-size:0.8rem; color:var(--color-muted); word-break:break-all; margin-top:4px;" id="qrJoinUrlText"></div>
             </div>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
-              <a id="downloadQrBtn" href="#" download="RidvanSes-QR.png" class="btn btn-outline" style="flex:1;">⬇️ QR Resmi İndir (PNG)</a>
-              <a id="openPrintableBadgeBtn" href="/yaka-karti?code=RY-KASIM" target="_blank" class="btn btn-gold" style="flex:1;">🖨️ A4 Yaka Kartı Yazdır</a>
+              <a id="downloadQrBtn" href="#" download="RidvanSes-QR.png" class="btn btn-outline" style="flex:1;">QR Resmi İndir (PNG)</a>
+              <a id="openPrintableBadgeBtn" href="/yaka-karti?code=RY-KASIM" target="_blank" class="btn btn-gold" style="flex:1;">A4 Yaka Kartı Yazdır</a>
             </div>
           </div>
 
-          <div class="card">
+          <div class="card card-luxury">
             <span class="badge badge-emerald">WHATSAPP GRUP DAVETİ</span>
-            <h3 style="margin:8px 0 6px;">💬 WhatsApp Kafile Davet Linki & Hazır Mesaj</h3>
+            <h3 style="margin:10px 0 6px;">WhatsApp Kafile Davet Linki & Hazır Mesaj</h3>
             <p style="font-size:0.86rem; color:var(--color-muted); margin-bottom:16px;">
               Kafile WhatsApp grubuna göndereceğiniz hazır davet mesajı. Misafirlerimiz mesajdaki linke dokunduğu an canlı yayına katılır.
             </p>
@@ -286,7 +397,7 @@
               <label class="label">Doğrudan Katılım Linki</label>
               <div style="display:flex; gap:8px;">
                 <input type="text" id="qrDirectLinkInput" class="input" readonly />
-                <button type="button" class="btn btn-outline btn-sm" onclick="copyTextById('qrDirectLinkInput', 'Link kopyalandı!')">📋 Kopyala</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="copyTextById('qrDirectLinkInput', 'Link kopyalandı!')">Kopyala</button>
               </div>
             </div>
 
@@ -297,10 +408,10 @@
 
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
               <button type="button" class="btn btn-outline" style="flex:1;" onclick="copyTextById('qrWhatsappTextInput', 'WhatsApp davet mesajı panoya kopyalandı!')">
-                📋 Mesajı Kopyala
+                Mesajı Kopyala
               </button>
-              <a id="whatsappShareBtn" href="#" target="_blank" class="btn btn-primary" style="flex:1; background:#16a34a;">
-                💬 WhatsApp'ta Paylaş →
+              <a id="whatsappShareBtn" href="#" target="_blank" class="btn btn-primary" style="flex:1; background:#15803D;">
+                WhatsApp'ta Paylaş →
               </a>
             </div>
             <div id="copyFeedbackMsg" style="display:none; margin-top:10px; padding:10px; border-radius:10px; background:var(--color-emerald-soft); color:var(--color-emerald-night); font-weight:700; font-size:0.85rem; text-align:center;"></div>
@@ -311,8 +422,8 @@
       <!-- TAB 2: KAFİLE & TUR YÖNETİMİ -->
       <div id="tab-tours" class="tab-pane">
         <div class="grid-2">
-          <div class="card">
-            <h3 style="margin-bottom:14px;">➕ Yeni Umre Kafilesi & Ses Odası Oluştur</h3>
+          <div class="card card-luxury">
+            <h3 style="margin-bottom:14px;">Yeni Umre Kafilesi & Ses Odası Oluştur</h3>
             <form id="createTourForm" style="display:flex; flex-direction:column; gap:12px;">
               <div class="grid-2" style="gap:10px;">
                 <div>
@@ -321,17 +432,17 @@
                 </div>
                 <div>
                   <label class="label">Tur Tarihi</label>
-                  <input type="text" name="dateText" class="input" placeholder="Örn: 10 Şubat 2027" required />
+                  <input type="text" name="dateText" class="input" placeholder="Örn: 13-14 Kasım 2026" required />
                 </div>
               </div>
               <div>
                 <label class="label">Kafile / Program Adı *</label>
-                <input type="text" name="name" class="input" placeholder="Örn: Şubat 2027 Özel Siyer Umresi" required />
+                <input type="text" name="name" class="input" placeholder="Örn: 13-14 Kasım Umresi" required />
               </div>
               <div class="grid-2" style="gap:10px;">
                 <div>
                   <label class="label">Baş Rehber Hoca</label>
-                  <input type="text" name="guideName" class="input" value="Rıdvan Yılmaz Hoca" />
+                  <input type="text" name="guideName" class="input" value="Ömer Ali Gültekin" />
                 </div>
                 <div>
                   <label class="label">Mekke Oteli</label>
@@ -362,7 +473,7 @@
           </div>
 
           <div class="card">
-            <h3 style="margin-bottom:14px;">📋 Mevcut Kafileler</h3>
+            <h3 style="margin-bottom:14px;">Mevcut Kafileler</h3>
             <div id="toursManageList" style="display:flex; flex-direction:column; gap:10px;"></div>
           </div>
         </div>
@@ -371,8 +482,8 @@
       <!-- TAB 3: REHBER (HOCA) YÖNETİMİ -->
       <div id="tab-guides" class="tab-pane">
         <div class="grid-2">
-          <div class="card">
-            <h3 style="margin-bottom:14px;">➕ Yeni Rehber / İrşad Hocası Tanımla</h3>
+          <div class="card card-luxury">
+            <h3 style="margin-bottom:14px;">Yeni Rehber / İrşad Hocası Tanımla</h3>
             <form id="createGuideForm" style="display:flex; flex-direction:column; gap:12px;">
               <div>
                 <label class="label">Rehber Adı Soyadı & Ünvanı *</label>
@@ -397,7 +508,7 @@
           </div>
 
           <div class="card">
-            <h3 style="margin-bottom:14px;">🎙️ Kayıtlı Rehber Hocalarımız</h3>
+            <h3 style="margin-bottom:14px;">Kayıtlı Rehber Hocalarımız</h3>
             <div id="guidesManageList" style="display:flex; flex-direction:column; gap:10px;"></div>
           </div>
         </div>
@@ -406,8 +517,8 @@
       <!-- TAB 4: TOPLU PUSH DUYURU MERKEZİ -->
       <div id="tab-announcements" class="tab-pane">
         <div class="grid-2">
-          <div class="card">
-            <h3 style="margin-bottom:14px;">📢 Kafileye Anlık Push Duyuru İlet</h3>
+          <div class="card card-luxury">
+            <h3 style="margin-bottom:14px;">Kafileye Anlık Push Duyuru İlet</h3>
             <form id="adminAnnForm" style="display:flex; flex-direction:column; gap:12px;">
               <div>
                 <label class="label">Hedef Kafile</label>
@@ -428,12 +539,12 @@
                 <label class="label">Duyuru Mesajı *</label>
                 <textarea name="message" rows="3" class="textarea" placeholder="Hacılarımızın telefon ekranına anında düşecek mesaj..." required></textarea>
               </div>
-              <button type="submit" class="btn btn-primary">🔔 Anlık Bildirimi Yayınla</button>
+              <button type="submit" class="btn btn-primary">Anlık Bildirimi Yayınla</button>
             </form>
           </div>
 
           <div class="card">
-            <h3 style="margin-bottom:14px;">📨 Gönderilen Duyuru Geçmişi</h3>
+            <h3 style="margin-bottom:14px;">Gönderilen Duyuru Geçmişi</h3>
             <div id="adminAnnouncementsList" style="display:flex; flex-direction:column; gap:10px;"></div>
           </div>
         </div>
@@ -441,11 +552,11 @@
 
       <!-- TAB 5: CANLI SOS & KONUM TAKİP MERKEZİ -->
       <div id="tab-sos" class="tab-pane">
-        <div class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <div class="card card-luxury">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
             <div>
-              <h3>🚨 Canlı SOS & Kayıp Hacı GPS Koordinat Merkezi</h3>
-              <p style="font-size:0.86rem; color:var(--color-muted);">Hacı ekranında SOS butonuna 3 saniye basılı tutulduğunda konum buraya ve rehber ekranına anında düşer.</p>
+              <h3 style="margin:0;">Canlı SOS & Kayıp Hacı GPS Koordinat Merkezi</h3>
+              <p style="font-size:0.86rem; color:var(--color-muted); margin-top:4px;">Hacı ekranında SOS butonuna 3 saniye basılı tutulduğunda konum buraya ve rehber ekranına anında düşer.</p>
             </div>
             <button class="btn btn-danger btn-sm" onclick="simulateSosAlert()">+ Örnek SOS Alarmı Tetikle</button>
           </div>
@@ -455,21 +566,21 @@
 
       <!-- TAB 6: MEKKE & MEDİNE OTELLERİMİZ -->
       <div id="tab-hotels" class="tab-pane">
-        <div class="card">
-          <h3 style="margin-bottom:16px;">🏨 Rıdvan Yılmaz Turizm Anlaşmalı Mekke & Medine Otelleri</h3>
+        <div class="card card-luxury">
+          <h3 style="margin-bottom:16px;">Rıdvan Yılmaz Turizm Anlaşmalı Mekke & Medine Otelleri</h3>
           <div class="grid-3" id="adminHotelsGrid"></div>
         </div>
       </div>
 
       <!-- TAB 7: REA TEKNİK ANALİZ RAPORU -->
       <div id="tab-rea" class="tab-pane">
-        <div class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <div class="card card-luxury">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
             <div>
               <span class="badge badge-emerald">morluto/rea • JavaScript Application Graph</span>
-              <h3 style="margin-top:6px;">🔬 UmrahVoice.com REA Tersine Mühendislik & Mimari Kanıt Raporu</h3>
+              <h3 style="margin-top:6px;">RıdvanSes Kurumsal Mimari & REA Analiz Raporu</h3>
             </div>
-            <a href="/api/rea-report" target="_blank" class="btn btn-outline btn-sm">📄 Ham JSON Raporu Gör</a>
+            <a href="/api/rea-report" target="_blank" class="btn btn-outline btn-sm">Ham JSON Raporu Gör</a>
           </div>
           <div id="reaReportBox">Yükleniyor...</div>
         </div>
@@ -534,7 +645,7 @@
       navigator.clipboard.writeText(el.value).catch(() => {});
       const fb = document.getElementById('copyFeedbackMsg');
       if (fb) {
-        fb.textContent = `✅ ${msg}`;
+        fb.textContent = `✓ ${msg}`;
         fb.style.display = 'block';
         setTimeout(() => { fb.style.display = 'none'; }, 3000);
       }
@@ -577,18 +688,18 @@
       // Live Rooms
       const roomsBox = document.getElementById('liveRoomsBox');
       roomsBox.innerHTML = (appState.liveRooms || []).map((r) => `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; border-radius:12px; background:var(--color-ground); border:1px solid var(--color-hairline); margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:14px 16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline); margin-bottom:10px;">
           <div>
             <div style="font-weight:800; color:var(--color-emerald-night);">
               <span class="live-dot" style="display:inline-block; margin-right:6px;"></span>
               ${r.tourCode} (${r.roomId.toUpperCase()}) — ${r.guideName}
             </div>
-            <div style="font-size:0.8rem; color:var(--color-muted);">${r.currentTopic}</div>
+            <div style="font-size:0.8rem; color:var(--color-muted); margin-top:2px;">${r.currentTopic}</div>
           </div>
           <div style="display:flex; align-items:center; gap:8px;">
-            <span class="badge badge-gold">👥 ${r.totalListeners} Hacı</span>
+            <span class="badge badge-gold">${r.totalListeners} Hacı</span>
             <a href="/dinle?code=${r.tourCode}" target="_blank" class="btn btn-outline btn-sm">Dinle</a>
-            <a href="/rehber?code=${r.tourCode}" target="_blank" class="btn btn-primary btn-sm">Rehber</a>
+            <a href="/rehber?code=${r.tourCode}" target="_blank" class="btn btn-primary btn-sm">Stüdyo</a>
           </div>
         </div>
       `).join('');
@@ -601,13 +712,13 @@
           <td>${t.dateText} (${t.duration})</td>
           <td>${t.guideName}</td>
           <td>${t.makkahHotel}</td>
-          <td>${t.registeredCount} / ${t.capacity}</td>
+          <td><span class="badge badge-emerald">${t.registeredCount} / ${t.capacity}</span></td>
           <td>
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
-              <button type="button" class="btn btn-primary btn-sm" onclick="openQrGeneratorForTour('${t.code}')">🪪 QR & WhatsApp</button>
-              <a href="/yaka-karti?code=${t.code}" target="_blank" class="btn btn-outline btn-sm">🖨️ Yaka Kartı</a>
-              <a href="/dinle?code=${t.code}" target="_blank" class="btn btn-outline btn-sm">🎧 Hacı</a>
-              <a href="/rehber?code=${t.code}" target="_blank" class="btn btn-gold btn-sm">🎙️ Yayın</a>
+              <button type="button" class="btn btn-primary btn-sm" onclick="openQrGeneratorForTour('${t.code}')">QR & WhatsApp</button>
+              <a href="/yaka-karti?code=${t.code}" target="_blank" class="btn btn-outline btn-sm">Yaka Kartı</a>
+              <a href="/dinle?code=${t.code}" target="_blank" class="btn btn-outline btn-sm">Hacı</a>
+              <a href="/rehber?code=${t.code}" target="_blank" class="btn btn-gold btn-sm">Yayın</a>
             </div>
           </td>
         </tr>
@@ -615,13 +726,13 @@
 
       // Tours Manage List
       document.getElementById('toursManageList').innerHTML = appState.tours.map((t) => `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; border-radius:12px; background:var(--color-ground); border:1px solid var(--color-hairline);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:14px 16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline);">
           <div>
-            <div style="font-weight:800;">${t.code} — ${t.name}</div>
-            <div style="font-size:0.8rem; color:var(--color-muted);">Rehber: ${t.guideName} • Otel: ${t.makkahHotel}</div>
+            <div style="font-weight:800; color:var(--color-emerald-night);">${t.code} — ${t.name}</div>
+            <div style="font-size:0.8rem; color:var(--color-muted); margin-top:2px;">Rehber: ${t.guideName} • Otel: ${t.makkahHotel}</div>
           </div>
           <div style="display:flex; gap:6px;">
-            <button class="btn btn-gold btn-sm" onclick="openQrGeneratorForTour('${t.code}')">🪪 QR & Davet</button>
+            <button class="btn btn-gold btn-sm" onclick="openQrGeneratorForTour('${t.code}')">QR & Davet</button>
             <button class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteTour('${t.id}')">Sil</button>
           </div>
         </div>
@@ -629,24 +740,24 @@
 
       // Guides List
       document.getElementById('guidesManageList').innerHTML = appState.guides.map((g) => `
-        <div style="padding:12px; border-radius:12px; background:var(--color-ground); border:1px solid var(--color-hairline);">
-          <div style="display:flex; justify-content:space-between;">
-            <strong>🎙️ ${g.name}</strong>
+        <div style="padding:14px 16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong style="color:var(--color-emerald-night);">${g.name}</strong>
             <span class="badge badge-emerald">${g.assignedTour}</span>
           </div>
-          <div style="font-size:0.82rem; color:var(--color-muted);">${g.title} • ${g.phone}</div>
+          <div style="font-size:0.82rem; color:var(--color-muted); margin-top:4px;">${g.title} • ${g.phone}</div>
         </div>
       `).join('');
 
       // Announcements List
       document.getElementById('adminAnnouncementsList').innerHTML = appState.announcements.map((a) => `
-        <div style="padding:12px; border-radius:12px; background:var(--color-ground); border:1px solid var(--color-hairline);">
+        <div style="padding:14px 16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline);">
           <div style="display:flex; justify-content:space-between; font-size:0.76rem; font-weight:700; color:var(--color-emerald-deep);">
             <span>Hedef: ${a.tourCode} • ${a.sender}</span>
-            <span>🕒 ${a.createdAt}</span>
+            <span>${a.createdAt}</span>
           </div>
-          <div style="font-weight:800; margin:4px 0;">${a.title}</div>
-          <div style="font-size:0.86rem;">${a.message}</div>
+          <div style="font-weight:800; color:var(--color-emerald-night); margin:4px 0;">${a.title}</div>
+          <div style="font-size:0.86rem; color:var(--color-ink-soft);">${a.message}</div>
         </div>
       `).join('');
 
@@ -658,24 +769,24 @@
         const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
         const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
         return `
-        <div style="display:flex; flex-direction:column; gap:10px; padding:14px; border-radius:12px; background:${s.status === 'active' ? '#fff5f5' : 'var(--color-ground)'}; border:1.5px solid ${s.status === 'active' ? 'var(--color-danger)' : 'var(--color-hairline)'}; margin-bottom:10px;">
+        <div style="display:flex; flex-direction:column; gap:10px; padding:16px; border-radius:14px; background:${s.status === 'active' ? '#FFF5F5' : 'var(--color-ground)'}; border:1.5px solid ${s.status === 'active' ? 'var(--color-danger)' : 'var(--color-hairline)'}; margin-bottom:10px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
             <div>
-              <div style="font-weight:800; color:${s.status === 'active' ? 'var(--color-danger)' : 'var(--color-ink)'};">
-                ${s.status === 'active' ? '🚨 AKTİF ALARM' : '✅ ÇÖZÜLDÜ'} — ${s.pilgrimName} (${s.tourCode})
+              <div style="font-weight:800; color:${s.status === 'active' ? 'var(--color-danger)' : 'var(--color-emerald-night)'};">
+                ${s.status === 'active' ? 'AKTİF ALARM' : 'ÇÖZÜLDÜ'} — ${s.pilgrimName} (${s.tourCode})
               </div>
-              <div style="font-size:0.84rem; color:var(--color-muted);">
-                📞 ${s.phone} • 📍 ${s.locationNote} (${lat.toFixed(5)}, ${lng.toFixed(5)}) • 🕒 ${s.createdAt}
+              <div style="font-size:0.84rem; color:var(--color-muted); margin-top:2px;">
+                ${s.phone} • ${s.locationNote} (${lat.toFixed(5)}, ${lng.toFixed(5)}) • ${s.createdAt}
               </div>
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">🧭 Yol Tarifi</a>
-              <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">🗺️ Harita</a>
+              <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">Yol Tarifi</a>
+              <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Harita</a>
               ${s.status === 'active' ? `<button class="btn btn-primary btn-sm" onclick="resolveSosAdmin('${s.id}')">Çözüldü İşaretle</button>` : ''}
             </div>
           </div>
           ${s.status === 'active' ? `
-          <div style="border-radius:10px; overflow:hidden; border:1px solid #fca5a5; height:190px; background:#f8fafc;">
+          <div style="border-radius:10px; overflow:hidden; border:1px solid #FCA5A5; height:190px; background:#F8FAFC;">
             <iframe src="${osmUrl}" style="width:100%; height:100%; border:0;" loading="lazy"></iframe>
           </div>` : ''}
         </div>
@@ -686,11 +797,11 @@
 
       // Hotels Grid
       document.getElementById('adminHotelsGrid').innerHTML = appState.hotels.map((h) => `
-        <div style="padding:16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline);">
+        <div style="padding:18px; border-radius:16px; background:var(--color-ground); border:1px solid var(--color-hairline);">
           <span class="badge badge-emerald">${h.city}</span>
-          <h4 style="font-size:1.1rem; margin:8px 0 4px;">${h.name}</h4>
-          <p style="font-size:0.84rem; color:var(--color-muted); margin-bottom:10px;">${h.distance}</p>
-          <a href="https://www.google.com/maps?q=${h.coordinates.lat},${h.coordinates.lng}" target="_blank" class="btn btn-outline btn-sm">📍 Harita Konumu</a>
+          <h4 style="font-size:1.08rem; margin:10px 0 4px;">${h.name}</h4>
+          <p style="font-size:0.84rem; color:var(--color-muted); margin-bottom:12px;">${h.distance}</p>
+          <a href="https://www.google.com/maps?q=${h.coordinates.lat},${h.coordinates.lng}" target="_blank" class="btn btn-outline btn-sm">Harita Konumu</a>
         </div>
       `).join('');
     }
@@ -705,25 +816,25 @@
         if (!r.available) return;
         document.getElementById('reaReportBox').innerHTML = `
           <div class="grid-3" style="margin-bottom:18px;">
-            <div style="padding:14px; background:var(--color-ground); border-radius:12px;">
-              <div style="font-size:0.76rem; color:var(--color-muted); font-weight:700;">EVIDENCE ID</div>
+            <div style="padding:16px; background:var(--color-ground); border-radius:14px; border:1px solid var(--color-hairline);">
+              <div style="font-size:0.74rem; color:var(--color-muted); font-weight:800;">EVIDENCE ID</div>
               <div style="font-family:monospace; font-size:0.82rem; word-break:break-all; margin-top:4px;">${r.evidence_id}</div>
             </div>
-            <div style="padding:14px; background:var(--color-ground); border-radius:12px;">
-              <div style="font-size:0.76rem; color:var(--color-muted); font-weight:700;"> UYGULAMA GRAFİĞİ (NODES / EDGES)</div>
+            <div style="padding:16px; background:var(--color-ground); border-radius:14px; border:1px solid var(--color-hairline);">
+              <div style="font-size:0.74rem; color:var(--color-muted); font-weight:800;">UYGULAMA GRAFİĞİ (NODES / EDGES)</div>
               <div style="font-size:1.3rem; font-weight:800; color:var(--color-emerald-deep); margin-top:4px;">${r.totalNodes} Düğüm / ${r.totalEdges} Kenar</div>
             </div>
-            <div style="padding:14px; background:var(--color-ground); border-radius:12px;">
-              <div style="font-size:0.76rem; color:var(--color-muted); font-weight:700;">TESPİT EDİLEN API & STORAGE</div>
+            <div style="padding:16px; background:var(--color-ground); border-radius:14px; border:1px solid var(--color-hairline);">
+              <div style="font-size:0.74rem; color:var(--color-muted); font-weight:800;">TESPİT EDİLEN API & STORAGE</div>
               <div style="font-size:0.85rem; font-weight:700; margin-top:4px;">3 REST Endpoint • 2 LocalStorage Anahtarı</div>
             </div>
           </div>
-          <div style="font-size:0.9rem; background:var(--color-ground); padding:16px; border-radius:12px; border:1px solid var(--color-hairline);">
-            <strong>Tersine Mühendislik Bulguları (umrahvoice.com):</strong>
+          <div style="font-size:0.9rem; background:var(--color-ground); padding:18px; border-radius:14px; border:1px solid var(--color-hairline);">
+            <strong>Tersine Mühendislik & Mimari Bulguları:</strong>
             <ul style="margin-top:8px; padding-left:20px; display:flex; flex-direction:column; gap:6px;">
               <li><strong>Tespit Edilen API Uç Noktaları:</strong> <code>POST /api/login</code>, <code>POST /api/forgot-password</code>, <code>POST /api/demo-request</code> (Tümü RıdvanSes sunucusunda birebir uyumlu olarak gerçeklendi).</li>
               <li><strong>İstemci Depolama (Storage):</strong> <code>localStorage.token</code> ve <code>localStorage.user</code>.</li>
-              <li><strong>Önyüz Mimari Yapısı:</strong> Vite + Tailwind CSS v4 + Lenis Smooth Scroll + GSAP ScrollTrigger + İslami 8 Köşeli Yıldız (Rub el Hizb) SVG Deseni (<code>--color-emerald-deep: #0f5a47</code>, <code>--color-gold: #d4af37</code>).</li>
+              <li><strong>Önyüz Mimari Yapısı:</strong> Harem Zümrüdü & Kâbe Altını Kurumsal Tasarım Sistemi (<code>--color-emerald-deep: #0B4636</code>, <code>--color-gold: #C5A059</code>) + Çift Omurgalı WebRTC & PCM16 Ses Motoru.</li>
             </ul>
           </div>
         `;

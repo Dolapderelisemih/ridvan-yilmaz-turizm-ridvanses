@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0f5a47" />
+  <meta name="theme-color" content="#06231b" />
   <meta name="robots" content="index, follow" />
   <meta name="author" content="Rıdvan Yılmaz Turizm" />
   <meta name="description" content="Rıdvan Yılmaz Turizm misafirleri için Kâbe tavafı, Sa'y ve Medine Siyer ziyaretlerinde fiziksel kulaklıksız, cep telefonundan kesintisiz canlı sesli rehberlik ve kafile takip sistemi." />
@@ -44,7 +44,7 @@
         "url": "https://ses.ridvanyilmazturizm.com/",
         "logo": "https://ses.ridvanyilmazturizm.com/icons/app-logo.png",
         "description": "Rıdvan Yılmaz Turizm Hac ve Siyer Umresi Organizasyonları",
-        "telephone": "+905324508480",
+        "telephone": "+905383999666",
         "priceRange": "$$",
         "address": {
           "@type": "PostalAddress",
@@ -77,195 +77,265 @@
   }
   </script>
 
-  <link rel="manifest" href="/manifest.json?v=14" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=14" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=14" />
-  <title>Rıdvan Yılmaz Turizm | RıdvanSes — Canlı Umre Rehberlik & Kafile Yönetim Sistemi</title>
-  <link rel="stylesheet" href="/css/style.css?v=14" />
+  <link rel="manifest" href="/manifest.json?v=15" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=15" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=15" />
+  <title>Rıdvan Yılmaz Turizm | RıdvanSes — Dijital Sesli Rehberlik & Kafile Sistemi</title>
+  <link rel="stylesheet" href="/css/style.css?v=15" />
   <style>
     .hero {
-      padding: 56px 0 64px;
+      padding: 64px 0 76px;
       position: relative;
       overflow: hidden;
     }
     .hero-grid {
       display: grid;
       grid-template-columns: 1.15fr 0.85fr;
-      gap: 44px;
+      gap: 48px;
       align-items: center;
     }
     .hero-title {
-      font-size: clamp(1.75rem, 4.2vw, 3.25rem);
+      font-size: clamp(2rem, 4.2vw, 3.35rem);
       color: var(--color-emerald-night);
-      margin: 16px 0 16px;
-      letter-spacing: -0.02em;
-      line-height: 1.22;
+      margin: 18px 0 18px;
+      letter-spacing: -0.025em;
+      line-height: 1.16;
     }
-    .hero-title span {
+    .hero-title em {
+      font-family: var(--font-display);
+      font-style: italic;
+      font-weight: 700;
       color: var(--color-emerald-deep);
-      text-decoration: underline;
-      text-decoration-color: var(--color-gold);
-      text-decoration-thickness: 2.5px;
-      text-underline-offset: 4px;
+      background: linear-gradient(120deg, rgba(197, 160, 89, 0.22) 0%, rgba(197, 160, 89, 0.05) 100%);
+      padding: 0 10px;
+      border-radius: 8px;
+      border-bottom: 2px solid var(--color-gold);
     }
     .hero-lead {
       font-size: 1.05rem;
       color: var(--color-muted);
-      margin-bottom: 24px;
+      margin-bottom: 28px;
       max-width: 600px;
+      line-height: 1.7;
     }
     .quick-join-box {
-      background: #fff;
-      border: 2px solid var(--color-emerald-deep);
-      border-radius: var(--radius-xl);
-      padding: 20px;
+      background: linear-gradient(180deg, #ffffff 0%, #fcfaf5 100%);
+      border: 1.5px solid var(--color-gold-border);
+      border-radius: var(--radius-2xl);
+      padding: 24px;
       box-shadow: var(--shadow-soft);
-      margin-bottom: 20px;
+      margin-bottom: 22px;
+      position: relative;
+    }
+    .quick-join-box::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 24px;
+      right: 24px;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
+      border-radius: 99px;
     }
     .code-pills {
       display: flex;
       flex-wrap: wrap;
-      gap: 7px;
-      margin-top: 12px;
+      gap: 8px;
+      margin-top: 14px;
+      align-items: center;
     }
     .code-pill {
-      padding: 6px 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
       border-radius: 999px;
-      background: var(--color-ground);
-      border: 1px solid var(--color-hairline);
+      background: var(--color-gold-soft);
+      border: 1px solid rgba(197, 160, 89, 0.45);
       font-size: 0.78rem;
       font-weight: 700;
       color: var(--color-emerald-night);
       cursor: pointer;
-      transition: all 0.15s;
-      line-height: 1.3;
-      text-align: left;
+      transition: all 0.2s ease;
     }
     .code-pill:hover {
       background: var(--color-emerald-deep);
       color: #fff;
       border-color: var(--color-emerald-deep);
+      transform: translateY(-1px);
+    }
+    .trust-strip {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      font-size: 0.83rem;
+      color: var(--color-muted);
+      font-weight: 600;
+    }
+    .trust-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .phone-Preview-shell {
+      background: linear-gradient(160deg, #083328 0%, #041913 100%);
+      border: 2px solid rgba(197, 160, 89, 0.42);
+      border-radius: 28px;
+      padding: 28px;
+      box-shadow: var(--shadow-strong);
+      position: relative;
+    }
+    .orb-avatar {
+      width: 56px;
+      height: 56px;
+      flex-shrink: 0;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #dfbe78, #a88238);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: #06231b;
+      box-shadow: 0 8px 20px rgba(197, 160, 89, 0.3);
     }
     .section {
-      padding: 68px 0;
+      padding: 76px 0;
       border-top: 1px solid var(--color-hairline);
     }
     .section-header {
       text-align: center;
       max-width: 720px;
-      margin: 0 auto 44px;
+      margin: 0 auto 48px;
     }
     .section-title {
-      font-size: clamp(1.5rem, 3.2vw, 2.4rem);
+      font-size: clamp(1.65rem, 3.2vw, 2.45rem);
       color: var(--color-emerald-night);
-      margin-top: 10px;
+      margin-top: 12px;
       margin-bottom: 12px;
     }
     .step-num {
-      width: 44px;
-      height: 44px;
-      border-radius: 12px;
-      background: var(--color-emerald-deep);
-      color: var(--color-gold);
-      font-family: var(--font-display);
-      font-weight: 700;
-      font-size: 1.25rem;
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--color-emerald-deep), var(--color-emerald-night));
+      color: var(--color-gold-bright);
+      border: 1px solid rgba(197, 160, 89, 0.4);
+      font-weight: 800;
+      font-size: 1.15rem;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 16px;
+      margin-bottom: 18px;
+      box-shadow: 0 6px 16px rgba(6, 35, 27, 0.14);
     }
     .tour-card {
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
     }
     .tour-card:hover {
       transform: translateY(-4px);
-      box-shadow: var(--shadow-strong);
+      box-shadow: 0 20px 40px -12px rgba(6, 35, 27, 0.14);
+      border-color: var(--color-gold);
     }
     .compare-good {
       color: var(--color-live);
       font-weight: 700;
     }
     .compare-bad {
-      color: var(--color-danger);
+      color: #991b1b;
       font-weight: 600;
     }
     .lang-card {
-      padding: 18px;
-      border-radius: var(--radius-lg);
+      padding: 20px;
+      border-radius: var(--radius-xl);
       background: #fff;
       border: 1px solid var(--color-hairline);
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
     .lang-card:hover, .lang-card.active {
-      border-color: var(--color-emerald-deep);
-      background: var(--color-emerald-soft);
+      border-color: var(--color-gold);
+      background: linear-gradient(180deg, #ffffff 0%, var(--color-gold-soft) 100%);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-soft);
     }
     .footer {
       background: var(--color-emerald-night);
       color: #e6dcc9;
-      padding: 56px 0 36px;
+      padding: 64px 0 40px;
+      border-top: 2px solid rgba(197, 160, 89, 0.3);
     }
     @media (max-width: 960px) {
       .hero-grid {
         grid-template-columns: 1fr;
-        gap: 24px;
+        gap: 28px;
       }
     }
     @media (max-width: 768px) {
       .hero {
-        padding: 20px 0 36px;
+        padding: 24px 0 40px;
       }
       .hero-lead {
-        font-size: 0.94rem;
-        margin-bottom: 18px;
+        font-size: 0.95rem;
+        margin-bottom: 20px;
       }
       .quick-join-box {
-        padding: 15px;
-        border-radius: 16px;
+        padding: 18px;
+        border-radius: 18px;
+      }
+      .phone-Preview-shell {
+        padding: 20px;
+        border-radius: 22px;
       }
       .section {
-        padding: 38px 0;
+        padding: 44px 0;
       }
       .section-header {
-        margin-bottom: 26px;
-      }
-      .footer {
-        padding: 36px 0 28px;
+        margin-bottom: 28px;
       }
     }
   </style>
 </head>
 <body class="star-field">
 
-  <!-- Üst Menü -->
+  <!-- Kurumsal Üst Bar -->
   <header class="navbar">
     <div class="container navbar-inner">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=14" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=15" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <span class="brand-title">Rıdvan Yılmaz Turizm</span>
-          <span class="brand-sub"><span class="live-dot"></span> RıdvanSes Dijital Rehber & Kafile Sistemi</span>
+          <span class="brand-sub"><span class="live-dot"></span> RıdvanSes Dijital Rehberlik Sistemi</span>
         </div>
       </a>
 
       <nav class="nav-links">
+        <a href="#kafileler">Aktif Kafileler</a>
         <a href="#nasil-calisir">Nasıl Çalışır?</a>
-        <a href="#kafileler">2026-2027 Umre Kafileleri</a>
-        <a href="#karsilastirma">Cihazsız Avantaj</a>
-        <a href="#oteller">Mekke & Medine Otellerimiz</a>
+        <a href="#karsilastirma">Teknoloji Avantajı</a>
+        <a href="#oteller">Otellerimiz</a>
         <a href="#iletisim">İletişim</a>
       </nav>
 
       <div class="nav-actions">
-        <a href="/Ridvan_Yilmaz_Turizm_RidvanSes_Kullanim_Rehberi.pdf" target="_blank" class="btn btn-outline btn-sm">📄 Kullanım Rehberi (PDF)</a>
-        <a href="/dinle" class="btn btn-outline btn-sm">🎧 Hacı Girişi</a>
-        <a href="/rehber" class="btn btn-gold btn-sm">🎙️ Rehber Yayını</a>
-        <a href="/panel" class="btn btn-primary btn-sm">🛡️ Acente Paneli</a>
+        <a href="/Ridvan_Yilmaz_Turizm_RidvanSes_Kullanim_Rehberi.pdf" target="_blank" class="btn btn-outline btn-sm hide-on-mobile">
+          <svg class="svg-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Kılavuz
+        </a>
+        <a href="/login?next=/rehber" class="btn btn-outline btn-sm">
+          <svg class="svg-icon" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Yetkili
+        </a>
+        <a href="/dinle" class="btn btn-gold btn-sm">
+          <svg class="svg-icon" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+          Hacı Girişi
+        </a>
       </div>
     </div>
   </header>
@@ -274,183 +344,171 @@
   <section class="hero">
     <div class="container hero-grid">
       <div>
-        <span class="badge badge-gold">✨ Kalplere Dokunan Yolculuklar • Rıdvan Yılmaz Hoca ile Siyer Umresi</span>
+        <span class="badge badge-gold">
+          <svg class="svg-icon svg-gold" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          KALPLERE DOKUNAN YOLCULUKLAR • DİJİTAL SESLİ REHBERLİK
+        </span>
         <h1 class="hero-title">
-          Tavafta ve Siyer Ziyaretlerinde <span>Hocamızın Sesi</span> Doğrudan Telefonunuzda.
+          Tavafta ve Siyer Ziyaretlerinde <em>Hocamızın Sesi</em> Doğrudan Telefonunuzda.
         </h1>
         <p class="hero-lead">
-          Fiziksel kulaklık cihazı kiralama, şarj çantası taşıma, frekans karışması ve mesafe kopmalarına son.
-          <strong>Rıdvan Yılmaz Turizm</strong> misafirleri, üyeliksiz sadece <strong>Kafile Kodu</strong> ile saniyeler içinde canlı yayına bağlanır, söz isteyip soru sorabilir ve acil durumda canlı konum (SOS) gönderebilir.
+          Fiziksel cihaz kiralama, ağır şarj çantaları, frekans karışması ve mesafe kopmalarına son.
+          <strong>Rıdvan Yılmaz Turizm</strong> misafirleri, üyeliksiz yalnızca <strong>Kafile Kodu</strong> ile saniyeler içinde canlı yayına bağlanır, söz isteyip soru sorabilir ve acil durumda canlı konum (SOS) paylaşabilir.
         </p>
 
         <!-- Üyeliksiz Hızlı Katılım Kutusu -->
         <div class="quick-join-box">
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-            <span class="label" style="margin:0; font-size:0.92rem;">🎧 Hacı (Dinleyici) Hızlı Katılım — Üyelik Gerekmez</span>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+            <span class="label" style="margin:0; font-size:0.9rem; display:inline-flex; align-items:center; gap:7px;">
+              <svg class="svg-icon svg-emerald" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+              Hacı (Dinleyici) Hızlı Katılım — Üyelik Gerekmez
+            </span>
             <span class="badge badge-live"><span class="live-dot"></span> Canlı Odalar Aktif</span>
           </div>
           <form id="quickJoinForm" style="display:flex; gap:10px; flex-wrap:wrap;">
-            <input type="text" id="quickTourCode" class="input" style="flex:1 1 160px; font-weight:700; text-transform:uppercase;" placeholder="Kafile Kodu (Örn: RY-2026)" value="RY-2026" required />
+            <input type="text" id="quickTourCode" class="input" style="flex:1 1 150px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em;" placeholder="Kafile Kodu (RY-KASIM)" value="RY-KASIM" required />
             <input type="text" id="quickPilgrimName" class="input" style="flex:1 1 160px;" placeholder="Adınız Soyadınız (İsteğe Bağlı)" />
-            <button type="submit" class="btn btn-primary" style="flex:1 1 200px;">Canlı Yayına Bağlan →</button>
+            <button type="submit" class="btn btn-primary" style="flex:1 1 190px;">
+              Canlı Yayına Bağlan
+              <svg class="svg-icon" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </button>
           </form>
-          <div class="code-pills">
-            <span style="font-size:0.78rem; color:var(--color-muted); align-self:center; width:100%;">Aktif Kafile Kodları:</span>
-            <button type="button" class="code-pill" style="border-color:#10b981; background:rgba(16,185,129,0.15); color:#047857; font-weight:800;" onclick="setQuickCode('SELAMET-2026')">🌟 SELAMET-2026 (Selamet Turizm)</button>
-            <button type="button" class="code-pill" style="border-color:var(--color-gold); background:var(--color-gold-soft);" onclick="setQuickCode('RY-KASIM')">✨ RY-KASIM (13-14 Kasım • Ömer Ali Gültekin)</button>
-            <button type="button" class="code-pill" onclick="setQuickCode('RY-2026')">RY-2026 (26 Haziran Siyer)</button>
-            <button type="button" class="code-pill" onclick="setQuickCode('RY-GENCLIK')">RY-GENCLIK (8 Temmuz Gençlik)</button>
-            <button type="button" class="code-pill" onclick="setQuickCode('RY-EYLUL')">RY-EYLUL (10+10 Gün Siyer)</button>
-            <button type="button" class="code-pill" onclick="setQuickCode('RY-5YILDIZ')">RY-5YILDIZ (Anjum 5★)</button>
+          <div class="code-pills" id="homeQuickPills">
+            <span style="font-size:0.76rem; color:var(--color-muted); font-weight:700;">Aktif Kafile:</span>
+            <button type="button" class="code-pill" onclick="setQuickCode('RY-KASIM')">
+              <svg class="svg-icon svg-gold" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              RY-KASIM (13-14 Kasım Umresi • Ömer Ali Gültekin)
+            </button>
           </div>
         </div>
 
-        <div style="display:flex; gap:12px; flex-wrap:wrap; font-size:0.84rem; color:var(--color-muted); font-weight:600;">
-          <span>✔️ Uygulama İndirmeden Web'den Çalışır</span>
-          <span>✔️ El Kaldır & Soru Sor (Çift Yönlü Ses)</span>
-          <span>✔️ 3 Sn Basılı Tut Canlı GPS SOS</span>
-        </div>
-      </div>
-
-      <!-- Sağ: Canlı Yayın Önizleme Kartı -->
-      <div class="card-dark star-field-dark">
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:18px;">
-          <span class="badge" style="background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(74,222,128,0.4);">
-            <span class="live-dot"></span> CANLI YAYIN • RY-2026
+        <div class="trust-strip">
+          <span class="trust-item">
+            <svg class="svg-icon svg-emerald" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            Uygulama İndirmeden Web'den Çalışır
           </span>
-          <span style="font-size:0.8rem; color:#d4af37; font-weight:700;">~35ms Ultra Düşük Gecikme</span>
+          <span class="trust-item">
+            <svg class="svg-icon svg-emerald" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+            El Kaldır & Soru Sor (Çift Yönlü Ses)
+          </span>
+          <span class="trust-item">
+            <svg class="svg-icon svg-emerald" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Canlı GPS Rehber & SOS Takibi
+          </span>
+        </div>
+      </div>
+
+      <!-- Sağ: Canlı Yayın Stüdyo Önizleme Kartı -->
+      <div class="phone-Preview-shell star-field-dark">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:20px;">
+          <span class="badge" style="background:rgba(34,197,94,0.18); color:#4ade80; border:1px solid rgba(74,222,128,0.35);">
+            <span class="live-dot"></span> CANLI YAYIN • RY-KASIM
+          </span>
+          <span style="font-size:0.76rem; color:var(--color-gold-bright); font-weight:700; display:inline-flex; align-items:center; gap:5px;">
+            <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Cidde Sunucu • ~35ms
+          </span>
         </div>
 
-        <div style="display:flex; align-items:center; gap:12px; margin-bottom:18px;">
-          <div style="width:52px; height:52px; flex-shrink:0; border-radius:50%; background:linear-gradient(135deg,#d4af37,#9a7b1c); display:flex; align-items:center; justify-content:center; font-size:1.35rem; font-weight:800; color:#0a3d30;">
-            RY
-          </div>
+        <div style="display:flex; align-items:center; gap:14px; margin-bottom:20px;">
+          <div class="orb-avatar">ÖG</div>
           <div style="min-width:0;">
-            <div style="font-size:0.74rem; text-transform:uppercase; letter-spacing:0.06em; color:#d4af37; font-weight:700;">Baş Rehber & Kurucu</div>
-            <h3 style="font-size:1.25rem; color:#fff;">Rıdvan Yılmaz Hoca</h3>
-            <div style="font-size:0.82rem; color:#cbd5e1;">26 Haziran 2026 Siyer Umresi • Rayhaan Al Mashaer Hotel</div>
+            <div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--color-gold-bright); font-weight:800;">Kasım Umresi Kafile Rehberi</div>
+            <h3 style="font-size:1.3rem; color:#fff; margin:2px 0;">Ömer Ali Gültekin</h3>
+            <div style="font-size:0.82rem; color:#cbd5e1;">13-14 Kasım 2026 • 8 Gün Mekke | 2 Gün Medine</div>
           </div>
         </div>
 
-        <div style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:14px; margin-bottom:16px;">
-          <div style="font-size:0.74rem; color:#94a3b8; margin-bottom:4px;">ŞU AN ANLATILAN BÖLÜM</div>
-          <div style="font-weight:700; color:#f8fafc; font-size:0.94rem;" id="heroLiveTopic">
-            Kâbe-i Muazzama Tavaf Duaları & Hacerü'l-Esved Selamlaması
+        <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(197,160,89,0.28); border-radius:16px; padding:16px; margin-bottom:18px;">
+          <div style="font-size:0.72rem; color:var(--color-gold-bright); font-weight:700; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:4px;">ŞU AN ANLATILAN BÖLÜM</div>
+          <div style="font-weight:700; color:#f8fafc; font-size:0.95rem; line-height:1.45;" id="heroLiveTopic">
+            Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk
           </div>
-          <div class="spectrum" id="heroSpectrum" style="margin-top:12px;"></div>
+          <div class="spectrum" id="heroSpectrum" style="margin-top:14px;"></div>
         </div>
 
-        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:18px; text-align:center;">
-          <div style="background:rgba(255,255,255,0.05); padding:10px 6px; border-radius:10px;">
-            <div style="font-size:1.2rem; font-weight:800; color:#d4af37;" id="heroListenersCount">42</div>
-            <div style="font-size:0.72rem; color:#cbd5e1;">Bağlı Hacı</div>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:20px; text-align:center;">
+          <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); padding:12px 6px; border-radius:12px;">
+            <div style="font-size:1.25rem; font-weight:800; color:var(--color-gold-bright);" id="heroListenersCount">38</div>
+            <div style="font-size:0.72rem; color:#cbd5e1; margin-top:2px;">Bağlı Hacı</div>
           </div>
-          <div style="background:rgba(255,255,255,0.05); padding:10px 6px; border-radius:10px;">
-            <div style="font-size:1.2rem; font-weight:800; color:#4ade80;">3 Oda</div>
-            <div style="font-size:0.72rem; color:#cbd5e1;">Genel / Siyer / Hanımlar</div>
+          <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); padding:12px 6px; border-radius:12px;">
+            <div style="font-size:1.25rem; font-weight:800; color:#4ade80;">2 Oda</div>
+            <div style="font-size:0.72rem; color:#cbd5e1; margin-top:2px;">Genel & Siyer</div>
           </div>
-          <div style="background:rgba(255,255,255,0.05); padding:10px 6px; border-radius:10px;">
-            <div style="font-size:1.2rem; font-weight:800; color:#fff;">6 Dil</div>
-            <div style="font-size:0.72rem; color:#cbd5e1;">TR • AR • EN • FR • ID • UR</div>
+          <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); padding:12px 6px; border-radius:12px;">
+            <div style="font-size:1.25rem; font-weight:800; color:#fff;">6 Dil</div>
+            <div style="font-size:0.72rem; color:#cbd5e1; margin-top:2px;">TR • AR • EN</div>
           </div>
         </div>
 
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <a href="/dinle?code=RY-2026" class="btn btn-gold" style="flex:1 1 140px;">🎧 Hacı Olarak Dinle</a>
-          <a href="/rehber?code=RY-2026" class="btn btn-outline" style="flex:1 1 140px; background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);">🎙️ Hoca Konsolunu Aç</a>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <a href="/dinle?code=RY-KASIM" class="btn btn-gold" style="flex:1 1 150px;">
+            <svg class="svg-icon" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Hacı Olarak Dinle
+          </a>
+          <a href="/rehber?code=RY-KASIM" class="btn btn-outline" style="flex:1 1 150px; background:rgba(255,255,255,0.07); color:#fff; border-color:rgba(197,160,89,0.35);">
+            <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+            Rehber Konsolu
+          </a>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- 3 ADIMDA NASIL ÇALIŞIR -->
-  <section id="nasil-calisir" class="section">
+  <!-- AKTİF KAFİLE VİTRİNİ -->
+  <section id="kafileler" class="section" style="background:linear-gradient(180deg, rgba(241, 234, 224, 0.55) 0%, rgba(250, 247, 242, 0.2) 100%);">
     <div class="container">
       <div class="section-header">
-        <span class="badge badge-emerald">3 ADIMDA KOLAY KULLANIM</span>
-        <h2 class="section-title">Cihaz Dağıtımı Yok, Frekans Ayarı Yok</h2>
+        <span class="badge badge-gold">RIDVAN YILMAZ TURİZM • AKTİF UMRE PROGRAMI</span>
+        <h2 class="section-title">Kasım Umresi Özel Kafilesi ve Canlı Ses Odaları</h2>
         <p style="color:var(--color-muted);">
-          Yaşlı hacılarımızın bile tek dokunuşla kullanabileceği sadelikte tasarlandı.
-        </p>
-      </div>
-
-      <div class="grid-3">
-        <div class="card">
-          <div class="step-num">1</div>
-          <h3 style="margin-bottom:10px;">Acente Kafile Kodunu Oluşturur</h3>
-          <p style="color:var(--color-muted); font-size:0.94rem;">
-            Rıdvan Yılmaz Turizm yönetim panelinden her umre turu için özel bir kod (Örn: <strong>RY-2026</strong>, <strong>RY-GENCLIK</strong>) ve alt sohbet odaları tanımlanır.
-          </p>
-        </div>
-        <div class="card">
-          <div class="step-num">2</div>
-          <h3 style="margin-bottom:10px;">Hacılarımız Üyeliksiz Katılır</h3>
-          <p style="color:var(--color-muted); font-size:0.94rem;">
-            Misafirlerimiz kayıt olmadan veya şifre ezberlemeden sadece kafile kodunu girerek kendi telefon kulaklıklarıyla yayına bağlanır.
-          </p>
-        </div>
-        <div class="card">
-          <div class="step-num">3</div>
-          <h3 style="margin-bottom:10px;">Canlı Rehberlik, Söz İsteme & SOS</h3>
-          <p style="color:var(--color-muted); font-size:0.94rem;">
-            Rıdvan Yılmaz Hocamız canlı yayını başlatır. Hacılarımız <strong>El Kaldır</strong> butonuyla söz isteyip soru sorabilir, kaybolma anında <strong>SOS</strong> ile canlı konum gönderebilir.
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- RIDVAN YILMAZ TURİZM 2026 - 2027 KAFILELERİMİZ -->
-  <section id="kafileler" class="section" style="background:rgba(239, 230, 211, 0.4);">
-    <div class="container">
-      <div class="section-header">
-        <span class="badge badge-gold">RIDVAN YILMAZ TURİZM • 2026 & 2027 TAKVİMİ</span>
-        <h2 class="section-title">Aktif Siyer Umresi Kafilelerimiz ve Canlı Odalar</h2>
-        <p style="color:var(--color-muted);">
-          Resmi web sitemizdeki (ridvanyilmazturizm.com) tüm 2026–2027 Siyer Umresi turlarımız sisteme entegre edilmiştir. Dilediğiniz kafilenin canlı odasına hemen katılabilirsiniz.
+          Kutsal topraklardaki ibadet ve Siyer-i Nebi ziyaretlerimizde rehber hocamızın canlı anlatımına tek dokunuşla katılabilirsiniz.
         </p>
       </div>
 
       <!-- ÖZEL VİTRİN: KASIM UMRESİ (13-14 KASIM 2026) -->
-      <div class="card-dark star-field-dark" style="margin-bottom:32px; border:2px solid var(--color-gold);">
-        <div class="grid-2" style="align-items:center; gap:28px;">
+      <div class="card-dark star-field-dark" style="margin-bottom:32px;">
+        <div class="grid-2" style="align-items:center; gap:32px;">
           <div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
-              <span class="badge" style="background:rgba(212,175,55,0.22); color:#f3d266; border:1px solid rgba(212,175,55,0.5);">
-                🕋✨ KASIM UMRESİ – KUTSAL TOPRAKLARA MANEVİ YOLCULUK ✨🕋
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+              <span class="badge" style="background:rgba(197,160,89,0.2); color:var(--color-gold-bright); border:1px solid rgba(197,160,89,0.45);">
+                KASIM UMRESİ • KUTSAL TOPRAKLARA MANEVİ YOLCULUK
               </span>
               <span class="badge" style="background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(74,222,128,0.4);">
                 <span class="live-dot"></span> ODA KODU: RY-KASIM
               </span>
             </div>
-            <h3 style="font-size:clamp(1.22rem, 3.8vw, 1.75rem); color:#fff; margin-bottom:10px; line-height:1.28;">
-              🌙 Rıdvan Yılmaz Turizm Tecrübesiyle • 🎙️ Ömer Ali Gültekin Rehberliğinde…
+            <h3 style="font-size:clamp(1.35rem, 3.5vw, 1.85rem); color:#fff; margin-bottom:12px; line-height:1.28;">
+              Rıdvan Yılmaz Turizm Tecrübesiyle • Ömer Ali Gültekin Rehberliğinde
             </h3>
-            <p style="color:#e2e8f0; font-size:0.92rem; margin-bottom:14px;">
-              🤍 Bir ömür unutulmayacak hatıralar biriktirmek, gönlümüzü Kâbe’nin huzuruyla buluşturmak ve Peygamber Efendimizin ﷺ izinde manevi bir yolculuğa çıkmak için hazır mısınız?
-              Belki de yıllardır ettiğiniz duaların kabulüne vesile olacak o yolculuk, bu Kasım’da sizi bekliyor…
+            <p style="color:#cbd5e1; font-size:0.94rem; margin-bottom:18px; line-height:1.65;">
+              Bir ömür unutulmayacak hatıralar biriktirmek, gönlümüzü Kâbe’nin huzuruyla buluşturmak ve Peygamber Efendimizin ﷺ izinde manevi bir yolculuğa çıkmak için hazırlanan özel Kasım Umresi programımız.
             </p>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; font-size:0.84rem; color:#f3d266; font-weight:700;">
-              <span>📅 13-14 Kasım 2026</span>
+            <div style="display:flex; gap:12px; flex-wrap:wrap; font-size:0.84rem; color:var(--color-gold-bright); font-weight:700;">
+              <span>13-14 Kasım 2026</span>
               <span>•</span>
-              <span>⏳ 10 Günlük Umre Programı</span>
+              <span>10 Günlük Program</span>
               <span>•</span>
-              <span>🕋 8 Gün Mekke | 🌹 2 Gün Medine</span>
+              <span>8 Gün Mekke | 2 Gün Medine</span>
               <span>•</span>
-              <span>✨ Konaklama, yemek ve tüm hizmetler dahil kampanyalı fiyatlarla</span>
+              <span>Tüm Hizmetler Dahil</span>
             </div>
           </div>
-          <div style="background:rgba(255,255,255,0.07); border:1px solid rgba(212,175,55,0.35); border-radius:16px; padding:16px;">
-            <div style="font-size:0.76rem; color:#f3d266; font-weight:800; text-transform:uppercase; margin-bottom:6px;">
-              KAFILE CANLI SES & KAYIT MERKEZİ
+          <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(197,160,89,0.35); border-radius:20px; padding:22px;">
+            <div style="font-size:0.74rem; color:var(--color-gold-bright); font-weight:800; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:6px;">
+              KAFİLE CANLI SES & İLETİŞİM MERKEZİ
             </div>
-            <div style="font-size:1.02rem; font-weight:700; color:#fff; margin-bottom:4px;">🎙️ Rehber: Ömer Ali Gültekin</div>
-            <div style="font-size:0.85rem; color:#cbd5e1; margin-bottom:14px;">📞 Bilgi ve Kayıt: <strong>0 538 399 96 66</strong> • 📍 Rıdvan Yılmaz Turizm</div>
-            <div style="display:flex; flex-direction:column; gap:8px;">
-              <a href="/dinle?code=RY-KASIM" class="btn btn-gold" style="width:100%;">🎧 RY-KASIM Canlı Ses Odasına Katıl</a>
+            <div style="font-size:1.08rem; font-weight:800; color:#fff; margin-bottom:4px;">Rehber: Ömer Ali Gültekin</div>
+            <div style="font-size:0.86rem; color:#cbd5e1; margin-bottom:16px;">Bilgi ve İletişim: <strong>0 538 399 96 66</strong> • Rıdvan Yılmaz Turizm</div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <a href="/dinle?code=RY-KASIM" class="btn btn-gold" style="width:100%;">
+                <svg class="svg-icon" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+                RY-KASIM Canlı Ses Odasına Katıl
+              </a>
               <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <a href="/rehber?code=RY-KASIM" class="btn btn-outline btn-sm" style="flex:1 1 120px; background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);">🎙️ Hoca Yayını</a>
-                <a href="/yaka-karti?code=RY-KASIM" class="btn btn-outline btn-sm" style="flex:1 1 120px; background:rgba(255,255,255,0.1); color:#fff; border-color:rgba(255,255,255,0.25);">🪪 Yaka Kartı QR</a>
+                <a href="/rehber?code=RY-KASIM" class="btn btn-outline btn-sm" style="flex:1 1 120px; background:rgba(255,255,255,0.08); color:#fff; border-color:rgba(255,255,255,0.2);">Rehber Yayını</a>
+                <a href="/yaka-karti?code=RY-KASIM" class="btn btn-outline btn-sm" style="flex:1 1 120px; background:rgba(255,255,255,0.08); color:#fff; border-color:rgba(255,255,255,0.2);">Yaka Kartı QR</a>
               </div>
             </div>
           </div>
@@ -463,56 +521,93 @@
     </div>
   </section>
 
-  <!-- KARŞILAŞTIRMA TABLOSU -->
-  <section id="karsilastirma" class="section">
+  <!-- 3 ADIMDA NASIL ÇALIŞIR -->
+  <section id="nasil-calisir" class="section">
     <div class="container">
       <div class="section-header">
-        <span class="badge badge-emerald">NEDEN DİJİTAL SES SİSTEMİ?</span>
-        <h2 class="section-title">Klasik Kulaklık Cihazları vs. RıdvanSes</h2>
+        <span class="badge badge-emerald">3 ADIMDA KOLAY KULLANIM</span>
+        <h2 class="section-title">Cihaz Dağıtımı Yok, Frekans Ayarı Yok</h2>
         <p style="color:var(--color-muted);">
-          Mescid-i Haram ve Mescid-i Nebevî kalabalığında mesafe sınırı olmadan kristal netliğinde iletişim.
+          İleri yaş grubundaki hacılarımızın bile tek dokunuşla kullanabileceği sadelikte tasarlandı.
         </p>
       </div>
 
-      <div class="card table-wrap">
+      <div class="grid-3">
+        <div class="card-luxury">
+          <div class="step-num">01</div>
+          <h3 style="margin-bottom:10px; font-size:1.18rem;">QR Okutun veya Kodu Girin</h3>
+          <p style="color:var(--color-muted); font-size:0.93rem;">
+            Yaka kartınızdaki QR kodu telefon kameranıza okutarak veya kafile kodunu (<strong>RY-KASIM</strong>) yazarak uygulama indirmeden odaya girin.
+          </p>
+        </div>
+        <div class="card-luxury">
+          <div class="step-num">02</div>
+          <h3 style="margin-bottom:10px; font-size:1.18rem;">Kulaklığınızla Kesintisiz Dinleyin</h3>
+          <p style="color:var(--color-muted); font-size:0.93rem;">
+            Tavaf Kesintisiz Modu sayesinde telefonunuzun ekranını kilitleyip cebinize koysanız dahi hocamızın sesi kristal netliğinde devam eder.
+          </p>
+        </div>
+        <div class="card-luxury">
+          <div class="step-num">03</div>
+          <h3 style="margin-bottom:10px; font-size:1.18rem;">Söz İsteyin & Canlı Konum Görün</h3>
+          <p style="color:var(--color-muted); font-size:0.93rem;">
+            <strong>El Kaldır</strong> butonuyla hocamızdan söz isteyip soru sorabilir, kalabalıkta geride kaldığınızda hocanın canlı harita konumuna yol tarifi alabilirsiniz.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- KARŞILAŞTIRMA TABLOSU -->
+  <section id="karsilastirma" class="section" style="background:rgba(241, 234, 224, 0.35);">
+    <div class="container">
+      <div class="section-header">
+        <span class="badge badge-emerald">NEDEN DİJİTAL SES SİSTEMİ?</span>
+        <h2 class="section-title">Klasik Telsiz Cihazları vs. RıdvanSes</h2>
+        <p style="color:var(--color-muted);">
+          Mescid-i Haram ve Mescid-i Nebevî kalabalığında mesafe sınırı olmadan kesintisiz iletişim.
+        </p>
+      </div>
+
+      <div class="card table-wrap" style="padding:0; overflow:hidden;">
         <table>
           <thead>
             <tr>
               <th>Özellik / Kriter</th>
-              <th>Klasik Fiziksel Telsiz/Kulaklık Kiralama</th>
-              <th>Rıdvan Yılmaz Turizm — RıdvanSes Sistemi</th>
+              <th>Klasik Fiziksel Kulaklık Kiralama</th>
+              <th>Rıdvan Yılmaz Turizm — RıdvanSes</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td><strong>Cihaz Kiralama & Depozito Maliyeti</strong></td>
-              <td class="compare-bad">❌ Hacı başı döviz bazlı kiralama ve depozito</td>
-              <td class="compare-good">✅ 0 ₺ Ek Cihaz Kirası / 0 ₺ Depozito</td>
+              <td><strong>Cihaz Kiralama & Depozito</strong></td>
+              <td class="compare-bad">Hacı başı döviz bazlı kiralama ve depozito</td>
+              <td class="compare-good">0 TL Ek Cihaz Kirası / 0 TL Depozito</td>
             </tr>
             <tr>
               <td><strong>Kayıp / Kırılma Cezası Riski</strong></td>
-              <td class="compare-bad">❌ Kayıp cihaz başına 30€ - 50€ ceza</td>
-              <td class="compare-good">✅ Sıfır Risk (Hacı kendi telefonunu kullanır)</td>
+              <td class="compare-bad">Kayıp cihaz başına 30€ - 50€ ceza</td>
+              <td class="compare-good">Sıfır Risk (Her misafir kendi telefonunu kullanır)</td>
             </tr>
             <tr>
               <td><strong>Şarj & Ağır Çanta Taşıma</strong></td>
-              <td class="compare-bad">❌ Rehberin 50-100 cihazlık şarj çantası taşıması</td>
-              <td class="compare-good">✅ Şarj çantası veya cihaz toplama derdi yok</td>
+              <td class="compare-bad">Rehberin 100 cihazlık şarj çantası taşıması</td>
+              <td class="compare-good">Şarj çantası veya cihaz toplama zahmeti yok</td>
             </tr>
             <tr>
               <td><strong>Çekim Mesafesi & Parazit</strong></td>
-              <td class="compare-bad">❌ 30-50 metrede kopma, diğer kafilelerle frekans karışması</td>
-              <td class="compare-good">✅ Mesafe sınırı yok, şifreli özel kafile odası</td>
+              <td class="compare-bad">30-50 metrede kopma ve frekans karışması</td>
+              <td class="compare-good">Mesafe sınırı yok, özel şifreli dijital ses odası</td>
             </tr>
             <tr>
-              <td><strong>Hacıdan Hocaya Soru Sorma (İki Yönlü Ses)</strong></td>
-              <td class="compare-bad">❌ Yok (Sadece tek yönlü dinleme)</td>
-              <td class="compare-good">✅ "El Kaldır / Söz İste" ile Hoca onaylı canlı soru sorma</td>
+              <td><strong>Hacıdan Hocaya Soru Sorma</strong></td>
+              <td class="compare-bad">Yok (Yalnızca tek yönlü dinleme)</td>
+              <td class="compare-good">"El Kaldır / Söz İste" ile canlı soru sorma imkânı</td>
             </tr>
             <tr>
               <td><strong>Kayıp Hacı & Acil Durum (SOS GPS)</strong></td>
-              <td class="compare-bad">❌ Yok</td>
-              <td class="compare-good">✅ 3 Saniye Basılı Tutarak Hoca ve Acenteye Canlı Harita Konumu</td>
+              <td class="compare-bad">Yok</td>
+              <td class="compare-good">3 Saniye Basılı Tutarak Canlı Harita Konumu Gönderme</td>
             </tr>
           </tbody>
         </table>
@@ -521,13 +616,13 @@
   </section>
 
   <!-- MEKKE VE MEDİNE OTELLERİMİZ -->
-  <section id="oteller" class="section" style="background:rgba(239, 230, 211, 0.35);">
+  <section id="oteller" class="section">
     <div class="container">
       <div class="section-header">
         <span class="badge badge-gold">KONAKLAMA & OPERASYON MERKEZLERİMİZ</span>
         <h2 class="section-title">Mekke ve Medine Otellerimiz</h2>
         <p style="color:var(--color-muted);">
-          Kafile duyuruları ve toplanma saatleri otellerimize göre anlık olarak hacılarımızın ekranına düşer.
+          Kafile duyuruları ve toplanma saatleri otellerimize göre anlık olarak hacılarımızın ekranına iletilir.
         </p>
       </div>
 
@@ -536,7 +631,7 @@
   </section>
 
   <!-- 6 DİL DESTEĞİ -->
-  <section class="section">
+  <section class="section" style="background:rgba(241, 234, 224, 0.35);">
     <div class="container">
       <div class="section-header">
         <span class="badge badge-emerald">ÇOK DİLLİ ARAYÜZ & RTL DESTEĞİ</span>
@@ -548,28 +643,28 @@
 
       <div class="grid-3">
         <a href="/dinle?lang=tr" class="lang-card active">
-          <div style="font-weight:800; font-size:1.1rem;">🇹🇷 Türkçe (TR)</div>
-          <div style="font-size:0.86rem; color:var(--color-muted); margin-top:4px;">"Canlı Yayına Katıl • Söz İste • Acil SOS"</div>
+          <div style="font-weight:800; font-size:1.05rem; color:var(--color-emerald-night);">Türkçe (TR)</div>
+          <div style="font-size:0.84rem; color:var(--color-muted);">Canlı Yayına Katıl • Söz İste • Acil SOS</div>
         </a>
         <a href="/dinle?lang=ar" class="lang-card" dir="rtl">
-          <div style="font-weight:800; font-size:1.1rem;">🇸🇦 العربية (AR - RTL)</div>
-          <div style="font-size:0.86rem; color:var(--color-muted); margin-top:4px;">"انضم إلى البث المباشر • طلب الكلمة • طوارئ SOS"</div>
+          <div style="font-weight:800; font-size:1.05rem; color:var(--color-emerald-night);">العربية (AR - RTL)</div>
+          <div style="font-size:0.84rem; color:var(--color-muted);">انضم إلى البث المباشر • طلب الكلمة • طوارئ SOS</div>
         </a>
         <a href="/dinle?lang=en" class="lang-card">
-          <div style="font-weight:800; font-size:1.1rem;">🇬🇧 English (EN)</div>
-          <div style="font-size:0.86rem; color:var(--color-muted); margin-top:4px;">"Join Live Broadcast • Raise Hand • Emergency SOS"</div>
+          <div style="font-weight:800; font-size:1.05rem; color:var(--color-emerald-night);">English (EN)</div>
+          <div style="font-size:0.84rem; color:var(--color-muted);">Join Live Broadcast • Raise Hand • Emergency SOS</div>
         </a>
         <a href="/dinle?lang=fr" class="lang-card">
-          <div style="font-weight:800; font-size:1.1rem;">🇫🇷 Français (FR)</div>
-          <div style="font-size:0.86rem; color:var(--color-muted); margin-top:4px;">"Rejoindre le direct • Demander la parole • SOS"</div>
+          <div style="font-weight:800; font-size:1.05rem; color:var(--color-emerald-night);">Français (FR)</div>
+          <div style="font-size:0.84rem; color:var(--color-muted);">Rejoindre le direct • Demander la parole • SOS</div>
         </a>
         <a href="/dinle?lang=id" class="lang-card">
-          <div style="font-weight:800; font-size:1.1rem;">🇮🇩 Bahasa Indonesia (ID)</div>
-          <div style="font-size:0.86rem; color:var(--color-muted); margin-top:4px;">"Gabung Siaran Langsung • Angkat Tangan • SOS"</div>
+          <div style="font-weight:800; font-size:1.05rem; color:var(--color-emerald-night);">Bahasa Indonesia (ID)</div>
+          <div style="font-size:0.84rem; color:var(--color-muted);">Gabung Siaran Langsung • Angkat Tangan • SOS</div>
         </a>
         <a href="/dinle?lang=ur" class="lang-card" dir="rtl">
-          <div style="font-weight:800; font-size:1.1rem;">🇵🇰 اردو (UR - RTL)</div>
-          <div style="font-size:0.86rem; color:var(--color-muted); margin-top:4px;">"لائیو نشریات میں شامل ہوں • سوال پوچھیں • ایمرجنسی"</div>
+          <div style="font-weight:800; font-size:1.05rem; color:var(--color-emerald-night);">اردو (UR - RTL)</div>
+          <div style="font-size:0.84rem; color:var(--color-muted);">لائیو نشریات میں شامل ہوں • سوال پوچھیں • ایمرجنسی</div>
         </a>
       </div>
     </div>
@@ -582,33 +677,42 @@
         <span class="badge badge-gold">BURSA MERKEZ OFİS & İLETİŞİM</span>
         <h2 class="section-title" style="text-align:left;">Rıdvan Yılmaz Turizm ile İletişime Geçin</h2>
         <p style="color:var(--color-muted); margin-bottom:24px;">
-          2026–2027 Siyer Umresi kayıtlarımız, grup kafile odalarımız ve sesli rehberlik sistemimiz hakkında detaylı bilgi için bize ulaşabilirsiniz.
+          Kasım Umresi kafilemiz, özel grup organizasyonlarımız ve dijital sesli rehberlik sistemimiz hakkında detaylı bilgi için bize ulaşabilirsiniz.
         </p>
 
-        <div class="card" style="margin-bottom:16px;">
-          <div style="font-weight:700; color:var(--color-emerald-night);">📍 Merkez Adresimiz</div>
-          <div style="color:var(--color-muted); font-size:0.94rem; margin-top:4px;">
+        <div class="card" style="margin-bottom:14px; padding:20px;">
+          <div style="font-weight:800; color:var(--color-emerald-night); display:flex; align-items:center; gap:8px;">
+            <svg class="svg-icon svg-gold" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Merkez Adresimiz
+          </div>
+          <div style="color:var(--color-muted); font-size:0.92rem; margin-top:6px;">
             Reyhan, 8. Park Sk. Baycan Plaza No:10 K:4 D:2, 16030 Osmangazi / Bursa
           </div>
         </div>
 
-        <div class="card" style="margin-bottom:16px;">
-          <div style="font-weight:700; color:var(--color-emerald-night);">📞 Telefon & WhatsApp Hattımız</div>
-          <div style="color:var(--color-muted); font-size:0.94rem; margin-top:4px;">
-            <a href="tel:+905383999666" style="font-weight:700; color:var(--color-emerald-deep);">+90 538 399 96 66</a> — Rıdvan Yılmaz Hoca & Beytullah Bey
+        <div class="card" style="margin-bottom:14px; padding:20px;">
+          <div style="font-weight:800; color:var(--color-emerald-night); display:flex; align-items:center; gap:8px;">
+            <svg class="svg-icon svg-gold" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            Telefon & WhatsApp Hattımız
+          </div>
+          <div style="color:var(--color-muted); font-size:0.92rem; margin-top:6px;">
+            <a href="tel:+905383999666" style="font-weight:800; color:var(--color-emerald-deep);">+90 538 399 96 66</a> — Rıdvan Yılmaz Hoca & Ömer Ali Gültekin
           </div>
         </div>
 
-        <div class="card">
-          <div style="font-weight:700; color:var(--color-emerald-night);">✉️ E-Posta & Web</div>
-          <div style="color:var(--color-muted); font-size:0.94rem; margin-top:4px;">
-            info@ridvanyilmazturizm.com • <a href="https://ridvanyilmazturizm.com/" target="_blank" style="text-decoration:underline;">ridvanyilmazturizm.com</a>
+        <div class="card" style="padding:20px;">
+          <div style="font-weight:800; color:var(--color-emerald-night); display:flex; align-items:center; gap:8px;">
+            <svg class="svg-icon svg-gold" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            E-Posta & Kurumsal Web
+          </div>
+          <div style="color:var(--color-muted); font-size:0.92rem; margin-top:6px;">
+            info@ridvanyilmazturizm.com • <a href="https://ridvanyilmazturizm.com/" target="_blank" style="text-decoration:underline; font-weight:700;">ridvanyilmazturizm.com</a>
           </div>
         </div>
       </div>
 
-      <div class="card">
-        <h3 style="margin-bottom:16px;">Umre Ön Kayıt & Bilgi Talebi Formu</h3>
+      <div class="card-luxury">
+        <h3 style="margin-bottom:16px; font-size:1.3rem;">Umre Ön Kayıt & Bilgi Talebi Formu</h3>
         <form id="contactForm" style="display:flex; flex-direction:column; gap:14px;">
           <div>
             <label class="label">Adınız Soyadınız *</label>
@@ -617,13 +721,8 @@
           <div>
             <label class="label">İlgilendiğiniz Umre Programı</label>
             <select name="company_name" class="select">
-              <option value="13-14 Kasım 2026 Kasım Umresi (Ömer Ali Gültekin)">🕋 13-14 Kasım 2026 Kasım Umresi — 10 Gün (RY-KASIM)</option>
-              <option value="26 Haziran 2026 Siyer Umresi">26 Haziran 2026 Siyer Umresi (RY-2026)</option>
-              <option value="8 Temmuz 2026 Gençlik Umresi">8 Temmuz 2026 Gençlik Umresi (RY-GENCLIK)</option>
-              <option value="5 Eylül 2026 Siyer Umresi (10+10 Gün)">5 Eylül 2026 Siyer Umresi (RY-EYLUL)</option>
-              <option value="5 Ekim 2026 5 Yıldızlı Siyer Umresi">5 Ekim 2026 5 Yıldızlı Siyer Umresi (RY-5YILDIZ)</option>
-              <option value="11 Aralık 2026 Siyer Umresi">11 Aralık 2026 Kış Siyer Umresi (RY-ARALIK)</option>
-              <option value="2027 Sömestr / Şevval Umresi">2027 Sömestr / Şevval Siyer Umresi</option>
+              <option value="13-14 Kasım 2026 Kasım Umresi (Ömer Ali Gültekin)">13-14 Kasım 2026 Kasım Umresi — 10 Gün (RY-KASIM)</option>
+              <option value="Diğer Umre / Özel Kafile Programı">Diğer Umre / Özel Kafile Programı</option>
             </select>
           </div>
           <div class="grid-2" style="gap:12px;">
@@ -651,16 +750,16 @@
   <footer class="footer">
     <div class="container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:20px;">
       <div>
-        <div style="font-family:var(--font-display); font-size:1.25rem; color:#fff; font-weight:700;">
+        <div style="font-size:1.2rem; color:#fff; font-weight:800; letter-spacing:-0.02em;">
           Rıdvan Yılmaz Turizm — RıdvanSes
         </div>
-        <div style="font-size:0.85rem; opacity:0.8; margin-top:4px;">
-          © 2026 Rıdvan Yılmaz Turizm (Osmangazi/Bursa). Tüm hakları saklıdır.
+        <div style="font-size:0.84rem; opacity:0.78; margin-top:4px;">
+          © 2026 Rıdvan Yılmaz Turizm (Osmangazi / Bursa). Tüm hakları saklıdır.
         </div>
       </div>
-      <div style="display:flex; gap:14px; flex-wrap:wrap;">
-        <a href="/dinle" class="btn btn-outline btn-sm" style="background:transparent; color:#fff; border-color:rgba(255,255,255,0.3);">Hacı Dinleme Ekranı</a>
-        <a href="/rehber" class="btn btn-outline btn-sm" style="background:transparent; color:#fff; border-color:rgba(255,255,255,0.3);">Rehber Yayın Ekranı</a>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a href="/dinle" class="btn btn-outline btn-sm" style="background:transparent; color:#fff; border-color:rgba(255,255,255,0.25);">Hacı Dinleme Ekranı</a>
+        <a href="/rehber" class="btn btn-outline btn-sm" style="background:transparent; color:#fff; border-color:rgba(255,255,255,0.25);">Rehber Yayın Konsolu</a>
         <a href="/panel" class="btn btn-gold btn-sm">Acente Yönetim Paneli</a>
       </div>
     </div>
@@ -678,7 +777,7 @@
     setInterval(() => {
       const bars = heroSpec.querySelectorAll('.spectrum-bar');
       bars.forEach((b, idx) => {
-        const h = 8 + Math.abs(Math.sin(Date.now() / 220 + idx * 0.5)) * 34;
+        const h = 8 + Math.abs(Math.sin(Date.now() / 220 + idx * 0.5)) * 32;
         b.style.height = `${h.toFixed(0)}px`;
       });
     }, 110);
@@ -704,28 +803,28 @@
 
         const toursGrid = document.getElementById('toursGrid');
         toursGrid.innerHTML = data.tours.map((t) => `
-          <div class="card tour-card">
+          <div class="card-luxury tour-card">
             <div>
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
                 <span class="badge ${t.status === 'live' ? 'badge-live' : 'badge-gold'}">
-                  ${t.status === 'live' ? '<span class="live-dot"></span> ŞU AN CANLI' : '📅 ' + t.dateText}
+                  ${t.status === 'live' ? '<span class="live-dot"></span> ŞU AN CANLI' : t.dateText}
                 </span>
-                <span style="font-weight:800; font-size:0.88rem; color:var(--color-emerald-deep); background:var(--color-emerald-soft); padding:4px 10px; border-radius:8px;">
+                <span style="font-weight:800; font-size:0.84rem; color:var(--color-emerald-deep); background:var(--color-emerald-soft); padding:4px 10px; border-radius:8px;">
                   KOD: ${t.code}
                 </span>
               </div>
-              <h3 style="font-size:1.2rem; margin-bottom:8px; color:var(--color-emerald-night);">${t.name}</h3>
-              <p style="font-size:0.88rem; color:var(--color-muted); margin-bottom:14px;">${t.description}</p>
-              <div style="font-size:0.84rem; color:var(--color-ink); display:flex; flex-direction:column; gap:5px; margin-bottom:18px; background:var(--color-ground); padding:12px; border-radius:10px;">
-                <div>🎙️ <strong>Rehber:</strong> ${t.guideName}</div>
-                <div>🕋 <strong>Mekke Otel:</strong> ${t.makkahHotel}</div>
-                <div>🕌 <strong>Medine Otel:</strong> ${t.madinahHotel}</div>
-                <div>👥 <strong>Kafile:</strong> ${t.registeredCount} / ${t.capacity} Kayıtlı Misafir</div>
+              <h3 style="font-size:1.22rem; margin-bottom:8px; color:var(--color-emerald-night);">${t.name.replace(/^🕋\s*/, '')}</h3>
+              <p style="font-size:0.88rem; color:var(--color-muted); margin-bottom:16px;">${t.description}</p>
+              <div style="font-size:0.84rem; color:var(--color-ink); display:flex; flex-direction:column; gap:6px; margin-bottom:18px; background:var(--color-ground); padding:14px; border-radius:12px; border:1px solid var(--color-hairline);">
+                <div><strong>Rehber:</strong> ${t.guideName}</div>
+                <div><strong>Mekke:</strong> ${t.makkahHotel}</div>
+                <div><strong>Medine:</strong> ${t.madinahHotel}</div>
+                <div><strong>Kayıtlı:</strong> ${t.registeredCount} / ${t.capacity} Misafir</div>
               </div>
             </div>
             <div style="display:flex; gap:8px;">
-              <a href="/dinle?code=${encodeURIComponent(t.code)}" class="btn btn-primary btn-sm" style="flex:1;">🎧 Odaya Katıl</a>
-              <a href="/rehber?code=${encodeURIComponent(t.code)}" class="btn btn-outline btn-sm">🎙️ Rehber</a>
+              <a href="/dinle?code=${encodeURIComponent(t.code)}" class="btn btn-primary btn-sm" style="flex:1;">Canlı Odaya Katıl</a>
+              <a href="/rehber?code=${encodeURIComponent(t.code)}" class="btn btn-outline btn-sm">Rehber</a>
             </div>
           </div>
         `).join('');
@@ -733,22 +832,29 @@
         const hotelsGrid = document.getElementById('hotelsGrid');
         hotelsGrid.innerHTML = data.hotels.map((h) => `
           <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
               <span class="badge badge-emerald">${h.city}</span>
-              <span style="color:#d4af37; font-weight:800;">${'★'.repeat(h.stars)}</span>
+              <span style="color:var(--color-gold); font-weight:800; letter-spacing:2px;">${'★'.repeat(h.stars)}</span>
             </div>
             <h3 style="font-size:1.18rem; margin-bottom:6px;">${h.name}</h3>
-            <p style="font-size:0.86rem; color:var(--color-muted); margin-bottom:12px;">📍 ${h.distance}</p>
+            <p style="font-size:0.86rem; color:var(--color-muted); margin-bottom:14px;">${h.distance}</p>
             <div style="display:flex; flex-wrap:wrap; gap:6px;">
-              ${h.features.map((f) => `<span style="font-size:0.75rem; background:var(--color-ground); padding:4px 9px; border-radius:6px; font-weight:600;">✓ ${f}</span>`).join('')}
+              ${h.features.map((f) => `<span style="font-size:0.75rem; background:var(--color-ground); border:1px solid var(--color-hairline); padding:4px 10px; border-radius:8px; font-weight:600;">${f}</span>`).join('')}
             </div>
           </div>
         `).join('');
 
-        const ryRoom = (data.liveRooms || []).find((r) => r.tourCode === 'RY-2026');
+        const ryRoom = (data.liveRooms || []).find((r) => r.tourCode === 'RY-KASIM') || (data.liveRooms || [])[0];
         if (ryRoom) {
           document.getElementById('heroListenersCount').textContent = ryRoom.totalListeners;
           document.getElementById('heroLiveTopic').textContent = ryRoom.currentTopic;
+        }
+        if (data.tours && data.tours.length > 0) {
+          const pillsBox = document.getElementById('homeQuickPills');
+          if (pillsBox) {
+            pillsBox.innerHTML = `<span style="font-size:0.76rem; color:var(--color-muted); font-weight:700;">Aktif Kafile:</span>` +
+              data.tours.map((t) => `<button type="button" class="code-pill" onclick="setQuickCode('${t.code}')">${t.code} (${t.dateText || t.name})</button>`).join('');
+          }
         }
       } catch (e) {
         console.error(e);
