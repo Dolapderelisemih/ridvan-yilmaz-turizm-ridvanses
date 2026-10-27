@@ -93,6 +93,29 @@
       }
     }
 
+    @media screen and (max-width: 768px) {
+      .no-print-bar {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+        padding: 12px 14px;
+      }
+      .page {
+        width: calc(100% - 20px);
+        height: auto;
+        overflow: visible;
+        padding: 18px 14px;
+      }
+      .grid-3, .grid-2 {
+        grid-template-columns: 1fr !important;
+      }
+      table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+
     h1, h2, h3 {
       font-family: 'Fraunces', Georgia, serif;
       color: #0a3d30;

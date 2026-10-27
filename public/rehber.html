@@ -103,7 +103,7 @@
       border: 1px solid rgba(255, 255, 255, 0.18);
       color: #FFFFFF;
       font-family: var(--font-sans);
-      font-size: 0.92rem;
+      font-size: 16px; /* iOS Safari otomatik zoom engelleme */
       font-weight: 600;
       transition: all 0.2s ease;
     }
@@ -219,11 +219,11 @@
         <a id="navGuideRotaBtn" href="/rota?code=RY-KASIM" target="_blank" class="btn btn-gold btn-sm">
           📍 Canlı Rota
         </a>
-        <a id="navGuideDinleBtn" href="/dinle?code=RY-KASIM" target="_blank" class="btn btn-outline btn-sm">
+        <a id="navGuideDinleBtn" href="/dinle?code=RY-KASIM" target="_blank" class="btn btn-outline btn-sm hide-on-mobile">
           <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
           Hacı Ekranı
         </a>
-        <a href="/panel" class="btn btn-primary btn-sm">
+        <a href="/panel" class="btn btn-primary btn-sm hide-on-mobile">
           <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
           Acente Paneli
         </a>

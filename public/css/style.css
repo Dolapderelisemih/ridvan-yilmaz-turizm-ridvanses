@@ -933,15 +933,43 @@ tr:last-child td {
 }
 
 @media (max-width: 640px) {
-  .ps-stats-bar {
+  .ps-stats-bar:not(.ps-stats-3col) {
     grid-template-columns: repeat(2, 1fr);
     gap: 8px;
     padding: 12px;
   }
-  .ps-stat-item:nth-child(2) {
+  .ps-stats-bar:not(.ps-stats-3col) .ps-stat-item:nth-child(2) {
     border-right: none;
   }
+  .ps-stats-3col {
+    padding: 10px 8px;
+    gap: 4px;
+  }
   .ps-map-canvas {
-    height: 290px;
+    height: 280px;
+  }
+  .ps-map-controls {
+    padding: 8px 10px;
+  }
+  .ps-map-chip-group {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    width: 100%;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .ps-map-chip-group::-webkit-scrollbar {
+    display: none;
+  }
+  .ps-map-chip {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .ps-map-legend {
+    width: 100%;
+    justify-content: center;
+    padding-top: 4px;
+    border-top: 1px dashed var(--color-hairline);
   }
 }

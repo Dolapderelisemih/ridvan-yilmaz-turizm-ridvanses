@@ -89,13 +89,13 @@
     <div class="container navbar-inner">
       <a href="/" class="brand">
         <img src="/icons/app-logo.png?v=19" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
-        <div>
+        <div class="brand-text">
           <div class="brand-title">RıdvanSes Manevi Rota</div>
           <div class="brand-sub">Aile &amp; Yakın Canlı Kafile Takip Sistemi</div>
         </div>
       </a>
       <div class="nav-actions">
-        <a id="topBookBtn" href="/ani-kitabi?code=RY-KASIM" class="btn btn-secondary btn-sm">📖 Hatıra Kitabı</a>
+        <a id="topBookBtn" href="/ani-kitabi?code=RY-KASIM" class="btn btn-secondary btn-sm hide-on-mobile">📖 Hatıra Kitabı</a>
         <a id="topListenBtn" href="/dinle?code=RY-KASIM" class="btn btn-primary btn-sm">🎧 Canlı Dinle</a>
       </div>
     </div>
@@ -118,18 +118,18 @@
           </p>
         </div>
 
-        <div style="display:flex;flex-direction:column;gap:8px;min-width:240px;">
+        <div style="display:flex;flex-direction:column;gap:8px;min-width:240px;flex:1 1 240px;max-width:340px;">
           <div style="display:flex;gap:6px;">
             <input
               id="codeInput"
               type="text"
               value="RY-KASIM"
               placeholder="Kafile Kodu (Örn: RY-KASIM)"
-              style="padding:9px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.1);color:#fff;font-weight:700;font-size:0.84rem;width:155px;text-transform:uppercase;"
+              style="padding:9px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.28);background:rgba(255,255,255,0.1);color:#fff;font-weight:700;font-size:16px;flex:1;min-width:0;text-transform:uppercase;"
             />
             <button id="loadCodeBtn" type="button" class="btn btn-gold btn-sm">Sorgula</button>
           </div>
-          <button id="shareWhatsappBtn" type="button" class="btn btn-outline btn-sm" style="background:rgba(255,255,255,0.1);color:#fff;border-color:rgba(224,190,119,0.45);">
+          <button id="shareWhatsappBtn" type="button" class="btn btn-outline btn-sm" style="background:rgba(255,255,255,0.1);color:#fff;border-color:rgba(224,190,119,0.45);width:100%;">
             📲 Aile WhatsApp Grubunda Paylaş
           </button>
         </div>
