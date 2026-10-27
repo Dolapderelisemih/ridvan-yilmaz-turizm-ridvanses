@@ -7,7 +7,10 @@
 
   const LEAFLET_CSS_URL = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
   const LEAFLET_JS_URL = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-  const VOYAGER_TILES = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+  const ESRI_TOPO_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}';
+  const ESRI_SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+  const ESRI_LABELS_TILES = 'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}';
+  const OSM_STANDARD_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
   let leafletPromise = null;
 
@@ -116,11 +119,40 @@
         zoomControl: true
       });
 
-      L.tileLayer(VOYAGER_TILES, {
+      const topoLayer = L.tileLayer(ESRI_TOPO_TILES, {
         maxZoom: 19,
-        subdomains: 'abcd',
-        attribution: '&copy; OpenStreetMap &copy; CARTO | RıdvanSes Manevi Rota'
-      }).addTo(this.map);
+        attribution: '&copy; Esri &copy; OpenStreetMap | RıdvanSes Manevi Rota'
+      });
+
+      const satHybridLayer = L.layerGroup([
+        L.tileLayer(ESRI_SAT_TILES, {
+          maxZoom: 19,
+          attribution: '&copy; Esri Uydu Görüntüsü | RıdvanSes'
+        }),
+        L.tileLayer(ESRI_LABELS_TILES, {
+          maxZoom: 19,
+          pane: 'overlayPane'
+        })
+      ]);
+
+      const osmStreetLayer = L.tileLayer(OSM_STANDARD_TILES, {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap | RıdvanSes Manevi Rota'
+      });
+
+      topoLayer.addTo(this.map);
+
+      L.control
+        .layers(
+          {
+            '🗺️ Klasik Rota Haritası': topoLayer,
+            '🛰️ Kâbe & Harem Uydu': satHybridLayer,
+            '🌍 Detaylı Sokak Haritası': osmStreetLayer
+          },
+          null,
+          { position: 'topright', collapsed: true }
+        )
+        .addTo(this.map);
 
       this.routeLayerGroup = L.layerGroup().addTo(this.map);
       this.markersLayerGroup = L.layerGroup().addTo(this.map);
