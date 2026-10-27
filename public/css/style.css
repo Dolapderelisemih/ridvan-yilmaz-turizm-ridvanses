@@ -12,12 +12,14 @@
   --color-hairline: #e5dec9;
   --color-gold-border: rgba(197, 160, 89, 0.34);
   --color-ink: #0f1d18;
+  --color-ink-soft: #33433d;
   --color-muted: #53635c;
   --color-emerald-deep: #0b4636;
   --color-emerald-night: #06231b;
   --color-emerald-soft: #e6f2ee;
   --color-gold: #c5a059;
   --color-gold-bright: #e0be77;
+  --color-gold-light: #e0be77;
   --color-gold-soft: #f9f2e2;
   --color-live: #15803d;
   --color-danger: #dc2626;

@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=16" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=16" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
   <title>Acente & Kafile Yönetim Paneli | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/panel" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=18" />
+  <link rel="stylesheet" href="/css/style.css?v=19" />
   <script>
     (function() {
       const TOKEN = 'ry_auth_v1_987a6b5c4d';
@@ -30,9 +30,9 @@
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=16"></script>
+  <script src="/vercel-ws-shim.js?v=19"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=17"></script>
+  <script src="/js/umrah-steps-map.js?v=19"></script>
   <style>
     .dashboard-layout {
       display: grid;
@@ -191,7 +191,7 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:100%;">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=15" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=19" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="margin:0; font-size:1.12rem; line-height:1.2;">Rıdvan Yılmaz Turizm — Acente Yönetim Paneli</h1>
           <span class="brand-sub"><span class="live-dot"></span> Osmangazi / Bursa Merkez Operasyon & Kafile Kontrolü</span>
@@ -770,12 +770,11 @@
     }
 
     function openQrGeneratorForTour(code) {
-      openTab('tab-qr', document.getElementById('sideBtnQr'));
       const sel = document.getElementById('qrTourSelect');
       if (sel) {
         sel.value = code;
-        generateQrAndInvite();
       }
+      openTab('tab-qr', document.getElementById('sideBtnQr'));
     }
 
     async function generateQrAndInvite() {
@@ -914,21 +913,27 @@
 
       // Guides List
       document.getElementById('guidesManageList').innerHTML = appState.guides.map((g) => `
-        <div style="padding:14px 16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline);">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <strong style="color:var(--color-emerald-night);">${g.name}</strong>
-            <span class="badge badge-emerald">${g.assignedTour}</span>
+        <div style="padding:14px 16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <strong style="color:var(--color-emerald-night);">${g.name}</strong>
+              <span class="badge badge-emerald">${g.assignedTour}</span>
+            </div>
+            <div style="font-size:0.82rem; color:var(--color-muted); margin-top:4px;">${g.title} • ${g.phone}</div>
           </div>
-          <div style="font-size:0.82rem; color:var(--color-muted); margin-top:4px;">${g.title} • ${g.phone}</div>
+          ${appState.guides.length > 1 ? `<button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteGuide('${g.id}', '${g.name.replace(/'/g, "\\'")}')">Sil</button>` : ''}
         </div>
       `).join('');
 
       // Announcements List
       document.getElementById('adminAnnouncementsList').innerHTML = appState.announcements.map((a) => `
         <div style="padding:14px 16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline);">
-          <div style="display:flex; justify-content:space-between; font-size:0.76rem; font-weight:700; color:var(--color-emerald-deep);">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:0.76rem; font-weight:700; color:var(--color-emerald-deep);">
             <span>Hedef: ${a.tourCode} • ${a.sender}</span>
-            <span>${a.createdAt}</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span>${a.createdAt}</span>
+              <button type="button" class="btn btn-outline btn-sm" style="padding:2px 8px; font-size:0.7rem; color:var(--color-danger);" onclick="deleteAnnouncement('${a.id}')">Sil</button>
+            </div>
           </div>
           <div style="font-weight:800; color:var(--color-emerald-night); margin:4px 0;">${a.title}</div>
           <div style="font-size:0.86rem; color:var(--color-ink-soft);">${a.message}</div>
@@ -1031,13 +1036,29 @@
     }
     loadReaReport();
 
+    let adminWsInstance = null;
+    let adminWsReconnectTimer = null;
+
     // Real-time Admin WebSocket
     function connectAdminWs() {
+      if (adminWsReconnectTimer) {
+        clearTimeout(adminWsReconnectTimer);
+        adminWsReconnectTimer = null;
+      }
+      if (adminWsInstance) {
+        try {
+          adminWsInstance.onclose = null;
+          adminWsInstance.onerror = null;
+          adminWsInstance.close();
+        } catch {}
+        adminWsInstance = null;
+      }
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsHost = window.location.host.includes('vercel.app')
         ? 'ses.ridvanyilmazturizm.com'
         : window.location.host;
       const adminWs = new WebSocket(`${proto}//${wsHost}/ws`);
+      adminWsInstance = adminWs;
       adminWs.onopen = () => {
         adminWs.send(JSON.stringify({ type: 'admin-subscribe' }));
       };
@@ -1070,7 +1091,8 @@
         } catch (e) {}
       };
       adminWs.onclose = () => {
-        setTimeout(connectAdminWs, 2500);
+        if (adminWsReconnectTimer) clearTimeout(adminWsReconnectTimer);
+        adminWsReconnectTimer = setTimeout(connectAdminWs, 2500);
       };
       adminWs.onerror = () => {};
     }
@@ -1094,17 +1116,37 @@
     document.getElementById('createTourForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const payload = Object.fromEntries(new FormData(e.target).entries());
-      await fetch('/api/tours', {
+      const res = await fetch('/api/tours', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        alert(data.message || 'Kafile oluşturulurken bir hata oluştu.');
+        return;
+      }
       e.target.reset();
       fetchAdminData();
     });
 
     async function deleteTour(id) {
-      await fetch(`/api/tours/${id}`, { method: 'DELETE' });
+      const tour = (appState && appState.tours || []).find((t) => t.id === id);
+      const label = tour ? `${tour.code} (${tour.name})` : id;
+      if (!confirm(`"${label}" kafilesini ve bağlı odalarını silmek istediğinize emin misiniz?`)) return;
+      await fetch(`/api/tours/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      fetchAdminData();
+    }
+
+    async function deleteGuide(id, name) {
+      if (!confirm(`"${name}" rehber kaydını silmek istediğinize emin misiniz?`)) return;
+      await fetch(`/api/guides/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      fetchAdminData();
+    }
+
+    async function deleteAnnouncement(id) {
+      if (!confirm('Bu duyuru kaydını silmek istediğinize emin misiniz?')) return;
+      await fetch(`/api/announcements/${encodeURIComponent(id)}`, { method: 'DELETE' });
       fetchAdminData();
     }
 

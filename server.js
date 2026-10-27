@@ -22,7 +22,7 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Güvenlik Başlıkları (Security Headers)
+// Güvenlik Başlıkları (Security Headers) & Cross-Origin Destek
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
@@ -30,6 +30,22 @@ app.use((req, res, next) => {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  const origin = req.headers.origin || '';
+  if (
+    origin &&
+    (origin.endsWith('.ridvanyilmazturizm.com') ||
+      origin === 'https://ridvanyilmazturizm.com' ||
+      origin.endsWith('.vercel.app') ||
+      origin.startsWith('http://localhost:'))
+  ) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
   }
   next();
 });
@@ -455,7 +471,11 @@ function processClientJsonMessage(ctx, msg) {
       broadcastToRoom(currentRoom, locPayload);
       broadcastToFamilyTrackers(currentRoom.tourCode, locPayload);
       for (const room of liveRooms.values()) {
-        if (room !== currentRoom && !Array.from(room.clients.values()).some((c) => c.role === 'guide')) {
+        if (
+          room !== currentRoom &&
+          room.tourCode === currentRoom.tourCode &&
+          !Array.from(room.clients.values()).some((c) => c.role === 'guide')
+        ) {
           room.guideLocation = currentRoom.guideLocation;
           broadcastToRoom(room, locPayload);
         }
@@ -483,7 +503,11 @@ function processClientJsonMessage(ctx, msg) {
       broadcastToRoom(currentRoom, chunkPayload, ws);
       if (sender.role === 'guide') {
         for (const room of liveRooms.values()) {
-          if (room !== currentRoom && !Array.from(room.clients.values()).some((c) => c.role === 'guide')) {
+          if (
+            room !== currentRoom &&
+            room.tourCode === currentRoom.tourCode &&
+            !Array.from(room.clients.values()).some((c) => c.role === 'guide')
+          ) {
             broadcastToRoom(room, chunkPayload, ws);
           }
         }
@@ -885,6 +909,12 @@ app.post('/api/join-tour', (req, res) => {
 app.post('/api/tours', (req, res) => {
   const body = req.body || {};
   const code = String(body.code || `RY-${Math.floor(1000 + Math.random() * 9000)}`).toUpperCase().trim();
+  if (db.tours.some((t) => String(t.code || '').toUpperCase() === code)) {
+    return res.status(400).json({
+      success: false,
+      message: `"${code}" kafile kodu zaten kullanımda. Lütfen farklı bir kafile kodu belirleyiniz.`
+    });
+  }
   const newTour = {
     id: `tour-${Date.now()}`,
     code,
@@ -1130,6 +1160,17 @@ app.post('/api/guides', (req, res) => {
   res.json({ success: true, guide });
 });
 
+app.delete('/api/guides/:id', (req, res) => {
+  const targetId = req.params.id;
+  const prevLen = db.guides.length;
+  db.guides = db.guides.filter((g) => g.id !== targetId);
+  if (db.guides.length === prevLen) {
+    return res.status(404).json({ success: false, message: 'Silinecek rehber bulunamadı.' });
+  }
+  saveState(db);
+  return res.json({ success: true });
+});
+
 // 6. Push Announcements
 app.post('/api/announcements', (req, res) => {
   const body = req.body || {};
@@ -1158,6 +1199,17 @@ app.post('/api/announcements', (req, res) => {
   }
   broadcastToAdmins({ type: 'new-announcement', announcement: ann });
   res.json({ success: true, announcement: ann });
+});
+
+app.delete('/api/announcements/:id', (req, res) => {
+  const targetId = req.params.id;
+  const prevLen = db.announcements.length;
+  db.announcements = db.announcements.filter((a) => a.id !== targetId);
+  if (db.announcements.length === prevLen) {
+    return res.status(404).json({ success: false, message: 'Silinecek duyuru bulunamadı.' });
+  }
+  saveState(db);
+  return res.json({ success: true });
 });
 
 // 7. SOS Emergency API
@@ -1357,6 +1409,7 @@ const routeMap = {
   '/izle': 'rota.html',
   '/ani-kitabi': 'ani-kitabi.html',
   '/hatira-kitabi': 'ani-kitabi.html',
+  '/kullanim-rehberi': 'kullanim-rehberi.html',
   '/login': 'login.html',
   '/nasil-calisir': 'index.html',
   '/iletisim': 'index.html'

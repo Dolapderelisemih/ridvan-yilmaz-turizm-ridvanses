@@ -1,23 +1,23 @@
 {
   "name": "Rıdvan Yılmaz Turizm — RıdvanSes Canlı Rehber",
   "short_name": "RıdvanSes",
-  "description": "Rıdvan Yılmaz Turizm Siyer Umresi Canlı Sesli Rehberlik, Söz İsteme ve Acil Konum (SOS) Uygulaması",
+  "description": "Rıdvan Yılmaz Turizm Siyer Umresi Canlı Sesli Rehberlik, Manevi Rota Takibi, Söz İsteme ve Acil Konum (SOS) Uygulaması",
   "start_url": "/dinle?source=pwa",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#ffffff",
-  "theme_color": "#0f5a47",
+  "background_color": "#faf7f2",
+  "theme_color": "#06231b",
   "lang": "tr",
   "icons": [
     {
-      "src": "/icons/icon-192.png?v=14",
+      "src": "/icons/icon-192.png?v=19",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-512.png?v=14",
+      "src": "/icons/icon-512.png?v=19",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
@@ -25,10 +25,16 @@
   ],
   "shortcuts": [
     {
-      "name": "RY-2026 Canlı Yayına Katıl",
-      "short_name": "RY-2026 Dinle",
-      "description": "26 Haziran 2026 Siyer Umresi Canlı Ses Odası",
-      "url": "/dinle?code=RY-2026"
+      "name": "Kasım Umresi Canlı Yayına Katıl",
+      "short_name": "RY-KASIM Dinle",
+      "description": "Kasım Umresi Canlı Sesli Rehberlik Odası",
+      "url": "/dinle?code=RY-KASIM"
+    },
+    {
+      "name": "Canlı Manevi Rota & Aile Takibi",
+      "short_name": "Canlı Rota",
+      "description": "Kutsal Topraklar Adım Adım Siyer ve Canlı Rota Haritası",
+      "url": "/rota?code=RY-KASIM"
     },
     {
       "name": "Rehber (Hoca) Yayın Konsolu",
@@ -39,7 +45,7 @@
     {
       "name": "Acente Yönetim Paneli",
       "short_name": "Yönetim Paneli",
-      "description": "Kafile, QR Kod ve SOS Yönetim Merkezi",
+      "description": "Kafile, QR Kod, Manevi Rota ve SOS Yönetim Merkezi",
       "url": "/panel"
     }
   ]

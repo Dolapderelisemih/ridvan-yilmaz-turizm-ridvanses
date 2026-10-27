@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=16" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=16" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
   <title>Rehber (Hoca) Canlı Yayın Stüdyosu | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/rehber" />
-  <link rel="stylesheet" href="/css/style.css?v=18" />
+  <link rel="stylesheet" href="/css/style.css?v=19" />
   <script>
     (function() {
       const TOKEN = 'ry_auth_v1_987a6b5c4d';
@@ -29,8 +29,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=16"></script>
-  <script src="/js/umrah-steps-map.js?v=17"></script>
+  <script src="/vercel-ws-shim.js?v=19"></script>
+  <script src="/js/umrah-steps-map.js?v=19"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -209,17 +209,17 @@
   <header class="navbar">
     <div class="container navbar-inner">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=15" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=19" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="margin:0; font-size:1.12rem; line-height:1.2;">Rıdvan Yılmaz Turizm</h1>
           <span class="brand-sub"><span class="live-dot"></span> Rehber (Hoca) Canlı Yayın Stüdyosu</span>
         </div>
       </a>
       <div class="nav-actions">
-        <a href="/rota?code=RY-KASIM" target="_blank" class="btn btn-gold btn-sm">
+        <a id="navGuideRotaBtn" href="/rota?code=RY-KASIM" target="_blank" class="btn btn-gold btn-sm">
           📍 Canlı Rota
         </a>
-        <a href="/dinle" target="_blank" class="btn btn-outline btn-sm">
+        <a id="navGuideDinleBtn" href="/dinle?code=RY-KASIM" target="_blank" class="btn btn-outline btn-sm">
           <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
           Hacı Ekranı
         </a>
@@ -466,33 +466,53 @@
       specEl.appendChild(bar);
     }
 
+    let guideToursCache = [];
+
+    function syncGuideNavLinks() {
+      const code = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').trim().toUpperCase();
+      const enc = encodeURIComponent(code);
+      const rBtn = document.getElementById('navGuideRotaBtn');
+      const dBtn = document.getElementById('navGuideDinleBtn');
+      if (rBtn) rBtn.href = `/rota?code=${enc}`;
+      if (dBtn) dBtn.href = `/dinle?code=${enc}`;
+    }
+
     function onTourSelectionChange() {
       const code = document.getElementById('guideTourSelect').value;
       const gSel = document.getElementById('guideNameSelect');
       const topicInput = document.getElementById('topicInput');
-      if (code === 'RY-KASIM') {
+      const tourObj = guideToursCache.find((t) => t.code === code);
+      if (tourObj && tourObj.guideName && Array.from(gSel.options).some((o) => o.value === tourObj.guideName)) {
+        gSel.value = tourObj.guideName;
+      } else if (code === 'RY-KASIM') {
         gSel.value = 'Ömer Ali Gültekin';
+      }
+      if (code === 'RY-KASIM') {
         if (topicInput) topicInput.value = 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk';
+      } else if (tourObj && tourObj.name) {
+        if (topicInput) topicInput.value = `${tourObj.name} — Canlı Siyer & Tavaf Rehberliği`;
       } else {
         if (topicInput) topicInput.value = 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti';
       }
+      syncGuideNavLinks();
       switchGuideRoom();
     }
 
     const urlParams = new URLSearchParams(window.location.search);
 
+    if (urlParams.get('code')) {
+      const sel = document.getElementById('guideTourSelect');
+      const code = urlParams.get('code').toUpperCase();
+      if (Array.from(sel.options).some((o) => o.value === code)) {
+        sel.value = code;
+      }
+    }
+    syncGuideNavLinks();
+
     // Bootstrap turları dinamik yükle
     fetch('/api/bootstrap')
       .then((r) => r.json())
       .then((data) => {
-        if (data && data.tours && data.tours.length > 0) {
-          const tSel = document.getElementById('guideTourSelect');
-          const currentVal = tSel.value;
-          tSel.innerHTML = data.tours.map((t) => `<option value="${t.code}" style="color:#000;">${t.code} — ${t.name}</option>`).join('');
-          if (data.tours.some((t) => t.code === currentVal)) {
-            tSel.value = currentVal;
-          }
-        }
         if (data && data.guides && data.guides.length > 0) {
           const gSel = document.getElementById('guideNameSelect');
           const currentG = gSel.value;
@@ -501,19 +521,29 @@
             gSel.value = currentG;
           }
         }
+        if (data && data.tours && data.tours.length > 0) {
+          guideToursCache = data.tours;
+          const tSel = document.getElementById('guideTourSelect');
+          const prevVal = tSel.value;
+          const wantedCode = (urlParams.get('code') || prevVal || '').toUpperCase();
+          tSel.innerHTML = data.tours.map((t) => `<option value="${t.code}" style="color:#000;">${t.code} — ${t.name}</option>`).join('');
+          if (data.tours.some((t) => t.code === wantedCode)) {
+            tSel.value = wantedCode;
+          }
+          const activeTour = data.tours.find((t) => t.code === tSel.value);
+          if (activeTour && activeTour.guideName) {
+            const gSel = document.getElementById('guideNameSelect');
+            if (Array.from(gSel.options).some((o) => o.value === activeTour.guideName)) {
+              gSel.value = activeTour.guideName;
+            }
+          }
+          syncGuideNavLinks();
+          if (tSel.value !== prevVal) {
+            switchGuideRoom();
+          }
+        }
       })
       .catch((e) => console.log('Rehber bootstrap err:', e));
-
-    if (urlParams.get('code')) {
-      const sel = document.getElementById('guideTourSelect');
-      const code = urlParams.get('code').toUpperCase();
-      if (Array.from(sel.options).some((o) => o.value === code)) {
-        sel.value = code;
-        if (code === 'RY-KASIM') {
-          document.getElementById('guideNameSelect').value = 'Ömer Ali Gültekin';
-        }
-      }
-    }
 
     let ws = null;
     let audioCtx = null;
@@ -532,8 +562,21 @@
     let lastGeocodeLng = null;
     let lastGeocodedAddress = '';
 
+    let guideWsReconnectTimer = null;
+
     function connectGuideWs() {
-      if (ws) ws.close();
+      if (guideWsReconnectTimer) {
+        clearTimeout(guideWsReconnectTimer);
+        guideWsReconnectTimer = null;
+      }
+      if (ws) {
+        try {
+          ws.onclose = null;
+          ws.onerror = null;
+          ws.close();
+        } catch {}
+        ws = null;
+      }
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsHost = window.location.host.includes('vercel.app')
         ? 'ses.ridvanyilmazturizm.com'
@@ -551,6 +594,14 @@
           roomId: 'genel',
           name: guideName
         }));
+        if (isMicBroadcasting || isDemoBroadcasting) {
+          ws.send(JSON.stringify({
+            type: 'guide-stream-state',
+            isLive: true,
+            broadcastMode: isMicBroadcasting ? 'mic' : 'demo-synth',
+            topic: document.getElementById('topicInput')?.value?.trim() || ''
+          }));
+        }
         if (isSharingGuideLocation && lastGuideLocState) {
           ws.send(JSON.stringify({
             type: 'guide-location-update',
@@ -596,10 +647,11 @@
       };
 
       ws.onclose = () => {
-        console.warn('Rehber bağlantısı kapandı, 2 sn içinde otomatik yeniden bağlanılacak...');
-        setTimeout(() => {
-          if (!isMicBroadcasting) connectGuideWs();
-        }, 2000);
+        console.warn('Rehber bağlantısı kapandı, 1.5 sn içinde otomatik yeniden bağlanılacak...');
+        if (guideWsReconnectTimer) clearTimeout(guideWsReconnectTimer);
+        guideWsReconnectTimer = setTimeout(() => {
+          connectGuideWs();
+        }, 1500);
       };
 
       ws.onerror = (e) => {
@@ -927,7 +979,7 @@
         if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
           try {
             if (!workletModuleLoaded) {
-              await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=15');
+              await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=19');
               workletModuleLoaded = true;
             }
             scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');

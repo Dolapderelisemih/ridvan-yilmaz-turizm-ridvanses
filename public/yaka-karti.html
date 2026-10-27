@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=16" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
   <title>Baskıya Hazır Hacı Yaka Kartı & QR Kod | Rıdvan Yılmaz Turizm</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/yaka-karti" />
-  <link rel="stylesheet" href="/css/style.css?v=18" />
+  <link rel="stylesheet" href="/css/style.css?v=19" />
   <style>
     .print-toolbar {
       background: linear-gradient(155deg, #06231B 0%, #093529 100%);
@@ -167,8 +167,8 @@
         code,
         name: '13-14 Kasım Umresi',
         guideName: 'Ömer Ali Gültekin',
-        makkahHotel: 'Rayhaan Al Mashaer Hotel',
-        madinahHotel: 'Medine Merkezi Ravza Oteli'
+        makkahHotel: '8 Gün Mekke Konaklama (Harem Yakını)',
+        madinahHotel: '2 Gün Medine Konaklama (Merkezi Bölge)'
       };
 
       const qrRes = await fetch(`/api/qr?code=${encodeURIComponent(code)}`);
@@ -207,6 +207,7 @@
               <div><strong>Kafile Rehberi:</strong> ${tour.guideName}</div>
               <div><strong>Mekke Otel:</strong> ${tour.makkahHotel}</div>
               <div><strong>Medine Otel:</strong> ${tour.madinahHotel}</div>
+              <div><strong>Aile Canlı Rota:</strong> ses.ridvanyilmazturizm.com/rota?code=${tour.code}</div>
             </div>
           </div>
 

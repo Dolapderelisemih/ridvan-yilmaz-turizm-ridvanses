@@ -23,8 +23,7 @@
     document.head.appendChild(s);
   }
 
-  loadScriptOnce('https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js', 'mqtt', () => {});
-
+  // MQTT betiği yalnızca bulut yedek (relay) modu devreye girdiğinde tembel (lazy) yüklenir.
   window.__ryActiveGuideStream = null;
   window.__ryActiveSocket = null;
 
@@ -141,7 +140,7 @@
     }
 
     _sanitizeCode(str) {
-      return String(str || 'RY2026').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      return String(str || 'RYKASIM').toUpperCase().replace(/[^A-Z0-9]/g, '');
     }
 
     _busConnected() {
@@ -340,7 +339,14 @@
           this._deliverIncomingMessage(msg);
           return;
         }
-        if (msg.type === 'room-state' || msg.type === 'new-announcement' || msg.type === 'guide-location' || msg.type === 'qna-state') {
+        if (
+          msg.type === 'room-state' ||
+          msg.type === 'new-announcement' ||
+          msg.type === 'guide-location' ||
+          msg.type === 'qna-state' ||
+          msg.type === 'steps-updated' ||
+          msg.type === 'family-state'
+        ) {
           this._deliverIncomingMessage(msg);
           return;
         }
@@ -361,16 +367,17 @@
         if (!this._joinContext || this._joinContext.role !== 'guide') return;
         const pilgrims = Array.from(this._pilgrimMeta.values());
         const tourCode = this._joinContext.tourCode || 'RY-KASIM';
-        const baseCount = tourCode === 'RY-KASIM' ? 38 : tourCode === 'RY-2026' ? 42 : 0;
+        const baseCount = tourCode === 'RY-KASIM' ? 38 : 0;
         const roomObj = {
           tourCode,
           roomId: this._joinContext.roomId || 'genel',
           guideName: this._joinContext.name || 'Ömer Ali Gültekin',
-          isLive: true,
+          isLive: typeof this._isLive === 'undefined' ? true : this._isLive,
           currentTopic:
-            tourCode === 'RY-KASIM'
+            this._currentTopic ||
+            (tourCode === 'RY-KASIM'
               ? 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk'
-              : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti',
+              : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti'),
           guideLocation: this._guideLocation || null,
           connectedPilgrims: pilgrims,
           totalListeners: pilgrims.length + baseCount,
@@ -416,6 +423,15 @@
         if (parsed.type === 'join') {
           this._joinContext = parsed;
           this._initMqttBus(parsed, false);
+        } else if (parsed.type === 'family-subscribe') {
+          this._joinContext = {
+            type: 'join',
+            role: 'pilgrim',
+            tourCode: parsed.tourCode || 'RY-KASIM',
+            roomId: 'genel',
+            name: 'Aile Takipçisi'
+          };
+          this._initMqttBus(this._joinContext, false);
         } else if (parsed.type === 'admin-subscribe') {
           this._isAdmin = true;
           this._initMqttBus(null, true);
@@ -491,6 +507,10 @@
             granted: Boolean(parsed.granted),
             guideName: this._joinContext.name || 'Rehber Hoca'
           });
+          this._broadcastP2PRoomState();
+        } else if (parsed.type === 'guide-stream-state') {
+          if (typeof parsed.isLive !== 'undefined') this._isLive = Boolean(parsed.isLive);
+          if (parsed.topic) this._currentTopic = parsed.topic;
           this._broadcastP2PRoomState();
         } else if (parsed.type === 'set-qna-state') {
           this._qnaEnabled = Boolean(parsed.enabled);

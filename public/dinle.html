@@ -8,17 +8,17 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
-  <link rel="manifest" href="/manifest.json?v=16" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=16" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=16" />
+  <link rel="manifest" href="/manifest.json?v=19" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
   <title>Hacı Canlı Dinleme Ekranı | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=18" />
-  <script src="/vercel-ws-shim.js?v=16"></script>
+  <link rel="stylesheet" href="/css/style.css?v=19" />
+  <script src="/vercel-ws-shim.js?v=19"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=17"></script>
+  <script src="/js/umrah-steps-map.js?v=19"></script>
   <style>
     .app-shell {
       max-width: 540px;
@@ -268,7 +268,7 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:540px;">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=15" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=19" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="font-size:1rem; margin:0;">Rıdvan Yılmaz Turizm</h1>
           <span class="brand-sub"><span class="live-dot"></span> RıdvanSes Hacı Canlı Odası</span>
@@ -298,7 +298,7 @@
     <!-- TELEFONA UYGULAMA OLARAK İNDİR (PWA BANNER) -->
     <div class="pwa-install-banner" id="pwaInstallBanner">
       <div style="display:flex; align-items:center; gap:12px; flex:1 1 210px; min-width:0;">
-        <img src="/icons/icon-192.png?v=15" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
+        <img src="/icons/icon-192.png?v=19" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
         <div style="min-width:0;">
           <div style="font-weight:800; font-size:0.88rem; color:var(--color-gold-bright);">RıdvanSes'i Ana Ekrana Ekleyin</div>
           <div style="font-size:0.75rem; color:#e2e8f0; line-height:1.35;">Mağaza şifresi gerekmeden tek dokunuşla telefonunuza kurun.</div>
@@ -324,10 +324,15 @@
       <form id="joinForm" style="display:flex; flex-direction:column; gap:15px;">
         <div>
           <label class="label" id="i18n_codeLabel">Kafile / Tur Kodu *</label>
-          <input type="text" id="tourCodeInput" class="input" style="font-size:1.25rem; font-weight:800; text-transform:uppercase; text-align:center; letter-spacing:0.08em; border-color:var(--color-gold);" value="RY-KASIM" required />
+          <input type="text" id="tourCodeInput" class="input" style="font-size:1.25rem; font-weight:800; text-transform:uppercase; text-align:center; letter-spacing:0.08em; border-color:var(--color-gold);" value="RY-KASIM" oninput="syncJoinCodeUi()" required />
           <div id="tourPillsContainer" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; justify-content:center;">
-            <button type="button" class="code-pill" style="padding:5px 12px; font-size:0.76rem; border-radius:99px; border:1px solid var(--color-gold); background:var(--color-gold-soft); font-weight:700; cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='RY-KASIM'">RY-KASIM (13-14 Kasım • Ömer Ali Gültekin)</button>
+            <button type="button" class="code-pill" style="padding:5px 12px; font-size:0.76rem; border-radius:99px; border:1px solid var(--color-gold); background:var(--color-gold-soft); font-weight:700; cursor:pointer;" onclick="selectTourCodePill('RY-KASIM')">RY-KASIM (13-14 Kasım • Ömer Ali Gültekin)</button>
           </div>
+        </div>
+
+        <div id="pinInputBox" style="display:none;">
+          <label class="label" for="tourPinInput">Oda PIN Kodu *</label>
+          <input type="password" id="tourPinInput" class="input" style="text-align:center; font-weight:800; letter-spacing:0.16em;" placeholder="PIN kodunu giriniz" autocomplete="off" />
         </div>
 
         <div>
@@ -357,8 +362,8 @@
         </button>
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; padding-top:6px; border-top:1px solid var(--color-hairline);">
-          <a href="/rota?code=RY-KASIM" class="btn btn-secondary btn-sm" style="text-align:center;">📍 Canlı Rota Haritası</a>
-          <a href="/ani-kitabi?code=RY-KASIM" class="btn btn-outline btn-sm" style="text-align:center;">📖 Umre Hatıra Kitabı</a>
+          <a id="joinRotaBtn" href="/rota?code=RY-KASIM" class="btn btn-secondary btn-sm" style="text-align:center;">📍 Canlı Rota Haritası</a>
+          <a id="joinBookBtn" href="/ani-kitabi?code=RY-KASIM" class="btn btn-outline btn-sm" style="text-align:center;">📖 Umre Hatıra Kitabı</a>
         </div>
       </form>
     </div>
@@ -850,6 +855,8 @@
     let pilgrimMicStream = null;
     let pilgrimProcessor = null;
     let currentTour = null;
+    let intentionalLeave = false;
+    let availableToursCache = [];
 
     // Parse URL query params
     const urlParams = new URLSearchParams(window.location.search);
@@ -865,19 +872,62 @@
       setLang(targetLang, btn);
     }
 
+    function selectTourCodePill(code) {
+      document.getElementById('tourCodeInput').value = code;
+      syncJoinCodeUi();
+    }
+
+    function syncJoinCodeUi() {
+      const code = (document.getElementById('tourCodeInput').value || 'RY-KASIM').trim().toUpperCase() || 'RY-KASIM';
+      const enc = encodeURIComponent(code);
+      const rBtn = document.getElementById('joinRotaBtn');
+      const bBtn = document.getElementById('joinBookBtn');
+      if (rBtn) rBtn.href = `/rota?code=${enc}`;
+      if (bBtn) bBtn.href = `/ani-kitabi?code=${enc}`;
+
+      const matchedTour = availableToursCache.find((t) => String(t.code || '').toUpperCase() === code);
+      const pinBox = document.getElementById('pinInputBox');
+      if (pinBox && matchedTour) {
+        pinBox.style.display = matchedTour.pinProtected ? 'block' : 'none';
+      }
+      if (matchedTour && Array.isArray(matchedTour.rooms) && matchedTour.rooms.length > 0) {
+        const roomSel = document.getElementById('roomSelect');
+        if (roomSel) {
+          const prevRoom = roomSel.value || 'genel';
+          roomSel.innerHTML = matchedTour.rooms
+            .map((rm) => `<option value="${rm.id}">${rm.name} (${rm.guide || matchedTour.guideName || 'Rehber'})</option>`)
+            .join('');
+          if (matchedTour.rooms.some((rm) => rm.id === prevRoom)) {
+            roomSel.value = prevRoom;
+          }
+        }
+      }
+    }
+
+    syncJoinCodeUi();
+
     // Aktif turları ve odaları sunucudan dinamik yükle
     fetch('/api/bootstrap')
       .then((r) => r.json())
       .then((data) => {
         if (data && data.tours && data.tours.length > 0) {
+          availableToursCache = data.tours;
           const container = document.getElementById('tourPillsContainer');
           if (container) {
             container.innerHTML = data.tours.map((t) => `
-              <button type="button" class="code-pill" style="padding:5px 12px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-gold); background:var(--color-gold-soft); font-weight:700; cursor:pointer;" onclick="document.getElementById('tourCodeInput').value='${t.code}'">${t.code} (${t.dateText || t.name})</button>
+              <button type="button" class="code-pill" style="padding:5px 12px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-gold); background:var(--color-gold-soft); font-weight:700; cursor:pointer;" onclick="selectTourCodePill('${t.code}')">${t.code} (${t.dateText || t.name})</button>
             `).join('');
           }
           if (!urlParams.get('code')) {
             document.getElementById('tourCodeInput').value = data.tours[0].code;
+          }
+          syncJoinCodeUi();
+          if (urlParams.get('room')) {
+            const roomSel = document.getElementById('roomSelect');
+            const wantedRoom = urlParams.get('room').trim();
+            if (roomSel && Array.from(roomSel.options).some((o) => o.value === wantedRoom)) {
+              roomSel.value = wantedRoom;
+            }
           }
         }
       })
@@ -885,12 +935,14 @@
 
     document.getElementById('joinForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      intentionalLeave = false;
       ensureAudioContext();
       if (!isAudioListening) {
         toggleAudioPlayback();
       }
 
       const code = document.getElementById('tourCodeInput').value.trim().toUpperCase();
+      const pin = (document.getElementById('tourPinInput')?.value || '').trim();
       const roomId = document.getElementById('roomSelect').value;
       const name = document.getElementById('pilgrimNameInput').value.trim() || 'Hacı Misafir';
       const phone = document.getElementById('pilgrimPhoneInput').value.trim() || '+90 538 000 00 00';
@@ -902,10 +954,15 @@
         const res = await fetch('/api/join-tour', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code })
+          body: JSON.stringify({ code, pin })
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
+          if (res.status === 403) {
+            const pinBox = document.getElementById('pinInputBox');
+            if (pinBox) pinBox.style.display = 'block';
+            document.getElementById('tourPinInput')?.focus();
+          }
           errEl.textContent = data.message || 'Kafile bulunamadı.';
           errEl.style.display = 'block';
           return;
@@ -946,7 +1003,18 @@
     });
 
     function connectWebSocket(tourCode, roomId, name, phone) {
-      if (ws) ws.close();
+      if (window._ryWsReconnectTimeout) {
+        clearTimeout(window._ryWsReconnectTimeout);
+        window._ryWsReconnectTimeout = null;
+      }
+      if (ws) {
+        try {
+          ws.onclose = null;
+          ws.onerror = null;
+          ws.close();
+        } catch {}
+        ws = null;
+      }
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsHost = window.location.host.includes('vercel.app')
         ? 'ses.ridvanyilmazturizm.com'
@@ -1054,9 +1122,12 @@
       };
 
       ws.onclose = () => {
+        if (intentionalLeave) return;
         if (window._ryWsReconnectTimeout) clearTimeout(window._ryWsReconnectTimeout);
         window._ryWsReconnectTimeout = setTimeout(() => {
-          connectWebSocket(tourCode, roomId, name, phone);
+          if (!intentionalLeave) {
+            connectWebSocket(tourCode, roomId, name, phone);
+          }
         }, 2000);
       };
 
@@ -1415,7 +1486,7 @@
 
         if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
           if (!pilgrimWorkletLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=13');
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=19');
             pilgrimWorkletLoaded = true;
           }
           pilgrimProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
@@ -1713,12 +1784,53 @@
       container.prepend(div);
     }
 
+    let activeSpeechIdx = -1;
+
+    function speakPrayer(idx, btnEl) {
+      const list = window._loadedPrayers || [];
+      const item = list[idx];
+      if (!item) return;
+      if (!('speechSynthesis' in window)) {
+        showAppToast('Cihazınızın tarayıcısı yerleşik sesli okumayı desteklemiyor.', 3500);
+        return;
+      }
+      if (window.speechSynthesis.speaking && activeSpeechIdx === idx) {
+        window.speechSynthesis.cancel();
+        activeSpeechIdx = -1;
+        document.querySelectorAll('.prayer-tts-btn').forEach((b) => {
+          b.textContent = '🔊 Sesli Oku';
+        });
+        return;
+      }
+      window.speechSynthesis.cancel();
+      document.querySelectorAll('.prayer-tts-btn').forEach((b) => {
+        b.textContent = '🔊 Sesli Oku';
+      });
+      activeSpeechIdx = idx;
+      if (btnEl) btnEl.textContent = '⏹️ Durdur';
+
+      const utter = new SpeechSynthesisUtterance(`${item.reading}. Anlamı: ${item.meaning}`);
+      utter.lang = 'tr-TR';
+      utter.rate = 0.92;
+      utter.onend = () => {
+        activeSpeechIdx = -1;
+        if (btnEl) btnEl.textContent = '🔊 Sesli Oku';
+      };
+      utter.onerror = () => {
+        activeSpeechIdx = -1;
+        if (btnEl) btnEl.textContent = '🔊 Sesli Oku';
+      };
+      window.speechSynthesis.speak(utter);
+    }
+
     function renderPrayers(points) {
+      window._loadedPrayers = Array.isArray(points) ? points : [];
       const container = document.getElementById('prayersList');
-      container.innerHTML = points.map((p) => `
+      container.innerHTML = window._loadedPrayers.map((p, idx) => `
         <div class="prayer-card">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
             <strong style="font-size:0.96rem; color:var(--color-emerald-night);">${p.title}</strong>
+            <button type="button" class="btn btn-outline btn-sm prayer-tts-btn" style="padding:5px 10px; font-size:0.74rem; flex-shrink:0;" onclick="speakPrayer(${idx}, this)">🔊 Sesli Oku</button>
           </div>
           <div class="arabic-text">${p.arabic}</div>
           <div style="font-size:0.85rem; font-weight:600; color:var(--color-emerald-deep); margin-bottom:6px;"><em>${p.reading}</em></div>
@@ -1728,8 +1840,33 @@
     }
 
     function leaveRoom() {
-      if (ws) ws.close();
+      intentionalLeave = true;
+      if (window._ryWsReconnectTimeout) {
+        clearTimeout(window._ryWsReconnectTimeout);
+        window._ryWsReconnectTimeout = null;
+      }
+      if (ws) {
+        try {
+          ws.onclose = null;
+          ws.onerror = null;
+          ws.close();
+        } catch {}
+        ws = null;
+      }
+      stopPilgrimMicBroadcast();
+      micGranted = false;
+      handRaised = false;
+      const micBanner = document.getElementById('micGrantedBanner');
+      if (micBanner) micBanner.style.display = 'none';
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
       isAudioListening = false;
+      const btn = document.getElementById('toggleAudioBtn');
+      const orb = document.getElementById('playerOrb');
+      if (btn) {
+        btn.textContent = 'Sesi Aç / Rehberi Dinle';
+        btn.className = 'btn btn-gold';
+      }
+      if (orb) orb.classList.remove('playing');
       stopBackgroundKeepAliveAudio();
       releaseWakeLock();
       document.getElementById('liveView').style.display = 'none';
@@ -2008,8 +2145,8 @@
         artist: `${artist} (${currentTour ? currentTour.code : 'RY-KASIM'})`,
         album,
         artwork: [
-          { src: '/icons/icon-192.png?v=15', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png?v=15', sizes: '512x512', type: 'image/png' }
+          { src: '/icons/icon-192.png?v=19', sizes: '192x192', type: 'image/png' },
+          { src: '/icons/icon-512.png?v=19', sizes: '512x512', type: 'image/png' }
         ]
       });
 

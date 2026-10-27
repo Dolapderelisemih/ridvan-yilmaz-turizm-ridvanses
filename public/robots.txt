@@ -1,6 +1,11 @@
 User-agent: *
 Allow: /$
+Allow: /rota
+Allow: /ani-kitabi
+Allow: /kullanim-rehberi
+Allow: /kullanim-rehberi.html
 Allow: /css/
+Allow: /js/
 Allow: /icons/
 Allow: /manifest.json
 Allow: /sw.js
