@@ -579,3 +579,364 @@ tr:last-child td {
     font-size: 0.82rem;
   }
 }
+
+/* ==================== POLARSTEPS SPIRITUAL JOURNEY & LIVE MAP ENGINE ==================== */
+.ps-stats-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  background: linear-gradient(145deg, var(--color-emerald-night) 0%, var(--color-emerald-deep) 100%);
+  border: 1px solid rgba(224, 190, 119, 0.35);
+  border-radius: var(--radius-xl);
+  padding: 14px 16px;
+  color: #ffffff;
+  box-shadow: var(--shadow-strong);
+}
+
+.ps-stat-item {
+  text-align: center;
+  padding: 4px 6px;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.ps-stat-item:last-child {
+  border-right: none;
+}
+
+.ps-stat-val {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--color-gold-bright);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.ps-stat-lbl {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.78);
+  margin-top: 3px;
+}
+
+.ps-map-shell {
+  position: relative;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  border: 1px solid var(--color-gold-border);
+  box-shadow: var(--shadow-soft);
+  background: #ebe5d8;
+}
+
+.ps-map-canvas {
+  width: 100%;
+  height: 360px;
+  z-index: 1;
+}
+
+.ps-map-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid var(--color-hairline);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ps-map-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ps-map-chip {
+  appearance: none;
+  border: 1px solid var(--color-hairline);
+  background: var(--color-ground);
+  color: var(--color-emerald-night);
+  font-family: var(--font-sans);
+  font-size: 0.74rem;
+  font-weight: 800;
+  padding: 6px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.ps-map-chip:hover,
+.ps-map-chip.active {
+  background: var(--color-emerald-deep);
+  color: #ffffff;
+  border-color: var(--color-emerald-deep);
+}
+
+.ps-map-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-muted);
+}
+
+.ps-legend-line-gold {
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  background: var(--color-gold);
+  border-radius: 2px;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.ps-legend-line-dashed {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  border-top: 2.5px dashed var(--color-emerald-deep);
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+/* Custom Leaflet DivIcon Markers */
+.ps-pin-wrapper {
+  background: transparent !important;
+  border: none !important;
+}
+
+.ps-pin {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 0.82rem;
+  box-shadow: 0 6px 16px rgba(6, 35, 27, 0.32);
+  transition: transform 0.2s ease;
+}
+
+.ps-pin:hover {
+  transform: scale(1.12);
+}
+
+.ps-pin.completed {
+  background: var(--color-emerald-deep);
+  color: #ffffff;
+  border: 2.5px solid var(--color-gold-bright);
+}
+
+.ps-pin.active {
+  background: linear-gradient(135deg, #d9ae5f 0%, #b3893b 100%);
+  color: var(--color-emerald-night);
+  border: 3px solid #ffffff;
+  width: 40px;
+  height: 40px;
+  font-size: 0.9rem;
+  z-index: 30;
+}
+
+.ps-pin.active::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(197, 160, 89, 0.75);
+  animation: psRadarPulse 2s infinite ease-out;
+  pointer-events: none;
+}
+
+.ps-pin.planned {
+  background: #faf7f2;
+  color: var(--color-emerald-deep);
+  border: 2px dashed var(--color-emerald-deep);
+  opacity: 0.92;
+}
+
+.ps-guide-live-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #dc2626;
+  color: #ffffff;
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 2px solid #ffffff;
+  white-space: nowrap;
+  box-shadow: 0 8px 20px rgba(220, 38, 38, 0.45);
+  animation: psGuideBounce 2.2s infinite ease-in-out;
+}
+
+@keyframes psRadarPulse {
+  0% { transform: scale(0.82); opacity: 0.95; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+
+@keyframes psGuideBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+/* Polarsteps Chronological Steps Timeline */
+.ps-timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-left: 22px;
+}
+
+.ps-timeline::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 16px;
+  bottom: 16px;
+  width: 2.5px;
+  background: linear-gradient(180deg, var(--color-gold) 0%, var(--color-emerald-deep) 60%, var(--color-hairline) 100%);
+  border-radius: 2px;
+}
+
+.ps-step-card {
+  position: relative;
+  background: #ffffff;
+  border: 1px solid var(--color-hairline);
+  border-radius: 16px;
+  padding: 15px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(6, 35, 27, 0.04);
+}
+
+.ps-step-card:hover {
+  border-color: var(--color-gold);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+}
+
+.ps-step-card.is-active {
+  background: linear-gradient(180deg, #fffdf8 0%, #f9f2e2 100%);
+  border: 1.5px solid var(--color-gold);
+  box-shadow: var(--shadow-gold);
+}
+
+.ps-step-card.is-planned {
+  background: rgba(250, 247, 242, 0.72);
+  border-style: dashed;
+}
+
+.ps-step-dot {
+  position: absolute;
+  left: -23px;
+  top: 20px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-ground);
+  border: 3px solid var(--color-muted);
+  z-index: 2;
+}
+
+.ps-step-card.is-completed .ps-step-dot {
+  background: var(--color-emerald-deep);
+  border-color: var(--color-gold);
+}
+
+.ps-step-card.is-active .ps-step-dot {
+  background: var(--color-gold);
+  border-color: var(--color-emerald-deep);
+  box-shadow: 0 0 0 5px rgba(197, 160, 89, 0.28);
+}
+
+.ps-step-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ps-step-day {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-emerald-deep);
+}
+
+.ps-step-status {
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.ps-step-status.completed {
+  background: var(--color-emerald-soft);
+  color: var(--color-emerald-deep);
+}
+
+.ps-step-status.active {
+  background: var(--color-emerald-deep);
+  color: var(--color-gold-bright);
+}
+
+.ps-step-status.planned {
+  background: var(--color-ground-deep);
+  color: var(--color-muted);
+}
+
+.ps-step-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--color-emerald-night);
+  margin-top: 4px;
+}
+
+.ps-step-loc {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  margin-top: 2px;
+}
+
+.ps-step-note {
+  font-size: 0.85rem;
+  color: var(--color-ink);
+  margin-top: 8px;
+  line-height: 1.52;
+}
+
+.ps-step-prayer {
+  margin-top: 9px;
+  padding: 8px 11px;
+  border-radius: 10px;
+  background: rgba(11, 70, 54, 0.05);
+  border-left: 3px solid var(--color-gold);
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--color-emerald-night);
+}
+
+@media (max-width: 640px) {
+  .ps-stats-bar {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    padding: 12px;
+  }
+  .ps-stat-item:nth-child(2) {
+    border-right: none;
+  }
+  .ps-map-canvas {
+    height: 290px;
+  }
+}

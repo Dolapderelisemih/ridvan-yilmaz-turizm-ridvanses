@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=15" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=15" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=16" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=16" />
   <title>Rehber (Hoca) Canlı Yayın Stüdyosu | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/rehber" />
-  <link rel="stylesheet" href="/css/style.css?v=15" />
+  <link rel="stylesheet" href="/css/style.css?v=16" />
   <script>
     (function() {
       const TOKEN = 'ry_auth_v1_987a6b5c4d';
@@ -29,7 +29,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=15"></script>
+  <script src="/vercel-ws-shim.js?v=16"></script>
+  <script src="/js/umrah-steps-map.js?v=16"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -215,6 +216,9 @@
         </div>
       </a>
       <div class="nav-actions">
+        <a href="/rota?code=RY-KASIM" target="_blank" class="btn btn-gold btn-sm">
+          📍 Canlı Rota
+        </a>
         <a href="/dinle" target="_blank" class="btn btn-outline btn-sm">
           <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
           Hacı Ekranı
@@ -393,6 +397,42 @@
           <div id="pilgrimsListContainer"></div>
         </div>
 
+        <!-- POLARSTEPS MANEVİ YOLCULUK ADIMLARI & ROTA KONTROLÜ -->
+        <div class="card card-luxury" style="margin-bottom:24px;">
+          <div class="section-card-head">
+            <div>
+              <h3 class="section-card-title">
+                <span class="section-icon-badge">
+                  <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+                </span>
+                Manevi Yolculuk Adımları (Canlı Rota)
+              </h3>
+              <p style="font-size:0.8rem; color:var(--color-muted); margin:4px 0 0;">
+                Tek dokunuşla bulunduğunuz durağı aktif edin; tüm hacıların ve ailelerin haritası anında güncellensin.
+              </p>
+            </div>
+            <button type="button" class="btn btn-gold btn-sm" onclick="toggleNewStepForm()">+ Yeni Durak</button>
+          </div>
+
+          <!-- Yeni Canlı GPS Durağı Ekleme Formu -->
+          <div id="guideNewStepBox" style="display:none; background:var(--color-ground); border:1px solid var(--color-gold); border-radius:14px; padding:14px; margin-bottom:14px;">
+            <div style="font-size:0.8rem; font-weight:800; color:var(--color-emerald-deep); margin-bottom:8px;">
+              📍 Bulunduğum Konuma Yeni Siyer Durağı Bırak
+            </div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <input type="text" id="gStepTitle" class="input" placeholder="Durak Adı (Örn: Cin Mescidi & Şecere Mescidi)" />
+              <input type="text" id="gStepLoc" class="input" placeholder="Bölge (Örn: Cennetü'l-Muallâ Yakını • Mekke)" />
+              <textarea id="gStepNote" rows="2" class="textarea" placeholder="Hacılar ve aileler için kısa Siyer notu / anlatım özeti..."></textarea>
+              <div style="display:flex; gap:8px; justify-content:flex-end;">
+                <button type="button" class="btn btn-outline btn-sm" onclick="toggleNewStepForm()">Vazgeç</button>
+                <button type="button" id="gStepSaveBtn" class="btn btn-primary btn-sm" onclick="createLiveGuideStep()">📍 GPS Konumumla Kaydet &amp; Yayınla</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="guideStepsTimeline" class="ps-timeline" style="max-height:460px; overflow-y:auto; padding-right:4px;"></div>
+        </div>
+
         <div class="card">
           <div class="section-card-head">
             <h3 class="section-card-title">
@@ -530,6 +570,11 @@
 
         if (msg.type === 'joined' || msg.type === 'room-state') {
           renderRoomState(msg.room);
+          if (msg.steps) renderGuideStepsList(msg.steps);
+        }
+
+        if (msg.type === 'steps-updated' && Array.isArray(msg.steps)) {
+          renderGuideStepsList(msg.steps);
         }
 
         if (msg.type === 'sos-alert' && msg.alert) {
@@ -562,10 +607,134 @@
       };
     }
 
+    let guideJourneySteps = [];
+
+    async function loadGuideSteps() {
+      const code = document.getElementById('guideTourSelect').value || 'RY-KASIM';
+      try {
+        const res = await fetch(`/api/trips/${encodeURIComponent(code)}/steps`);
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.steps)) {
+          renderGuideStepsList(data.steps);
+        }
+      } catch (e) {
+        console.warn('Rehber durakları yüklenemedi:', e);
+      }
+    }
+
+    function renderGuideStepsList(steps) {
+      guideJourneySteps = Array.isArray(steps) ? steps : [];
+      if (!window.UmrahStepsMap) return;
+      window.UmrahStepsMap.renderTimeline('guideStepsTimeline', guideJourneySteps, {
+        editable: true,
+        allowDelete: false,
+        showPrayers: false,
+        onAction: async (action, step, btnEl) => {
+          const code = document.getElementById('guideTourSelect').value || 'RY-KASIM';
+          if (btnEl) btnEl.disabled = true;
+          try {
+            const newStatus = action === 'activate' ? 'active' : 'completed';
+            const res = await fetch(`/api/trips/${encodeURIComponent(code)}/steps/${encodeURIComponent(step.id)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: newStatus })
+            });
+            const data = await res.json();
+            if (data && data.success) {
+              renderGuideStepsList(data.steps);
+              if (action === 'activate') {
+                const topicEl = document.getElementById('topicInput');
+                if (topicEl) {
+                  topicEl.value = `${step.title} — ${step.locationLabel || ''}`;
+                  updateTopic();
+                }
+              }
+            }
+          } catch (err) {
+            console.error('Durak güncellenemedi:', err);
+          } finally {
+            if (btnEl) btnEl.disabled = false;
+          }
+        }
+      });
+    }
+
+    function toggleNewStepForm() {
+      const box = document.getElementById('guideNewStepBox');
+      if (!box) return;
+      box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function createLiveGuideStep() {
+      const title = document.getElementById('gStepTitle').value.trim();
+      const locationLabel = document.getElementById('gStepLoc').value.trim() || 'Kutsal Topraklar • Canlı Rehber Noktası';
+      const guideNote = document.getElementById('gStepNote').value.trim();
+      if (!title) {
+        alert('Lütfen yeni ziyaret durağının adını yazınız.');
+        return;
+      }
+      const btn = document.getElementById('gStepSaveBtn');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Kaydediliyor...';
+      }
+
+      let lat = lastGuideLocState && lastGuideLocState.lat ? lastGuideLocState.lat : 21.4225;
+      let lng = lastGuideLocState && lastGuideLocState.lng ? lastGuideLocState.lng : 39.8262;
+
+      if ((!lastGuideLocState || !lastGuideLocState.lat) && navigator.geolocation) {
+        try {
+          const pos = await new Promise((resolve, reject) =>
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 4500 })
+          );
+          lat = pos.coords.latitude;
+          lng = pos.coords.longitude;
+        } catch {}
+      }
+
+      const code = document.getElementById('guideTourSelect').value || 'RY-KASIM';
+      try {
+        const res = await fetch(`/api/trips/${encodeURIComponent(code)}/steps`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            locationLabel,
+            guideNote,
+            lat,
+            lng,
+            status: 'active'
+          })
+        });
+        const data = await res.json();
+        if (data && data.success) {
+          renderGuideStepsList(data.steps);
+          document.getElementById('gStepTitle').value = '';
+          document.getElementById('gStepLoc').value = '';
+          document.getElementById('gStepNote').value = '';
+          toggleNewStepForm();
+          const topicEl = document.getElementById('topicInput');
+          if (topicEl) {
+            topicEl.value = `${title} — ${locationLabel}`;
+            updateTopic();
+          }
+        }
+      } catch (e) {
+        alert('Yeni durak eklenemedi.');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '📍 GPS Konumumla Kaydet & Yayınla';
+        }
+      }
+    }
+
     connectGuideWs();
+    loadGuideSteps();
 
     function switchGuideRoom() {
       connectGuideWs();
+      loadGuideSteps();
     }
 
     function updateTopic() {

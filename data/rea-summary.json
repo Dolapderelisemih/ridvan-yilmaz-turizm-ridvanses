@@ -127,5 +127,24 @@
       "bytes": 50459,
       "sha256": "25d0776445d8eb6ec6277df156d85d9d53ce231f80d87befe58ae468de55d895"
     }
-  ]
+  ],
+  "polarsteps": {
+    "targetUrl": "https://www.polarsteps.com/",
+    "coreEvidenceId": "ev_029dc2d46785c66b83a9534f15ef33dc294356ba1a77939e9d79021fb06a7dfd",
+    "nextJsEvidenceId": "ev_9c36cf4ddf4ddce7aa79a106ab7177d4114654365ab9d472822617099f5a01f8",
+    "coreBundleBytes": 5782436,
+    "totalNodes": 821,
+    "totalEdges": 1616,
+    "semanticNodes": 100000,
+    "semanticRelations": 115078,
+    "astNodes": 465396,
+    "apiEndpointCount": 51,
+    "reduxModelCount": 128,
+    "integratedModules": [
+      "Polarsteps Trip/Step/PlannedStep/ZeldaStep -> RıdvanSes Manevi Rota & Siyer Adımları Motoru (/api/trips/:code/steps)",
+      "Polarsteps RouteSegments & Mapbox -> Leaflet 1.9.4 Kâbe Altını / Harem Zümrüdü Canlı Rota Haritası (umrah-steps-map.js)",
+      "Polarsteps TRIP_PRIVACY_FOLLOWERS -> Şifresiz Aile & Yakın Canlı Takip Ekranı (/rota?code=RY-KASIM)",
+      "Polarsteps TRAVEL_BOOK_GENERATE -> Baskıya Hazır A4 Dijital Umre Hatıra Kitabı & Sertifikası (/ani-kitabi?code=RY-KASIM)"
+    ]
+  }
 }

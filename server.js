@@ -63,6 +63,100 @@ function saveState(state) {
 
 let db = loadState();
 
+// Ensure Polarsteps-style journeySteps exist in runtime db
+function ensureJourneySteps() {
+  if (!db.journeySteps || typeof db.journeySteps !== 'object') {
+    try {
+      const seedData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      db.journeySteps = seedData.journeySteps || {};
+      saveState(db);
+    } catch {
+      db.journeySteps = {};
+    }
+  }
+}
+ensureJourneySteps();
+
+function buildDefaultStepsForTour(tour) {
+  return [
+    {
+      id: `step-${Date.now()}-1`,
+      order: 1,
+      dayLabel: '1. Gün • Başlangıç',
+      title: 'Bursa & İstanbul Buluşma — İhram ve Niyet',
+      locationLabel: 'Osmangazi / Bursa — Havalimanı',
+      category: 'ulasim',
+      lat: 40.1885,
+      lng: 29.0610,
+      distanceKm: 0,
+      status: 'completed',
+      timestamp: 'Başlangıç',
+      guideNote: `${tour.guideName || 'Rehber Hocamız'} eşliğinde ihram niyetimizi alarak kutsal topraklara doğru yola çıktık.`,
+      prayerSummary: 'Allâhümme innî ürîdü’l-umrate fe-yessirhâ lî ve tekabbelhâ minnî.'
+    },
+    {
+      id: `step-${Date.now()}-2`,
+      order: 2,
+      dayLabel: '2. Gün • Şu Anki Durak',
+      title: 'Mescid-i Haram & Kâbe-i Muazzama Tavafı',
+      locationLabel: 'Kâbe-i Muazzama • Mekke-i Mükerreme',
+      category: 'kabe',
+      lat: 21.4225,
+      lng: 39.8262,
+      distanceKm: 2465,
+      status: 'active',
+      timestamp: 'Canlı Durak',
+      guideNote: 'Beytullah huzurunda canlı sesli rehberlik eşliğinde Umre tavafımızı ve sa’y ibadetimizi eda ediyoruz.',
+      prayerSummary: 'Rabbenâ âtinâ fi’d-dünyâ haseneten ve fi’l-âhirati haseneten ve kınâ azâbe’n-nâr.'
+    },
+    {
+      id: `step-${Date.now()}-3`,
+      order: 3,
+      dayLabel: 'Medine-i Münevvere',
+      title: 'Mescid-i Nebevî & Ravza-i Mutahhara Ziyareti',
+      locationLabel: 'Mescid-i Nebevî • Medine-i Münevvere',
+      category: 'medine',
+      lat: 24.4672,
+      lng: 39.6111,
+      distanceKm: 2968,
+      status: 'planned',
+      timestamp: 'Planlanan',
+      guideNote: 'Peygamber Efendimiz’in ﷺ huzurunda salat ü selam ve Siyer-i Nebi ziyaretleri.',
+      prayerSummary: 'Esselâmü aleyke yâ Resûlallâh, esselâmü aleyke yâ Habîballâh.'
+    }
+  ];
+}
+
+function getTourSteps(tourCode) {
+  const code = String(tourCode || 'RY-KASIM').toUpperCase().trim();
+  ensureJourneySteps();
+  if (!Array.isArray(db.journeySteps[code])) {
+    const tour = db.tours.find((t) => t.code.toUpperCase() === code) || { code, guideName: 'Ömer Ali Gültekin' };
+    db.journeySteps[code] = buildDefaultStepsForTour(tour);
+    saveState(db);
+  }
+  return db.journeySteps[code];
+}
+
+function computeJourneyStats(steps) {
+  const list = Array.isArray(steps) ? steps : [];
+  const completedOrActive = list.filter((s) => s.status === 'completed' || s.status === 'active');
+  const completedCount = list.filter((s) => s.status === 'completed').length;
+  const activeStep = list.find((s) => s.status === 'active') || completedOrActive[completedOrActive.length - 1] || list[0] || null;
+  const currentDistanceKm = completedOrActive.reduce((maxKm, s) => Math.max(maxKm, Number(s.distanceKm) || 0), 0);
+  const totalPlannedKm = list.reduce((maxKm, s) => Math.max(maxKm, Number(s.distanceKm) || 0), 0);
+  return {
+    totalSteps: list.length,
+    completedCount,
+    visitedCount: completedOrActive.length,
+    currentDistanceKm,
+    totalPlannedKm,
+    activeStepId: activeStep ? activeStep.id : null,
+    activeStepTitle: activeStep ? activeStep.title : 'Kâbe-i Muazzama',
+    activeDayLabel: activeStep ? activeStep.dayLabel : '1. Gün'
+  };
+}
+
 // Live Room State in Memory
 // key: `${tourCode}:${roomId}`
 const liveRooms = new Map();
@@ -190,6 +284,41 @@ function broadcastToAdmins(payload) {
   }
 }
 
+function broadcastToFamilyTrackers(tourCode, payload) {
+  const code = String(tourCode || 'RY-KASIM').toUpperCase().trim();
+  const data = JSON.stringify(payload);
+  wss.clients.forEach((ws) => {
+    if (ws.familyTourCode === code && ws.readyState === WebSocket.OPEN) {
+      ws.send(data);
+    }
+  });
+  for (const sess of httpRelaySessions.values()) {
+    if (sess.ws.familyTourCode === code) {
+      sess.ws.send(data);
+    }
+  }
+}
+
+function broadcastStepsUpdate(tourCode, activeStepId = null) {
+  const code = String(tourCode || 'RY-KASIM').toUpperCase().trim();
+  const steps = getTourSteps(code);
+  const stats = computeJourneyStats(steps);
+  const payload = {
+    type: 'steps-updated',
+    tourCode: code,
+    steps,
+    stats,
+    activeStepId: activeStepId || stats.activeStepId
+  };
+  for (const room of liveRooms.values()) {
+    if (room.tourCode === code) {
+      broadcastToRoom(room, payload);
+    }
+  }
+  broadcastToFamilyTrackers(code, payload);
+  broadcastToAdmins(payload);
+}
+
 function broadcastRoomState(room) {
   if (!room) return;
   if (room._broadcastTimer) return;
@@ -197,6 +326,9 @@ function broadcastRoomState(room) {
     room._broadcastTimer = null;
     const state = serializeRoom(room);
     broadcastToRoom(room, { type: 'room-state', room: state });
+    if (room.roomId === 'genel') {
+      broadcastToFamilyTrackers(room.tourCode, { type: 'room-state', room: state });
+    }
     broadcastToAdmins({
       type: 'admin-rooms-update',
       rooms: Array.from(liveRooms.values()).map(serializeRoom)
@@ -217,6 +349,24 @@ function processClientJsonMessage(ctx, msg) {
         rooms: Array.from(liveRooms.values()).map(serializeRoom),
         sosAlerts: db.sosAlerts,
         announcements: db.announcements
+      })
+    );
+    return;
+  }
+
+  if (msg.type === 'family-subscribe') {
+    const tourCode = String(msg.tourCode || 'RY-KASIM').toUpperCase().trim();
+    ws.familyTourCode = tourCode;
+    const room = getOrCreateRoom(tourCode, 'genel');
+    const steps = getTourSteps(tourCode);
+    ws.send(
+      JSON.stringify({
+        type: 'family-state',
+        tourCode,
+        room: serializeRoom(room),
+        steps,
+        stats: computeJourneyStats(steps),
+        announcements: db.announcements.filter((a) => a.tourCode === tourCode || a.tourCode === 'ALL')
       })
     );
     return;
@@ -247,13 +397,16 @@ function processClientJsonMessage(ctx, msg) {
       ctx.currentRoom.guideName = msg.name;
     }
 
+    const tourSteps = getTourSteps(tourCode);
     ws.send(
       JSON.stringify({
         type: 'joined',
         clientId,
         room: serializeRoom(ctx.currentRoom),
         announcements: db.announcements.filter((a) => a.tourCode === tourCode || a.tourCode === 'ALL'),
-        siyerPoints: db.siyerPoints
+        siyerPoints: db.siyerPoints,
+        steps: tourSteps,
+        stats: computeJourneyStats(tourSteps)
       })
     );
     broadcastRoomState(ctx.currentRoom);
@@ -300,6 +453,7 @@ function processClientJsonMessage(ctx, msg) {
         guideLocation: currentRoom.guideLocation
       };
       broadcastToRoom(currentRoom, locPayload);
+      broadcastToFamilyTrackers(currentRoom.tourCode, locPayload);
       for (const room of liveRooms.values()) {
         if (room !== currentRoom && !Array.from(room.clients.values()).some((c) => c.role === 'guide')) {
           room.guideLocation = currentRoom.guideLocation;
@@ -444,6 +598,7 @@ function processClientJsonMessage(ctx, msg) {
       db.announcements.unshift(ann);
       saveState(db);
       broadcastToRoom(currentRoom, { type: 'new-announcement', announcement: ann });
+      broadcastToFamilyTrackers(currentRoom.tourCode, { type: 'new-announcement', announcement: ann });
       broadcastToAdmins({ type: 'new-announcement', announcement: ann });
       break;
     }
@@ -681,6 +836,7 @@ app.post('/api/demo-request', (req, res) => {
 
 // 2. Bootstrap & System Overview
 app.get('/api/bootstrap', (req, res) => {
+  ensureJourneySteps();
   res.json({
     agency: db.agency,
     tours: db.tours,
@@ -689,6 +845,7 @@ app.get('/api/bootstrap', (req, res) => {
     announcements: db.announcements,
     sosAlerts: db.sosAlerts,
     siyerPoints: db.siyerPoints,
+    journeySteps: db.journeySteps,
     liveRooms: Array.from(liveRooms.values()).map(serializeRoom)
   });
 });
@@ -711,12 +868,16 @@ app.post('/api/join-tour', (req, res) => {
     });
   }
   const roomState = serializeRoom(getOrCreateRoom(tour.code, 'genel'));
+  const steps = getTourSteps(tour.code);
+  const stats = computeJourneyStats(steps);
   return res.json({
     success: true,
     tour,
     room: roomState,
     announcements: db.announcements.filter((a) => a.tourCode === tour.code || a.tourCode === 'ALL'),
-    siyerPoints: db.siyerPoints
+    siyerPoints: db.siyerPoints,
+    steps,
+    stats
   });
 });
 
@@ -746,9 +907,13 @@ app.post('/api/tours', (req, res) => {
     ]
   };
   db.tours.unshift(newTour);
+  ensureJourneySteps();
+  if (!db.journeySteps[newTour.code]) {
+    db.journeySteps[newTour.code] = buildDefaultStepsForTour(newTour);
+  }
   saveState(db);
   getOrCreateRoom(newTour.code, 'genel');
-  res.json({ success: true, tour: newTour });
+  res.json({ success: true, tour: newTour, steps: db.journeySteps[newTour.code] });
 });
 
 app.delete('/api/tours/:id', (req, res) => {
@@ -758,6 +923,9 @@ app.delete('/api/tours/:id', (req, res) => {
   db.tours = db.tours.filter((t) => t.id !== targetId && t.code !== targetId);
   if (deletedCode) {
     db.announcements = db.announcements.filter((a) => a.tourCode !== deletedCode);
+    if (db.journeySteps && db.journeySteps[deletedCode]) {
+      delete db.journeySteps[deletedCode];
+    }
     for (const [key, room] of liveRooms.entries()) {
       if (room.tourCode === deletedCode) {
         liveRooms.delete(key);
@@ -770,6 +938,178 @@ app.delete('/api/tours/:id', (req, res) => {
     rooms: Array.from(liveRooms.values()).map(serializeRoom)
   });
   res.json({ success: true });
+});
+
+// 4B. Polarsteps-Inspired Spiritual Journey Steps Engine (Rota & Adımlar)
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
+}
+
+app.get('/api/trips/:code/steps', (req, res) => {
+  const code = String(req.params.code || 'RY-KASIM').toUpperCase().trim();
+  const tour = db.tours.find((t) => t.code.toUpperCase() === code) || db.tours[0] || {
+    code,
+    name: 'Kasım Umresi Kafilesi',
+    guideName: 'Ömer Ali Gültekin',
+    dateText: 'Kasım 2026 • 10 Gün',
+    duration: '10 Gün (8 Mekke + 2 Medine)',
+    makkahHotel: '8 Gün Mekke Konaklama (Harem Yakını)',
+    madinahHotel: '2 Gün Medine Konaklama (Merkezi Bölge)'
+  };
+  const steps = getTourSteps(code);
+  const stats = computeJourneyStats(steps);
+  const room = serializeRoom(getOrCreateRoom(code, 'genel'));
+  const announcements = db.announcements.filter((a) => a.tourCode === code || a.tourCode === 'ALL');
+  return res.json({
+    success: true,
+    tour,
+    steps,
+    stats,
+    room,
+    announcements,
+    agency: db.agency
+  });
+});
+
+app.post('/api/trips/:code/steps', (req, res) => {
+  const code = String(req.params.code || 'RY-KASIM').toUpperCase().trim();
+  const body = req.body || {};
+  const steps = getTourSteps(code);
+
+  const lat = Number(body.lat) || 21.4225;
+  const lng = Number(body.lng) || 39.8262;
+  const status = ['completed', 'active', 'planned'].includes(body.status) ? body.status : 'active';
+
+  // Insert logic: if status is 'active', mark previous active steps as 'completed'
+  // and insert right before the first 'planned' step (unless explicit order provided)
+  let insertIndex = steps.length;
+  if (status === 'active' && typeof body.order === 'undefined') {
+    const firstPlannedIdx = steps.findIndex((s) => s.status === 'planned');
+    if (firstPlannedIdx !== -1) {
+      insertIndex = firstPlannedIdx;
+    }
+    for (let i = 0; i < insertIndex; i++) {
+      if (steps[i].status === 'active') {
+        steps[i].status = 'completed';
+      }
+    }
+  }
+
+  const prevStep = insertIndex > 0 ? steps[insertIndex - 1] : null;
+  let computedKm = Number(body.distanceKm);
+  if (!Number.isFinite(computedKm) || computedKm <= 0) {
+    if (prevStep) {
+      const segKm = haversineKm(Number(prevStep.lat) || lat, Number(prevStep.lng) || lng, lat, lng);
+      computedKm = (Number(prevStep.distanceKm) || 0) + Math.max(1, segKm);
+    } else {
+      computedKm = 0;
+    }
+  }
+
+  const nowStr = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  const newStep = {
+    id: `step-${Date.now()}`,
+    order: insertIndex + 1,
+    dayLabel: body.dayLabel || `Canlı Durak • ${nowStr}`,
+    title: body.title || 'Yeni Siyer & Ziyaret Durağı',
+    locationLabel: body.locationLabel || 'Kutsal Topraklar • Canlı Konum',
+    category: body.category || 'siyer',
+    lat,
+    lng,
+    distanceKm: computedKm,
+    status,
+    timestamp: body.timestamp || `Bugün ${nowStr}`,
+    guideNote:
+      body.guideNote ||
+      'Rehber hocamız eşliğinde bu mübarek noktada Siyer-i Nebi sohbeti ve dua halkası gerçekleştirildi.',
+    prayerSummary:
+      body.prayerSummary ||
+      'Allâhümme salli alâ seyyidinâ Muhammedin ve alâ âli seyyidinâ Muhammed.'
+  };
+
+  steps.splice(insertIndex, 0, newStep);
+  steps.forEach((s, idx) => {
+    s.order = idx + 1;
+  });
+
+  saveState(db);
+  broadcastStepsUpdate(code, newStep.id);
+  const stats = computeJourneyStats(steps);
+  return res.json({ success: true, step: newStep, steps, stats });
+});
+
+app.patch('/api/trips/:code/steps/:stepId', (req, res) => {
+  const code = String(req.params.code || 'RY-KASIM').toUpperCase().trim();
+  const stepId = req.params.stepId;
+  const body = req.body || {};
+  const steps = getTourSteps(code);
+  const idx = steps.findIndex((s) => s.id === stepId);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, message: 'Durak bulunamadı.' });
+  }
+
+  const target = steps[idx];
+  if (typeof body.title === 'string' && body.title.trim()) target.title = body.title.trim();
+  if (typeof body.dayLabel === 'string' && body.dayLabel.trim()) target.dayLabel = body.dayLabel.trim();
+  if (typeof body.locationLabel === 'string' && body.locationLabel.trim()) target.locationLabel = body.locationLabel.trim();
+  if (typeof body.category === 'string' && body.category.trim()) target.category = body.category.trim();
+  if (typeof body.guideNote === 'string') target.guideNote = body.guideNote.trim();
+  if (typeof body.prayerSummary === 'string') target.prayerSummary = body.prayerSummary.trim();
+  if (typeof body.timestamp === 'string') target.timestamp = body.timestamp.trim();
+  if (Number.isFinite(Number(body.lat)) && body.lat !== undefined) target.lat = Number(body.lat);
+  if (Number.isFinite(Number(body.lng)) && body.lng !== undefined) target.lng = Number(body.lng);
+  if (Number.isFinite(Number(body.distanceKm)) && body.distanceKm !== undefined) {
+    target.distanceKm = Number(body.distanceKm);
+  }
+
+  if (body.status && ['completed', 'active', 'planned'].includes(body.status)) {
+    if (body.status === 'active' && !body.singleOnly) {
+      // Polarsteps chronological progression: earlier steps become completed, later active steps become planned
+      steps.forEach((s, i) => {
+        if (i < idx) {
+          s.status = 'completed';
+        } else if (i === idx) {
+          s.status = 'active';
+          s.timestamp = body.timestamp || `Canlı • ${new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`;
+        } else if (s.status === 'active') {
+          s.status = 'planned';
+        }
+      });
+    } else {
+      target.status = body.status;
+    }
+  }
+
+  saveState(db);
+  broadcastStepsUpdate(code, target.id);
+  const stats = computeJourneyStats(steps);
+  return res.json({ success: true, step: target, steps, stats });
+});
+
+app.delete('/api/trips/:code/steps/:stepId', (req, res) => {
+  const code = String(req.params.code || 'RY-KASIM').toUpperCase().trim();
+  const stepId = req.params.stepId;
+  const steps = getTourSteps(code);
+  const nextSteps = steps.filter((s) => s.id !== stepId);
+  if (nextSteps.length === steps.length) {
+    return res.status(404).json({ success: false, message: 'Silinecek durak bulunamadı.' });
+  }
+  nextSteps.forEach((s, idx) => {
+    s.order = idx + 1;
+  });
+  db.journeySteps[code] = nextSteps;
+  saveState(db);
+  broadcastStepsUpdate(code);
+  const stats = computeJourneyStats(nextSteps);
+  return res.json({ success: true, steps: nextSteps, stats });
 });
 
 // 5. Guides CRUD
@@ -810,6 +1150,11 @@ app.post('/api/announcements', (req, res) => {
     if (ann.tourCode === 'ALL' || room.tourCode === ann.tourCode) {
       broadcastToRoom(room, { type: 'new-announcement', announcement: ann });
     }
+  }
+  if (ann.tourCode === 'ALL') {
+    db.tours.forEach((t) => broadcastToFamilyTrackers(t.code, { type: 'new-announcement', announcement: ann }));
+  } else {
+    broadcastToFamilyTrackers(ann.tourCode, { type: 'new-announcement', announcement: ann });
   }
   broadcastToAdmins({ type: 'new-announcement', announcement: ann });
   res.json({ success: true, announcement: ann });
@@ -917,6 +1262,8 @@ app.get('/api/qr', async (req, res) => {
       : req.protocol || 'http';
     const baseUrl = req.query.baseUrl || `${proto}://${host}`;
     const joinUrl = `${baseUrl}/dinle?code=${encodeURIComponent(code)}&room=${encodeURIComponent(room)}`;
+    const familyTrackUrl = `${baseUrl}/rota?code=${encodeURIComponent(code)}`;
+    const keepsakeBookUrl = `${baseUrl}/ani-kitabi?code=${encodeURIComponent(code)}`;
 
     const tour = db.tours.find((t) => t.code.toUpperCase() === code) || db.tours[0] || {
       code,
@@ -936,10 +1283,12 @@ app.get('/api/qr', async (req, res) => {
     });
 
     const whatsappText =
-      `🕋 *Rıdvan Yılmaz Turizm — Canlı Rehberlik & Kafile Odası*\n\n` +
+      `🕋 *Rıdvan Yılmaz Turizm — Canlı Rehberlik & Manevi Rota*\n\n` +
       `Kıymetli Misafirimiz,\n` +
       `*${tour.name}* (${tour.guideName}) canlı sesli rehberlik odamıza uygulama veya şifre gerekmeden aşağıdaki bağlantıya dokunarak hemen katılabilirsiniz:\n\n` +
       `🎧 *Canlı Yayına Katıl:* ${joinUrl}\n` +
+      `📍 *Aile Canlı Rota Takibi:* ${familyTrackUrl}\n` +
+      `📖 *Umre Hatıra Kitapçığı:* ${keepsakeBookUrl}\n` +
       `🔑 *Kafile Kodu:* ${tour.code}\n` +
       `🏨 *Mekke Otel:* ${tour.makkahHotel}\n` +
       `🚨 *Acil İletişim:* +90 538 399 96 66`;
@@ -950,6 +1299,8 @@ app.get('/api/qr', async (req, res) => {
       room,
       tour,
       joinUrl,
+      familyTrackUrl,
+      keepsakeBookUrl,
       dataUrl,
       whatsappText,
       whatsappShareUrl: `https://wa.me/?text=${encodeURIComponent(whatsappText)}`
@@ -1002,6 +1353,10 @@ const routeMap = {
   '/panel': 'panel.html',
   '/acente-kafile-yonetim-sistemi': 'panel.html',
   '/yaka-karti': 'yaka-karti.html',
+  '/rota': 'rota.html',
+  '/izle': 'rota.html',
+  '/ani-kitabi': 'ani-kitabi.html',
+  '/hatira-kitabi': 'ani-kitabi.html',
   '/login': 'login.html',
   '/nasil-calisir': 'index.html',
   '/iletisim': 'index.html'
@@ -1020,6 +1375,8 @@ if (!process.env.VERCEL) {
     console.log(`  Rıdvan Yılmaz Turizm — RıdvanSes Canlı Rehber & Kafile Sistemi`);
     console.log(`  Ana Portal          : http://localhost:${PORT}/`);
     console.log(`  Hacı Dinleme Ekranı : http://localhost:${PORT}/dinle`);
+    console.log(`  Aile Canlı Rota     : http://localhost:${PORT}/rota?code=RY-KASIM`);
+    console.log(`  Umre Hatıra Kitabı  : http://localhost:${PORT}/ani-kitabi?code=RY-KASIM`);
     console.log(`  Rehber Yayın Ekranı : http://localhost:${PORT}/rehber`);
     console.log(`  Acente Yönetim Panel: http://localhost:${PORT}/panel`);
     console.log(`====================================================================`);

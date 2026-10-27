@@ -121,7 +121,7 @@
     {
       "id": "tour-kasim-2026",
       "code": "RY-KASIM",
-      "name": "🕋 Kasım Umresi — Kutsal Topraklara Manevi Yolculuk",
+      "name": "Kasım Umresi — Kutsal Topraklara Manevi Yolculuk",
       "dateText": "13-14 Kasım 2026",
       "duration": "10 Gün (8 Gün Mekke | 2 Gün Medine)",
       "guideId": "guide-5",
@@ -154,8 +154,8 @@
     {
       "id": "ann-kasim-1",
       "tourCode": "RY-KASIM",
-      "title": "🕋 Kasım Umresi — Kutsal Topraklara Manevi Yolculuk",
-      "message": "13-14 Kasım 2026 (8 Gün Mekke | 2 Gün Medine) 10 günlük Kasım Umresi kafilemizde Ömer Ali Gültekin hocamızın canlı rehberlik odası (RY-KASIM) aktiftir. Bilgi ve iletişim: 0 538 399 96 66.",
+      "title": "Kasım Umresi — Kutsal Topraklara Manevi Yolculuk",
+      "message": "13-14 Kasım 2026 (8 Gün Mekke | 2 Gün Medine) 10 günlük Kasım Umresi kafilemizde Ömer Ali Gültekin hocamızın canlı rehberlik odası (RY-KASIM) ve canlı manevi rota haritamız aktiftir. Bilgi ve iletişim: 0 538 399 96 66.",
       "sender": "Ömer Ali Gültekin",
       "createdAt": "15:00",
       "urgent": true
@@ -200,5 +200,129 @@
       "reading": "Lebbeyk Allâhümme lebbeyk. Lebbeyke lâ şerîke leke lebbeyk. İnne'l-hamde ve'n-ni'mete leke ve'l-mülk, lâ şerîke lek.",
       "meaning": "Buyur Allah'ım buyur! Emrindeyim buyur! Senin hiçbir ortağın yoktur. Şüphesiz hamd Senin, nimet Senin, mülk Senindir. Senin hiçbir ortağın yoktur."
     }
-  ]
+  ],
+  "journeySteps": {
+    "RY-KASIM": [
+      {
+        "id": "step-1",
+        "order": 1,
+        "dayLabel": "1. Gün • Başlangıç",
+        "title": "Bursa & İstanbul Buluşma — İhram ve Niyet",
+        "locationLabel": "Osmangazi / Bursa — İstanbul Havalimanı",
+        "category": "ulasim",
+        "lat": 40.1885,
+        "lng": 29.0610,
+        "distanceKm": 0,
+        "status": "completed",
+        "timestamp": "13 Kasım • 09:30",
+        "guideNote": "Kafilemizle dualar eşliğinde buluştuk, ihramlarımızı kuşandık, iki rekât ihram namazımızı eda ederek Lebbeyk sadâlarıyla kutsal topraklara doğru yola çıktık.",
+        "prayerSummary": "Allâhümme innî ürîdü’l-umrate fe-yessirhâ lî ve tekabbelhâ minnî."
+      },
+      {
+        "id": "step-2",
+        "order": 2,
+        "dayLabel": "1. Gün • Vuslat Kapısı",
+        "title": "Cidde Varış & Mikat Sınırında Telbiye",
+        "locationLabel": "Kral Abdülaziz Havalimanı — Mekke Yolu",
+        "category": "ulasim",
+        "lat": 21.6796,
+        "lng": 39.1565,
+        "distanceKm": 2380,
+        "status": "completed",
+        "timestamp": "13 Kasım • 16:45",
+        "guideNote": "Kızıldeniz semalarında Mikat sınırını Telbiye ve salavatlarla geçtik. Otobüsümüzde Mekke-i Mükerreme'ye giriş edebini ve Kâbe-i Muazzama'yı ilk gördüğümüzde yapılacak duaları paylaştık.",
+        "prayerSummary": "Lebbeyk Allâhümme lebbeyk, lebbeyke lâ şerîke leke lebbeyk..."
+      },
+      {
+        "id": "step-3",
+        "order": 3,
+        "dayLabel": "2. Gün • Şu Anki Durak",
+        "title": "Mescid-i Haram & İlk Umre Tavafı",
+        "locationLabel": "Kâbe-i Muazzama • Kral Abdülaziz Kapısı",
+        "category": "kabe",
+        "lat": 21.4225,
+        "lng": 39.8262,
+        "distanceKm": 2465,
+        "status": "active",
+        "timestamp": "Canlı Durak",
+        "guideNote": "Beytullah ile ilk kavuşma anımız. Ömer Ali Gültekin hocamızın RıdvanSes canlı yayını eşliğinde 7 şavt Umre tavafımızı, Makam-ı İbrahim namazımızı, Zemzem ikramımızı ve Safa-Merve sa'yımızı huşû ile eda ediyoruz.",
+        "prayerSummary": "Rabbenâ âtinâ fi’d-dünyâ haseneten ve fi’l-âhirati haseneten ve kınâ azâbe’n-nâr."
+      },
+      {
+        "id": "step-4",
+        "order": 4,
+        "dayLabel": "3. Gün • Siyer Ziyareti",
+        "title": "Cebel-i Sevr — Hicretin Sadakat Durağı",
+        "locationLabel": "Sevr Dağı • Mekke Güneyi",
+        "category": "siyer",
+        "lat": 21.3772,
+        "lng": 39.8499,
+        "distanceKm": 2474,
+        "status": "planned",
+        "timestamp": "Planlanan • 08:30",
+        "guideNote": "Peygamber Efendimiz ﷺ ve Hz. Ebû Bekir Sıddîk'ın (r.a.) Hicret yolculuğunda üç gece misafir olduğu Sevr Mağarası karşısında 'Üzülme, Allah bizimle beraberdir' ayetinin tefekkürü.",
+        "prayerSummary": "Lâ tahzen innallâhe meanâ. (Tevbe Sûresi, 40)"
+      },
+      {
+        "id": "step-5",
+        "order": 5,
+        "dayLabel": "3. Gün • Dua Meydanı",
+        "title": "Arafat Vakfe Meydanı, Cebel-i Rahme & Mina",
+        "locationLabel": "Cebel-i Rahme • Arafat & Müzdelife",
+        "category": "siyer",
+        "lat": 21.3549,
+        "lng": 39.9841,
+        "distanceKm": 2495,
+        "status": "planned",
+        "timestamp": "Planlanan • 10:30",
+        "guideNote": "Hz. Âdem ile Hz. Havvâ'nın buluştuğu, Efendimiz'in ﷺ Veda Hutbesi'ni irad buyurduğu Rahmet Tepesi'nde kafilemizle toplu tevbe, istiğfar ve Türkiye'deki ailelerimiz için dua vakfesi.",
+        "prayerSummary": "Lâ ilâhe illallâhu vahdehû lâ şerîke leh, lehü’l-mülkü ve lehü’l-hamdü..."
+      },
+      {
+        "id": "step-6",
+        "order": 6,
+        "dayLabel": "5. Gün • İlk Vahiy",
+        "title": "Cebel-i Nur & Hira Mağarası — İkra İklimi",
+        "locationLabel": "Nur Dağı (Hira) • Mekke Kuzeydoğusu",
+        "category": "siyer",
+        "lat": 21.4575,
+        "lng": 39.8594,
+        "distanceKm": 2518,
+        "status": "planned",
+        "timestamp": "Planlanan • 07:30",
+        "guideNote": "Kur'ân-ı Kerîm'in yeryüzüne ilk indiği Cebel-i Nur karşısında Efendimiz'in ﷺ inziva günleri, Hz. Hatice validemizin vefası ve 'İkra (Oku!)' emrinin asrımıza mesajı.",
+        "prayerSummary": "İkra’ bismi rabbike’llezî halak. (Alak Sûresi, 1)"
+      },
+      {
+        "id": "step-7",
+        "order": 7,
+        "dayLabel": "9. Gün • Peygamber Şehri",
+        "title": "Medine-i Münevvere & Ravza-i Mutahhara",
+        "locationLabel": "Mescid-i Nebevî • Yeşil Kubbe Huzuru",
+        "category": "medine",
+        "lat": 24.4672,
+        "lng": 39.6111,
+        "distanceKm": 2968,
+        "status": "planned",
+        "timestamp": "Planlanan • 14:00",
+        "guideNote": "8 günlük Mekke-i Mükerreme ikametimizin ardından Nurlu Şehir Medine-i Münevvere'ye varış, Mescid-i Nebevî'de namaz ve Sevgili Peygamberimiz'i ﷺ huzurunda salat ü selam ile selamlama.",
+        "prayerSummary": "Esselâmü aleyke yâ Resûlallâh, esselâmü aleyke yâ Habîballâh."
+      },
+      {
+        "id": "step-8",
+        "order": 8,
+        "dayLabel": "10. Gün • Veda & Şühedâ",
+        "title": "Kuba Mescidi & Uhud Şehitliği Ziyareti",
+        "locationLabel": "Uhud Dağı & Kuba Mescidi • Medine",
+        "category": "medine",
+        "lat": 24.5028,
+        "lng": 39.6118,
+        "distanceKm": 2985,
+        "status": "planned",
+        "timestamp": "Planlanan • 09:00",
+        "guideNote": "İslam tarihinde takva üzerine kurulan ilk mescid olan Kuba Mescidi'nde iki rekât namaz ve Uhud Dağı eteklerinde Hz. Hamza (r.a.) ile Uhud şehitlerinin huzurunda veda duası.",
+        "prayerSummary": "Selâmün aleyküm bimâ sabertüm fe-ni’me ukbe’d-dâr."
+      }
+    ]
+  }
 }

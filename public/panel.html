@@ -3,12 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=15" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=15" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=16" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=16" />
   <title>Acente & Kafile Yönetim Paneli | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/panel" />
-  <link rel="stylesheet" href="/css/style.css?v=15" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/css/style.css?v=16" />
   <script>
     (function() {
       const TOKEN = 'ry_auth_v1_987a6b5c4d';
@@ -29,7 +30,9 @@
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=15"></script>
+  <script src="/vercel-ws-shim.js?v=16"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/js/umrah-steps-map.js?v=16"></script>
   <style>
     .dashboard-layout {
       display: grid;
@@ -226,6 +229,10 @@
       <button class="side-btn" id="sideBtnQr" onclick="openTab('tab-qr', this)">
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h7v7h-7z"/></svg>
         Yaka Kartı QR & Davet
+      </button>
+      <button class="side-btn" id="sideBtnRoutes" onclick="openTab('tab-routes', this)">
+        <svg viewBox="0 0 24 24"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+        Manevi Rota & Adımlar
       </button>
       <button class="side-btn" onclick="openTab('tab-tours', this)">
         <svg viewBox="0 0 24 24"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/></svg>
@@ -572,6 +579,102 @@
         </div>
       </div>
 
+      <!-- TAB ROTA: POLARSTEPS MANEVİ ROTA & SİYER ADIMLARI YÖNETİMİ -->
+      <div id="tab-routes" class="tab-pane">
+        <div class="card card-luxury" style="margin-bottom:20px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+              <span class="badge badge-gold">POLARSTEPS MİMARİSİ • CANLI MANEVİ ROTA</span>
+              <h3 style="margin:6px 0 4px;">Kafile Manevi Yolculuk Haritası & Siyer Durakları Yönetimi</h3>
+              <p style="font-size:0.85rem; color:var(--color-muted); margin:0;">
+                Buradan eklediğiniz veya aktif ettiğiniz tüm duraklar; Hacı uygulamasında ve Türkiye'deki ailelerin canlı takip ekranında (<code>/rota</code>) anında güncellenir.
+              </p>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <select id="adminRouteTourSelect" class="select" style="width:auto; min-width:220px;" onchange="loadAdminRouteSteps(true)">
+                <option value="RY-KASIM">RY-KASIM — Kasım Umresi Kafilesi</option>
+              </select>
+              <a id="adminOpenRotaLink" href="/rota?code=RY-KASIM" target="_blank" class="btn btn-primary btn-sm">📍 Aile Canlı Rota</a>
+              <a id="adminOpenBookLink" href="/ani-kitabi?code=RY-KASIM" target="_blank" class="btn btn-gold btn-sm">📖 Hatıra Kitabı (A4)</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div style="display:flex; flex-direction:column; gap:20px;">
+            <div class="ps-map-shell">
+              <div id="adminRouteMap" class="ps-map-canvas" style="height:360px;"></div>
+              <div class="ps-map-controls">
+                <div class="ps-map-chip-group">
+                  <button type="button" class="ps-map-chip active" onclick="if(window.adminUmrahMap) window.adminUmrahMap.fitHolyLands()">🕋 Hicaz</button>
+                  <button type="button" class="ps-map-chip" onclick="if(window.adminUmrahMap) window.adminUmrahMap.focusMakkah()">Mekke</button>
+                  <button type="button" class="ps-map-chip" onclick="if(window.adminUmrahMap) window.adminUmrahMap.focusMadinah()">Medine</button>
+                  <button type="button" class="ps-map-chip" onclick="if(window.adminUmrahMap) window.adminUmrahMap.fitFullJourney()">✈️ Tüm Rota</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card card-luxury">
+              <h4 style="margin-bottom:12px;">+ Yeni Manevi Yolculuk / Siyer Durağı Ekle</h4>
+              <form id="adminCreateStepForm" style="display:flex; flex-direction:column; gap:10px;">
+                <div class="grid-2" style="gap:10px;">
+                  <div>
+                    <label class="label">Durak Başlığı *</label>
+                    <input type="text" name="title" class="input" placeholder="Örn: Hudeybiye Barış Mekânı" required />
+                  </div>
+                  <div>
+                    <label class="label">Gün / Aşama Etiketi</label>
+                    <input type="text" name="dayLabel" class="input" placeholder="Örn: 6. Gün • Mekke Ziyaretleri" />
+                  </div>
+                </div>
+                <div class="grid-2" style="gap:10px;">
+                  <div>
+                    <label class="label">Konum Etiketi</label>
+                    <input type="text" name="locationLabel" class="input" placeholder="Örn: Şümeysi • Mekke-i Mükerreme" />
+                  </div>
+                  <div>
+                    <label class="label">Durak Durumu</label>
+                    <select name="status" class="select">
+                      <option value="planned">Planlanan Durak</option>
+                      <option value="active">Şu An Buradayız (Aktif)</option>
+                      <option value="completed">Tamamlandı</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="grid-3" style="gap:10px;">
+                  <div>
+                    <label class="label">Enlem (Lat)</label>
+                    <input type="number" step="any" name="lat" class="input" value="21.4412" />
+                  </div>
+                  <div>
+                    <label class="label">Boylam (Lng)</label>
+                    <input type="number" step="any" name="lng" class="input" value="39.6152" />
+                  </div>
+                  <div>
+                    <label class="label">Toplam Km (Opsiyonel)</label>
+                    <input type="number" name="distanceKm" class="input" placeholder="Otomatik" />
+                  </div>
+                </div>
+                <div>
+                  <label class="label">Rehber Siyer Notu</label>
+                  <textarea name="guideNote" rows="2" class="textarea" placeholder="Misafirlerimiz ve aileleri için Siyer anlatım notu..."></textarea>
+                </div>
+                <div>
+                  <label class="label">Kısa Dua / Zikir</label>
+                  <input type="text" name="prayerSummary" class="input" placeholder="Örn: Allâhümme salli alâ seyyidinâ Muhammed..." />
+                </div>
+                <button type="submit" class="btn btn-primary">Yeni Siyer Durağını Rotaya Ekle</button>
+              </form>
+            </div>
+          </div>
+
+          <div class="card">
+            <h4 style="margin-bottom:12px;">Kronolojik Yolculuk Adımları (Steps)</h4>
+            <div id="adminRouteTimeline" class="ps-timeline"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- TAB 7: REA TEKNİK ANALİZ RAPORU -->
       <div id="tab-rea" class="tab-pane">
         <div class="card card-luxury">
@@ -601,6 +704,68 @@
       }
       if (tabId === 'tab-qr') {
         generateQrAndInvite();
+      }
+      if (tabId === 'tab-routes') {
+        loadAdminRouteSteps(true);
+        if (window.adminUmrahMap) window.adminUmrahMap.invalidateSize();
+      }
+    }
+
+    window.adminUmrahMap = null;
+    async function loadAdminRouteSteps(autoFit = false) {
+      const sel = document.getElementById('adminRouteTourSelect');
+      const code = sel && sel.value ? sel.value : 'RY-KASIM';
+      const rLink = document.getElementById('adminOpenRotaLink');
+      const bLink = document.getElementById('adminOpenBookLink');
+      if (rLink) rLink.href = `/rota?code=${encodeURIComponent(code)}`;
+      if (bLink) bLink.href = `/ani-kitabi?code=${encodeURIComponent(code)}`;
+
+      if (!window.adminUmrahMap && window.UmrahStepsMap) {
+        window.adminUmrahMap = new window.UmrahStepsMap('adminRouteMap', {
+          defaultView: 'holy-lands',
+          scrollWheelZoom: false
+        });
+      }
+
+      try {
+        const res = await fetch(`/api/trips/${encodeURIComponent(code)}/steps`);
+        const data = await res.json();
+        if (!data || !data.success) return;
+        const steps = data.steps || [];
+        if (window.adminUmrahMap) {
+          window.adminUmrahMap.setSteps(steps, { autoFit });
+        }
+        if (window.UmrahStepsMap) {
+          window.UmrahStepsMap.renderTimeline('adminRouteTimeline', steps, {
+            editable: true,
+            allowDelete: true,
+            showPrayers: true,
+            onSelect: (step) => {
+              if (window.adminUmrahMap) window.adminUmrahMap.focusStep(step.id, 14, true);
+            },
+            onAction: async (action, step, btnEl) => {
+              if (btnEl) btnEl.disabled = true;
+              try {
+                if (action === 'delete') {
+                  if (!confirm(`"${step.title}" durağını silmek istediğinize emin misiniz?`)) return;
+                  await fetch(`/api/trips/${encodeURIComponent(code)}/steps/${encodeURIComponent(step.id)}`, { method: 'DELETE' });
+                } else {
+                  const newStatus = action === 'activate' ? 'active' : 'completed';
+                  await fetch(`/api/trips/${encodeURIComponent(code)}/steps/${encodeURIComponent(step.id)}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                  });
+                }
+                await loadAdminRouteSteps(false);
+              } finally {
+                if (btnEl) btnEl.disabled = false;
+              }
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Admin rota adımları yüklenemedi:', e);
       }
     }
 
@@ -674,6 +839,13 @@
         if (appState.tours.some((t) => t.code === prev)) qrSel.value = prev;
       }
 
+      const routeSel = document.getElementById('adminRouteTourSelect');
+      if (routeSel) {
+        const prevR = routeSel.value || 'RY-KASIM';
+        routeSel.innerHTML = appState.tours.map((t) => `<option value="${t.code}">${t.code} — ${t.name}</option>`).join('');
+        if (appState.tours.some((t) => t.code === prevR)) routeSel.value = prevR;
+      }
+
       // Populate Announcement tour dropdown
       const annSel = document.getElementById('adminAnnTourSelect');
       if (annSel) {
@@ -716,6 +888,8 @@
           <td>
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
               <button type="button" class="btn btn-primary btn-sm" onclick="openQrGeneratorForTour('${t.code}')">QR & WhatsApp</button>
+              <a href="/rota?code=${t.code}" target="_blank" class="btn btn-gold btn-sm">📍 Rota</a>
+              <a href="/ani-kitabi?code=${t.code}" target="_blank" class="btn btn-outline btn-sm">📖 Kitap</a>
               <a href="/yaka-karti?code=${t.code}" target="_blank" class="btn btn-outline btn-sm">Yaka Kartı</a>
               <a href="/dinle?code=${t.code}" target="_blank" class="btn btn-outline btn-sm">Hacı</a>
               <a href="/rehber?code=${t.code}" target="_blank" class="btn btn-gold btn-sm">Yayın</a>
@@ -814,10 +988,11 @@
         const res = await fetch('/api/rea-report');
         const r = await res.json();
         if (!r.available) return;
+        const ps = r.polarsteps || null;
         document.getElementById('reaReportBox').innerHTML = `
           <div class="grid-3" style="margin-bottom:18px;">
             <div style="padding:16px; background:var(--color-ground); border-radius:14px; border:1px solid var(--color-hairline);">
-              <div style="font-size:0.74rem; color:var(--color-muted); font-weight:800;">EVIDENCE ID</div>
+              <div style="font-size:0.74rem; color:var(--color-muted); font-weight:800;">RIDVANSES EVIDENCE ID</div>
               <div style="font-family:monospace; font-size:0.82rem; word-break:break-all; margin-top:4px;">${r.evidence_id}</div>
             </div>
             <div style="padding:16px; background:var(--color-ground); border-radius:14px; border:1px solid var(--color-hairline);">
@@ -825,16 +1000,30 @@
               <div style="font-size:1.3rem; font-weight:800; color:var(--color-emerald-deep); margin-top:4px;">${r.totalNodes} Düğüm / ${r.totalEdges} Kenar</div>
             </div>
             <div style="padding:16px; background:var(--color-ground); border-radius:14px; border:1px solid var(--color-hairline);">
-              <div style="font-size:0.74rem; color:var(--color-muted); font-weight:800;">TESPİT EDİLEN API & STORAGE</div>
-              <div style="font-size:0.85rem; font-weight:700; margin-top:4px;">3 REST Endpoint • 2 LocalStorage Anahtarı</div>
+              <div style="font-size:0.74rem; color:var(--color-muted); font-weight:800;">POLARSTEPS ENTEGRASYON GRAFİĞİ</div>
+              <div style="font-size:1.22rem; font-weight:800; color:var(--color-gold); margin-top:4px;">${ps ? `${ps.totalNodes} Düğüm / ${ps.totalEdges} Kenar` : 'Aktif'}</div>
             </div>
           </div>
+          ${ps ? `
+          <div style="font-size:0.9rem; background:linear-gradient(180deg,#fffdf8 0%,#f9f2e2 100%); padding:18px; border-radius:14px; border:1px solid var(--color-gold); margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+              <strong style="color:var(--color-emerald-night);">🧭 Polarsteps (morluto/rea) Tersine Mühendislik & RıdvanSes Entegrasyon Özeti</strong>
+              <span class="badge badge-gold">${ps.apiEndpointCount} API • ${ps.reduxModelCount} Redux Model</span>
+            </div>
+            <div style="font-family:monospace; font-size:0.78rem; color:var(--color-muted); word-break:break-all; margin-bottom:8px;">
+              Core SPA Evidence: ${ps.coreEvidenceId} (${(ps.coreBundleBytes / (1024 * 1024)).toFixed(2)} MB • ${ps.astNodes.toLocaleString('tr-TR')} AST Düğümü)
+            </div>
+            <ul style="padding-left:20px; display:flex; flex-direction:column; gap:5px;">
+              ${(ps.integratedModules || []).map((m) => `<li>${m}</li>`).join('')}
+            </ul>
+          </div>
+          ` : ''}
           <div style="font-size:0.9rem; background:var(--color-ground); padding:18px; border-radius:14px; border:1px solid var(--color-hairline);">
-            <strong>Tersine Mühendislik & Mimari Bulguları:</strong>
+            <strong>Temel Mimari Bulguları:</strong>
             <ul style="margin-top:8px; padding-left:20px; display:flex; flex-direction:column; gap:6px;">
-              <li><strong>Tespit Edilen API Uç Noktaları:</strong> <code>POST /api/login</code>, <code>POST /api/forgot-password</code>, <code>POST /api/demo-request</code> (Tümü RıdvanSes sunucusunda birebir uyumlu olarak gerçeklendi).</li>
-              <li><strong>İstemci Depolama (Storage):</strong> <code>localStorage.token</code> ve <code>localStorage.user</code>.</li>
-              <li><strong>Önyüz Mimari Yapısı:</strong> Harem Zümrüdü & Kâbe Altını Kurumsal Tasarım Sistemi (<code>--color-emerald-deep: #0B4636</code>, <code>--color-gold: #C5A059</code>) + Çift Omurgalı WebRTC & PCM16 Ses Motoru.</li>
+              <li><strong>Tespit Edilen API Uç Noktaları:</strong> <code>POST /api/login</code>, <code>POST /api/forgot-password</code>, <code>POST /api/demo-request</code>, <code>GET/POST/PATCH/DELETE /api/trips/:code/steps</code>.</li>
+              <li><strong>İstemci Depolama (Storage):</strong> <code>localStorage.ry_auth_token</code> ve <code>localStorage.ridvanses_pilgrim_name</code>.</li>
+              <li><strong>Önyüz Mimari Yapısı:</strong> Harem Zümrüdü & Kâbe Altını Kurumsal Tasarım Sistemi (<code>--color-emerald-deep: #0B4636</code>, <code>--color-gold: #C5A059</code>) + Çift Omurgalı WebRTC & PCM16 Ses Motoru + Leaflet Canlı Rota Motoru.</li>
             </ul>
           </div>
         `;
@@ -872,6 +1061,12 @@
             appState.announcements.unshift(msg.announcement);
             renderAll();
           }
+          if (msg.type === 'steps-updated') {
+            const routesPane = document.getElementById('tab-routes');
+            if (routesPane && routesPane.classList.contains('active')) {
+              loadAdminRouteSteps(false);
+            }
+          }
         } catch (e) {}
       };
       adminWs.onclose = () => {
@@ -880,6 +1075,20 @@
       adminWs.onerror = () => {};
     }
     connectAdminWs();
+
+    document.getElementById('adminCreateStepForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const sel = document.getElementById('adminRouteTourSelect');
+      const code = sel && sel.value ? sel.value : 'RY-KASIM';
+      const payload = Object.fromEntries(new FormData(e.target).entries());
+      await fetch(`/api/trips/${encodeURIComponent(code)}/steps`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      e.target.reset();
+      loadAdminRouteSteps(false);
+    });
 
     // Forms
     document.getElementById('createTourForm').addEventListener('submit', async (e) => {

@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dijital Umre Hatıra Kitabı &amp; Ziyaret Beratı — Rıdvan Yılmaz Turizm</title>
+  <meta name="description" content="Rıdvan Yılmaz Turizm Umre ve Siyer yolculuğunuzun baskıya hazır A4 manevi hatıra kitapçığı ve imzalı Umre Ziyaret Beratı." />
+  <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
+  <link rel="stylesheet" href="/css/style.css?v=16" />
+  <style>
+    body {
+      background: #e9e2d5;
+    }
+
+    .book-toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(6, 35, 27, 0.96);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(197, 160, 89, 0.4);
+      padding: 12px 0;
+      color: #ffffff;
+    }
+
+    .book-toolbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .book-stage {
+      max-width: 860px;
+      margin: 28px auto 64px;
+      padding: 0 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    .book-page {
+      background: #fffdf9;
+      border-radius: 16px;
+      padding: 44px 48px;
+      box-shadow: 0 24px 60px rgba(6, 35, 27, 0.16);
+      border: 1px solid rgba(197, 160, 89, 0.45);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .book-cover {
+      background:
+        radial-gradient(circle at 50% 18%, rgba(224, 190, 119, 0.22), transparent 55%),
+        linear-gradient(160deg, #06231b 0%, #0b4636 60%, #072d22 100%);
+      color: #ffffff;
+      text-align: center;
+      min-height: 760px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border: 2px solid #c5a059;
+    }
+
+    .ornate-inner-frame {
+      border: 1.5px solid rgba(224, 190, 119, 0.55);
+      border-radius: 12px;
+      padding: 36px 28px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    .arabic-bismillah {
+      font-family: var(--font-arabic);
+      font-size: 2rem;
+      color: var(--color-gold-bright);
+      letter-spacing: 0.02em;
+      margin-bottom: 8px;
+    }
+
+    .cover-pilgrim-box {
+      margin: 26px auto;
+      padding: 18px 28px;
+      border-top: 1px solid rgba(224, 190, 119, 0.45);
+      border-bottom: 1px solid rgba(224, 190, 119, 0.45);
+      max-width: 520px;
+    }
+
+    .journal-step-row {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 14px;
+      padding: 14px 0;
+      border-bottom: 1px dashed var(--color-hairline);
+      align-items: start;
+    }
+
+    .journal-step-row:last-child {
+      border-bottom: none;
+    }
+
+    .journal-num {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: var(--color-emerald-deep);
+      color: var(--color-gold-bright);
+      font-weight: 800;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid var(--color-gold);
+    }
+
+    .certificate-frame {
+      border: 3px double var(--color-gold);
+      border-radius: 14px;
+      padding: 36px 32px;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(197, 160, 89, 0.14), transparent 60%),
+        #fffdf8;
+      text-align: center;
+    }
+
+    .sig-grid {
+      display: grid;
+      grid-template-columns: 1fr 140px 1fr;
+      gap: 18px;
+      align-items: center;
+      margin-top: 32px;
+      padding-top: 20px;
+      border-top: 1px solid var(--color-hairline);
+    }
+
+    @media (max-width: 680px) {
+      .book-page {
+        padding: 24px 20px;
+      }
+      .ornate-inner-frame {
+        padding: 22px 16px;
+      }
+      .sig-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 10mm;
+      }
+      body {
+        background: #ffffff !important;
+      }
+      .book-toolbar {
+        display: none !important;
+      }
+      .book-stage {
+        margin: 0 !important;
+        padding: 0 !important;
+        max-width: 100% !important;
+        gap: 0 !important;
+      }
+      .book-page {
+        box-shadow: none !important;
+        border-radius: 8px !important;
+        page-break-after: always;
+        break-after: page;
+        margin-bottom: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .book-page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Kişiselleştirme ve A4 PDF Yazdırma Çubuğu -->
+  <div class="book-toolbar">
+    <div class="container book-toolbar-inner">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <a id="backToRouteBtn" href="/rota?code=RY-KASIM" class="btn btn-outline btn-sm" style="background:rgba(255,255,255,0.1);color:#fff;border-color:rgba(255,255,255,0.25);">
+          ← Canlı Rotaya Dön
+        </a>
+        <span style="font-weight:800;font-size:0.9rem;color:var(--color-gold-bright);">📖 Polarsteps Travel Book • Umre Hatıra Kitabı</span>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <input
+          id="pilgrimNameInput"
+          type="text"
+          placeholder="Misafir Adı Soyadı Yazınız..."
+          style="padding:8px 12px;border-radius:9px;border:1px solid rgba(224,190,119,0.5);background:#fff;color:#06231b;font-weight:700;font-size:0.84rem;min-width:220px;"
+        />
+        <button id="shareBookBtn" type="button" class="btn btn-secondary btn-sm">📲 WhatsApp Paylaş</button>
+        <button id="printBookBtn" type="button" class="btn btn-gold btn-sm">🖨️ A4 PDF İndir / Yazdır</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="book-stage">
+    <!-- SAYFA 1: LÜKS KAPAK SAYFASI -->
+    <section class="book-page book-cover">
+      <div class="ornate-inner-frame">
+        <div>
+          <div class="arabic-bismillah">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>
+          <div style="font-size:0.76rem;letter-spacing:0.18em;text-transform:uppercase;color:rgba(255,255,255,0.75);font-weight:700;">
+            Rıdvan Yılmaz Turizm • Hac &amp; Umre Organizasyonu
+          </div>
+        </div>
+
+        <div>
+          <img src="/logo.png" alt="Rıdvan Yılmaz Turizm" style="height:68px;background:#fff;padding:6px 12px;border-radius:12px;margin:0 auto 20px;box-shadow:0 8px 24px rgba(0,0,0,0.28);" />
+          <div style="font-size:0.82rem;font-weight:800;color:var(--color-gold-bright);text-transform:uppercase;letter-spacing:0.14em;margin-bottom:8px;">
+            MANEVİ YOLCULUK HATIRA KİTAPÇIĞI
+          </div>
+          <h1 id="coverTourName" class="serif-accent" style="font-size:clamp(2rem, 4vw, 2.85rem);color:#ffffff;line-height:1.15;">
+            Kasım Umresi Kafilesi
+          </h1>
+          <p id="coverSubtitle" style="color:rgba(255,255,255,0.84);font-size:0.98rem;max-width:520px;margin:10px auto 0;">
+            Kâbe’nin Huzuru &amp; Peygamber Efendimizin ﷺ İzinde Siyer-i Nebi Yolculuğu
+          </p>
+
+          <div class="cover-pilgrim-box">
+            <div style="font-size:0.74rem;text-transform:uppercase;letter-spacing:0.12em;color:var(--color-gold-bright);font-weight:700;">
+              Bu Manevi Hatıra Nüshası
+            </div>
+            <div id="coverPilgrimName" class="serif-accent" style="font-size:1.85rem;color:#ffffff;margin-top:4px;">
+              Muhterem Umre Misafirimiz
+            </div>
+            <div style="font-size:0.8rem;color:rgba(255,255,255,0.78);margin-top:4px;">
+              Adına Özel Olarak Hazırlanmıştır
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;background:rgba(255,255,255,0.07);border:1px solid rgba(224,190,119,0.3);border-radius:12px;padding:14px;">
+            <div>
+              <div id="coverKm" style="font-size:1.25rem;font-weight:800;color:var(--color-gold-bright);">2.990 km</div>
+              <div style="font-size:0.68rem;text-transform:uppercase;color:rgba(255,255,255,0.75);">Manevi Rota Mesafesi</div>
+            </div>
+            <div>
+              <div id="coverStepsCount" style="font-size:1.25rem;font-weight:800;color:var(--color-gold-bright);">8 Durak</div>
+              <div style="font-size:0.68rem;text-transform:uppercase;color:rgba(255,255,255,0.75);">Mübarek Ziyaretgah</div>
+            </div>
+            <div>
+              <div id="coverDuration" style="font-size:1.25rem;font-weight:800;color:var(--color-gold-bright);">10 Gün</div>
+              <div style="font-size:0.68rem;text-transform:uppercase;color:rgba(255,255,255,0.75);">8 Mekke + 2 Medine</div>
+            </div>
+          </div>
+          <div id="coverFooterMeta" style="font-size:0.78rem;color:rgba(255,255,255,0.76);margin-top:16px;">
+            Kafile İrşad Rehberi: Ömer Ali Gültekin • Osmangazi / Bursa
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SAYFA 2: ADIM ADIM SİYER VE ZİYARET GÜNLÜĞÜ -->
+    <section class="book-page">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--color-gold);padding-bottom:14px;margin-bottom:20px;">
+        <div>
+          <div style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:var(--color-emerald-deep);">
+            Bölüm I • Adım Adım Kutsal Topraklar Rotası
+          </div>
+          <h2 style="font-size:1.45rem;color:var(--color-emerald-night);">
+            Manevi Yolculuk &amp; Siyer-i Nebi Günlüğü
+          </h2>
+        </div>
+        <div id="page2CodeBadge" class="badge badge-gold">RY-KASIM</div>
+      </div>
+
+      <div id="journalStepsContainer">
+        <div style="padding:24px;text-align:center;color:var(--color-muted);">Yolculuk durakları hazırlanıyor...</div>
+      </div>
+
+      <!-- Kişisel Tefekkür & Dua Notu Alanı -->
+      <div style="margin-top:24px;padding:18px 20px;border-radius:12px;background:var(--color-ground);border:1px solid var(--color-gold-border);">
+        <div style="font-size:0.78rem;font-weight:800;color:var(--color-emerald-deep);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">
+          ✍️ Kâbe-i Muazzama ve Ravza-i Mutahhara’daki Özel Dua &amp; Hatıra Notlarım
+        </div>
+        <div style="border-bottom:1px dotted #c5b99e;height:26px;"></div>
+        <div style="border-bottom:1px dotted #c5b99e;height:26px;"></div>
+        <div style="border-bottom:1px dotted #c5b99e;height:26px;"></div>
+      </div>
+    </section>
+
+    <!-- SAYFA 3: UMRE ZİYARET HATIRA BERATI (SERTİFİKA) -->
+    <section class="book-page">
+      <div class="certificate-frame">
+        <div class="arabic-bismillah" style="color:var(--color-emerald-deep);font-size:1.75rem;">
+          وَأَتِمُّوا الْحَجَّ وَالْعُمْرَةَ لِلَّهِ
+        </div>
+        <div style="font-size:0.75rem;color:var(--color-muted);font-style:italic;margin-bottom:16px;">
+          “Haccı da Umreyi de Allah rızası için tamamlayın.” (Bakara Sûresi, 196)
+        </div>
+
+        <div style="font-size:0.78rem;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-gold);">
+          RIDVAN YILMAZ TURİZM • RESMÎ HATIRA BERATI
+        </div>
+        <h2 class="serif-accent" style="font-size:2.15rem;color:var(--color-emerald-night);margin:6px 0 18px;">
+          Umre &amp; Siyer-i Nebi Ziyaret Beratı
+        </h2>
+
+        <p style="font-size:0.95rem;color:var(--color-ink);max-width:600px;margin:0 auto;line-height:1.75;">
+          Rıdvan Yılmaz Turizm organizasyonu ve <strong id="certGuideInline">Ömer Ali Gültekin</strong> Hocamızın irşad rehberliğinde icra edilen
+          <strong id="certTourInline">Kasım Umresi Kafilesi</strong> kapsamında; Mekke-i Mükerreme’de Beytullah tavafını, sa’y ibadetini ve mübarek Siyer mekanlarını;
+          Medine-i Münevvere’de ise Mescid-i Nebevî ve Ravza-i Mutahhara ziyaretlerini huşû ile tamamlayan
+        </p>
+
+        <div style="margin:22px auto;padding:12px 24px;display:inline-block;border-bottom:2px solid var(--color-gold);min-width:300px;">
+          <span id="certPilgrimName" class="serif-accent" style="font-size:2rem;color:var(--color-emerald-deep);">
+            Muhterem Umre Misafirimiz
+          </span>
+        </div>
+
+        <p style="font-size:0.92rem;color:var(--color-ink);max-width:580px;margin:0 auto;line-height:1.7;">
+          kardeşimizin makbul bir Umre, mebrûr bir ibadet ve Peygamber Efendimiz’in ﷺ şefaatine nail olması niyazıyla işbu Manevi Hatıra Beratı takdim edilmiştir.
+        </p>
+
+        <div class="sig-grid">
+          <div>
+            <div style="font-family:var(--font-display);font-size:1.25rem;color:var(--color-emerald-deep);font-style:italic;" id="sigGuideName">
+              Ömer Ali Gültekin
+            </div>
+            <div style="height:1px;background:var(--color-hairline);margin:6px auto;max-width:190px;"></div>
+            <div style="font-size:0.75rem;font-weight:800;color:var(--color-muted);text-transform:uppercase;">
+              Kafile İrşad Rehberi
+            </div>
+          </div>
+
+          <div style="text-align:center;">
+            <img id="certQrImg" src="" alt="Dijital Rota QR" style="width:96px;height:96px;border-radius:10px;border:1px solid var(--color-gold);padding:4px;background:#fff;margin:0 auto;display:none;" />
+            <div style="font-size:0.66rem;font-weight:700;color:var(--color-muted);margin-top:4px;">Dijital Rota Hafızası</div>
+          </div>
+
+          <div>
+            <div style="font-family:var(--font-display);font-size:1.25rem;color:var(--color-emerald-deep);font-style:italic;">
+              Rıdvan Yılmaz Turizm
+            </div>
+            <div style="height:1px;background:var(--color-hairline);margin:6px auto;max-width:190px;"></div>
+            <div style="font-size:0.75rem;font-weight:800;color:var(--color-muted);text-transform:uppercase;">
+              Yönetim Kurulu • Bursa
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const code = (params.get('code') || 'RY-KASIM').toUpperCase().trim();
+      const initialName = (params.get('name') || localStorage.getItem('ridvanses_pilgrim_name') || '').trim();
+
+      const nameInput = document.getElementById('pilgrimNameInput');
+      nameInput.value = initialName;
+      document.getElementById('backToRouteBtn').href = `/rota?code=${encodeURIComponent(code)}`;
+      document.getElementById('page2CodeBadge').textContent = code;
+
+      function applyPilgrimName(rawName) {
+        const clean = String(rawName || '').trim() || 'Muhterem Umre Misafirimiz';
+        document.getElementById('coverPilgrimName').textContent = clean;
+        document.getElementById('certPilgrimName').textContent = clean;
+      }
+
+      applyPilgrimName(initialName);
+
+      nameInput.addEventListener('input', () => {
+        const val = nameInput.value;
+        applyPilgrimName(val);
+        const url = new URL(window.location.href);
+        if (val.trim()) url.searchParams.set('name', val.trim());
+        else url.searchParams.delete('name');
+        window.history.replaceState({}, '', url.toString());
+      });
+
+      document.getElementById('printBookBtn').addEventListener('click', () => {
+        window.print();
+      });
+
+      document.getElementById('shareBookBtn').addEventListener('click', () => {
+        const url = window.location.href;
+        const pName = nameInput.value.trim() || 'Umre Hatıra Kitapçığımız';
+        const text =
+          `📖 *Rıdvan Yılmaz Turizm — Dijital Umre Hatıra Kitabı & Ziyaret Beratı*\n\n` +
+          `${pName} için hazırlanan adım adım Kutsal Topraklar Siyer Günlüğü ve Hatıra Beratını görüntülemek için:\n${url}`;
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+      });
+
+      async function loadBookData() {
+        try {
+          const res = await fetch(`/api/trips/${encodeURIComponent(code)}/steps`);
+          const data = await res.json();
+          if (data && data.success) {
+            const tour = data.tour || {};
+            const steps = Array.isArray(data.steps) ? data.steps : [];
+            const stats = data.stats || {};
+
+            document.getElementById('coverTourName').textContent = tour.name || 'Kasım Umresi Kafilesi';
+            document.getElementById('certTourInline').textContent = tour.name || 'Kasım Umresi Kafilesi';
+            document.getElementById('certGuideInline').textContent = tour.guideName || 'Ömer Ali Gültekin';
+            document.getElementById('sigGuideName').textContent = tour.guideName || 'Ömer Ali Gültekin';
+            document.getElementById('coverFooterMeta').textContent =
+              `Kafile İrşad Rehberi: ${tour.guideName || 'Ömer Ali Gültekin'} • ${tour.dateText || 'Kasım 2026'}`;
+
+            document.getElementById('coverKm').textContent =
+              `${Number(stats.totalPlannedKm || stats.currentDistanceKm || 2990).toLocaleString('tr-TR')} km`;
+            document.getElementById('coverStepsCount').textContent = `${steps.length} Durak`;
+            document.getElementById('coverDuration').textContent = String(tour.duration || '10 Gün').split('(')[0].trim();
+
+            const container = document.getElementById('journalStepsContainer');
+            container.innerHTML = steps
+              .map(
+                (s, idx) => `
+                <div class="journal-step-row">
+                  <div class="journal-num">${s.order || idx + 1}</div>
+                  <div>
+                    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                      <span style="font-size:0.73rem;font-weight:800;color:var(--color-emerald-deep);text-transform:uppercase;">${s.dayLabel || ''}</span>
+                      <span style="font-size:0.73rem;color:var(--color-muted);font-weight:700;">📍 ${s.locationLabel || ''} (${Number(s.distanceKm) || 0} km)</span>
+                    </div>
+                    <div style="font-size:1rem;font-weight:800;color:var(--color-emerald-night);margin-top:2px;">${s.title}</div>
+                    ${s.guideNote ? `<div style="font-size:0.84rem;color:var(--color-ink);margin-top:4px;line-height:1.5;">${s.guideNote}</div>` : ''}
+                    ${s.prayerSummary ? `<div style="font-size:0.79rem;font-style:italic;color:var(--color-emerald-deep);margin-top:5px;">🤲 “${s.prayerSummary}”</div>` : ''}
+                  </div>
+                </div>
+              `
+              )
+              .join('');
+          }
+
+          const qrRes = await fetch(`/api/qr?code=${encodeURIComponent(code)}`);
+          const qrJson = await qrRes.json();
+          if (qrJson && qrJson.dataUrl) {
+            const img = document.getElementById('certQrImg');
+            img.src = qrJson.dataUrl;
+            img.style.display = 'block';
+          }
+        } catch (e) {
+          console.warn('Hatıra kitabı yüklenemedi:', e);
+        }
+      }
+
+      loadBookData();
+    })();
+  </script>
+</body>
+</html>
