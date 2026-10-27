@@ -1275,7 +1275,6 @@
         btn.className = 'btn btn-gold';
         if (orb) orb.classList.remove('playing');
         if (webrtcEl) webrtcEl.muted = true;
-        if (window.speechSynthesis) window.speechSynthesis.cancel();
         stopBackgroundKeepAliveAudio();
       }
     }
@@ -1784,53 +1783,13 @@
       container.prepend(div);
     }
 
-    let activeSpeechIdx = -1;
-
-    function speakPrayer(idx, btnEl) {
-      const list = window._loadedPrayers || [];
-      const item = list[idx];
-      if (!item) return;
-      if (!('speechSynthesis' in window)) {
-        showAppToast('Cihazınızın tarayıcısı yerleşik sesli okumayı desteklemiyor.', 3500);
-        return;
-      }
-      if (window.speechSynthesis.speaking && activeSpeechIdx === idx) {
-        window.speechSynthesis.cancel();
-        activeSpeechIdx = -1;
-        document.querySelectorAll('.prayer-tts-btn').forEach((b) => {
-          b.textContent = '🔊 Sesli Oku';
-        });
-        return;
-      }
-      window.speechSynthesis.cancel();
-      document.querySelectorAll('.prayer-tts-btn').forEach((b) => {
-        b.textContent = '🔊 Sesli Oku';
-      });
-      activeSpeechIdx = idx;
-      if (btnEl) btnEl.textContent = '⏹️ Durdur';
-
-      const utter = new SpeechSynthesisUtterance(`${item.reading}. Anlamı: ${item.meaning}`);
-      utter.lang = 'tr-TR';
-      utter.rate = 0.92;
-      utter.onend = () => {
-        activeSpeechIdx = -1;
-        if (btnEl) btnEl.textContent = '🔊 Sesli Oku';
-      };
-      utter.onerror = () => {
-        activeSpeechIdx = -1;
-        if (btnEl) btnEl.textContent = '🔊 Sesli Oku';
-      };
-      window.speechSynthesis.speak(utter);
-    }
-
     function renderPrayers(points) {
       window._loadedPrayers = Array.isArray(points) ? points : [];
       const container = document.getElementById('prayersList');
-      container.innerHTML = window._loadedPrayers.map((p, idx) => `
+      container.innerHTML = window._loadedPrayers.map((p) => `
         <div class="prayer-card">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
             <strong style="font-size:0.96rem; color:var(--color-emerald-night);">${p.title}</strong>
-            <button type="button" class="btn btn-outline btn-sm prayer-tts-btn" style="padding:5px 10px; font-size:0.74rem; flex-shrink:0;" onclick="speakPrayer(${idx}, this)">🔊 Sesli Oku</button>
           </div>
           <div class="arabic-text">${p.arabic}</div>
           <div style="font-size:0.85rem; font-weight:600; color:var(--color-emerald-deep); margin-bottom:6px;"><em>${p.reading}</em></div>
@@ -1858,7 +1817,6 @@
       handRaised = false;
       const micBanner = document.getElementById('micGrantedBanner');
       if (micBanner) micBanner.style.display = 'none';
-      if (window.speechSynthesis) window.speechSynthesis.cancel();
       isAudioListening = false;
       const btn = document.getElementById('toggleAudioBtn');
       const orb = document.getElementById('playerOrb');
