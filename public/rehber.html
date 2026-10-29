@@ -926,6 +926,11 @@
 
       // Mikrofon yayını açık olduğu sürece HİÇBİR paketi düşürme (kesintisiz 7/24 radyo akışı)
       if (ws && ws.readyState === WebSocket.OPEN) {
+        // Eğer soket tamponunda (ws.bufferedAmount) 32KB'dan fazla veri birikmişse (mobil şebeke duraksaması)
+        // eski paketi at; hoca her zaman "şimdi"yi konuşsun ve gecikme birikmesin!
+        if (ws.bufferedAmount && ws.bufferedAmount > 32768) {
+          return;
+        }
         const pcm16 = floatTo16BitBase64(downsampled);
         ws.send(JSON.stringify({
           type: 'audio-chunk',
@@ -1103,6 +1108,14 @@
     let nextPilgrimAudioTime = 0;
     let prevPilgrimEndSample = 0;
     let pilgrimGainNode = null;
+    const activePilgrimSources = [];
+
+    function stopAllActivePilgrimSources() {
+      while (activePilgrimSources.length > 0) {
+        const s = activePilgrimSources.shift();
+        try { s.stop(); s.disconnect(); } catch {}
+      }
+    }
 
     function playIncomingPilgrimAudio(samplesOrB64, sampleRate = 16000, isBase64 = false) {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -1134,10 +1147,18 @@
         if (!floatArr.length) return;
 
         const now = audioCtx.currentTime;
-        const isUnderrun = nextPilgrimAudioTime < now;
+        const lead = nextPilgrimAudioTime - now;
+
+        // Sert Gecikme Sıfırlama: 350ms'yi geçerse eskiyi temizle, canlıya atla
+        if (lead > 0.35) {
+          stopAllActivePilgrimSources();
+          nextPilgrimAudioTime = now + 0.05;
+        } else if (lead < 0) {
+          nextPilgrimAudioTime = now + 0.05;
+        }
 
         // De-clicking ve ardışık paketler arasında sınır yumuşatma (Kesik ses & çıtırtı önleyici)
-        if (isUnderrun) {
+        if (nextPilgrimAudioTime <= now + 0.06) {
           const fadeLen = Math.min(24, floatArr.length);
           for (let i = 0; i < fadeLen; i++) {
             floatArr[i] *= i / fadeLen;
@@ -1152,17 +1173,26 @@
         buf.copyToChannel(floatArr, 0);
         const src = audioCtx.createBufferSource();
         src.buffer = buf;
+
+        // Akıllı Catch-Up (120ms - 350ms arası %6 hızlanarak gecikmeyi erit)
+        const currentLead = nextPilgrimAudioTime - now;
+        let rate = 1.0;
+        if (currentLead > 0.12) {
+          rate = 1.06;
+        }
+        src.playbackRate.value = rate;
         src.connect(pilgrimGainNode);
 
-        // 120ms Mobil Jitter Tamponu: 85ms'lik paketlerin kusursuz uç uca eklenmesi ve akıcı telsiz sesi
-        if (isUnderrun) {
-          nextPilgrimAudioTime = now + 0.12;
-        } else if (nextPilgrimAudioTime - now > 0.85) {
-          nextPilgrimAudioTime = now + 0.14;
-        }
+        activePilgrimSources.push(src);
+        src.onended = () => {
+          const idx = activePilgrimSources.indexOf(src);
+          if (idx !== -1) activePilgrimSources.splice(idx, 1);
+          try { src.disconnect(); } catch {}
+        };
 
         src.start(nextPilgrimAudioTime);
-        nextPilgrimAudioTime += buf.duration;
+        const duration = buf.duration / rate;
+        nextPilgrimAudioTime += duration;
       } catch (e) {}
     }
 

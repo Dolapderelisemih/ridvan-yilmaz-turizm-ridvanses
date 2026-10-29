@@ -1276,6 +1276,7 @@
         if (orb) orb.classList.remove('playing');
         if (webrtcEl) webrtcEl.muted = true;
         stopBackgroundKeepAliveAudio();
+        stopAllActiveSources();
       }
     }
 
@@ -1288,6 +1289,17 @@
     let nextAudioTime = 0;
     let prevEndSample = 0;
     let lastPacketReceivedAt = 0;
+    const activeScheduledSources = [];
+
+    function stopAllActiveSources() {
+      while (activeScheduledSources.length > 0) {
+        const src = activeScheduledSources.shift();
+        try {
+          src.stop();
+          src.disconnect();
+        } catch {}
+      }
+    }
 
     function playPcmSamples(samplesOrB64, sampleRate = 16000, isBase64 = false) {
       ensureAudioContext();
@@ -1312,9 +1324,20 @@
 
         lastPacketReceivedAt = Date.now();
         const now = audioCtx.currentTime;
-        const isUnderrun = nextAudioTime < now;
+        const lead = nextAudioTime - now;
 
-        if (isUnderrun) {
+        // 1. Sert Gecikme Sıfırlama: Tampon 350ms'den fazla şişmişse (mobil dalgalanma/duraksama sonrası)
+        // eski kuyruğu durdur ve anında canlı zamana (now + 50ms) sıçra. Seslerin üst üste binmesini önler.
+        if (lead > 0.35) {
+          stopAllActiveSources();
+          nextAudioTime = now + 0.05;
+        } else if (lead < 0) {
+          // Boşluk (underrun) sonrası ultra düşük 50ms hedef tampon
+          nextAudioTime = now + 0.05;
+        }
+
+        // De-clicking ve geçiş yumuşatma
+        if (nextAudioTime <= now + 0.06) {
           const fadeLen = Math.min(24, floatArr.length);
           for (let i = 0; i < fadeLen; i++) {
             floatArr[i] *= i / fadeLen;
@@ -1329,16 +1352,27 @@
         buffer.copyToChannel(floatArr, 0);
         const source = audioCtx.createBufferSource();
         source.buffer = buffer;
+
+        // 2. Akıllı Catch-Up (Gecikme Yakalama):
+        // Tampon 120ms ile 350ms arasındaysa kulak fark etmeden %6 hızlandırarak canlı yayına yetiş
+        const currentLead = nextAudioTime - now;
+        let rate = 1.0;
+        if (currentLead > 0.12) {
+          rate = 1.06;
+        }
+        source.playbackRate.value = rate;
         source.connect(gainNode);
 
-        if (isUnderrun) {
-          nextAudioTime = now + 0.12;
-        } else if (nextAudioTime - now > 0.85) {
-          nextAudioTime = now + 0.14;
-        }
+        activeScheduledSources.push(source);
+        source.onended = () => {
+          const idx = activeScheduledSources.indexOf(source);
+          if (idx !== -1) activeScheduledSources.splice(idx, 1);
+          try { source.disconnect(); } catch {}
+        };
 
         source.start(nextAudioTime);
-        nextAudioTime += buffer.duration;
+        const duration = buffer.duration / rate;
+        nextAudioTime += duration;
       } catch (e) {}
     }
 
@@ -1453,6 +1487,7 @@
 
     function handlePilgrimMicFloatChunk(input) {
       if (!micGranted || !ws || ws.readyState !== WebSocket.OPEN || !audioCtx) return;
+      if (ws.bufferedAmount && ws.bufferedAmount > 32768) return; // Ağ yavaşlarsa eski mikrofon paketini at
       const step = 3;
       const outLen = Math.floor(input.length / step);
       const downsampled = new Float32Array(outLen);

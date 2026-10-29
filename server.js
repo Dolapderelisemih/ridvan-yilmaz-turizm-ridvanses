@@ -258,9 +258,15 @@ function serializeRoom(room) {
 }
 
 function broadcastToRoom(room, payload, excludeWs = null) {
+  const isAudio = payload && payload.type === 'audio-chunk';
   const data = JSON.stringify(payload);
   for (const client of room.clients.values()) {
     if (client.ws !== excludeWs && client.ws.readyState === WebSocket.OPEN) {
+      // Dinleyicinin soketinde aşırı veri birikmişse (şebeke takılması), eski sesleri kuyruğa yığma.
+      // Hat açıldığında dinleyici doğrudan en güncel canlı sese bağlansın.
+      if (isAudio && client.ws.bufferedAmount && client.ws.bufferedAmount > 49152) {
+        continue;
+      }
       client.ws.send(data);
     }
   }
