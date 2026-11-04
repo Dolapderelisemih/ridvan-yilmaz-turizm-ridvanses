@@ -209,22 +209,41 @@ function getOrCreateRoom(tourCode, roomId = 'genel') {
 getOrCreateRoom('RY-KASIM', 'genel');
 getOrCreateRoom('RY-KASIM', 'siyer');
 
+function getTourRooms(tourCode) {
+  const code = String(tourCode || 'RY-KASIM').toUpperCase().trim();
+  const list = [];
+  for (const r of liveRooms.values()) {
+    if (r.tourCode === code) list.push(r);
+  }
+  return list;
+}
+
 function serializeRoom(room) {
   const pilgrims = [];
   const guides = [];
-  for (const c of room.clients.values()) {
-    const item = {
-      id: c.id,
-      name: c.name,
-      phone: c.phone || '',
-      role: c.role,
-      lang: c.lang || 'tr',
-      handRaised: Boolean(c.handRaised),
-      micGranted: Boolean(c.micGranted),
-      joinedAt: c.joinedAt
-    };
-    if (c.role === 'guide') guides.push(item);
-    else if (c.role === 'pilgrim') pilgrims.push(item);
+  const seenIds = new Set();
+
+  // Aynı kafiledeki (ör. RY-KASIM:genel ve RY-KASIM:siyer) tüm bağlı hacıları tek listede birleştir
+  // ki Siyer odasını seçen hacı da rehberin ekranında görünsün, el kaldırabilsin ve söz alabilsin.
+  const tourRooms = room.roomId === 'genel' ? getTourRooms(room.tourCode) : [room];
+  for (const r of tourRooms) {
+    for (const c of r.clients.values()) {
+      if (seenIds.has(c.id)) continue;
+      seenIds.add(c.id);
+      const item = {
+        id: c.id,
+        name: c.name,
+        phone: c.phone || '',
+        role: c.role,
+        roomId: r.roomId,
+        lang: c.lang || 'tr',
+        handRaised: Boolean(c.handRaised),
+        micGranted: Boolean(c.micGranted),
+        joinedAt: c.joinedAt
+      };
+      if (c.role === 'guide') guides.push(item);
+      else if (c.role === 'pilgrim') pilgrims.push(item);
+    }
   }
 
   // Simulated baseline pilgrims for demo realism alongside real connected tabs
@@ -263,8 +282,8 @@ function broadcastToRoom(room, payload, excludeWs = null) {
   for (const client of room.clients.values()) {
     if (client.ws !== excludeWs && client.ws.readyState === WebSocket.OPEN) {
       // Dinleyicinin soketinde aşırı veri birikmişse (şebeke takılması), eski sesleri kuyruğa yığma.
-      // Hat açıldığında dinleyici doğrudan en güncel canlı sese bağlansın.
-      if (isAudio && client.ws.bufferedAmount && client.ws.bufferedAmount > 49152) {
+      // Hat açıldığında dinleyici doğrudan en güncel canlı sese bağlansın (96 KB 24kHz HD tamponu).
+      if (isAudio && client.ws.bufferedAmount && client.ws.bufferedAmount > 98304) {
         continue;
       }
       client.ws.send(data);
@@ -346,10 +365,13 @@ function broadcastRoomState(room) {
   if (room._broadcastTimer) return;
   room._broadcastTimer = setTimeout(() => {
     room._broadcastTimer = null;
-    const state = serializeRoom(room);
-    broadcastToRoom(room, { type: 'room-state', room: state });
-    if (room.roomId === 'genel') {
-      broadcastToFamilyTrackers(room.tourCode, { type: 'room-state', room: state });
+    const tourRooms = getTourRooms(room.tourCode);
+    for (const r of tourRooms) {
+      const state = serializeRoom(r);
+      broadcastToRoom(r, { type: 'room-state', room: state });
+      if (r.roomId === 'genel') {
+        broadcastToFamilyTrackers(r.tourCode, { type: 'room-state', room: state });
+      }
     }
     broadcastToAdmins({
       type: 'admin-rooms-update',
@@ -416,7 +438,9 @@ function processClientJsonMessage(ctx, msg) {
     };
     ctx.currentRoom.clients.set(clientId, clientObj);
     if (role === 'guide' && msg.name) {
-      ctx.currentRoom.guideName = msg.name;
+      for (const r of getTourRooms(tourCode)) {
+        r.guideName = msg.name;
+      }
     }
 
     const tourSteps = getTourSteps(tourCode);
@@ -443,12 +467,14 @@ function processClientJsonMessage(ctx, msg) {
   switch (msg.type) {
     case 'guide-stream-state': {
       if (sender.role !== 'guide') break;
-      currentRoom.isLive = Boolean(msg.isLive);
-      currentRoom.broadcastMode = msg.broadcastMode || (currentRoom.isLive ? 'mic' : 'idle');
-      if (msg.topic) currentRoom.currentTopic = msg.topic;
-      if (msg.guidePeerId) currentRoom.guidePeerId = msg.guidePeerId;
-      if (currentRoom.isLive) {
-        currentRoom.startedAt = Date.now();
+      for (const r of getTourRooms(currentRoom.tourCode)) {
+        r.isLive = Boolean(msg.isLive);
+        r.broadcastMode = msg.broadcastMode || (r.isLive ? 'mic' : 'idle');
+        if (msg.topic) r.currentTopic = msg.topic;
+        if (msg.guidePeerId) r.guidePeerId = msg.guidePeerId;
+        if (r.isLive) {
+          r.startedAt = Date.now();
+        }
       }
       broadcastRoomState(currentRoom);
       break;
@@ -474,18 +500,11 @@ function processClientJsonMessage(ctx, msg) {
         type: 'guide-location',
         guideLocation: currentRoom.guideLocation
       };
-      broadcastToRoom(currentRoom, locPayload);
-      broadcastToFamilyTrackers(currentRoom.tourCode, locPayload);
-      for (const room of liveRooms.values()) {
-        if (
-          room !== currentRoom &&
-          room.tourCode === currentRoom.tourCode &&
-          !Array.from(room.clients.values()).some((c) => c.role === 'guide')
-        ) {
-          room.guideLocation = currentRoom.guideLocation;
-          broadcastToRoom(room, locPayload);
-        }
+      for (const r of getTourRooms(currentRoom.tourCode)) {
+        r.guideLocation = currentRoom.guideLocation;
+        broadcastToRoom(r, locPayload);
       }
+      broadcastToFamilyTrackers(currentRoom.tourCode, locPayload);
       broadcastRoomState(currentRoom);
       break;
     }
@@ -499,24 +518,15 @@ function processClientJsonMessage(ctx, msg) {
         speakerId: clientId,
         speakerName: sender.name,
         speakerRole: sender.role,
-        sampleRate: msg.sampleRate || 16000,
+        sampleRate: msg.sampleRate || 24000,
         samples: msg.samples,
         pcm16: msg.pcm16 || null,
         level: msg.level || 0,
         synthNote: msg.synthNote || null,
         sentAt: msg.sentAt || Date.now()
       };
-      broadcastToRoom(currentRoom, chunkPayload, ws);
-      if (sender.role === 'guide') {
-        for (const room of liveRooms.values()) {
-          if (
-            room !== currentRoom &&
-            room.tourCode === currentRoom.tourCode &&
-            !Array.from(room.clients.values()).some((c) => c.role === 'guide')
-          ) {
-            broadcastToRoom(room, chunkPayload, ws);
-          }
-        }
+      for (const r of getTourRooms(currentRoom.tourCode)) {
+        broadcastToRoom(r, chunkPayload, ws);
       }
       break;
     }
@@ -525,34 +535,50 @@ function processClientJsonMessage(ctx, msg) {
       sender.handRaised = Boolean(msg.raised);
       if (!sender.handRaised && sender.micGranted) {
         sender.micGranted = false;
-        if (currentRoom.activeSpeakerClientId === clientId) {
-          currentRoom.activeSpeakerClientId = null;
-          currentRoom.activeSpeakerName = null;
+        for (const r of getTourRooms(currentRoom.tourCode)) {
+          if (r.activeSpeakerClientId === clientId) {
+            r.activeSpeakerClientId = null;
+            r.activeSpeakerName = null;
+          }
         }
       }
       broadcastRoomState(currentRoom);
-      broadcastToRoom(currentRoom, {
+      const handPayload = {
         type: 'hand-event',
         pilgrimId: clientId,
         pilgrimName: sender.name,
         raised: sender.handRaised,
         questionNote: msg.note || ''
-      });
+      };
+      for (const r of getTourRooms(currentRoom.tourCode)) {
+        broadcastToRoom(r, handPayload);
+      }
       break;
     }
 
     case 'grant-mic': {
       if (sender.role !== 'guide') break;
-      const target = currentRoom.clients.get(msg.targetClientId);
+      let target = null;
+      let targetRoom = null;
+      for (const r of getTourRooms(currentRoom.tourCode)) {
+        const candidate = r.clients.get(msg.targetClientId);
+        if (candidate) {
+          target = candidate;
+          targetRoom = r;
+          break;
+        }
+      }
       if (target) {
         target.micGranted = Boolean(msg.granted);
-        if (target.micGranted) {
-          target.handRaised = false;
-          currentRoom.activeSpeakerClientId = target.id;
-          currentRoom.activeSpeakerName = target.name;
-        } else if (currentRoom.activeSpeakerClientId === target.id) {
-          currentRoom.activeSpeakerClientId = null;
-          currentRoom.activeSpeakerName = null;
+        for (const r of getTourRooms(currentRoom.tourCode)) {
+          if (target.micGranted) {
+            target.handRaised = false;
+            r.activeSpeakerClientId = target.id;
+            r.activeSpeakerName = target.name;
+          } else if (r.activeSpeakerClientId === target.id) {
+            r.activeSpeakerClientId = null;
+            r.activeSpeakerName = null;
+          }
         }
         if (target.ws.readyState === WebSocket.OPEN) {
           target.ws.send(
@@ -563,33 +589,35 @@ function processClientJsonMessage(ctx, msg) {
             })
           );
         }
-        broadcastRoomState(currentRoom);
+        broadcastRoomState(targetRoom || currentRoom);
       }
       break;
     }
 
     case 'set-qna-state': {
       if (sender.role !== 'guide') break;
-      currentRoom.qnaEnabled = Boolean(msg.enabled);
-      if (!currentRoom.qnaEnabled) {
-        // Söz isteme kapatıldığında el kaldıranları temizle ve mikrofonu olanların sözünü bitir
-        for (const p of currentRoom.clients.values()) {
-          p.handRaised = false;
-          if (p.micGranted) {
-            p.micGranted = false;
-            if (p.ws.readyState === WebSocket.OPEN) {
-              p.ws.send(JSON.stringify({ type: 'mic-permission', granted: false, guideName: sender.name }));
-            }
-          }
-        }
-        currentRoom.activeSpeakerClientId = null;
-        currentRoom.activeSpeakerName = null;
-      }
+      const enabled = Boolean(msg.enabled);
       const qnaPayload = {
         type: 'qna-state',
-        enabled: currentRoom.qnaEnabled
+        enabled
       };
-      broadcastToRoom(currentRoom, qnaPayload);
+      for (const r of getTourRooms(currentRoom.tourCode)) {
+        r.qnaEnabled = enabled;
+        if (!enabled) {
+          for (const p of r.clients.values()) {
+            p.handRaised = false;
+            if (p.micGranted) {
+              p.micGranted = false;
+              if (p.ws.readyState === WebSocket.OPEN) {
+                p.ws.send(JSON.stringify({ type: 'mic-permission', granted: false, guideName: sender.name }));
+              }
+            }
+          }
+          r.activeSpeakerClientId = null;
+          r.activeSpeakerName = null;
+        }
+        broadcastToRoom(r, qnaPayload);
+      }
       broadcastRoomState(currentRoom);
       break;
     }
@@ -609,7 +637,9 @@ function processClientJsonMessage(ctx, msg) {
       };
       db.sosAlerts.unshift(alertItem);
       saveState(db);
-      broadcastToRoom(currentRoom, { type: 'sos-alert', alert: alertItem });
+      for (const r of getTourRooms(currentRoom.tourCode)) {
+        broadcastToRoom(r, { type: 'sos-alert', alert: alertItem });
+      }
       broadcastToAdmins({ type: 'sos-alert', alert: alertItem, sosAlerts: db.sosAlerts });
       break;
     }
@@ -627,7 +657,9 @@ function processClientJsonMessage(ctx, msg) {
       };
       db.announcements.unshift(ann);
       saveState(db);
-      broadcastToRoom(currentRoom, { type: 'new-announcement', announcement: ann });
+      for (const r of getTourRooms(currentRoom.tourCode)) {
+        broadcastToRoom(r, { type: 'new-announcement', announcement: ann });
+      }
       broadcastToFamilyTrackers(currentRoom.tourCode, { type: 'new-announcement', announcement: ann });
       broadcastToAdmins({ type: 'new-announcement', announcement: ann });
       break;

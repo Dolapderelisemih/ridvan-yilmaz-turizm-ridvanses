@@ -33,7 +33,12 @@
 
   class SmartWebSocket {
     constructor(url, protocols) {
-      const isAppWs = typeof url === 'string' && url.endsWith('/ws') && url.includes(window.location.host);
+      const isAppWs =
+        typeof url === 'string' &&
+        url.endsWith('/ws') &&
+        (url.includes(window.location.host) ||
+          url.includes('ridvanyilmazturizm.com') ||
+          url.includes('vercel.app'));
       if (!isAppWs) {
         return protocols ? new NativeWebSocket(url, protocols) : new NativeWebSocket(url);
       }
@@ -65,8 +70,9 @@
       this._busSeen = new Set();
       this._mqttTopic = null;
 
+      const isTargetServerlessOnly = typeof url === 'string' && url.includes('.vercel.app/ws');
       const isVercelHost = window.location.hostname.endsWith('.vercel.app');
-      if (isVercelHost) {
+      if (isTargetServerlessOnly) {
         setTimeout(() => this._activateCloudRelay(), 15);
         return;
       }
@@ -78,8 +84,8 @@
         return;
       }
 
-      // VDS / Özel Domain Ortamında Mobil Şebeke için 8 Saniye El Sıkışma Süresi Tanı (Erken Kopup Dış Sunucuya Düşmeyi Önler)
-      const handshakeLimit = isVercelHost ? 1000 : 8000;
+      // VDS / Özel Domain Ortamında Mobil Şebeke için El Sıkışma Süresi Tanı
+      const handshakeLimit = isVercelHost ? 4500 : 8000;
       const fallbackTimeout = setTimeout(() => {
         if (!this._opened && !this._isRelay) {
           console.warn('⚠️ [RıdvanSes WS] Yerel VDS bağlantısı zaman aşımına uğradı, bulut köprüsü deneniyor.');

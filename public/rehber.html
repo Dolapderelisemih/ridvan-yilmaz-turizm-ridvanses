@@ -276,12 +276,19 @@
 
           <!-- Mikrofon Spektrum & Seviye -->
           <div class="studio-meter-box">
-            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.78rem; color:#CBD5E1; margin-bottom:10px; font-weight:600;">
-              <span id="micSourceLabel">Yayın Kaynağı: Hazır</span>
-              <span id="dbMeterText" style="color:#E2C785;">Ses Seviyesi: Normal (-12 dB)</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.78rem; color:#CBD5E1; margin-bottom:10px; font-weight:600; flex-wrap:wrap; gap:6px;">
+              <span id="micSourceLabel">Yayın Kaynağı: Hazır (24 kHz HD Stüdyo DSP)</span>
+              <span id="dbMeterText" style="color:#E2C785;">Ses Seviyesi: Beklemede</span>
             </div>
             <div class="spectrum" id="guideSpectrum"></div>
+            <div style="display:flex; align-items:center; gap:10px; font-size:0.78rem; color:#CBD5E1; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08);">
+              <span>🎙️ Mikrofon Hassasiyeti:</span>
+              <input type="range" id="guideMicGainSlider" min="80" max="200" value="135" style="flex:1; accent-color:#dfbe78;" oninput="updateGuideMicGain(this.value)" />
+              <span id="guideMicGainLabel" style="font-weight:800; color:#E2C785; min-width:42px; text-align:right;">%135</span>
+            </div>
           </div>
+
+          <audio id="guideBgKeepAliveAudio" loop playsinline style="display:none;"></audio>
 
           <!-- Yayın Başlatma Butonu -->
           <div style="display:flex; gap:10px; flex-wrap:wrap;">
@@ -883,8 +890,90 @@
       }
     }
 
-    // Real Microphone Audio Streaming (WebRTC Direct Stream + Compact PCM16 Chunks)
+    // Real Microphone Audio Streaming (24 kHz Wideband HD + 6-Stage Broadcast DSP + Soft Limiter)
     let zeroGainNode = null;
+    let guideMicGainNode = null;
+    let guideMicGainMultiplier = 1.35;
+    let guideWakeLockSentinel = null;
+
+    function updateGuideMicGain(val) {
+      guideMicGainMultiplier = Number(val) / 100;
+      const lbl = document.getElementById('guideMicGainLabel');
+      if (lbl) lbl.textContent = `%${val}`;
+      if (guideMicGainNode) {
+        guideMicGainNode.gain.value = guideMicGainMultiplier;
+      }
+    }
+
+    function createGuideSilentWavUri() {
+      const sampleRate = 8000;
+      const numSamples = sampleRate;
+      const buffer = new ArrayBuffer(44 + numSamples * 2);
+      const view = new DataView(buffer);
+      const writeStr = (offset, str) => {
+        for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+      };
+      writeStr(0, 'RIFF');
+      view.setUint32(4, 36 + numSamples * 2, true);
+      writeStr(8, 'WAVE');
+      writeStr(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeStr(36, 'data');
+      view.setUint32(40, numSamples * 2, true);
+      for (let i = 0; i < numSamples; i++) {
+        view.setInt16(44 + i * 2, 1, true);
+      }
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      return 'data:audio/wav;base64,' + btoa(binary);
+    }
+
+    async function enableGuideKeepAlive() {
+      try {
+        if ('wakeLock' in navigator && !guideWakeLockSentinel) {
+          guideWakeLockSentinel = await navigator.wakeLock.request('screen');
+          guideWakeLockSentinel.addEventListener('release', () => {
+            guideWakeLockSentinel = null;
+          });
+        }
+      } catch {}
+      try {
+        const el = document.getElementById('guideBgKeepAliveAudio');
+        if (el) {
+          if (!el.src) el.src = createGuideSilentWavUri();
+          el.play().catch(() => {});
+        }
+      } catch {}
+    }
+
+    async function disableGuideKeepAlive() {
+      try {
+        if (guideWakeLockSentinel) {
+          await guideWakeLockSentinel.release();
+          guideWakeLockSentinel = null;
+        }
+      } catch {}
+      try {
+        const el = document.getElementById('guideBgKeepAliveAudio');
+        if (el) el.pause();
+      } catch {}
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && isMicBroadcasting) {
+        enableGuideKeepAlive();
+        if (audioCtx && audioCtx.state !== 'running') {
+          audioCtx.resume().catch(() => {});
+        }
+      }
+    });
 
     function floatTo16BitBase64(floatSamples) {
       const len = floatSamples.length;
@@ -905,30 +994,45 @@
 
     let workletModuleLoaded = false;
     let guideAudioSeq = 0;
+    let guidePrevRawSample = 0;
 
     function handleGuideMicFloatChunk(input) {
       if (!isMicBroadcasting || !audioCtx) return;
+      if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+        audioCtx.resume().catch(() => {});
+      }
       let sum = 0;
-      const step = 3;
+      // 24 kHz HD Wideband Ses (step = 2): 3072 örnek -> tam 1536 örnek (örnek kaybı = 0)
+      const step = 2;
       const outLen = Math.floor(input.length / step);
       const downsampled = new Float32Array(outLen);
       for (let j = 0; j < outLen; j++) {
         const idx = j * step;
-        // Boxcar anti-aliasing filtre + PC mikrofonları için 1.6x netlik kazancı (soft-clip korumalı)
-        const raw = (input[idx] + (input[idx + 1] || 0) + (input[idx + 2] || 0)) / 3;
-        const v = Math.max(-1, Math.min(1, raw * 1.6));
+        const s0 = idx === 0 ? guidePrevRawSample : input[idx - 1];
+        const s1 = input[idx];
+        const s2 = input[idx + 1] !== undefined ? input[idx + 1] : s1;
+        // 3-noktalı üçgen (1-2-1) anti-aliasing filtre + analog tanh yumuşak sınırlayıcı (cızırtı/patlama %0)
+        const filtered = 0.25 * s0 + 0.5 * s1 + 0.25 * s2;
+        const v = Math.tanh(filtered * 1.15);
         sum += v * v;
         downsampled[j] = v;
       }
+      if (input.length > 0) {
+        guidePrevRawSample = input[input.length - 1];
+      }
+
       const rms = Math.sqrt(sum / (outLen || 1));
-      const level = Math.min(1, rms * 7);
+      const level = Math.min(1, rms * 6.5);
       animateGuideSpectrum(level);
 
-      // Mikrofon yayını açık olduğu sürece HİÇBİR paketi düşürme (kesintisiz 7/24 radyo akışı)
+      const dbEl = document.getElementById('dbMeterText');
+      if (dbEl) {
+        const dbVal = rms > 0.0001 ? Math.max(-48, Math.min(0, Math.round(20 * Math.log10(rms)))) : -48;
+        dbEl.textContent = dbVal <= -42 ? 'Ses Seviyesi: Sessiz (-42 dB)' : `Ses Seviyesi: HD Net (${dbVal} dB)`;
+      }
+
       if (ws && ws.readyState === WebSocket.OPEN) {
-        // Eğer soket tamponunda (ws.bufferedAmount) 32KB'dan fazla veri birikmişse (mobil şebeke duraksaması)
-        // eski paketi at; hoca her zaman "şimdi"yi konuşsun ve gecikme birikmesin!
-        if (ws.bufferedAmount && ws.bufferedAmount > 32768) {
+        if (ws.bufferedAmount && ws.bufferedAmount > 65536) {
           return;
         }
         const pcm16 = floatTo16BitBase64(downsampled);
@@ -955,15 +1059,25 @@
 
       try {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (!audioCtx) audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
-        if (audioCtx.state === 'suspended') await audioCtx.resume();
+        if (!audioCtx) {
+          audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
+          audioCtx.onstatechange = () => {
+            if (isMicBroadcasting && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+              audioCtx.resume().catch(() => {});
+            }
+          };
+        }
+        if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+          await audioCtx.resume();
+        }
 
         try {
           micStream = await navigator.mediaDevices.getUserMedia({
             audio: {
               echoCancellation: true,
               noiseSuppression: true,
-              autoGainControl: true
+              autoGainControl: true,
+              channelCount: 1
             }
           });
         } catch (strictErr) {
@@ -971,27 +1085,72 @@
           micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
 
-        // Doğrudan WebRTC P2P Ses Kanalını da başlat (PC <-> Telefon 30ms HD Ses)
         if (typeof window.ryBroadcastGuideStream === 'function') {
           window.ryBroadcastGuideStream(micStream);
         }
 
         const source = audioCtx.createMediaStreamSource(micStream);
+
+        // 1. Rüzgâr ve El Çarpma Gürültüsü Kesici (85 Hz High-Pass Butterworth)
+        const highPass = audioCtx.createBiquadFilter();
+        highPass.type = 'highpass';
+        highPass.frequency.value = 85;
+        highPass.Q.value = 0.707;
+
+        // 2. Boğukluk Giderici (280 Hz -2.0 dB Peaking Cut)
+        const mudCut = audioCtx.createBiquadFilter();
+        mudCut.type = 'peaking';
+        mudCut.frequency.value = 280;
+        mudCut.Q.value = 1.1;
+        mudCut.gain.value = -2.0;
+
+        // 3. Kâbe / Açık Alan Konuşma Netliği & Diksiyon Güçlendirici (2850 Hz +3.2 dB)
+        const presenceBoost = audioCtx.createBiquadFilter();
+        presenceBoost.type = 'peaking';
+        presenceBoost.frequency.value = 2850;
+        presenceBoost.Q.value = 1.0;
+        presenceBoost.gain.value = 3.2;
+
+        // 4. Anti-Aliasing Tiz Koruyucu (9800 Hz Low-Pass)
+        const lowPass = audioCtx.createBiquadFilter();
+        lowPass.type = 'lowpass';
+        lowPass.frequency.value = 9800;
+        lowPass.Q.value = 0.707;
+
+        // 5. Radyo Stüdyosu Dinamik Ses Dengeleyici (Compressor: fısıltıyı yükseltir, bağırmayı dengeler)
+        const compressor = audioCtx.createDynamicsCompressor();
+        compressor.threshold.value = -24;
+        compressor.knee.value = 14;
+        compressor.ratio.value = 4.5;
+        compressor.attack.value = 0.003;
+        compressor.release.value = 0.18;
+
+        // 6. Rehber Mikrofon Kazancı (Gain)
+        guideMicGainNode = audioCtx.createGain();
+        guideMicGainNode.gain.value = guideMicGainMultiplier;
+
         zeroGainNode = audioCtx.createGain();
-        zeroGainNode.gain.value = 0; // Rehberin kendi bilgisayarında yankı (eko) yapmasını önler
+        zeroGainNode.gain.value = 0; // Rehberin kendi cihazında yankı (eko) yapmasını önler
+
+        source.connect(highPass);
+        highPass.connect(mudCut);
+        mudCut.connect(presenceBoost);
+        presenceBoost.connect(lowPass);
+        lowPass.connect(compressor);
+        compressor.connect(guideMicGainNode);
 
         let workletSuccess = false;
         if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
           try {
             if (!workletModuleLoaded) {
-              await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=19');
+              await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=22');
               workletModuleLoaded = true;
             }
             scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
             scriptProcessor.port.onmessage = (ev) => {
               if (ev && ev.data) handleGuideMicFloatChunk(ev.data);
             };
-            source.connect(scriptProcessor);
+            guideMicGainNode.connect(scriptProcessor);
             scriptProcessor.connect(zeroGainNode);
             zeroGainNode.connect(audioCtx.destination);
             workletSuccess = true;
@@ -1000,8 +1159,8 @@
           }
         }
         if (!workletSuccess) {
-          scriptProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
-          source.connect(scriptProcessor);
+          scriptProcessor = audioCtx.createScriptProcessor(2048, 1, 1);
+          guideMicGainNode.connect(scriptProcessor);
           scriptProcessor.connect(zeroGainNode);
           zeroGainNode.connect(audioCtx.destination);
           scriptProcessor.onaudioprocess = (e) => {
@@ -1010,9 +1169,10 @@
         }
 
         isMicBroadcasting = true;
+        enableGuideKeepAlive();
         btn.textContent = '⏹️ Canlı Mikrofon Yayınını Durdur (YAYINDA)';
         btn.className = 'btn btn-danger';
-        document.getElementById('micSourceLabel').textContent = 'Yayın Kaynağı: Gerçek Mikrofon (Kesintisiz HD Akış)';
+        document.getElementById('micSourceLabel').textContent = 'Yayın Kaynağı: 24 kHz HD Mikrofon (Gürültü Filtresi Aktif)';
 
         if (!ws || ws.readyState !== WebSocket.OPEN) {
           connectGuideWs();
@@ -1043,6 +1203,7 @@
 
     function stopMicBroadcast() {
       isMicBroadcasting = false;
+      disableGuideKeepAlive();
       if (typeof window.ryBroadcastGuideStream === 'function') {
         window.ryBroadcastGuideStream(null);
       }
@@ -1052,6 +1213,10 @@
           scriptProcessor.disconnect();
         } catch {}
         scriptProcessor = null;
+      }
+      if (guideMicGainNode) {
+        try { guideMicGainNode.disconnect(); } catch {}
+        guideMicGainNode = null;
       }
       if (zeroGainNode) {
         zeroGainNode.disconnect();
@@ -1108,6 +1273,7 @@
     let nextPilgrimAudioTime = 0;
     let prevPilgrimEndSample = 0;
     let pilgrimGainNode = null;
+    let pilgrimLimiterNode = null;
     const activePilgrimSources = [];
 
     function stopAllActivePilgrimSources() {
@@ -1117,15 +1283,24 @@
       }
     }
 
-    function playIncomingPilgrimAudio(samplesOrB64, sampleRate = 16000, isBase64 = false) {
+    function playIncomingPilgrimAudio(samplesOrB64, sampleRate = 24000, isBase64 = false) {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!audioCtx) audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
-      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+      if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+        audioCtx.resume().catch(() => {});
+      }
 
       if (!pilgrimGainNode) {
         pilgrimGainNode = audioCtx.createGain();
-        pilgrimGainNode.gain.value = 1.35; // Hacının telefon mikrofonunu rehberin hoparlöründe netleştiren ses kazancı
-        pilgrimGainNode.connect(audioCtx.destination);
+        pilgrimGainNode.gain.value = 1.35;
+        pilgrimLimiterNode = audioCtx.createDynamicsCompressor();
+        pilgrimLimiterNode.threshold.value = -1.5;
+        pilgrimLimiterNode.knee.value = 3.0;
+        pilgrimLimiterNode.ratio.value = 12.0;
+        pilgrimLimiterNode.attack.value = 0.002;
+        pilgrimLimiterNode.release.value = 0.08;
+        pilgrimGainNode.connect(pilgrimLimiterNode);
+        pilgrimLimiterNode.connect(audioCtx.destination);
       }
 
       try {
@@ -1148,24 +1323,27 @@
 
         const now = audioCtx.currentTime;
         const lead = nextPilgrimAudioTime - now;
+        const isFreshStart = lead < 0 || lead > 0.95;
 
-        // Sert Gecikme Sıfırlama: 350ms'yi geçerse eskiyi temizle, canlıya atla
-        if (lead > 0.35) {
+        if (lead > 0.95) {
           stopAllActivePilgrimSources();
-          nextPilgrimAudioTime = now + 0.05;
+          nextPilgrimAudioTime = now + 0.095;
         } else if (lead < 0) {
-          nextPilgrimAudioTime = now + 0.05;
+          // 95ms adaptif mobil 4G tamponu (ufak şebeke dalgalanmalarında sesin kesilmesini önler)
+          nextPilgrimAudioTime = now + 0.095;
         }
 
-        // De-clicking ve ardışık paketler arasında sınır yumuşatma (Kesik ses & çıtırtı önleyici)
-        if (nextPilgrimAudioTime <= now + 0.06) {
-          const fadeLen = Math.min(24, floatArr.length);
+        if (isFreshStart) {
+          const fadeLen = Math.min(48, floatArr.length);
           for (let i = 0; i < fadeLen; i++) {
-            floatArr[i] *= i / fadeLen;
+            const w = 0.5 * (1 - Math.cos((Math.PI * i) / fadeLen));
+            floatArr[i] *= w;
           }
-        } else if (floatArr.length >= 6) {
-          floatArr[0] = prevPilgrimEndSample * 0.65 + floatArr[0] * 0.35;
-          floatArr[1] = prevPilgrimEndSample * 0.35 + floatArr[1] * 0.65;
+        } else if (floatArr.length >= 8) {
+          for (let k = 0; k < 8; k++) {
+            const alpha = (k + 1) / 9;
+            floatArr[k] = prevPilgrimEndSample * (1 - alpha) + floatArr[k] * alpha;
+          }
         }
         prevPilgrimEndSample = floatArr[floatArr.length - 1];
 
@@ -1174,11 +1352,12 @@
         const src = audioCtx.createBufferSource();
         src.buffer = buf;
 
-        // Akıllı Catch-Up (120ms - 350ms arası %6 hızlanarak gecikmeyi erit)
         const currentLead = nextPilgrimAudioTime - now;
         let rate = 1.0;
-        if (currentLead > 0.12) {
-          rate = 1.06;
+        if (currentLead > 0.45) {
+          rate = 1.09;
+        } else if (currentLead > 0.24) {
+          rate = 1.04;
         }
         src.playbackRate.value = rate;
         src.connect(pilgrimGainNode);

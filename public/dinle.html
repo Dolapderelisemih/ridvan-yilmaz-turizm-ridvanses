@@ -1230,13 +1230,50 @@
       );
     }
 
+    let rxInputNode = null;
+    let rxLimiterNode = null;
+
     function ensureAudioContext() {
       if (!audioCtx) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
+
+        // 1. Telefon Hoparlörü Zırıltı Kesici (75 Hz High-Pass)
+        const rxHighPass = audioCtx.createBiquadFilter();
+        rxHighPass.type = 'highpass';
+        rxHighPass.frequency.value = 75;
+        rxHighPass.Q.value = 0.707;
+
+        // 2. Kalabalık Ortam (Tavaf / Mescid-i Haram) Ses Netleştirici (2750 Hz +2.2 dB)
+        const rxPresence = audioCtx.createBiquadFilter();
+        rxPresence.type = 'peaking';
+        rxPresence.frequency.value = 2750;
+        rxPresence.Q.value = 1.0;
+        rxPresence.gain.value = 2.2;
+
+        // 3. Kullanıcı Ses Güçlendirici (%0 - %200)
         gainNode = audioCtx.createGain();
         gainNode.gain.value = volumeMultiplier;
-        gainNode.connect(audioCtx.destination);
+
+        // 4. Kulaklık & Hoparlör Cızırtı / Patlama Koruyucu (Brickwall Limiter @ -1.2 dB)
+        rxLimiterNode = audioCtx.createDynamicsCompressor();
+        rxLimiterNode.threshold.value = -1.2;
+        rxLimiterNode.knee.value = 3.0;
+        rxLimiterNode.ratio.value = 12.0;
+        rxLimiterNode.attack.value = 0.002;
+        rxLimiterNode.release.value = 0.08;
+
+        rxHighPass.connect(rxPresence);
+        rxPresence.connect(gainNode);
+        gainNode.connect(rxLimiterNode);
+        rxLimiterNode.connect(audioCtx.destination);
+        rxInputNode = rxHighPass;
+
+        audioCtx.onstatechange = () => {
+          if (isAudioListening && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+            audioCtx.resume().catch(() => {});
+          }
+        };
       }
       if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
         audioCtx.resume().catch(() => {});
@@ -1301,7 +1338,7 @@
       }
     }
 
-    function playPcmSamples(samplesOrB64, sampleRate = 16000, isBase64 = false) {
+    function playPcmSamples(samplesOrB64, sampleRate = 24000, isBase64 = false) {
       ensureAudioContext();
       if (!audioCtx || !gainNode) return;
       try {
@@ -1325,26 +1362,30 @@
         lastPacketReceivedAt = Date.now();
         const now = audioCtx.currentTime;
         const lead = nextAudioTime - now;
+        const isFreshStart = lead < 0 || lead > 0.95;
 
-        // 1. Sert Gecikme Sıfırlama: Tampon 350ms'den fazla şişmişse (mobil dalgalanma/duraksama sonrası)
-        // eski kuyruğu durdur ve anında canlı zamana (now + 50ms) sıçra. Seslerin üst üste binmesini önler.
-        if (lead > 0.35) {
+        // 1. Adaptif 4G/LTE Jitter Tamponu:
+        // Boşluk sonrası 95ms tampon bırakarak normal mobil şebeke dalgalanmalarında sesin kesilmesini engeller.
+        // Yalnızca 950ms üzeri aşırı ağ donmalarında kuyruğu sıfırlar.
+        if (lead > 0.95) {
           stopAllActiveSources();
-          nextAudioTime = now + 0.05;
+          nextAudioTime = now + 0.095;
         } else if (lead < 0) {
-          // Boşluk (underrun) sonrası ultra düşük 50ms hedef tampon
-          nextAudioTime = now + 0.05;
+          nextAudioTime = now + 0.095;
         }
 
-        // De-clicking ve geçiş yumuşatma
-        if (nextAudioTime <= now + 0.06) {
-          const fadeLen = Math.min(24, floatArr.length);
+        // 2. Çıtırtısız (Zero-Click) Kosinüs Fade-In & 8-Örnekli Sınır Yumuşatma:
+        if (isFreshStart) {
+          const fadeLen = Math.min(48, floatArr.length);
           for (let i = 0; i < fadeLen; i++) {
-            floatArr[i] *= i / fadeLen;
+            const w = 0.5 * (1 - Math.cos((Math.PI * i) / fadeLen));
+            floatArr[i] *= w;
           }
-        } else if (floatArr.length >= 6) {
-          floatArr[0] = prevEndSample * 0.65 + floatArr[0] * 0.35;
-          floatArr[1] = prevEndSample * 0.35 + floatArr[1] * 0.65;
+        } else if (floatArr.length >= 8) {
+          for (let k = 0; k < 8; k++) {
+            const alpha = (k + 1) / 9;
+            floatArr[k] = prevEndSample * (1 - alpha) + floatArr[k] * alpha;
+          }
         }
         prevEndSample = floatArr[floatArr.length - 1];
 
@@ -1353,15 +1394,17 @@
         const source = audioCtx.createBufferSource();
         source.buffer = buffer;
 
-        // 2. Akıllı Catch-Up (Gecikme Yakalama):
-        // Tampon 120ms ile 350ms arasındaysa kulak fark etmeden %6 hızlandırarak canlı yayına yetiş
+        // 3. İki Kademeli Yumuşak Gecikme Eritme (Smooth Catch-Up):
+        // Kelimeleri kesmeden %4 veya %9 hızlandırarak canlı yayına yetişir.
         const currentLead = nextAudioTime - now;
         let rate = 1.0;
-        if (currentLead > 0.12) {
-          rate = 1.06;
+        if (currentLead > 0.45) {
+          rate = 1.09;
+        } else if (currentLead > 0.24) {
+          rate = 1.04;
         }
         source.playbackRate.value = rate;
-        source.connect(gainNode);
+        source.connect(rxInputNode || gainNode);
 
         activeScheduledSources.push(source);
         source.onended = () => {
@@ -1465,6 +1508,7 @@
 
     let pilgrimZeroGain = null;
     let pilgrimAudioSeq = 0;
+    let pilgrimPrevRawSample = 0;
 
     function floatTo16BitBase64Pilgrim(floatSamples) {
       const len = floatSamples.length;
@@ -1487,14 +1531,20 @@
 
     function handlePilgrimMicFloatChunk(input) {
       if (!micGranted || !ws || ws.readyState !== WebSocket.OPEN || !audioCtx) return;
-      if (ws.bufferedAmount && ws.bufferedAmount > 32768) return; // Ağ yavaşlarsa eski mikrofon paketini at
-      const step = 3;
+      if (ws.bufferedAmount && ws.bufferedAmount > 65536) return;
+      const step = 2;
       const outLen = Math.floor(input.length / step);
       const downsampled = new Float32Array(outLen);
       for (let j = 0; j < outLen; j++) {
         const idx = j * step;
-        const raw = (input[idx] + (input[idx + 1] || 0) + (input[idx + 2] || 0)) / 3;
-        downsampled[j] = Math.max(-1, Math.min(1, raw * 1.8));
+        const s0 = idx === 0 ? pilgrimPrevRawSample : input[idx - 1];
+        const s1 = input[idx];
+        const s2 = input[idx + 1] !== undefined ? input[idx + 1] : s1;
+        const filtered = 0.25 * s0 + 0.5 * s1 + 0.25 * s2;
+        downsampled[j] = Math.tanh(filtered * 1.45);
+      }
+      if (input.length > 0) {
+        pilgrimPrevRawSample = input[input.length - 1];
       }
       const pcm16 = floatTo16BitBase64Pilgrim(downsampled);
       ws.send(JSON.stringify({
@@ -1512,27 +1562,42 @@
       try {
         ensureAudioContext();
         pilgrimMicStream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, latency: 0 }
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
         });
         const source = audioCtx.createMediaStreamSource(pilgrimMicStream);
+        const pHighPass = audioCtx.createBiquadFilter();
+        pHighPass.type = 'highpass';
+        pHighPass.frequency.value = 85;
+        pHighPass.Q.value = 0.707;
+
+        const pCompressor = audioCtx.createDynamicsCompressor();
+        pCompressor.threshold.value = -24;
+        pCompressor.knee.value = 12;
+        pCompressor.ratio.value = 4.0;
+        pCompressor.attack.value = 0.003;
+        pCompressor.release.value = 0.16;
+
         pilgrimZeroGain = audioCtx.createGain();
         pilgrimZeroGain.gain.value = 0;
 
+        source.connect(pHighPass);
+        pHighPass.connect(pCompressor);
+
         if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
           if (!pilgrimWorkletLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=19');
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=22');
             pilgrimWorkletLoaded = true;
           }
           pilgrimProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
           pilgrimProcessor.port.onmessage = (ev) => {
             if (ev && ev.data) handlePilgrimMicFloatChunk(ev.data);
           };
-          source.connect(pilgrimProcessor);
+          pCompressor.connect(pilgrimProcessor);
           pilgrimProcessor.connect(pilgrimZeroGain);
           pilgrimZeroGain.connect(audioCtx.destination);
         } else {
-          pilgrimProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
-          source.connect(pilgrimProcessor);
+          pilgrimProcessor = audioCtx.createScriptProcessor(2048, 1, 1);
+          pCompressor.connect(pilgrimProcessor);
           pilgrimProcessor.connect(pilgrimZeroGain);
           pilgrimZeroGain.connect(audioCtx.destination);
           pilgrimProcessor.onaudioprocess = (e) => {
