@@ -1,0 +1,14 @@
+{
+  "updatedAt": "2026-10-29T04:26:43.172Z",
+  "elapsedSec": 15,
+  "durationSec": 30,
+  "progressPct": "50.0",
+  "connectedPilgrims": 500,
+  "sentChunks": 176,
+  "totalRecvChunks": 225,
+  "packetLossPct": 99.74,
+  "avgLatencyMs": 10370,
+  "p95LatencyMs": 13982,
+  "totalTrafficMB": 0.8,
+  "underrunCount": 35
+}

@@ -1,0 +1,14 @@
+{
+  "testDate": "2026-10-29T04:26:58.192Z",
+  "totalPilgrims": 500,
+  "durationSec": 30,
+  "actualElapsedSec": 30,
+  "sentChunks": 352,
+  "receivedChunks": 1329,
+  "successRate": "0.76%",
+  "avgLatencyMs": 11856.5,
+  "p95LatencyMs": 22324,
+  "totalTrafficMB": 4.9,
+  "underrunCount": 237,
+  "location": "Bursa / Osmangazi (Ulu Cami Çevresi)"
+}

@@ -370,18 +370,10 @@
 
     <!-- ADIM 2: CANLI DİNLEME EKRANI (4 SEKMELİ MOBİL UYGULAMA DENEYİMİ) -->
     <div id="liveView" style="display:none;">
-      <!-- Mikrofon Söz Hakkı Verildi Banner -->
-      <div id="micGrantedBanner" class="mic-granted-banner">
-        <div style="font-weight:800; font-size:1.02rem;">Söz Hakkı Verildi — Mikrofonunuz Açık!</div>
-        <div style="font-size:0.84rem; opacity:0.92; margin-top:4px;">
-          Rehber hocamız size söz verdi. Sorunuzu şu an doğrudan hocamıza ve kafileye sorabilirsiniz.
-        </div>
-      </div>
-
       <!-- Gizli Arka Plan Ses Koruyucu (iOS / Android Tuş Kilidi Keep-Alive) -->
       <audio id="bgKeepAliveAudio" loop playsinline style="display:none;"></audio>
 
-      <!-- SEKME 1: CANLI YAYIN OYNATICI VE SÖZ İSTEME -->
+      <!-- SEKME 1: CANLI YAYIN OYNATICI -->
       <div id="pilgrimTabPlayer" class="pilgrim-tab-pane active">
         <div class="player-deck star-field-dark">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
@@ -501,18 +493,6 @@
               Haritada Aç
             </a>
           </div>
-        </div>
-
-        <!-- HIZLI SÖZ İSTEME KARTI -->
-        <div class="card" style="margin-bottom:16px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <h3 style="font-size:1.02rem;" id="i18n_interactionTitle">Hocamızdan Söz İsteyin (Soru-Cevap)</h3>
-            <span class="badge badge-gold">Çift Yönlü Ses</span>
-          </div>
-          <input type="text" id="handNoteInput" class="input" style="margin-bottom:10px; font-size:0.88rem;" placeholder="Hocamıza sorunuz varsa kısaca yazabilirsiniz (İsteğe bağlı)..." />
-          <button type="button" id="raiseHandBtn" class="btn btn-primary" style="width:100%;" onclick="toggleRaiseHand()">
-            <span id="i18n_raiseHandBtn">El Kaldır / Hocadan Söz İste</span>
-          </button>
         </div>
 
         <button type="button" class="btn btn-outline" style="width:100%;" onclick="leaveRoom()">
@@ -873,19 +853,25 @@
     let gainNode = null;
     let isAudioListening = false;
     let volumeMultiplier = 1.2;
-    let handRaised = false;
-    let micGranted = false;
-    let pilgrimMicStream = null;
-    let pilgrimProcessor = null;
     let currentTour = null;
     let intentionalLeave = false;
     let availableToursCache = [];
 
-    // Parse URL query params
+    // Parse URL query params & restore saved pilgrim name/phone
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('code')) {
       document.getElementById('tourCodeInput').value = urlParams.get('code').toUpperCase();
     }
+    try {
+      const savedName = localStorage.getItem('ridvanses_pilgrim_name');
+      const savedPhone = localStorage.getItem('ridvanses_pilgrim_phone');
+      if (savedName && !urlParams.get('name')) {
+        document.getElementById('pilgrimNameInput').value = savedName;
+      }
+      if (savedPhone) {
+        document.getElementById('pilgrimPhoneInput').value = savedPhone;
+      }
+    } catch {}
     if (urlParams.get('name')) {
       document.getElementById('pilgrimNameInput').value = urlParams.get('name');
     }
@@ -994,6 +980,9 @@
         currentTour = data.tour;
         try {
           localStorage.setItem('ridvanses_pilgrim_name', name);
+          if (phone && phone !== '+90 538 000 00 00') {
+            localStorage.setItem('ridvanses_pilgrim_phone', phone);
+          }
         } catch {}
 
         document.getElementById('joinView').style.display = 'none';
@@ -1075,19 +1064,29 @@
             if (typeof r.guideLocation !== 'undefined') {
               renderGuideLiveLocation(r.guideLocation);
             }
-            if (typeof r.qnaEnabled !== 'undefined') {
-              updateQnaStateInPilgrimUi(r.qnaEnabled);
-            }
             if (typeof r.activeTawafStage !== 'undefined') {
               renderLiveTawafStage(r.activeTawafStage);
             }
             if (r.broadcastMode === 'mic') {
               updateGuideSpeakingIndicator(true);
+            } else {
+              updateGuideSpeakingIndicator(false);
             }
           }
           if (msg.announcements) renderAnnouncements(msg.announcements);
           if (msg.siyerPoints) renderPrayers(msg.siyerPoints);
           if (msg.steps) renderPilgrimJourney(msg.steps, msg.stats || null, true);
+        }
+
+        if (msg.type === 'stream-state') {
+          if (msg.currentTopic) {
+            document.getElementById('liveTopicText').textContent = msg.currentTopic;
+          }
+          if (msg.broadcastMode === 'mic' && msg.isLive !== false) {
+            updateGuideSpeakingIndicator(true);
+          } else {
+            updateGuideSpeakingIndicator(false);
+          }
         }
 
         if (msg.type === 'tawaf-stage') {
@@ -1115,10 +1114,6 @@
           }
         }
 
-        if (msg.type === 'qna-state') {
-          updateQnaStateInPilgrimUi(msg.enabled);
-        }
-
         if (msg.type === 'guide-location') {
           renderGuideLiveLocation(msg.guideLocation);
         }
@@ -1127,7 +1122,7 @@
           lastPacketReceivedAt = Date.now();
           updateGuideSpeakingIndicator(true, msg.sentAt);
           animateSpectrumFromLevel(msg.level || 0.5);
-          if (isAudioListening && !micGranted) {
+          if (isAudioListening) {
             if (msg.pcm16) {
               playPcmSamples(msg.pcm16, msg.sampleRate || 24000, true);
             } else if (msg.samples && msg.samples.length) {
@@ -1135,22 +1130,6 @@
             } else if (msg.synthNote) {
               playGentleHarmonyNote(msg.synthNote);
             }
-          }
-        }
-
-        if (msg.type === 'mic-permission') {
-          micGranted = Boolean(msg.granted);
-          const banner = document.getElementById('micGrantedBanner');
-          if (micGranted) {
-            banner.style.display = 'block';
-            if (gainNode) gainNode.gain.value = 0;
-            startPilgrimMicBroadcast();
-            showAppToast('Rehber hocamız size söz verdi! Mikrofonunuz açık, sorunuzu sorabilirsiniz.', 5000);
-          } else {
-            banner.style.display = 'none';
-            stopPilgrimMicBroadcast();
-            if (gainNode) gainNode.gain.value = volumeMultiplier;
-            showAppToast('Söz süreniz tamamlandı. Rehber yayınını dinlemeye devam ediyorsunuz.', 4000);
           }
         }
 
@@ -1562,176 +1541,6 @@
       }
     }, 200);
 
-    // El Kaldır / Söz İste
-    let isQnaActiveOnServer = true;
-
-    function updateQnaStateInPilgrimUi(enabled) {
-      isQnaActiveOnServer = typeof enabled === 'undefined' ? true : Boolean(enabled);
-      const btn = document.getElementById('raiseHandBtn');
-      const input = document.getElementById('handNoteInput');
-      if (btn) {
-        if (isQnaActiveOnServer) {
-          btn.disabled = false;
-          btn.style.opacity = '1';
-          btn.style.cursor = 'pointer';
-          if (!handRaised) {
-            btn.className = 'btn btn-primary';
-            btn.innerHTML = '<span id="i18n_raiseHandBtn">El Kaldır / Hocadan Söz İste</span>';
-          }
-          if (input) input.placeholder = 'Hocamıza sorunuz varsa kısaca yazabilirsiniz (İsteğe bağlı)...';
-        } else {
-          handRaised = false;
-          btn.disabled = true;
-          btn.style.opacity = '0.65';
-          btn.style.cursor = 'not-allowed';
-          btn.className = 'btn btn-outline';
-          btn.innerHTML = 'Söz İsteme Kapalı (Tavaf / Sohbet Esnası)';
-          if (input) input.placeholder = 'Rehber hocamız şu an söz istemeyi kilitledi.';
-        }
-      }
-    }
-
-    function toggleRaiseHand() {
-      if (!isQnaActiveOnServer) {
-        showAppToast('Rehber hocamız şu an söz istemeyi kapattı.', 3500);
-        return;
-      }
-      handRaised = !handRaised;
-      const btn = document.getElementById('raiseHandBtn');
-      const note = document.getElementById('handNoteInput').value.trim();
-      if (handRaised) {
-        btn.className = 'btn btn-gold';
-        btn.innerHTML = 'Söz Talebiniz Hocamıza İletildi (İptal İçin Dokunun)';
-      } else {
-        btn.className = 'btn btn-primary';
-        btn.innerHTML = 'El Kaldır / Hocadan Söz İste';
-      }
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'raise-hand', raised: handRaised, note }));
-      }
-    }
-
-    let pilgrimZeroGain = null;
-    let pilgrimAudioSeq = 0;
-    let pilgrimPrevRawSample = 0;
-
-    function floatTo16BitBase64Pilgrim(floatSamples) {
-      const len = floatSamples.length;
-      const bytes = new Uint8Array(len * 2);
-      for (let i = 0; i < len; i++) {
-        const s = Math.max(-1, Math.min(1, floatSamples[i]));
-        const intVal = s < 0 ? s * 0x8000 : s * 0x7fff;
-        const v = intVal & 0xffff;
-        bytes[i * 2] = v & 0xff;
-        bytes[i * 2 + 1] = (v >> 8) & 0xff;
-      }
-      let binary = '';
-      for (let i = 0; i < bytes.length; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      return btoa(binary);
-    }
-
-    let pilgrimWorkletLoaded = false;
-
-    function handlePilgrimMicFloatChunk(input) {
-      if (!micGranted || !ws || ws.readyState !== WebSocket.OPEN || !audioCtx) return;
-      if (ws.bufferedAmount && ws.bufferedAmount > 65536) return;
-      const step = 2;
-      const outLen = Math.floor(input.length / step);
-      const downsampled = new Float32Array(outLen);
-      for (let j = 0; j < outLen; j++) {
-        const idx = j * step;
-        const s0 = idx === 0 ? pilgrimPrevRawSample : input[idx - 1];
-        const s1 = input[idx];
-        const s2 = input[idx + 1] !== undefined ? input[idx + 1] : s1;
-        const filtered = 0.25 * s0 + 0.5 * s1 + 0.25 * s2;
-        downsampled[j] = Math.tanh(filtered * 1.45);
-      }
-      if (input.length > 0) {
-        pilgrimPrevRawSample = input[input.length - 1];
-      }
-      const pcm16 = floatTo16BitBase64Pilgrim(downsampled);
-      ws.send(JSON.stringify({
-        type: 'audio-chunk',
-        seq: ++pilgrimAudioSeq,
-        sentAt: Date.now(),
-        speakerRole: 'pilgrim',
-        sampleRate: Math.round(audioCtx.sampleRate / step),
-        pcm16,
-        level: 0.8
-      }));
-    }
-
-    async function startPilgrimMicBroadcast() {
-      try {
-        ensureAudioContext();
-        pilgrimMicStream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
-        });
-        const source = audioCtx.createMediaStreamSource(pilgrimMicStream);
-        const pHighPass = audioCtx.createBiquadFilter();
-        pHighPass.type = 'highpass';
-        pHighPass.frequency.value = 85;
-        pHighPass.Q.value = 0.707;
-
-        const pCompressor = audioCtx.createDynamicsCompressor();
-        pCompressor.threshold.value = -24;
-        pCompressor.knee.value = 12;
-        pCompressor.ratio.value = 4.0;
-        pCompressor.attack.value = 0.003;
-        pCompressor.release.value = 0.16;
-
-        pilgrimZeroGain = audioCtx.createGain();
-        pilgrimZeroGain.gain.value = 0;
-
-        source.connect(pHighPass);
-        pHighPass.connect(pCompressor);
-
-        if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
-          if (!pilgrimWorkletLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=22');
-            pilgrimWorkletLoaded = true;
-          }
-          pilgrimProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
-          pilgrimProcessor.port.onmessage = (ev) => {
-            if (ev && ev.data) handlePilgrimMicFloatChunk(ev.data);
-          };
-          pCompressor.connect(pilgrimProcessor);
-          pilgrimProcessor.connect(pilgrimZeroGain);
-          pilgrimZeroGain.connect(audioCtx.destination);
-        } else {
-          pilgrimProcessor = audioCtx.createScriptProcessor(2048, 1, 1);
-          pCompressor.connect(pilgrimProcessor);
-          pilgrimProcessor.connect(pilgrimZeroGain);
-          pilgrimZeroGain.connect(audioCtx.destination);
-          pilgrimProcessor.onaudioprocess = (e) => {
-            handlePilgrimMicFloatChunk(e.inputBuffer.getChannelData(0));
-          };
-        }
-      } catch (e) {
-        console.warn('Mikrofon izni alınamadı, simülasyon modu aktif:', e.message);
-      }
-    }
-
-    function stopPilgrimMicBroadcast() {
-      if (pilgrimProcessor) {
-        try {
-          if (pilgrimProcessor.port) pilgrimProcessor.port.onmessage = null;
-          pilgrimProcessor.disconnect();
-        } catch {}
-        pilgrimProcessor = null;
-      }
-      if (pilgrimZeroGain) {
-        pilgrimZeroGain.disconnect();
-        pilgrimZeroGain = null;
-      }
-      if (pilgrimMicStream) {
-        pilgrimMicStream.getTracks().forEach((t) => t.stop());
-        pilgrimMicStream = null;
-      }
-    }
-
     // 3-Second Hold SOS Button + Real Phone GPS & Reverse Geocoding
     let sosInterval = null;
     let sosProgress = 0;
@@ -2017,11 +1826,6 @@
         } catch {}
         ws = null;
       }
-      stopPilgrimMicBroadcast();
-      micGranted = false;
-      handRaised = false;
-      const micBanner = document.getElementById('micGrantedBanner');
-      if (micBanner) micBanner.style.display = 'none';
       isAudioListening = false;
       const btn = document.getElementById('toggleAudioBtn');
       const orb = document.getElementById('playerOrb');

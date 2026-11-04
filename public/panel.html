@@ -254,6 +254,10 @@
         <svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
         Mekke & Medine Otelleri
       </button>
+      <button class="side-btn" onclick="openTab('tab-requests', this)">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Ön Kayıt & Bilgi Talepleri
+      </button>
       <hr style="border-color:rgba(255,255,255,0.1); margin:16px 0;" />
       <div class="side-group-title">Sistem & Mühendislik</div>
       <button class="side-btn" onclick="openTab('tab-rea', this)">
@@ -352,6 +356,17 @@
               <tbody id="overviewToursTable"></tbody>
             </table>
           </div>
+        </div>
+
+        <div class="card" style="margin-top:24px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+            <div>
+              <h3 style="font-size:1.15rem; margin:0;">Ana Sayfadan Gelen Ön Kayıt &amp; Bilgi Talepleri</h3>
+              <p style="font-size:0.8rem; color:var(--color-muted); margin:2px 0 0;">Web sitesindeki "Umre Ön Kayıt &amp; Bilgi Talebi Formu" üzerinden başvuran misafirler.</p>
+            </div>
+            <span class="badge badge-gold" id="overviewRequestsCountBadge">0 Başvuru</span>
+          </div>
+          <div id="overviewRequestsBox"></div>
         </div>
       </div>
 
@@ -709,6 +724,19 @@
         </div>
       </div>
 
+      <!-- TAB 8: ÖN KAYIT & BİLGİ TALEPLERİ -->
+      <div id="tab-requests" class="tab-pane">
+        <div class="card card-luxury">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+            <div>
+              <span class="badge badge-gold">WEB FORMU BAŞVURULARI</span>
+              <h3 style="margin-top:6px;">Gelen Umre Ön Kayıt &amp; Bilgi Talepleri</h3>
+            </div>
+          </div>
+          <div id="fullRequestsList"></div>
+        </div>
+      </div>
+
     </main>
   </div>
 
@@ -1007,6 +1035,43 @@
           <a href="https://www.google.com/maps?q=${h.coordinates.lat},${h.coordinates.lng}" target="_blank" class="btn btn-outline btn-sm">Harita Konumu</a>
         </div>
       `).join('');
+
+      // Pre-Registration Requests
+      const reqList = Array.isArray(appState.requests) ? appState.requests : [];
+      const reqCountEl = document.getElementById('overviewRequestsCountBadge');
+      if (reqCountEl) reqCountEl.textContent = `${reqList.length} Başvuru`;
+
+      const reqHtml = reqList.length
+        ? reqList.map((r) => {
+            const cleanPhone = String(r.phone || '').replace(/[^0-9]/g, '');
+            const waPhone = cleanPhone.startsWith('0') ? '90' + cleanPhone.slice(1) : cleanPhone;
+            const waUrl = waPhone ? `https://wa.me/${waPhone}?text=${encodeURIComponent(`Selamün Aleyküm ${r.name}, Rıdvan Yılmaz Turizm Umre ön kayıt talebiniz için iletişime geçiyoruz.`)}` : '';
+            return `
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:14px 16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline); margin-bottom:10px;">
+              <div>
+                <div style="font-weight:800; color:var(--color-emerald-night); display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span>👤 ${r.name || 'Misafir'}</span>
+                  <span class="badge badge-emerald">${r.company_name || 'Kasım Umresi'}</span>
+                  <span style="font-size:0.75rem; color:var(--color-muted); font-weight:600;">${r.createdAt || ''}</span>
+                </div>
+                <div style="font-size:0.84rem; color:var(--color-ink); margin-top:4px;">
+                  <strong>Tel:</strong> ${r.phone || '—'} ${r.message ? `• <strong>Not:</strong> ${r.message}` : ''}
+                </div>
+              </div>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                ${r.phone ? `<a href="tel:${r.phone}" class="btn btn-outline btn-sm">📞 Ara</a>` : ''}
+                ${waUrl ? `<a href="${waUrl}" target="_blank" class="btn btn-primary btn-sm">💬 WhatsApp</a>` : ''}
+                <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteRequestAdmin('${r.id}')">Sil</button>
+              </div>
+            </div>
+          `;
+          }).join('')
+        : `<div style="padding:14px; border-radius:12px; background:var(--color-ground); border:1px dashed var(--color-hairline); color:var(--color-muted); font-size:0.86rem;">Henüz ön kayıt veya bilgi talebi bulunmuyor.</div>`;
+
+      const ovReqBox = document.getElementById('overviewRequestsBox');
+      if (ovReqBox) ovReqBox.innerHTML = reqHtml;
+      const fullReqBox = document.getElementById('fullRequestsList');
+      if (fullReqBox) fullReqBox.innerHTML = reqHtml;
     }
 
     fetchAdminData();
@@ -1104,6 +1169,14 @@
           }
           if (msg.type === 'new-announcement' && msg.announcement && appState) {
             appState.announcements.unshift(msg.announcement);
+            renderAll();
+          }
+          if ((msg.type === 'new-request' || msg.type === 'requests-updated') && appState) {
+            if (Array.isArray(msg.requests)) {
+              appState.requests = msg.requests;
+            } else if (msg.request) {
+              appState.requests = [msg.request, ...(appState.requests || [])];
+            }
             renderAll();
           }
           if (msg.type === 'steps-updated') {
@@ -1273,6 +1346,12 @@
     async function deleteSosAdmin(id) {
       if (!confirm('Bu SOS kaydını silmek istediğinize emin misiniz?')) return;
       await fetch(`/api/sos/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      fetchAdminData();
+    }
+
+    async function deleteRequestAdmin(id) {
+      if (!confirm('Bu ön kayıt başvurusunu silmek istediğinize emin misiniz?')) return;
+      await fetch(`/api/requests/${encodeURIComponent(id)}`, { method: 'DELETE' });
       fetchAdminData();
     }
   </script>

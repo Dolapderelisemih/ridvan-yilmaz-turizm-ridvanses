@@ -470,6 +470,12 @@ function processClientJsonMessage(ctx, msg) {
         if (r.isLive) {
           r.startedAt = Date.now();
         }
+        broadcastToRoom(r, {
+          type: 'stream-state',
+          isLive: r.isLive,
+          broadcastMode: r.broadcastMode,
+          currentTopic: r.currentTopic
+        });
       }
       broadcastRoomState(currentRoom);
       break;
@@ -537,8 +543,7 @@ function processClientJsonMessage(ctx, msg) {
     }
 
     case 'audio-chunk': {
-      const canSpeak = sender.role === 'guide' || sender.micGranted;
-      if (!canSpeak) break;
+      if (sender.role !== 'guide') break;
       const chunkPayload = {
         type: 'audio-chunk',
         seq: msg.seq || null,
@@ -555,97 +560,6 @@ function processClientJsonMessage(ctx, msg) {
       for (const r of getTourRooms(currentRoom.tourCode)) {
         broadcastToRoom(r, chunkPayload, ws);
       }
-      break;
-    }
-
-    case 'raise-hand': {
-      sender.handRaised = Boolean(msg.raised);
-      if (!sender.handRaised && sender.micGranted) {
-        sender.micGranted = false;
-        for (const r of getTourRooms(currentRoom.tourCode)) {
-          if (r.activeSpeakerClientId === clientId) {
-            r.activeSpeakerClientId = null;
-            r.activeSpeakerName = null;
-          }
-        }
-      }
-      broadcastRoomState(currentRoom);
-      const handPayload = {
-        type: 'hand-event',
-        pilgrimId: clientId,
-        pilgrimName: sender.name,
-        raised: sender.handRaised,
-        questionNote: msg.note || ''
-      };
-      for (const r of getTourRooms(currentRoom.tourCode)) {
-        broadcastToRoom(r, handPayload);
-      }
-      break;
-    }
-
-    case 'grant-mic': {
-      if (sender.role !== 'guide') break;
-      let target = null;
-      let targetRoom = null;
-      for (const r of getTourRooms(currentRoom.tourCode)) {
-        const candidate = r.clients.get(msg.targetClientId);
-        if (candidate) {
-          target = candidate;
-          targetRoom = r;
-          break;
-        }
-      }
-      if (target) {
-        target.micGranted = Boolean(msg.granted);
-        for (const r of getTourRooms(currentRoom.tourCode)) {
-          if (target.micGranted) {
-            target.handRaised = false;
-            r.activeSpeakerClientId = target.id;
-            r.activeSpeakerName = target.name;
-          } else if (r.activeSpeakerClientId === target.id) {
-            r.activeSpeakerClientId = null;
-            r.activeSpeakerName = null;
-          }
-        }
-        if (target.ws.readyState === WebSocket.OPEN) {
-          target.ws.send(
-            JSON.stringify({
-              type: 'mic-permission',
-              granted: target.micGranted,
-              guideName: sender.name
-            })
-          );
-        }
-        broadcastRoomState(targetRoom || currentRoom);
-      }
-      break;
-    }
-
-    case 'set-qna-state': {
-      if (sender.role !== 'guide') break;
-      const enabled = Boolean(msg.enabled);
-      const qnaPayload = {
-        type: 'qna-state',
-        enabled
-      };
-      for (const r of getTourRooms(currentRoom.tourCode)) {
-        r.qnaEnabled = enabled;
-        if (!enabled) {
-          for (const p of r.clients.values()) {
-            p.handRaised = false;
-            if (p.micGranted) {
-              p.micGranted = false;
-              if (p.ws.readyState === WebSocket.OPEN) {
-                p.ws.send(JSON.stringify({ type: 'mic-permission', granted: false, guideName: sender.name }));
-              }
-            }
-          }
-          r.activeSpeakerClientId = null;
-          r.activeSpeakerName = null;
-        }
-        broadcastToRoom(r, qnaPayload);
-      }
-      broadcastRoomState(currentRoom);
       break;
     }
 
@@ -711,13 +625,13 @@ wss.on('connection', (ws) => {
     if (isBinary) {
       if (!ctx.currentRoom) return;
       const sender = ctx.currentRoom.clients.get(ctx.clientId);
-      if (!sender) return;
-      const canSpeak = sender.role === 'guide' || sender.micGranted;
-      if (!canSpeak) return;
+      if (!sender || sender.role !== 'guide') return;
 
-      for (const peer of ctx.currentRoom.clients.values()) {
-        if (peer.ws !== ws && peer.ws.readyState === WebSocket.OPEN && !peer.ws.isHttpRelay) {
-          peer.ws.send(raw, { binary: true });
+      for (const r of getTourRooms(ctx.currentRoom.tourCode)) {
+        for (const peer of r.clients.values()) {
+          if (peer.ws !== ws && peer.ws.readyState === WebSocket.OPEN && !peer.ws.isHttpRelay) {
+            peer.ws.send(raw, { binary: true });
+          }
         }
       }
       return;
@@ -908,19 +822,34 @@ app.post('/api/demo-request', (req, res) => {
   if (!db.requests) db.requests = [];
   const item = {
     id: `req-${Date.now()}`,
-    name,
-    company_name,
-    phone,
-    email,
-    message,
-    createdAt: new Date().toISOString()
+    name: name || 'İsimsiz Başvuru',
+    company_name: company_name || 'Belirtilmedi',
+    phone: phone || '',
+    email: email || '',
+    message: message || '',
+    createdAt: new Date().toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })
   };
   db.requests.unshift(item);
   saveState(db);
+  broadcastToAdmins({ type: 'new-request', request: item, requests: db.requests });
   return res.json({
     success: true,
+    request: item,
     message: 'Talebiniz Rıdvan Yılmaz Turizm operasyon ekibine (Beytullah Bey) iletilmiştir.'
   });
+});
+
+app.delete('/api/requests/:id', (req, res) => {
+  if (!db.requests) db.requests = [];
+  const targetId = req.params.id;
+  const prevLen = db.requests.length;
+  db.requests = db.requests.filter((r) => r.id !== targetId);
+  if (db.requests.length === prevLen) {
+    return res.status(404).json({ success: false, message: 'Silinecek ön kayıt talebi bulunamadı.' });
+  }
+  saveState(db);
+  broadcastToAdmins({ type: 'requests-updated', requests: db.requests });
+  return res.json({ success: true, requests: db.requests });
 });
 
 // 2. Bootstrap & System Overview
@@ -933,6 +862,7 @@ app.get('/api/bootstrap', (req, res) => {
     hotels: db.hotels,
     announcements: db.announcements,
     sosAlerts: db.sosAlerts,
+    requests: db.requests || [],
     siyerPoints: db.siyerPoints,
     journeySteps: db.journeySteps,
     liveRooms: Array.from(liveRooms.values()).map(serializeRoom)
@@ -1468,16 +1398,50 @@ app.get('/api/rea-report', (req, res) => {
 });
 
 // 9. QR Code & WhatsApp Invite Generator Endpoint
-app.get('/api/qr', async (req, res) => {
+app.get('/api/qr-img', async (req, res) => {
   try {
     const code = String(req.query.code || 'RY-KASIM').toUpperCase().trim();
     const room = String(req.query.room || 'genel').trim();
+    const pilgrimName = String(req.query.name || '').trim();
     const host = req.headers['x-forwarded-host'] || req.get('host') || 'localhost:3000';
     const proto = req.headers['x-forwarded-proto']
       ? String(req.headers['x-forwarded-proto']).split(',')[0].trim()
       : req.protocol || 'http';
     const baseUrl = req.query.baseUrl || `${proto}://${host}`;
-    const joinUrl = `${baseUrl}/dinle?code=${encodeURIComponent(code)}&room=${encodeURIComponent(room)}`;
+    let joinUrl = `${baseUrl}/dinle?code=${encodeURIComponent(code)}&room=${encodeURIComponent(room)}`;
+    if (pilgrimName) {
+      joinUrl += `&name=${encodeURIComponent(pilgrimName)}`;
+    }
+    const svg = await QRCode.toString(joinUrl, {
+      type: 'svg',
+      margin: 1,
+      color: {
+        dark: '#0a3d30',
+        light: '#ffffff'
+      }
+    });
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.send(svg);
+  } catch (err) {
+    return res.status(500).send('');
+  }
+});
+
+app.get('/api/qr', async (req, res) => {
+  try {
+    const code = String(req.query.code || 'RY-KASIM').toUpperCase().trim();
+    const room = String(req.query.room || 'genel').trim();
+    const pilgrimName = String(req.query.name || '').trim();
+    const host = req.headers['x-forwarded-host'] || req.get('host') || 'localhost:3000';
+    const proto = req.headers['x-forwarded-proto']
+      ? String(req.headers['x-forwarded-proto']).split(',')[0].trim()
+      : req.protocol || 'http';
+    const baseUrl = req.query.baseUrl || `${proto}://${host}`;
+    let joinUrl = `${baseUrl}/dinle?code=${encodeURIComponent(code)}&room=${encodeURIComponent(room)}`;
+    if (pilgrimName) {
+      joinUrl += `&name=${encodeURIComponent(pilgrimName)}`;
+    }
     const familyTrackUrl = `${baseUrl}/rota?code=${encodeURIComponent(code)}`;
     const keepsakeBookUrl = `${baseUrl}/ani-kitabi?code=${encodeURIComponent(code)}`;
 

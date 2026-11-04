@@ -255,11 +255,11 @@
             <span class="badge badge-gold" style="font-size:0.8rem;">KAFİLE KODU: ${tour.code}</span>
 
             <div class="qr-box">
-              <img src="${qrJson.dataUrl}" alt="QR Code ${tour.code}" />
+              <img src="/api/qr-img?code=${encodeURIComponent(tour.code)}&name=${encodeURIComponent(pName)}" onerror="this.onerror=null;this.src='${qrJson.dataUrl}'" alt="QR Code ${tour.code} - ${pName}" />
             </div>
 
             <div style="font-size:0.79rem; color:var(--color-muted); max-width:265px; margin:0 auto 14px; line-height:1.45;">
-              <strong>Canlı Sesli Rehberlik:</strong> Telefon kameranızı QR koda okutarak <strong>${tour.guideName}</strong> canlı anlatımına şifresiz bağlanın.
+              <strong>İsme Özel QR Rehberlik:</strong> Telefon kameranızı QR koda okutarak adınızı bile yazmadan <strong>${tour.guideName}</strong> canlı anlatımına doğrudan bağlanın.
             </div>
 
             <div style="background:var(--color-ground); border:1px solid var(--color-hairline); border-radius:12px; padding:11px 14px; font-size:0.78rem; text-align:left; display:flex; flex-direction:column; gap:4px; color:var(--color-ink);">
