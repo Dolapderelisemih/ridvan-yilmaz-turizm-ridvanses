@@ -283,7 +283,7 @@
               <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
             </span>
           </div>
-          <div class="stat-val" id="statListenersCount">48</div>
+          <div class="stat-val" id="statListenersCount">0</div>
           <div style="font-size:0.78rem; color:var(--color-emerald-deep); font-weight:700;">Anlık WebSocket Bağlantısı</div>
         </div>
         <div class="stat-card">
@@ -430,52 +430,72 @@
       <div id="tab-tours" class="tab-pane">
         <div class="grid-2">
           <div class="card card-luxury">
-            <h3 style="margin-bottom:14px;">Yeni Umre Kafilesi & Ses Odası Oluştur</h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:14px;">
+              <h3 id="tourFormTitle" style="margin:0;">Yeni Umre Kafilesi & Ses Odası Oluştur</h3>
+              <button type="button" id="cancelEditTourBtn" class="btn btn-outline btn-sm" style="display:none;" onclick="resetTourFormMode()">Düzenlemeyi İptal Et</button>
+            </div>
             <form id="createTourForm" style="display:flex; flex-direction:column; gap:12px;">
+              <input type="hidden" name="editingTourId" id="editingTourIdInput" value="" />
               <div class="grid-2" style="gap:10px;">
                 <div>
                   <label class="label">Kafile Kodu (Örn: RY-KASIM)</label>
-                  <input type="text" name="code" class="input" style="text-transform:uppercase; font-weight:700;" placeholder="RY-KASIM" required />
+                  <input type="text" name="code" id="tourFormCodeInput" class="input" style="text-transform:uppercase; font-weight:700;" placeholder="RY-KASIM" required />
                 </div>
                 <div>
                   <label class="label">Tur Tarihi</label>
-                  <input type="text" name="dateText" class="input" placeholder="Örn: 13-14 Kasım 2026" required />
+                  <input type="text" name="dateText" id="tourFormDateInput" class="input" placeholder="Örn: 13-14 Kasım 2026" required />
                 </div>
               </div>
               <div>
                 <label class="label">Kafile / Program Adı *</label>
-                <input type="text" name="name" class="input" placeholder="Örn: 13-14 Kasım Umresi" required />
+                <input type="text" name="name" id="tourFormNameInput" class="input" placeholder="Örn: 13-14 Kasım Umresi" required />
               </div>
               <div class="grid-2" style="gap:10px;">
                 <div>
                   <label class="label">Baş Rehber Hoca</label>
-                  <input type="text" name="guideName" class="input" value="Ömer Ali Gültekin" />
+                  <input type="text" name="guideName" id="tourFormGuideInput" class="input" value="Ömer Ali Gültekin" />
                 </div>
                 <div>
                   <label class="label">Mekke Oteli</label>
-                  <select name="makkahHotel" class="select">
-                    <option value="Rayhaan Al Mashaer Hotel">Rayhaan Al Mashaer Hotel</option>
-                    <option value="Masarat Ajyad Almas Hotel">Masarat Ajyad Almas Hotel</option>
-                    <option value="Emaar Elite Hotel">Emaar Elite Hotel</option>
-                    <option value="Mekke Anjum Hotel (5★)">Mekke Anjum Hotel (5★)</option>
-                  </select>
+                  <input type="text" name="makkahHotel" id="tourFormMakkahInput" class="input" list="makkahHotelsDatalist" value="8 Gün Mekke Konaklama (Harem Yakını)" />
+                  <datalist id="makkahHotelsDatalist">
+                    <option value="8 Gün Mekke Konaklama (Harem Yakını)"></option>
+                    <option value="Rayhaan Al Mashaer Hotel"></option>
+                    <option value="Masarat Ajyad Almas Hotel"></option>
+                    <option value="Emaar Elite Hotel"></option>
+                    <option value="Mekke Anjum Hotel (5★)"></option>
+                  </datalist>
                 </div>
               </div>
               <div class="grid-2" style="gap:10px;">
                 <div>
-                  <label class="label">Kapasite (Kişi)</label>
-                  <input type="number" name="capacity" class="input" value="90" />
+                  <label class="label">Medine Oteli</label>
+                  <input type="text" name="madinahHotel" id="tourFormMadinahInput" class="input" value="2 Gün Medine Konaklama (Merkezi Bölge)" />
                 </div>
                 <div>
-                  <label class="label">İsteğe Bağlı Oda PIN Kodu</label>
-                  <input type="text" name="pin" class="input" placeholder="Boş bırakılırsa şifresiz" />
+                  <label class="label">Program Süresi</label>
+                  <input type="text" name="duration" id="tourFormDurationInput" class="input" value="10 Gün (8 Mekke + 2 Medine)" />
+                </div>
+              </div>
+              <div class="grid-3" style="gap:10px;">
+                <div>
+                  <label class="label">Kayıtlı Hacı</label>
+                  <input type="number" name="registeredCount" id="tourFormRegInput" class="input" value="40" />
+                </div>
+                <div>
+                  <label class="label">Kapasite (Kişi)</label>
+                  <input type="number" name="capacity" id="tourFormCapInput" class="input" value="45" />
+                </div>
+                <div>
+                  <label class="label">İsteğe Bağlı Oda PIN</label>
+                  <input type="text" name="pin" id="tourFormPinInput" class="input" placeholder="Şifresiz" />
                 </div>
               </div>
               <div>
                 <label class="label">Program Açıklaması</label>
-                <textarea name="description" rows="2" class="textarea" placeholder="Kafile detayları..."></textarea>
+                <textarea name="description" id="tourFormDescInput" rows="2" class="textarea" placeholder="Kafile detayları..."></textarea>
               </div>
-              <button type="submit" class="btn btn-primary">Kafileyi ve Canlı Ses Odasını Oluştur</button>
+              <button type="submit" id="tourFormSubmitBtn" class="btn btn-primary">Kafileyi ve Canlı Ses Odasını Oluştur</button>
             </form>
           </div>
 
@@ -825,7 +845,9 @@
       if (!appState) return;
       document.getElementById('statToursCount').textContent = appState.tours.length;
       document.getElementById('statGuidesCount').textContent = appState.guides.length;
-      const totalListeners = (appState.liveRooms || []).reduce((acc, r) => acc + (r.totalListeners || 0), 0);
+      const totalListeners = (appState.liveRooms || [])
+        .filter((r) => r.roomId === 'genel')
+        .reduce((acc, r) => acc + (r.totalListeners || 0), 0);
       document.getElementById('statListenersCount').textContent = totalListeners;
       const activeSos = (appState.sosAlerts || []).filter((s) => s.status === 'active').length;
       document.getElementById('statSosCount').textContent = activeSos;
@@ -904,9 +926,10 @@
             <div style="font-weight:800; color:var(--color-emerald-night);">${t.code} — ${t.name}</div>
             <div style="font-size:0.8rem; color:var(--color-muted); margin-top:2px;">Rehber: ${t.guideName} • Otel: ${t.makkahHotel}</div>
           </div>
-          <div style="display:flex; gap:6px;">
-            <button class="btn btn-gold btn-sm" onclick="openQrGeneratorForTour('${t.code}')">QR & Davet</button>
-            <button class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteTour('${t.id}')">Sil</button>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button type="button" class="btn btn-primary btn-sm" onclick="startEditTour('${t.id}')">Düzenle</button>
+            <button type="button" class="btn btn-gold btn-sm" onclick="openQrGeneratorForTour('${t.code}')">QR & Davet</button>
+            <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteTour('${t.id}')">Sil</button>
           </div>
         </div>
       `).join('');
@@ -962,6 +985,7 @@
               <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">Yol Tarifi</a>
               <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Harita</a>
               ${s.status === 'active' ? `<button class="btn btn-primary btn-sm" onclick="resolveSosAdmin('${s.id}')">Çözüldü İşaretle</button>` : ''}
+              <button class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteSosAdmin('${s.id}')">Sil</button>
             </div>
           </div>
           ${s.status === 'active' ? `
@@ -1112,21 +1136,65 @@
       loadAdminRouteSteps(false);
     });
 
-    // Forms
+    // Tour Create & Edit Form
+    function startEditTour(id) {
+      const tour = ((appState && appState.tours) || []).find((t) => t.id === id);
+      if (!tour) return;
+      document.getElementById('editingTourIdInput').value = tour.id;
+      const codeInput = document.getElementById('tourFormCodeInput');
+      codeInput.value = tour.code || '';
+      codeInput.readOnly = true;
+      codeInput.style.opacity = '0.7';
+      document.getElementById('tourFormDateInput').value = tour.dateText || '';
+      document.getElementById('tourFormNameInput').value = tour.name || '';
+      document.getElementById('tourFormGuideInput').value = tour.guideName || '';
+      document.getElementById('tourFormMakkahInput').value = tour.makkahHotel || '';
+      document.getElementById('tourFormMadinahInput').value = tour.madinahHotel || '';
+      document.getElementById('tourFormDurationInput').value = tour.duration || '';
+      document.getElementById('tourFormRegInput').value = tour.registeredCount ?? 1;
+      document.getElementById('tourFormCapInput').value = tour.capacity ?? 45;
+      document.getElementById('tourFormPinInput').value = tour.pin || '';
+      document.getElementById('tourFormDescInput').value = tour.description || '';
+      document.getElementById('tourFormTitle').textContent = `Kafileyi Düzenle (${tour.code})`;
+      document.getElementById('tourFormSubmitBtn').textContent = 'Değişiklikleri Kaydet';
+      document.getElementById('cancelEditTourBtn').style.display = 'inline-flex';
+      document.getElementById('createTourForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function resetTourFormMode() {
+      const form = document.getElementById('createTourForm');
+      if (form) form.reset();
+      document.getElementById('editingTourIdInput').value = '';
+      const codeInput = document.getElementById('tourFormCodeInput');
+      if (codeInput) {
+        codeInput.readOnly = false;
+        codeInput.style.opacity = '1';
+      }
+      document.getElementById('tourFormTitle').textContent = 'Yeni Umre Kafilesi & Ses Odası Oluştur';
+      document.getElementById('tourFormSubmitBtn').textContent = 'Kafileyi ve Canlı Ses Odasını Oluştur';
+      document.getElementById('cancelEditTourBtn').style.display = 'none';
+    }
+
     document.getElementById('createTourForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const payload = Object.fromEntries(new FormData(e.target).entries());
-      const res = await fetch('/api/tours', {
-        method: 'POST',
+      const editingId = payload.editingTourId;
+      delete payload.editingTourId;
+
+      const url = editingId ? `/api/tours/${encodeURIComponent(editingId)}` : '/api/tours';
+      const method = editingId ? 'PATCH' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.success === false) {
-        alert(data.message || 'Kafile oluşturulurken bir hata oluştu.');
+        alert(data.message || 'Kafile kaydedilirken bir hata oluştu.');
         return;
       }
-      e.target.reset();
+      resetTourFormMode();
       fetchAdminData();
     });
 
@@ -1134,6 +1202,9 @@
       const tour = (appState && appState.tours || []).find((t) => t.id === id);
       const label = tour ? `${tour.code} (${tour.name})` : id;
       if (!confirm(`"${label}" kafilesini ve bağlı odalarını silmek istediğinize emin misiniz?`)) return;
+      if (document.getElementById('editingTourIdInput')?.value === id) {
+        resetTourFormMode();
+      }
       await fetch(`/api/tours/${encodeURIComponent(id)}`, { method: 'DELETE' });
       fetchAdminData();
     }
@@ -1196,6 +1267,12 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolvedBy: 'Beytullah Bey (Acente Paneli)' })
       });
+      fetchAdminData();
+    }
+
+    async function deleteSosAdmin(id) {
+      if (!confirm('Bu SOS kaydını silmek istediğinize emin misiniz?')) return;
+      await fetch(`/api/sos/${encodeURIComponent(id)}`, { method: 'DELETE' });
       fetchAdminData();
     }
   </script>

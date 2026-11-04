@@ -387,7 +387,7 @@
               </h3>
               <p style="font-size:0.81rem; color:var(--color-muted); margin:4px 0 0;">El kaldıran hacılara "Söz Ver" diyerek mikrofonlarını açabilirsiniz.</p>
             </div>
-            <span class="badge badge-gold" id="connectedCountBadge">42 Dinleyici</span>
+            <span class="badge badge-gold" id="connectedCountBadge">0 Canlı Dinleyici</span>
           </div>
 
           <!-- REHBER SÖZ İSTEME / SORU-CEVAP AÇMA-KAPAMA KONTROLÜ -->
@@ -484,14 +484,29 @@
       if (dBtn) dBtn.href = `/dinle?code=${enc}`;
     }
 
+    function ensureGuideOptionExists(guideName, subtitle = 'Kafile Rehberi') {
+      if (!guideName) return;
+      const gSel = document.getElementById('guideNameSelect');
+      if (!gSel) return;
+      if (!Array.from(gSel.options).some((o) => o.value === guideName)) {
+        const opt = document.createElement('option');
+        opt.value = guideName;
+        opt.style.color = '#000';
+        opt.textContent = `${guideName} (${subtitle})`;
+        gSel.appendChild(opt);
+      }
+    }
+
     function onTourSelectionChange() {
       const code = document.getElementById('guideTourSelect').value;
       const gSel = document.getElementById('guideNameSelect');
       const topicInput = document.getElementById('topicInput');
       const tourObj = guideToursCache.find((t) => t.code === code);
-      if (tourObj && tourObj.guideName && Array.from(gSel.options).some((o) => o.value === tourObj.guideName)) {
+      if (tourObj && tourObj.guideName) {
+        ensureGuideOptionExists(tourObj.guideName, `${tourObj.code} Rehberi`);
         gSel.value = tourObj.guideName;
       } else if (code === 'RY-KASIM') {
+        ensureGuideOptionExists('Ömer Ali Gültekin', 'Kasım Umresi Rehberi');
         gSel.value = 'Ömer Ali Gültekin';
       }
       if (code === 'RY-KASIM') {
@@ -530,6 +545,9 @@
         }
         if (data && data.tours && data.tours.length > 0) {
           guideToursCache = data.tours;
+          data.tours.forEach((t) => {
+            if (t.guideName) ensureGuideOptionExists(t.guideName, `${t.code} Rehberi`);
+          });
           const tSel = document.getElementById('guideTourSelect');
           const prevVal = tSel.value;
           const wantedCode = (urlParams.get('code') || prevVal || '').toUpperCase();
@@ -540,14 +558,18 @@
           const activeTour = data.tours.find((t) => t.code === tSel.value);
           if (activeTour && activeTour.guideName) {
             const gSel = document.getElementById('guideNameSelect');
-            if (Array.from(gSel.options).some((o) => o.value === activeTour.guideName)) {
-              gSel.value = activeTour.guideName;
-            }
+            ensureGuideOptionExists(activeTour.guideName, `${activeTour.code} Rehberi`);
+            gSel.value = activeTour.guideName;
           }
           syncGuideNavLinks();
           if (tSel.value !== prevVal) {
             switchGuideRoom();
           }
+        }
+        if (data && Array.isArray(data.sosAlerts)) {
+          const currentCode = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').toUpperCase();
+          activeSosAlerts = data.sosAlerts.filter((a) => a.status === 'active' && (!a.tourCode || a.tourCode === currentCode));
+          renderSosBanner();
         }
       })
       .catch((e) => console.log('Rehber bootstrap err:', e));
@@ -843,38 +865,42 @@
       if (typeof room.qnaEnabled !== 'undefined') {
         updateQnaUi(room.qnaEnabled);
       }
-      document.getElementById('connectedCountBadge').textContent = `${room.totalListeners} Dinleyici (${room.realListenerCount} Canlı Sekme)`;
+      const realCount = Number(room.realListenerCount ?? room.totalListeners ?? 0);
+      document.getElementById('connectedCountBadge').textContent = `${realCount} Canlı Dinleyici`;
       const container = document.getElementById('pilgrimsListContainer');
-      const pilgrims = room.connectedPilgrims || [];
+      const pilgrims = Array.isArray(room.connectedPilgrims) ? [...room.connectedPilgrims] : [];
 
-      const simulatedList = [
-        { id: 'sim-1', name: 'Hacı Mehmet Öztürk (Bursa)', phone: '+90 532 111 22 33', handRaised: false, micGranted: false, joinedAt: '14:02', simulated: true },
-        { id: 'sim-2', name: 'Hacı Fatma Yıldırım', phone: '+90 535 444 55 66', handRaised: false, micGranted: false, joinedAt: '14:05', simulated: true }
-      ];
+      if (pilgrims.length === 0) {
+        container.innerHTML = `
+          <div style="padding:18px 16px; border-radius:14px; background:var(--color-ground); border:1px dashed var(--color-hairline); text-align:center; color:var(--color-muted); font-size:0.86rem;">
+            Şu an odaya bağlı hacı misafir bulunmuyor. Misafirlerimiz kafile kodu (<strong>${room.tourCode || 'RY-KASIM'}</strong>) veya yaka kartı QR kodu ile katıldığında anında burada listelenir.
+          </div>
+        `;
+        return;
+      }
 
-      const allPilgrims = [...pilgrims, ...simulatedList];
       // Sort raised hands first
-      allPilgrims.sort((a, b) => Number(b.handRaised) - Number(a.handRaised));
+      pilgrims.sort((a, b) => Number(b.handRaised) - Number(a.handRaised));
 
-      container.innerHTML = allPilgrims.map((p) => `
+      container.innerHTML = pilgrims.map((p) => `
         <div class="pilgrim-row ${p.handRaised ? 'hand-raised' : ''} ${p.micGranted ? 'mic-active' : ''}">
           <div>
             <div style="font-weight:700; font-size:0.93rem; color:var(--color-emerald-night); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
               <span>${p.handRaised ? '✋' : p.micGranted ? '🎙️' : '🎧'} ${p.name}</span>
-              ${p.simulated ? '<span style="font-size:0.72rem; color:var(--color-muted); font-weight:600;">(Kafilede)</span>' : '<span class="badge badge-live" style="padding:2px 8px; font-size:0.68rem;">Aktif Bağlantı</span>'}
+              <span class="badge badge-live" style="padding:2px 8px; font-size:0.68rem;">Canlı Bağlı${p.roomId === 'siyer' ? ' • Siyer' : ''}</span>
             </div>
             <div style="font-size:0.78rem; color:var(--color-muted); margin-top:2px;">
-              ${p.phone || ''} • Katılım: ${p.joinedAt}
+              ${p.phone ? `${p.phone} • ` : ''}Katılım: ${p.joinedAt}
               ${p.handRaised ? ' • <strong style="color:#B45309;">Söz İstiyor!</strong>' : ''}
               ${p.micGranted ? ' • <strong style="color:#15803D;">Mikrofonu Açık (Konuşuyor)</strong>' : ''}
             </div>
           </div>
           <div>
-            ${!p.simulated ? (
+            ${
               p.micGranted
                 ? `<button class="btn btn-danger btn-sm" onclick="grantMic('${p.id}', false)">Sözü Bitir</button>`
                 : `<button class="btn ${p.handRaised ? 'btn-gold' : 'btn-outline'} btn-sm" onclick="grantMic('${p.id}', true)">Söz Ver</button>`
-            ) : `<span style="font-size:0.76rem; color:var(--color-muted); font-weight:600;">Dinliyor</span>`}
+            }
           </div>
         </div>
       `).join('');
@@ -1450,6 +1476,7 @@
               <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Haritada Gör</a>
               <a href="tel:${a.phone}" class="btn btn-outline btn-sm">Hemen Ara</a>
               <button class="btn btn-primary btn-sm" onclick="resolveSos('${a.id}')">Hacıya Ulaşıldı</button>
+              <button class="btn btn-outline btn-sm" style="color:var(--color-danger); border-color:#FCA5A5;" onclick="deleteSosGuide('${a.id}')">Kaydı Sil</button>
             </div>
           </div>
           <div style="border-radius:12px; overflow:hidden; border:2px solid #FCA5A5; height:210px; background:#F8FAFC;">
@@ -1466,6 +1493,12 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolvedBy: document.getElementById('guideNameSelect').value })
       }).catch(() => {});
+      activeSosAlerts = activeSosAlerts.filter((a) => a.id !== id);
+      renderSosBanner();
+    }
+
+    async function deleteSosGuide(id) {
+      await fetch(`/api/sos/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
       activeSosAlerts = activeSosAlerts.filter((a) => a.id !== id);
       renderSosBanner();
     }

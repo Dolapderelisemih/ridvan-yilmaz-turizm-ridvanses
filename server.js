@@ -246,14 +246,6 @@ function serializeRoom(room) {
     }
   }
 
-  // Simulated baseline pilgrims for demo realism alongside real connected tabs
-  const baseCount =
-    room.roomId === 'genel'
-      ? room.tourCode === 'RY-KASIM'
-        ? 38
-        : 0
-      : 0;
-
   return {
     key: room.key,
     tourCode: room.tourCode,
@@ -269,7 +261,7 @@ function serializeRoom(room) {
     guideLocation: room.guideLocation || null,
     connectedPilgrims: pilgrims,
     connectedGuides: guides,
-    totalListeners: pilgrims.length + baseCount,
+    totalListeners: pilgrims.length,
     realListenerCount: pilgrims.length,
     raisedHandsCount: pilgrims.filter((p) => p.handRaised).length,
     qnaEnabled: typeof room.qnaEnabled === 'undefined' ? true : Boolean(room.qnaEnabled)
@@ -975,13 +967,95 @@ app.post('/api/tours', (req, res) => {
     ]
   };
   db.tours.unshift(newTour);
+  if (newTour.guideName && !db.guides.some((g) => g.name.toLowerCase() === newTour.guideName.toLowerCase())) {
+    db.guides.push({
+      id: `guide-${Date.now()}`,
+      name: newTour.guideName,
+      title: 'Kafile İrşad Rehberi',
+      phone: '+90 538 399 96 66',
+      email: `rehber${Date.now()}@ridvanyilmazturizm.com`,
+      specialty: 'Siyer ve Umre Rehberliği',
+      status: 'online',
+      assignedTour: newTour.code
+    });
+  }
   ensureJourneySteps();
   if (!db.journeySteps[newTour.code]) {
     db.journeySteps[newTour.code] = buildDefaultStepsForTour(newTour);
   }
   saveState(db);
   getOrCreateRoom(newTour.code, 'genel');
+  getOrCreateRoom(newTour.code, 'siyer');
+  broadcastToAdmins({
+    type: 'admin-rooms-update',
+    rooms: Array.from(liveRooms.values()).map(serializeRoom)
+  });
   res.json({ success: true, tour: newTour, steps: db.journeySteps[newTour.code] });
+});
+
+app.patch('/api/tours/:id', (req, res) => {
+  const targetId = String(req.params.id || '').trim();
+  const tour = db.tours.find((t) => t.id === targetId || t.code.toUpperCase() === targetId.toUpperCase());
+  if (!tour) {
+    return res.status(404).json({ success: false, message: 'Düzenlenecek kafile bulunamadı.' });
+  }
+  const body = req.body || {};
+  if (typeof body.name === 'string' && body.name.trim()) tour.name = body.name.trim();
+  if (typeof body.dateText === 'string' && body.dateText.trim()) tour.dateText = body.dateText.trim();
+  if (typeof body.duration === 'string' && body.duration.trim()) tour.duration = body.duration.trim();
+  if (typeof body.guideName === 'string' && body.guideName.trim()) {
+    tour.guideName = body.guideName.trim();
+    if (!db.guides.some((g) => g.name.toLowerCase() === tour.guideName.toLowerCase())) {
+      db.guides.push({
+        id: `guide-${Date.now()}`,
+        name: tour.guideName,
+        title: 'Kafile İrşad Rehberi',
+        phone: '+90 538 399 96 66',
+        email: `rehber${Date.now()}@ridvanyilmazturizm.com`,
+        specialty: 'Siyer ve Umre Rehberliği',
+        status: 'online',
+        assignedTour: tour.code
+      });
+    }
+    if (Array.isArray(tour.rooms)) {
+      tour.rooms.forEach((rm) => {
+        rm.guide = tour.guideName;
+      });
+    }
+    for (const r of getTourRooms(tour.code)) {
+      r.guideName = tour.guideName;
+      r.tourName = tour.name;
+    }
+  }
+  if (typeof body.makkahHotel === 'string' && body.makkahHotel.trim()) tour.makkahHotel = body.makkahHotel.trim();
+  if (typeof body.madinahHotel === 'string' && body.madinahHotel.trim()) tour.madinahHotel = body.madinahHotel.trim();
+  if (typeof body.description === 'string') tour.description = body.description.trim();
+  if (typeof body.status === 'string' && body.status.trim()) tour.status = body.status.trim();
+  if (body.capacity !== undefined && Number.isFinite(Number(body.capacity))) {
+    tour.capacity = Math.max(1, Number(body.capacity));
+  }
+  if (body.registeredCount !== undefined && Number.isFinite(Number(body.registeredCount))) {
+    tour.registeredCount = Math.max(0, Number(body.registeredCount));
+  }
+  if (typeof body.pin === 'string') {
+    tour.pin = body.pin.trim();
+    tour.pinProtected = Boolean(tour.pin);
+  }
+
+  for (const r of getTourRooms(tour.code)) {
+    r.tourName = tour.name;
+  }
+  saveState(db);
+  const firstRoom = getTourRooms(tour.code)[0];
+  if (firstRoom) {
+    broadcastRoomState(firstRoom);
+  } else {
+    broadcastToAdmins({
+      type: 'admin-rooms-update',
+      rooms: Array.from(liveRooms.values()).map(serializeRoom)
+    });
+  }
+  return res.json({ success: true, tour });
 });
 
 app.delete('/api/tours/:id', (req, res) => {
@@ -1291,6 +1365,23 @@ app.patch('/api/sos/:id/resolve', (req, res) => {
   }
   broadcastToAdmins({ type: 'sos-resolved', alert: alertItem, sosAlerts: db.sosAlerts });
   res.json({ success: true, alert: alertItem });
+});
+
+app.delete('/api/sos/:id', (req, res) => {
+  const targetId = req.params.id;
+  const targetAlert = db.sosAlerts.find((s) => s.id === targetId);
+  if (!targetAlert) {
+    return res.status(404).json({ success: false, message: 'Silinecek SOS kaydı bulunamadı.' });
+  }
+  db.sosAlerts = db.sosAlerts.filter((s) => s.id !== targetId);
+  saveState(db);
+  for (const room of liveRooms.values()) {
+    if (room.tourCode === targetAlert.tourCode) {
+      broadcastToRoom(room, { type: 'sos-resolved', alert: targetAlert });
+    }
+  }
+  broadcastToAdmins({ type: 'sos-resolved', alert: targetAlert, sosAlerts: db.sosAlerts });
+  return res.json({ success: true, sosAlerts: db.sosAlerts });
 });
 
 // 8. REA Analysis Report Endpoint
