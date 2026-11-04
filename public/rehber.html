@@ -266,11 +266,34 @@
             </div>
           </div>
 
-          <div style="margin-bottom:18px;">
+          <div style="margin-bottom:14px;">
             <label class="studio-field-label" for="topicInput">Şu An Anlatılan Siyer / İbadet Başlığı</label>
             <div style="display:flex; gap:8px;">
               <input type="text" id="topicInput" class="studio-input" value="Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk" />
               <button type="button" class="btn btn-gold btn-sm" style="flex-shrink:0;" onclick="updateTopic()">Güncelle</button>
+            </div>
+          </div>
+
+          <!-- TEK DOKUNUŞ TAVAF ŞAVT & SA'Y SAYACI -->
+          <div style="background:rgba(0,0,0,0.26); border:1px solid rgba(197,160,89,0.28); border-radius:14px; padding:12px 14px; margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+              <span style="font-size:0.73rem; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; color:#E2C785;">
+                🕋 Canlı Tavaf Şavt &amp; Sa'y Sayacı (Hacı Ekranında Duayı Öne Çıkarır)
+              </span>
+              <button type="button" id="clearTawafStageBtn" class="code-pill" style="display:none; background:rgba(255,255,255,0.12); color:#fff; border-color:rgba(255,255,255,0.25); font-size:0.7rem; padding:3px 9px;" onclick="selectTawafStage(null)">
+                Sayacı Kapat
+              </button>
+            </div>
+            <div id="tawafCounterBar" style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button type="button" class="code-pill tawaf-stage-btn" data-stage="savt-1" style="background:rgba(255,255,255,0.08); color:#F8F4EC; border-color:rgba(197,160,89,0.35); font-size:0.75rem; padding:6px 10px;" onclick="selectTawafStage('savt-1')">1. Şavt</button>
+              <button type="button" class="code-pill tawaf-stage-btn" data-stage="savt-2" style="background:rgba(255,255,255,0.08); color:#F8F4EC; border-color:rgba(197,160,89,0.35); font-size:0.75rem; padding:6px 10px;" onclick="selectTawafStage('savt-2')">2. Şavt</button>
+              <button type="button" class="code-pill tawaf-stage-btn" data-stage="savt-3" style="background:rgba(255,255,255,0.08); color:#F8F4EC; border-color:rgba(197,160,89,0.35); font-size:0.75rem; padding:6px 10px;" onclick="selectTawafStage('savt-3')">3. Şavt</button>
+              <button type="button" class="code-pill tawaf-stage-btn" data-stage="savt-4" style="background:rgba(255,255,255,0.08); color:#F8F4EC; border-color:rgba(197,160,89,0.35); font-size:0.75rem; padding:6px 10px;" onclick="selectTawafStage('savt-4')">4. Şavt</button>
+              <button type="button" class="code-pill tawaf-stage-btn" data-stage="savt-5" style="background:rgba(255,255,255,0.08); color:#F8F4EC; border-color:rgba(197,160,89,0.35); font-size:0.75rem; padding:6px 10px;" onclick="selectTawafStage('savt-5')">5. Şavt</button>
+              <button type="button" class="code-pill tawaf-stage-btn" data-stage="savt-6" style="background:rgba(255,255,255,0.08); color:#F8F4EC; border-color:rgba(197,160,89,0.35); font-size:0.75rem; padding:6px 10px;" onclick="selectTawafStage('savt-6')">6. Şavt</button>
+              <button type="button" class="code-pill tawaf-stage-btn" data-stage="savt-7" style="background:rgba(255,255,255,0.08); color:#F8F4EC; border-color:rgba(197,160,89,0.35); font-size:0.75rem; padding:6px 10px;" onclick="selectTawafStage('savt-7')">7. Şavt</button>
+              <button type="button" class="code-pill tawaf-stage-btn" data-stage="makam-zemzem" style="background:rgba(255,255,255,0.08); color:#F8F4EC; border-color:rgba(197,160,89,0.35); font-size:0.75rem; padding:6px 10px;" onclick="selectTawafStage('makam-zemzem')">Makam &amp; Zemzem</button>
+              <button type="button" class="code-pill tawaf-stage-btn" data-stage="say" style="background:rgba(255,255,255,0.08); color:#F8F4EC; border-color:rgba(197,160,89,0.35); font-size:0.75rem; padding:6px 10px;" onclick="selectTawafStage('say')">Sa'y (Safa → Merve)</button>
             </div>
           </div>
 
@@ -391,13 +414,21 @@
           </div>
 
           <!-- REHBER SÖZ İSTEME / SORU-CEVAP AÇMA-KAPAMA KONTROLÜ -->
-          <div style="display:flex; justify-content:space-between; align-items:center; background:var(--color-ground); padding:12px 14px; border-radius:14px; border:1px solid var(--color-hairline); margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; background:var(--color-ground); padding:12px 14px; border-radius:14px; border:1px solid var(--color-hairline); margin-bottom:10px; flex-wrap:wrap; gap:8px;">
             <div>
               <div style="font-weight:700; font-size:0.86rem; color:var(--color-emerald-night);">Hacı Söz İsteme (Soru-Cevap):</div>
               <div style="font-size:0.75rem; color:var(--color-muted);" id="qnaStatusSubText">Tavafta karışıklık olmaması için dilediğinizde kapatabilirsiniz.</div>
             </div>
             <button type="button" id="toggleQnaBtn" class="btn btn-primary btn-sm" style="font-weight:800; padding:7px 14px;" onclick="toggleQnaPermission()">
               🟢 Söz İsteme Açık
+            </button>
+          </div>
+
+          <!-- SESLİ YOKLAMA / BAĞLI HACI ARAMA & FİLTRELEME -->
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+            <input type="text" id="pilgrimSearchInput" class="input" style="flex:1 1 180px; padding:9px 12px; font-size:0.86rem;" placeholder="🔍 Bağlı hacı adı veya telefon ara (Sesli Yoklama)..." oninput="filterPilgrimsList()" />
+            <button type="button" id="filterRaisedHandsBtn" class="code-pill" style="padding:8px 12px; font-size:0.76rem;" onclick="toggleRaisedHandsFilter()">
+              ✋ El Kaldıranlar En Üstte (<span id="raisedHandsBadgeCount">0</span>)
             </button>
           </div>
 
@@ -818,6 +849,131 @@
       loadGuideSteps();
     }
 
+    const TAWAF_STAGES = {
+      'savt-1': {
+        id: 'savt-1',
+        badge: 'TAVAF • 1. ŞAVT',
+        topic: 'Umre Tavafı 1. Şavt — Hacerü’l-Esved İstikbali & Sübhanallahi velhamdülillah',
+        title: '1. Şavt Duası ve Zikri (Hacerü’l-Esved Başlangıcı)',
+        arabic: 'بِسْمِ اللَّهِ وَاللَّهُ أَكْبَرُ ✦ سُبْحَانَ اللَّهِ وَالْحَمْدُ لِلَّهِ وَلَا إِلَهَ إِلَّا اللَّهُ وَاللَّهُ أَكْبَرُ',
+        reading: 'Bismillâhi vallâhu ekber. Sübhânallâhi velhamdülillâhi ve lâ ilâhe illallâhu vallâhu ekber, ve lâ havle ve lâ kuvvete illâ billâhil-aliyyil-azîm.',
+        meaning: 'Allah’ın adıyla, Allah en büyüktür. Allah’ı tüm noksanlıklardan tenzih ederim, hamd Allah’adır, Allah’tan başka ilah yoktur. Güç ve kuvvet ancak yüce ve büyük olan Allah’ın yardımıyladır.'
+      },
+      'savt-2': {
+        id: 'savt-2',
+        badge: 'TAVAF • 2. ŞAVT',
+        topic: 'Umre Tavafı 2. Şavt — Beytullah Huzurunda İman ve Sebat Duası',
+        title: '2. Şavt Duası (Hacerü’l-Esved & Rükn-ü Yemânî)',
+        arabic: 'اللَّهُمَّ إِنَّ هَذَا الْبَيْتَ بَيْتُكَ وَالْحَرَمَ حَرَمُكَ وَالْأَمْنَ أَمْنُكَ وَالْعَبْدَ عَبْدُكَ',
+        reading: 'Allâhümme inne hâze’l-beyte beytük, ve’l-harame haramük, ve’l-emne emnük, ve’l-abde abdük, hâzâ makâmü’l-âizi bike mine’n-nâr.',
+        meaning: 'Allah’ım! Şüphesiz bu Ev Senin evindir, Harem Senin haremindir, güven Senin güvenindir, kul da Senin kulundur. Burası cehennem ateşinden Sana sığınanın makamıdır.'
+      },
+      'savt-3': {
+        id: 'savt-3',
+        badge: 'TAVAF • 3. ŞAVT',
+        topic: 'Umre Tavafı 3. Şavt — Şüphe ve Nifaktan Sığınma & İhlas Duası',
+        title: '3. Şavt Duası (Faydalı İlim ve İhlas)',
+        arabic: 'اللَّهُمَّ إِنِّي أَعُوذُ بِكَ مِنَ الشَّكِّ وَالشِّرْكِ وَالشِّقَاقِ وَالنِّفَاقِ وَسُوءِ الْأَخْلَاقِ',
+        reading: 'Allâhümme innî eûzü bike mine’ş-şekki ve’ş-şirki ve’ş-şikâkı ve’n-nifâkı ve sûi’l-ahlâk. Rabbenâ âtinâ fi’d-dünyâ haseneten ve fi’l-âhirati haseneten ve kınâ azâbe’n-nâr.',
+        meaning: 'Allah’ım! Şüpheden, şirkten, ayrılıktan, nifaktan ve kötü ahlaktan Sana sığınırım. Rabbimiz! Bize dünyada ve ahirette iyilik ver, bizi ateş azabından koru.'
+      },
+      'savt-4': {
+        id: 'savt-4',
+        badge: 'TAVAF • 4. ŞAVT',
+        topic: 'Umre Tavafı 4. Şavt — Mebrur Umre ve Makbul Amel Duası',
+        title: '4. Şavt Duası (Kabul Olunmuş İbadet & Mağfiret)',
+        arabic: 'اللَّهُمَّ اجْعَلْهُ حَجًّا مَبْرُورًا وَسَعْيًا مَشْكُورًا وَذَنْبًا مَغْفُورًا وَعَمَلًا صَالِحًا مَقْبُولًا',
+        reading: 'Allâhümmec’alhu umraten mebrûraten ve sa’yen meşkûran ve zenben mağfûran ve amelen sâlihan makbûlâ.',
+        meaning: 'Allah’ım! Bu ibadetimizi makbul bir umre, karşılığı verilmiş bir sa’y, bağışlanmış bir günah ve kabul edilmiş salih bir amel eyle.'
+      },
+      'savt-5': {
+        id: 'savt-5',
+        badge: 'TAVAF • 5. ŞAVT',
+        topic: 'Umre Tavafı 5. Şavt — Arş’ın Gölgesinde Rahmet ve Cennet Duası',
+        title: '5. Şavt Duası (Arş’ın Gölgesi & Kevser Havuzu)',
+        arabic: 'اللَّهُمَّ أَظِلَّنِي تَحْتَ ظِلِّ عَرْشِكَ يَوْمَ لَا ظِلَّ إِلَّا ظِلُّكَ وَاسْقِنِي بِكَأْسِ نَبِيِّكَ مُحَمَّدٍ ﷺ',
+        reading: 'Allâhümme ezıllenî tahte zılli arşike yevme lâ zılle illâ zıllük, veskınî bi-ke’si nebiyyike Muhammedin (s.a.v.) şerbeten هَنِيئَةً lâ ezmeü ba’dehâ ebedâ.',
+        meaning: 'Allah’ım! Senin gölgenden başka hiçbir gölgenin bulunmadığı günde beni Arş’ının gölgesi altında gölgelendir ve Peygamberimiz Hz. Muhammed’in (s.a.v.) elinden bir daha susamayacağım Kevser şerbetini içir.'
+      },
+      'savt-6': {
+        id: 'savt-6',
+        badge: 'TAVAF • 6. ŞAVT',
+        topic: 'Umre Tavafı 6. Şavt — Kul ve İlahi Haklardan Af ve Bağışlanma Duası',
+        title: '6. Şavt Duası (Af, Mağfiret ve Dünya-Ahiret Genişliği)',
+        arabic: 'اللَّهُمَّ إِنَّ لَكَ عَلَيَّ حُقُوقًا كَثِيرَةً فِيمَا بَيْنِي وَبَيْنَكَ وَحُقُوقًا كَثِيرَةً فِيمَا بَيْنِي وَبَيْنَ خَلْقِكَ',
+        reading: 'Allâhümme inne leke aleyye hukûkan kesîraten fîmâ beynî ve beynek, fağfirhâ lî; ve mâ kâne li-halkıke fe-tehammelhü annî vağninî bi-halâlike an harâmik.',
+        meaning: 'Allah’ım! Seninle benim aramda Senin üzerimde çok hakların var, onları bana bağışla; kullarınla aramdaki hakları da üstümden kaldır ve beni helalinle yetindirip haramından koru.'
+      },
+      'savt-7': {
+        id: 'savt-7',
+        badge: 'TAVAF • 7. ŞAVT (SON ŞAVT)',
+        topic: 'Umre Tavafı 7. Şavt — Kamil İman, Şükür ve Tavaf Tamamlama Duası',
+        title: '7. Şavt Duası (Kamil İman & Hüsn-ü Hatime)',
+        arabic: 'اللَّهُمَّ إِنِّي أَسْأَلُكَ إِيمَانًا كَامِلًا وَيَقِينًا صَادِقًا وَرِزْقًا وَاسِعًا وَقَلْبًا خَاشِعًا وَلِسَانًا ذَاكِرًا',
+        reading: 'Allâhümme innî es’elüke îmânen kâmilen ve yakînen sâdıkan ve rızkan vâsian ve kalben hâşian ve lisânen zâkiran ve tevbeten nasûhâ.',
+        meaning: 'Allah’ım! Senden kamil bir iman, doğru bir yakin, geniş bir rızık, huşû dolu bir kalp, Seni zikreden bir dil ve nasuh bir tövbe niyaz ediyorum.'
+      },
+      'makam-zemzem': {
+        id: 'makam-zemzem',
+        badge: 'MAKAM-I İBRAHİM & ZEMZEM',
+        topic: 'Makam-ı İbrahim Tavaf Namazı & Zemzem Şifa Duası',
+        title: 'Makam-ı İbrahim & Zemzem İçerken Okunacak Dua',
+        arabic: 'اللَّهُمَّ إِنِّي أَسْأَلُكَ عِلْمًا نَافِعًا وَرِزْقًا وَاسِعًا وَشِفَاءً مِنْ كُلِّ دَاءٍ وَسَقَمٍ',
+        reading: 'Allâhümme innî es’elüke ilmen nâfian ve rızkan vâsian ve şifâen min külli dâin ve sekam, bi-rahmetike yâ erhamer-râhimîn.',
+        meaning: 'Allah’ım! Senden faydalı bir ilim, bol ve helal bir rızık, her türlü dert ve hastalıktan şifa diliyorum. Ey merhametlilerin en merhametlisi!'
+      },
+      'say': {
+        id: 'say',
+        badge: 'SA’Y • SAFA → MERVE',
+        topic: 'Safa ve Merve Arası Umre Sa’y İbadeti — Hz. Hacer Annemizin İzinde',
+        title: 'Safa ve Merve (Sa’y) Başlangıç & Yürüyüş Duası',
+        arabic: 'إِنَّ الصَّفَا وَالْمَرْوَةَ مِن شَعَائِرِ اللَّهِ ۖ أَبْدَأُ بِمَا بَدَأَ اللَّهُ بِهِ ✦ رَبِّ اغْفِرْ وَارْحَمْ وَتَجَاوَزْ عَمَّا تَعْلَمُ',
+        reading: 'İnne’s-Safâ ve’l-Mervete min şeâirillâh. Ebdeü bimâ bedeallâhu bih. Rabbiğfir verham ve tecâvez ammâ ta’lem, inneke ente’l-eazzü’l-ekrem.',
+        meaning: 'Şüphesiz Safa ile Merve Allah’ın şiarlarındandır. Allah’ın başladığı yerden (Safa’dan) başlıyorum. Rabbim! Bağışla, merhamet et, bildiğin kusurlarımızı affet; şüphesiz Sen en yüce ve en kerem sahibisin.'
+      }
+    };
+
+    let currentActiveTawafId = null;
+
+    function updateTawafButtonsUi(stageId) {
+      currentActiveTawafId = stageId || null;
+      document.querySelectorAll('.tawaf-stage-btn').forEach((btn) => {
+        const isAct = btn.getAttribute('data-stage') === currentActiveTawafId;
+        btn.style.background = isAct ? 'var(--color-gold)' : 'rgba(255,255,255,0.08)';
+        btn.style.color = isAct ? '#06231B' : '#F8F4EC';
+        btn.style.fontWeight = isAct ? '800' : '700';
+      });
+      const clearBtn = document.getElementById('clearTawafStageBtn');
+      if (clearBtn) clearBtn.style.display = currentActiveTawafId ? 'inline-flex' : 'none';
+    }
+
+    function selectTawafStage(stageId) {
+      if (!stageId || !TAWAF_STAGES[stageId]) {
+        updateTawafButtonsUi(null);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'tawaf-stage-update', clear: true }));
+        }
+        return;
+      }
+      const st = TAWAF_STAGES[stageId];
+      updateTawafButtonsUi(stageId);
+      const topicEl = document.getElementById('topicInput');
+      if (topicEl) topicEl.value = st.topic;
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'tawaf-stage-update',
+          stageId: st.id,
+          badge: st.badge,
+          topic: st.topic,
+          title: st.title,
+          arabic: st.arabic,
+          reading: st.reading,
+          meaning: st.meaning
+        }));
+      }
+    }
+
     function updateTopic() {
       const topic = document.getElementById('topicInput').value.trim();
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -860,29 +1016,79 @@
       }
     }
 
+    let latestConnectedPilgrims = [];
+    let onlyRaisedHandsFilter = false;
+
+    function toggleRaisedHandsFilter() {
+      onlyRaisedHandsFilter = !onlyRaisedHandsFilter;
+      const btn = document.getElementById('filterRaisedHandsBtn');
+      if (btn) {
+        btn.style.background = onlyRaisedHandsFilter ? 'var(--color-gold)' : 'var(--color-gold-soft)';
+        btn.style.borderColor = 'var(--color-gold)';
+      }
+      renderPilgrimsListUi();
+    }
+
+    function filterPilgrimsList() {
+      renderPilgrimsListUi();
+    }
+
     function renderRoomState(room) {
       if (!room) return;
       if (typeof room.qnaEnabled !== 'undefined') {
         updateQnaUi(room.qnaEnabled);
       }
+      if (typeof room.activeTawafStage !== 'undefined') {
+        updateTawafButtonsUi(room.activeTawafStage ? room.activeTawafStage.id : null);
+      }
       const realCount = Number(room.realListenerCount ?? room.totalListeners ?? 0);
       document.getElementById('connectedCountBadge').textContent = `${realCount} Canlı Dinleyici`;
-      const container = document.getElementById('pilgrimsListContainer');
-      const pilgrims = Array.isArray(room.connectedPilgrims) ? [...room.connectedPilgrims] : [];
+      latestConnectedPilgrims = Array.isArray(room.connectedPilgrims) ? [...room.connectedPilgrims] : [];
+      const raisedCount = latestConnectedPilgrims.filter((p) => p.handRaised).length;
+      const rBadge = document.getElementById('raisedHandsBadgeCount');
+      if (rBadge) rBadge.textContent = raisedCount;
+      renderPilgrimsListUi(room.tourCode || 'RY-KASIM');
+    }
 
-      if (pilgrims.length === 0) {
+    function renderPilgrimsListUi(tourCode = 'RY-KASIM') {
+      const container = document.getElementById('pilgrimsListContainer');
+      if (!container) return;
+      const query = (document.getElementById('pilgrimSearchInput')?.value || '').trim().toLocaleLowerCase('tr-TR');
+      let list = [...latestConnectedPilgrims];
+
+      if (onlyRaisedHandsFilter) {
+        list = list.filter((p) => p.handRaised || p.micGranted);
+      }
+      if (query) {
+        list = list.filter(
+          (p) =>
+            String(p.name || '').toLocaleLowerCase('tr-TR').includes(query) ||
+            String(p.phone || '').toLocaleLowerCase('tr-TR').includes(query)
+        );
+      }
+
+      if (latestConnectedPilgrims.length === 0) {
         container.innerHTML = `
           <div style="padding:18px 16px; border-radius:14px; background:var(--color-ground); border:1px dashed var(--color-hairline); text-align:center; color:var(--color-muted); font-size:0.86rem;">
-            Şu an odaya bağlı hacı misafir bulunmuyor. Misafirlerimiz kafile kodu (<strong>${room.tourCode || 'RY-KASIM'}</strong>) veya yaka kartı QR kodu ile katıldığında anında burada listelenir.
+            Şu an odaya bağlı hacı misafir bulunmuyor. Misafirlerimiz kafile kodu (<strong>${tourCode}</strong>) veya yaka kartı QR kodu ile katıldığında anında burada listelenir.
           </div>
         `;
         return;
       }
 
-      // Sort raised hands first
-      pilgrims.sort((a, b) => Number(b.handRaised) - Number(a.handRaised));
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div style="padding:14px; border-radius:12px; background:var(--color-ground); border:1px dashed var(--color-hairline); text-align:center; color:var(--color-muted); font-size:0.84rem;">
+            Arama veya filtre kriterine uygun bağlı hacı bulunamadı.
+          </div>
+        `;
+        return;
+      }
 
-      container.innerHTML = pilgrims.map((p) => `
+      // Sort raised hands & active mic first
+      list.sort((a, b) => (Number(b.micGranted) * 2 + Number(b.handRaised)) - (Number(a.micGranted) * 2 + Number(a.handRaised)));
+
+      container.innerHTML = list.map((p) => `
         <div class="pilgrim-row ${p.handRaised ? 'hand-raised' : ''} ${p.micGranted ? 'mic-active' : ''}">
           <div>
             <div style="font-weight:700; font-size:0.93rem; color:var(--color-emerald-night); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">

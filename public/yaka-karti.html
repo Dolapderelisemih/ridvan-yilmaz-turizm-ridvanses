@@ -89,7 +89,8 @@
       font-weight: 800;
     }
     @media print {
-      .print-toolbar {
+      .print-toolbar,
+      .bulk-panel {
         display: none !important;
       }
       body {
@@ -99,6 +100,18 @@
         margin: 0;
         max-width: 100%;
       }
+    }
+    .bulk-panel {
+      max-width: 920px;
+      margin: 18px auto 0;
+      padding: 0 16px;
+    }
+    .bulk-card {
+      background: #FFFFFF;
+      border: 1.5px solid var(--color-gold);
+      border-radius: 18px;
+      padding: 18px 20px;
+      box-shadow: var(--shadow-soft);
     }
     @media (max-width: 720px) {
       .badges-sheet {
@@ -119,9 +132,31 @@
       <select id="tourCodePicker" class="select" style="width:auto; padding:8px 12px; font-size:0.85rem;" onchange="updateBadges()">
         <option value="RY-KASIM">RY-KASIM (13-14 Kasım Umresi • Ömer Ali Gültekin)</option>
       </select>
-      <input type="text" id="customPilgrimInput" class="input" style="width:210px; padding:8px 12px; font-size:0.85rem;" placeholder="Özel İsim (İsteğe bağlı)" oninput="updateBadges()" />
+      <input type="text" id="customPilgrimInput" class="input" style="width:200px; padding:8px 12px; font-size:0.85rem;" placeholder="Tek İsim (Hızlı)" oninput="updateBadges()" />
+      <button type="button" class="btn btn-outline btn-sm" style="color:#E2C785; border-color:rgba(226,199,133,0.5); background:rgba(197,160,89,0.12);" onclick="toggleBulkListPanel()">
+        📋 Toplu Hacı İsim Listesi Yapıştır (<span id="badgeCountLabel">4</span> Kart)
+      </button>
       <button class="btn btn-gold btn-sm" onclick="window.print()">A4 Yaka Kartlarını Yazdır / PDF Kaydet</button>
       <a href="/panel" class="btn btn-outline btn-sm" style="color:#FFFFFF; border-color:rgba(255,255,255,0.3); background:transparent;">← Panele Dön</a>
+    </div>
+  </div>
+
+  <!-- TOPLU HACI İSİM LİSTESİ YAPIŞTIRMA PANELİ (BASKIDA GİZLENİR) -->
+  <div id="bulkListPanel" class="bulk-panel" style="display:none;">
+    <div class="bulk-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+        <div>
+          <strong style="color:var(--color-emerald-night); font-size:0.98rem;">📋 Toplu Hacı İsim Listesi (Excel veya WhatsApp'tan Yapıştırın)</strong>
+          <div style="font-size:0.8rem; color:var(--color-muted); margin-top:2px;">
+            Her satıra 1 hacı ismi gelecek şekilde 40–100 kişilik kafile listesini alt alta yapıştırın; her misafir için isme özel A4 yaka kartı otomatik üretilir.
+          </div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="clearBulkList()">Listeyi Temizle</button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="updateBadges()">Kartları Oluştur</button>
+        </div>
+      </div>
+      <textarea id="bulkPilgrimsTextarea" rows="6" class="textarea" placeholder="Örn:&#10;Hacı Mustafa Kaya&#10;Hacı Fatma Yıldırım&#10;Hacı Ahmet Demir&#10;Hacı Ayşe Çelik..." oninput="updateBadges()"></textarea>
     </div>
   </div>
 
@@ -160,9 +195,22 @@
       updateBadges();
     }
 
+    function toggleBulkListPanel() {
+      const p = document.getElementById('bulkListPanel');
+      if (!p) return;
+      p.style.display = p.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function clearBulkList() {
+      const ta = document.getElementById('bulkPilgrimsTextarea');
+      if (ta) ta.value = '';
+      updateBadges();
+    }
+
     async function updateBadges() {
       const code = document.getElementById('tourCodePicker').value;
       const customName = document.getElementById('customPilgrimInput').value.trim();
+      const bulkRaw = (document.getElementById('bulkPilgrimsTextarea')?.value || '').trim();
       const tour = toursData.find((t) => t.code === code) || {
         code,
         name: '13-14 Kasım Umresi',
@@ -174,9 +222,20 @@
       const qrRes = await fetch(`/api/qr?code=${encodeURIComponent(code)}`);
       const qrJson = await qrRes.json();
 
-      const samplePilgrims = customName
-        ? [customName, `${customName} (Refakatçi)`, 'Hacı Mustafa Kaya', 'Hacı Hatice Demir']
-        : ['Hacı Mustafa Kaya', 'Hacı Fatma Yıldırım', 'Hacı Ahmet Demir', 'Hacı Ayşe Çelik'];
+      let samplePilgrims = [];
+      if (bulkRaw) {
+        samplePilgrims = bulkRaw
+          .split(/\r?\n/)
+          .map((line) => line.replace(/^\s*\d+[\.\)\-\s]+/, '').trim())
+          .filter(Boolean);
+      } else if (customName) {
+        samplePilgrims = [customName];
+      } else {
+        samplePilgrims = ['Hacı Mustafa Kaya', 'Hacı Fatma Yıldırım', 'Hacı Ahmet Demir', 'Hacı Ayşe Çelik'];
+      }
+
+      const countLbl = document.getElementById('badgeCountLabel');
+      if (countLbl) countLbl.textContent = samplePilgrims.length;
 
       const container = document.getElementById('badgesContainer');
       container.innerHTML = samplePilgrims.map((pName) => `

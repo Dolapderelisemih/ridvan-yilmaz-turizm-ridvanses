@@ -384,11 +384,22 @@
       <!-- SEKME 1: CANLI YAYIN OYNATICI VE SÖZ İSTEME -->
       <div id="pilgrimTabPlayer" class="pilgrim-tab-pane active">
         <div class="player-deck star-field-dark">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
             <span class="badge" id="liveBadge" style="background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(74,222,128,0.4);">
               <span class="live-dot"></span> <span id="i18n_liveStatus">CANLI YAYIN AKTİF</span>
             </span>
-            <span style="font-size:0.78rem; color:var(--color-gold-bright); font-weight:800; letter-spacing:0.05em;" id="activeTourBadge">RY-KASIM</span>
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span id="pilgrimNetQualityBadge" class="badge" style="background:rgba(255,255,255,0.12); color:#e2e8f0; border:1px solid rgba(255,255,255,0.22); font-size:0.7rem; padding:3px 9px;">
+                📶 Bağlantı: Aktif
+              </span>
+              <span style="font-size:0.78rem; color:var(--color-gold-bright); font-weight:800; letter-spacing:0.05em;" id="activeTourBadge">RY-KASIM</span>
+            </div>
+          </div>
+
+          <!-- CANLI MİKROFON / SES AKIŞ DURUM ŞERİDİ -->
+          <div id="guideVoiceStatusStrip" style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; background:rgba(0,0,0,0.28); border:1px solid rgba(255,255,255,0.14); border-radius:12px; padding:8px 12px; margin-bottom:12px; font-size:0.79rem;">
+            <span id="guideVoiceStateText" style="font-weight:700; color:#e2e8f0;">⏸️ Hoca Beklemede — Bağlantınız Aktif</span>
+            <span id="pilgrimPacketLatencyText" style="font-size:0.72rem; color:var(--color-gold-bright); font-weight:700;">24 kHz HD • Hazır</span>
           </div>
 
           <div class="player-orb-wrap">
@@ -406,12 +417,24 @@
           </div>
 
           <!-- Konu & Frekans Görselleştirici -->
-          <div style="background:rgba(255,255,255,0.06); border:1px solid rgba(197,160,89,0.28); border-radius:16px; padding:14px; margin-bottom:16px;">
+          <div style="background:rgba(255,255,255,0.06); border:1px solid rgba(197,160,89,0.28); border-radius:16px; padding:14px; margin-bottom:14px;">
             <div style="font-size:0.7rem; color:var(--color-gold-bright); font-weight:800; letter-spacing:0.06em; text-transform:uppercase;">ŞU ANKİ ANLATIM / BÖLÜM</div>
             <div style="font-size:0.93rem; font-weight:700; color:#fff; margin-top:4px; line-height:1.4;" id="liveTopicText">
               Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk
             </div>
             <div class="spectrum" id="listenerSpectrum" style="margin-top:12px;"></div>
+          </div>
+
+          <!-- CANLI TAVAF ŞAVT & SA'Y DUASI KARTI (Hoca Şavt Seçtiğinde Otomatik Öne Çıkar) -->
+          <div id="liveTawafStageCard" style="display:none; background:linear-gradient(155deg, rgba(197,160,89,0.22) 0%, rgba(6,35,27,0.88) 100%); border:1.5px solid var(--color-gold); border-radius:16px; padding:14px; margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+              <span id="liveTawafStageBadge" class="badge badge-gold" style="font-size:0.72rem;">TAVAF • 1. ŞAVT</span>
+              <span style="font-size:0.72rem; color:#e2e8f0; font-weight:700;">📿 Hocamızla Birlikte Okuyunuz</span>
+            </div>
+            <div id="liveTawafStageTitle" style="font-weight:800; font-size:0.95rem; color:#fff; margin-bottom:6px;"></div>
+            <div id="liveTawafStageArabic" style="font-family:'Amiri', serif; font-size:1.22rem; color:var(--color-gold-bright); direction:rtl; text-align:right; line-height:1.75; margin-bottom:6px;"></div>
+            <div id="liveTawafStageReading" style="font-size:0.84rem; color:#f8fafc; font-weight:600; font-style:italic; margin-bottom:4px; line-height:1.45;"></div>
+            <div id="liveTawafStageMeaning" style="font-size:0.79rem; color:#cbd5e1; line-height:1.4;"></div>
           </div>
 
           <!-- Ses Aç / Kapat & Ses Seviyesi Yükseltici -->
@@ -1022,6 +1045,7 @@
       ws = new WebSocket(`${proto}//${wsHost}/ws`);
 
       ws.onopen = () => {
+        updatePilgrimConnectionUi('connected');
         ws.send(JSON.stringify({
           type: 'join',
           role: 'pilgrim',
@@ -1054,10 +1078,26 @@
             if (typeof r.qnaEnabled !== 'undefined') {
               updateQnaStateInPilgrimUi(r.qnaEnabled);
             }
+            if (typeof r.activeTawafStage !== 'undefined') {
+              renderLiveTawafStage(r.activeTawafStage);
+            }
+            if (r.broadcastMode === 'mic') {
+              updateGuideSpeakingIndicator(true);
+            }
           }
           if (msg.announcements) renderAnnouncements(msg.announcements);
           if (msg.siyerPoints) renderPrayers(msg.siyerPoints);
           if (msg.steps) renderPilgrimJourney(msg.steps, msg.stats || null, true);
+        }
+
+        if (msg.type === 'tawaf-stage') {
+          if (msg.currentTopic) {
+            document.getElementById('liveTopicText').textContent = msg.currentTopic;
+          }
+          renderLiveTawafStage(msg.activeTawafStage || null);
+          if (msg.activeTawafStage && msg.activeTawafStage.badge) {
+            showAppToast(`🕋 <strong>${msg.activeTawafStage.badge}:</strong> ${msg.activeTawafStage.title}`, 4500);
+          }
         }
 
         if (msg.type === 'steps-updated') {
@@ -1084,12 +1124,14 @@
         }
 
         if (msg.type === 'audio-chunk') {
+          lastPacketReceivedAt = Date.now();
+          updateGuideSpeakingIndicator(true, msg.sentAt);
           animateSpectrumFromLevel(msg.level || 0.5);
           if (isAudioListening && !micGranted) {
             if (msg.pcm16) {
-              playPcmSamples(msg.pcm16, msg.sampleRate || 16000, true);
+              playPcmSamples(msg.pcm16, msg.sampleRate || 24000, true);
             } else if (msg.samples && msg.samples.length) {
-              playPcmSamples(msg.samples, msg.sampleRate || 16000, false);
+              playPcmSamples(msg.samples, msg.sampleRate || 24000, false);
             } else if (msg.synthNote) {
               playGentleHarmonyNote(msg.synthNote);
             }
@@ -1123,6 +1165,7 @@
 
       ws.onclose = () => {
         if (intentionalLeave) return;
+        updatePilgrimConnectionUi('reconnecting');
         if (window._ryWsReconnectTimeout) clearTimeout(window._ryWsReconnectTimeout);
         window._ryWsReconnectTimeout = setTimeout(() => {
           if (!intentionalLeave) {
@@ -1134,6 +1177,64 @@
       ws.onerror = (err) => {
         console.error('Hacı WebSocket hatası:', err);
       };
+    }
+
+    function updatePilgrimConnectionUi(state) {
+      const badge = document.getElementById('pilgrimNetQualityBadge');
+      if (!badge) return;
+      if (state === 'reconnecting') {
+        badge.textContent = '🔄 Yeniden Bağlanıyor...';
+        badge.style.background = 'rgba(245, 158, 11, 0.25)';
+        badge.style.color = '#fde68a';
+        badge.style.borderColor = 'rgba(251, 191, 36, 0.5)';
+      } else {
+        badge.textContent = '📶 Bağlantı: Güçlü (HD)';
+        badge.style.background = 'rgba(34, 197, 94, 0.2)';
+        badge.style.color = '#86efac';
+        badge.style.borderColor = 'rgba(74, 222, 128, 0.4)';
+      }
+    }
+
+    function updateGuideSpeakingIndicator(speaking, sentAtTs) {
+      const strip = document.getElementById('guideVoiceStatusStrip');
+      const txt = document.getElementById('guideVoiceStateText');
+      const latTxt = document.getElementById('pilgrimPacketLatencyText');
+      if (!txt || !strip) return;
+      if (speaking) {
+        txt.innerHTML = '🎙️ <strong style="color:#4ade80;">Hoca Şu An Konuşuyor</strong> (Canlı Akış)';
+        strip.style.borderColor = 'rgba(74, 222, 128, 0.45)';
+        strip.style.background = 'rgba(21, 128, 61, 0.22)';
+        if (latTxt) {
+          let rttMs = sentAtTs ? Math.max(18, Math.min(240, Math.abs(Date.now() - Number(sentAtTs)))) : 35;
+          if (!Number.isFinite(rttMs) || rttMs > 240) rttMs = 38;
+          latTxt.textContent = `24 kHz HD • ~${rttMs}ms`;
+        }
+      } else {
+        txt.textContent = '⏸️ Hoca Beklemede — Bağlantınız Aktif';
+        strip.style.borderColor = 'rgba(255, 255, 255, 0.14)';
+        strip.style.background = 'rgba(0, 0, 0, 0.28)';
+        if (latTxt) latTxt.textContent = '24 kHz HD • Hazır';
+      }
+    }
+
+    function renderLiveTawafStage(stage) {
+      const card = document.getElementById('liveTawafStageCard');
+      if (!card) return;
+      if (!stage || !stage.title) {
+        card.style.display = 'none';
+        return;
+      }
+      card.style.display = 'block';
+      const bEl = document.getElementById('liveTawafStageBadge');
+      const tEl = document.getElementById('liveTawafStageTitle');
+      const aEl = document.getElementById('liveTawafStageArabic');
+      const rEl = document.getElementById('liveTawafStageReading');
+      const mEl = document.getElementById('liveTawafStageMeaning');
+      if (bEl) bEl.textContent = stage.badge || 'TAVAF AŞAMASI';
+      if (tEl) tEl.textContent = stage.title || '';
+      if (aEl) aEl.textContent = stage.arabic || '';
+      if (rEl) rEl.textContent = stage.reading || '';
+      if (mEl) mEl.textContent = stage.meaning ? `Anlamı: ${stage.meaning}` : '';
     }
 
     let wasGuideLocationActive = false;
@@ -1449,11 +1550,15 @@
     }
 
     setInterval(() => {
-      if (Date.now() - lastPacketReceivedAt > 350) {
+      const idleMs = Date.now() - lastPacketReceivedAt;
+      if (idleMs > 350) {
         const bars = specContainer.querySelectorAll('.spectrum-bar');
         bars.forEach((b) => {
           b.style.height = '6px';
         });
+      }
+      if (lastPacketReceivedAt > 0 && idleMs > 1800) {
+        updateGuideSpeakingIndicator(false);
       }
     }, 200);
 

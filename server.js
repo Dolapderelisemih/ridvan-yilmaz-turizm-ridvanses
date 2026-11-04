@@ -196,6 +196,7 @@ function getOrCreateRoom(tourCode, roomId = 'genel') {
         code === 'RY-KASIM'
           ? 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk'
           : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti',
+      activeTawafStage: null,
       activeSpeakerClientId: null,
       activeSpeakerName: null,
       guideLocation: null,
@@ -256,6 +257,7 @@ function serializeRoom(room) {
     broadcastMode: room.broadcastMode,
     startedAt: room.startedAt,
     currentTopic: room.currentTopic,
+    activeTawafStage: room.activeTawafStage || null,
     activeSpeakerClientId: room.activeSpeakerClientId,
     activeSpeakerName: room.activeSpeakerName,
     guideLocation: room.guideLocation || null,
@@ -463,11 +465,44 @@ function processClientJsonMessage(ctx, msg) {
         r.isLive = Boolean(msg.isLive);
         r.broadcastMode = msg.broadcastMode || (r.isLive ? 'mic' : 'idle');
         if (msg.topic) r.currentTopic = msg.topic;
+        if (typeof msg.tawafStage !== 'undefined') r.activeTawafStage = msg.tawafStage || null;
         if (msg.guidePeerId) r.guidePeerId = msg.guidePeerId;
         if (r.isLive) {
           r.startedAt = Date.now();
         }
       }
+      broadcastRoomState(currentRoom);
+      break;
+    }
+
+    case 'tawaf-stage-update': {
+      if (sender.role !== 'guide') break;
+      const stagePayload = {
+        id: msg.stageId || 'savt-1',
+        badge: msg.badge || 'TAVAF AŞAMASI',
+        title: msg.title || 'Tavaf & Sa’y Rehberliği',
+        arabic: msg.arabic || '',
+        reading: msg.reading || '',
+        meaning: msg.meaning || '',
+        note: msg.note || '',
+        updatedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+      };
+      for (const r of getTourRooms(currentRoom.tourCode)) {
+        r.activeTawafStage = msg.clear ? null : stagePayload;
+        if (!msg.clear && msg.topic) {
+          r.currentTopic = msg.topic;
+        }
+        broadcastToRoom(r, {
+          type: 'tawaf-stage',
+          activeTawafStage: r.activeTawafStage,
+          currentTopic: r.currentTopic
+        });
+      }
+      broadcastToFamilyTrackers(currentRoom.tourCode, {
+        type: 'tawaf-stage',
+        activeTawafStage: msg.clear ? null : stagePayload,
+        currentTopic: currentRoom.currentTopic
+      });
       broadcastRoomState(currentRoom);
       break;
     }
