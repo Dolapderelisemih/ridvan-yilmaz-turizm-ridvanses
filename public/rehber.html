@@ -29,8 +29,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=19"></script>
-  <script src="/js/umrah-steps-map.js?v=19"></script>
+  <script src="/vercel-ws-shim.js?v=30"></script>
+  <script src="/js/umrah-steps-map.js?v=30"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -241,11 +241,18 @@
             <span class="studio-timer" id="broadcastTimer">CANLI AKÜSTİK DECK</span>
           </div>
 
-          <div class="grid-2" style="gap:14px; margin-bottom:16px;">
+          <div class="grid-3" style="gap:12px; margin-bottom:16px;">
             <div>
               <label class="studio-field-label" for="guideTourSelect">Kafile / Tur Kodu</label>
               <select id="guideTourSelect" class="studio-select" onchange="onTourSelectionChange()">
                 <option value="RY-KASIM" style="color:#000;">RY-KASIM — 13-14 Kasım Umresi (Ömer Ali Gültekin)</option>
+              </select>
+            </div>
+            <div>
+              <label class="studio-field-label" for="guideRoomSelect">Yayın Odası / Kanal</label>
+              <select id="guideRoomSelect" class="studio-select" onchange="switchGuideRoom()">
+                <option value="genel" style="color:#000;">📡 Genel &amp; Tavaf (Tüm Kafile)</option>
+                <option value="siyer" style="color:#000;">🕌 Siyer-i Nebi Sohbet Odası</option>
               </select>
             </div>
             <div>
@@ -628,6 +635,15 @@
 
     let guideWsReconnectTimer = null;
 
+    function escapeHtml(str) {
+      return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function connectGuideWs() {
       if (guideWsReconnectTimer) {
         clearTimeout(guideWsReconnectTimer);
@@ -648,18 +664,19 @@
       ws = new WebSocket(`${proto}//${wsHost}/ws`);
 
       const tourCode = document.getElementById('guideTourSelect').value;
+      const roomId = document.getElementById('guideRoomSelect')?.value || 'genel';
       const guideName = document.getElementById('guideNameSelect').value;
       const guidePeerId =
         typeof window.ryGetDynamicChannelId === 'function'
-          ? window.ryGetDynamicChannelId(tourCode, 'genel')
-          : `ridvanses-${String(tourCode || 'RY-KASIM').toLowerCase()}-genel-guide-v26`;
+          ? window.ryGetDynamicChannelId(tourCode, roomId)
+          : `ridvanses-${String(tourCode || 'RY-KASIM').toLowerCase()}-${roomId}-guide-v26`;
 
       ws.onopen = () => {
         ws.send(JSON.stringify({
           type: 'join',
           role: 'guide',
           tourCode,
-          roomId: 'genel',
+          roomId,
           name: guideName,
           guidePeerId
         }));
@@ -1059,18 +1076,21 @@
 
       container.innerHTML = list.map((p) => {
         const hasRealPhone = p.phone && p.phone !== '+90 538 000 00 00';
+        const safeName = escapeHtml(p.name || 'Hacı Misafir');
+        const safePhone = escapeHtml(p.phone || '');
+        const safeJoined = escapeHtml(p.joinedAt || '');
         return `
         <div class="pilgrim-row">
           <div>
             <div style="font-weight:700; font-size:0.93rem; color:var(--color-emerald-night); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <span>🎧 ${p.name}</span>
+              <span>🎧 ${safeName}</span>
               <span class="badge badge-live" style="padding:2px 8px; font-size:0.68rem;">Canlı Bağlı${p.roomId === 'siyer' ? ' • Siyer' : ''}</span>
             </div>
             <div style="font-size:0.78rem; color:var(--color-muted); margin-top:2px;">
-              ${hasRealPhone ? `${p.phone} • ` : ''}Katılım: ${p.joinedAt}
+              ${hasRealPhone ? `${safePhone} • ` : ''}Katılım: ${safeJoined}
             </div>
           </div>
-          ${hasRealPhone ? `<div><a href="tel:${p.phone}" class="btn btn-outline btn-sm" style="padding:6px 10px; font-size:0.76rem;">📞 Ara</a></div>` : ''}
+          ${hasRealPhone ? `<div><a href="tel:${safePhone}" class="btn btn-outline btn-sm" style="padding:6px 10px; font-size:0.76rem;">📞 Ara</a></div>` : ''}
         </div>
       `;
       }).join('');
@@ -1166,7 +1186,10 @@
       } catch {}
     }
 
-    document.addEventListener('visibilitychange', () => {
+    function recoverGuideLiveSession() {
+      if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) {
+        connectGuideWs();
+      }
       if (!isMicBroadcasting) return;
       if (document.visibilityState === 'visible') {
         try {
@@ -1180,6 +1203,14 @@
       } else {
         enableGuideKeepAlive();
       }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      recoverGuideLiveSession();
+    });
+
+    window.addEventListener('online', () => {
+      recoverGuideLiveSession();
     });
 
     function floatTo16BitBase64(floatSamples) {
@@ -1617,8 +1648,9 @@
         await setupGuideMicrophoneGraph();
 
         const activeTourCode = document.getElementById('guideTourSelect').value || 'RY-KASIM';
+        const activeRoomId = document.getElementById('guideRoomSelect')?.value || 'genel';
         if (typeof window.ryBroadcastGuideStream === 'function') {
-          window.ryBroadcastGuideStream(micStream, activeTourCode, 'genel');
+          window.ryBroadcastGuideStream(micStream, activeTourCode, activeRoomId);
         }
 
         isMicBroadcasting = true;
@@ -1634,6 +1666,7 @@
         setTimeout(() => {
           if (ws && ws.readyState === WebSocket.OPEN) {
             const currentCode = document.getElementById('guideTourSelect').value || 'RY-KASIM';
+            const currentRoom = document.getElementById('guideRoomSelect')?.value || 'genel';
             ws.send(JSON.stringify({
               type: 'guide-stream-state',
               isLive: true,
@@ -1641,8 +1674,8 @@
               topic: document.getElementById('topicInput').value,
               guidePeerId:
                 typeof window.ryGetDynamicChannelId === 'function'
-                  ? window.ryGetDynamicChannelId(currentCode, 'genel')
-                  : `ridvanses-${String(currentCode).toLowerCase()}-genel-guide-v26`
+                  ? window.ryGetDynamicChannelId(currentCode, currentRoom)
+                  : `ridvanses-${String(currentCode).toLowerCase()}-${currentRoom}-guide-v26`
             }));
           }
         }, 150);
@@ -1823,16 +1856,16 @@
           <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:11px; background:${a.urgent ? 'var(--color-gold-soft)' : 'var(--color-ground)'}; border:1px solid var(--color-hairline);">
             <div style="min-width:0; flex:1;">
               <div style="font-size:0.73rem; font-weight:700; color:var(--color-emerald-deep);">
-                ${a.sender || 'Rehber Hoca'} • ${a.createdAt || ''}
+                ${escapeHtml(a.sender || 'Rehber Hoca')} • ${escapeHtml(a.createdAt || '')}
               </div>
               <div style="font-weight:800; font-size:0.86rem; color:var(--color-emerald-night); margin-top:2px;">
-                ${String(a.title || '').replace(/^🕋\s*/, '')}
+                ${escapeHtml(String(a.title || '').replace(/^🕋\s*/, ''))}
               </div>
               <div style="font-size:0.79rem; color:var(--color-ink); margin-top:2px; line-height:1.35;">
-                ${a.message || ''}
+                ${escapeHtml(a.message || '')}
               </div>
             </div>
-            <button type="button" class="btn btn-outline btn-sm" style="padding:4px 9px; font-size:0.73rem; color:var(--color-danger); border-color:#FCA5A5; flex-shrink:0;" onclick="deleteGuideAnnouncement('${a.id}')">
+            <button type="button" class="btn btn-outline btn-sm" style="padding:4px 9px; font-size:0.73rem; color:var(--color-danger); border-color:#FCA5A5; flex-shrink:0;" onclick="deleteGuideAnnouncement('${escapeHtml(a.id)}')">
               Sil
             </button>
           </div>
@@ -1885,24 +1918,30 @@
         const bbox = `${(lng - 0.003).toFixed(5)}%2C${(lat - 0.002).toFixed(5)}%2C${(lng + 0.003).toFixed(5)}%2C${(lat + 0.002).toFixed(5)}`;
         const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
         const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+        const safeName = escapeHtml(a.pilgrimName || 'Hacı Misafir');
+        const safePhone = escapeHtml(a.phone || '');
+        const safeTour = escapeHtml(a.tourCode || '');
+        const safeNote = escapeHtml(a.locationNote || '');
+        const safeTime = escapeHtml(a.createdAt || '');
+        const safeId = escapeHtml(a.id || '');
         return `
         <div style="display:flex; flex-direction:column; gap:10px;">
           <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
             <div>
               <div style="color:var(--color-danger); font-weight:800; font-size:1.05rem;">
-                ACİL SOS KONUM ALARMI — ${a.pilgrimName} (${a.phone}) ${a.tourCode ? `<span class="badge badge-gold" style="margin-left:6px;">${a.tourCode}</span>` : ''}
+                ACİL SOS KONUM ALARMI — ${safeName} (${safePhone}) ${safeTour ? `<span class="badge badge-gold" style="margin-left:6px;">${safeTour}</span>` : ''}
               </div>
               <div style="font-size:0.86rem; color:var(--color-ink); margin-top:4px;">
-                <strong>Açık Konum:</strong> ${a.locationNote}<br/>
-                <strong>GPS Koordinat:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)} ${a.accuracy ? `(±${a.accuracy}m)` : ''} • ${a.createdAt}
+                <strong>Açık Konum:</strong> ${safeNote}<br/>
+                <strong>GPS Koordinat:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)} ${a.accuracy ? `(±${Number(a.accuracy)}m)` : ''} • ${safeTime}
               </div>
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
               <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">Yol Tarifi Aç (Google Maps)</a>
               <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Haritada Gör</a>
-              <a href="tel:${a.phone}" class="btn btn-outline btn-sm">Hemen Ara</a>
-              <button class="btn btn-primary btn-sm" onclick="resolveSos('${a.id}')">Hacıya Ulaşıldı</button>
-              <button class="btn btn-outline btn-sm" style="color:var(--color-danger); border-color:#FCA5A5;" onclick="deleteSosGuide('${a.id}')">Kaydı Sil</button>
+              <a href="tel:${safePhone}" class="btn btn-outline btn-sm">Hemen Ara</a>
+              <button class="btn btn-primary btn-sm" onclick="resolveSos('${safeId}')">Hacıya Ulaşıldı</button>
+              <button class="btn btn-outline btn-sm" style="color:var(--color-danger); border-color:#FCA5A5;" onclick="deleteSosGuide('${safeId}')">Kaydı Sil</button>
             </div>
           </div>
           <div style="border-radius:12px; overflow:hidden; border:2px solid #FCA5A5; height:210px; background:#F8FAFC;">

@@ -16,9 +16,9 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=19"></script>
+  <script src="/vercel-ws-shim.js?v=30"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=19"></script>
+  <script src="/js/umrah-steps-map.js?v=30"></script>
   <style>
     .app-shell {
       max-width: 540px;
@@ -2033,6 +2033,15 @@
       }
     }
 
+    function escapeHtml(str) {
+      return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function renderAnnouncements(list) {
       const container = document.getElementById('announcementsList');
       if (!list.length) {
@@ -2040,13 +2049,13 @@
         return;
       }
       container.innerHTML = list.map((a) => `
-        <div data-ann-id="${a.id || ''}" style="padding:14px; border-radius:12px; background:${a.urgent ? 'var(--color-gold-soft)' : 'var(--color-ground)'}; border:1px solid var(--color-hairline);">
+        <div data-ann-id="${escapeHtml(a.id || '')}" style="padding:14px; border-radius:12px; background:${a.urgent ? 'var(--color-gold-soft)' : 'var(--color-ground)'}; border:1px solid var(--color-hairline);">
           <div style="display:flex; justify-content:space-between; font-size:0.76rem; font-weight:700; color:var(--color-emerald-deep);">
-            <span>${a.sender}</span>
-            <span>${a.createdAt}</span>
+            <span>${escapeHtml(a.sender || '')}</span>
+            <span>${escapeHtml(a.createdAt || '')}</span>
           </div>
-          <div style="font-weight:800; font-size:0.95rem; margin:4px 0; color:var(--color-emerald-night);">${a.title.replace(/^🕋\s*/, '')}</div>
-          <div style="font-size:0.86rem; color:var(--color-ink);">${a.message}</div>
+          <div style="font-weight:800; font-size:0.95rem; margin:4px 0; color:var(--color-emerald-night);">${escapeHtml(String(a.title || '').replace(/^🕋\s*/, ''))}</div>
+          <div style="font-size:0.86rem; color:var(--color-ink);">${escapeHtml(a.message || '')}</div>
         </div>
       `).join('');
     }
@@ -2062,11 +2071,11 @@
       div.style.cssText = 'padding:14px; border-radius:12px; background:var(--color-gold-soft); border:1.5px solid var(--color-gold);';
       div.innerHTML = `
         <div style="display:flex; justify-content:space-between; font-size:0.76rem; font-weight:700; color:var(--color-emerald-deep);">
-          <span>YENİ DUYURU • ${a.sender}</span>
-          <span>${a.createdAt}</span>
+          <span>YENİ DUYURU • ${escapeHtml(a.sender || '')}</span>
+          <span>${escapeHtml(a.createdAt || '')}</span>
         </div>
-        <div style="font-weight:800; font-size:0.95rem; margin:4px 0; color:var(--color-emerald-night);">${a.title}</div>
-        <div style="font-size:0.86rem; color:var(--color-ink);">${a.message}</div>
+        <div style="font-weight:800; font-size:0.95rem; margin:4px 0; color:var(--color-emerald-night);">${escapeHtml(a.title || '')}</div>
+        <div style="font-size:0.86rem; color:var(--color-ink);">${escapeHtml(a.message || '')}</div>
       `;
       container.prepend(div);
     }
@@ -2326,10 +2335,33 @@
       }
     }
 
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && wakeLockDesired && isAudioListening) {
+    function recoverPilgrimLiveSession() {
+      if (intentionalLeave || !currentTour) return;
+      if (wakeLockDesired && isAudioListening) {
         requestWakeLock();
       }
+      if (isAudioListening && audioCtx && audioCtx.state !== 'running') {
+        audioCtx.resume().catch(() => {});
+      }
+      if (isAudioListening) {
+        startBackgroundKeepAliveAudio();
+      }
+      if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) {
+        const roomId = document.getElementById('roomSelect')?.value || 'genel';
+        const name = document.getElementById('pilgrimNameInput')?.value?.trim() || 'Hacı Misafir';
+        const phone = document.getElementById('pilgrimPhoneInput')?.value?.trim() || '+90 538 000 00 00';
+        connectWebSocket(currentTour.code, roomId, name, phone);
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        recoverPilgrimLiveSession();
+      }
+    });
+
+    window.addEventListener('online', () => {
+      recoverPilgrimLiveSession();
     });
 
     function createSilentWavDataUri() {

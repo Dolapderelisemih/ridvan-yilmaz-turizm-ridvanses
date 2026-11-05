@@ -217,6 +217,21 @@ function getTourRooms(tourCode) {
   return list;
 }
 
+// Çoklu Oda Akıllı Yayın Yönlendirici:
+// Rehber 'genel' (Ana Kanal) odasındaysa, aynı kafilenin kendi bağımsız canlı rehberi olmayan tüm odalarına ('genel' + 'siyer') yayın yapar.
+// Rehber özellikle 'siyer' odasını seçtiyse yalnızca 'siyer' odasına yayın yapar (böylece iki hoca aynı anda çakışmadan farklı odalarda konuşabilir).
+function getTargetBroadcastRooms(sourceRoom) {
+  if (!sourceRoom) return [];
+  if (sourceRoom.roomId && sourceRoom.roomId !== 'genel') {
+    return [sourceRoom];
+  }
+  return getTourRooms(sourceRoom.tourCode).filter((r) => {
+    if (r.roomId === sourceRoom.roomId) return true;
+    const hasDedicatedGuide = Array.from(r.clients.values()).some((c) => c.role === 'guide');
+    return !hasDedicatedGuide && !r.isLive;
+  });
+}
+
 function serializeRoom(room) {
   const pilgrims = [];
   const guides = [];
@@ -448,7 +463,7 @@ function processClientJsonMessage(ctx, msg) {
   switch (msg.type) {
     case 'guide-stream-state': {
       if (sender.role !== 'guide') break;
-      for (const r of getTourRooms(currentRoom.tourCode)) {
+      for (const r of getTargetBroadcastRooms(currentRoom)) {
         r.isLive = Boolean(msg.isLive);
         r.broadcastMode = msg.broadcastMode || (r.isLive ? 'mic' : 'idle');
         if (msg.topic) r.currentTopic = msg.topic;
@@ -487,7 +502,7 @@ function processClientJsonMessage(ctx, msg) {
         note: msg.note || '',
         updatedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
       };
-      for (const r of getTourRooms(currentRoom.tourCode)) {
+      for (const r of getTargetBroadcastRooms(currentRoom)) {
         r.activeTawafStage = msg.clear ? null : stagePayload;
         if (!msg.clear && msg.topic) {
           r.currentTopic = msg.topic;
@@ -552,7 +567,7 @@ function processClientJsonMessage(ctx, msg) {
         synthNote: msg.synthNote || null,
         sentAt: msg.sentAt || Date.now()
       };
-      for (const r of getTourRooms(currentRoom.tourCode)) {
+      for (const r of getTargetBroadcastRooms(currentRoom)) {
         broadcastToRoom(r, chunkPayload, ws);
       }
       break;
@@ -622,7 +637,7 @@ wss.on('connection', (ws) => {
       const sender = ctx.currentRoom.clients.get(ctx.clientId);
       if (!sender || sender.role !== 'guide') return;
 
-      for (const r of getTourRooms(ctx.currentRoom.tourCode)) {
+      for (const r of getTargetBroadcastRooms(ctx.currentRoom)) {
         for (const peer of r.clients.values()) {
           if (peer.ws !== ws && peer.ws.readyState === WebSocket.OPEN && !peer.ws.isHttpRelay) {
             peer.ws.send(raw, { binary: true });
@@ -740,7 +755,19 @@ function isRequestAuthenticated(req) {
   if (cookieHeader.includes(`${AUTH_COOKIE_NAME}=${AUTH_TOKEN_VALUE}`)) return true;
   const authHeader = String(req.headers.authorization || '');
   if (authHeader === `Bearer ${AUTH_TOKEN_VALUE}`) return true;
+  const customHeader = String(req.headers['x-ry-auth'] || '');
+  if (customHeader === AUTH_TOKEN_VALUE) return true;
   return false;
+}
+
+function requireAuth(req, res, next) {
+  if (!isRequestAuthenticated(req)) {
+    return res.status(401).json({
+      success: false,
+      message: 'Bu işlem için yetkili (Rehber / Acente) oturumu gereklidir.'
+    });
+  }
+  return next();
 }
 
 app.post('/api/login', (req, res) => {
@@ -830,7 +857,7 @@ app.post('/api/demo-request', (req, res) => {
   });
 });
 
-app.delete('/api/requests/:id', (req, res) => {
+app.delete('/api/requests/:id', requireAuth, (req, res) => {
   if (!db.requests) db.requests = [];
   const targetId = req.params.id;
   const prevLen = db.requests.length;
@@ -892,7 +919,7 @@ app.post('/api/join-tour', (req, res) => {
 });
 
 // 4. Tour CRUD (Agency Panel)
-app.post('/api/tours', (req, res) => {
+app.post('/api/tours', requireAuth, (req, res) => {
   const body = req.body || {};
   const code = String(body.code || `RY-${Math.floor(1000 + Math.random() * 9000)}`).toUpperCase().trim();
   if (db.tours.some((t) => String(t.code || '').toUpperCase() === code)) {
@@ -949,7 +976,7 @@ app.post('/api/tours', (req, res) => {
   res.json({ success: true, tour: newTour, steps: db.journeySteps[newTour.code] });
 });
 
-app.patch('/api/tours/:id', (req, res) => {
+app.patch('/api/tours/:id', requireAuth, (req, res) => {
   const targetId = String(req.params.id || '').trim();
   const tour = db.tours.find((t) => t.id === targetId || t.code.toUpperCase() === targetId.toUpperCase());
   if (!tour) {
@@ -1014,7 +1041,7 @@ app.patch('/api/tours/:id', (req, res) => {
   return res.json({ success: true, tour });
 });
 
-app.delete('/api/tours/:id', (req, res) => {
+app.delete('/api/tours/:id', requireAuth, (req, res) => {
   const targetId = req.params.id;
   const deletedTour = db.tours.find((t) => t.id === targetId || t.code === targetId);
   const deletedCode = deletedTour ? deletedTour.code : targetId;
@@ -1077,7 +1104,7 @@ app.get('/api/trips/:code/steps', (req, res) => {
   });
 });
 
-app.post('/api/trips/:code/steps', (req, res) => {
+app.post('/api/trips/:code/steps', requireAuth, (req, res) => {
   const code = String(req.params.code || 'RY-KASIM').toUpperCase().trim();
   const body = req.body || {};
   const steps = getTourSteps(code);
@@ -1144,7 +1171,7 @@ app.post('/api/trips/:code/steps', (req, res) => {
   return res.json({ success: true, step: newStep, steps, stats });
 });
 
-app.patch('/api/trips/:code/steps/:stepId', (req, res) => {
+app.patch('/api/trips/:code/steps/:stepId', requireAuth, (req, res) => {
   const code = String(req.params.code || 'RY-KASIM').toUpperCase().trim();
   const stepId = req.params.stepId;
   const body = req.body || {};
@@ -1192,7 +1219,7 @@ app.patch('/api/trips/:code/steps/:stepId', (req, res) => {
   return res.json({ success: true, step: target, steps, stats });
 });
 
-app.delete('/api/trips/:code/steps/:stepId', (req, res) => {
+app.delete('/api/trips/:code/steps/:stepId', requireAuth, (req, res) => {
   const code = String(req.params.code || 'RY-KASIM').toUpperCase().trim();
   const stepId = req.params.stepId;
   const steps = getTourSteps(code);
@@ -1211,7 +1238,7 @@ app.delete('/api/trips/:code/steps/:stepId', (req, res) => {
 });
 
 // 5. Guides CRUD
-app.post('/api/guides', (req, res) => {
+app.post('/api/guides', requireAuth, (req, res) => {
   const body = req.body || {};
   const guide = {
     id: `guide-${Date.now()}`,
@@ -1228,7 +1255,7 @@ app.post('/api/guides', (req, res) => {
   res.json({ success: true, guide });
 });
 
-app.delete('/api/guides/:id', (req, res) => {
+app.delete('/api/guides/:id', requireAuth, (req, res) => {
   const targetId = req.params.id;
   const prevLen = db.guides.length;
   db.guides = db.guides.filter((g) => g.id !== targetId);
@@ -1240,7 +1267,7 @@ app.delete('/api/guides/:id', (req, res) => {
 });
 
 // 6. Push Announcements
-app.post('/api/announcements', (req, res) => {
+app.post('/api/announcements', requireAuth, (req, res) => {
   const body = req.body || {};
   const ann = {
     id: `ann-${Date.now()}`,
@@ -1269,7 +1296,7 @@ app.post('/api/announcements', (req, res) => {
   res.json({ success: true, announcement: ann });
 });
 
-app.delete('/api/announcements/:id', (req, res) => {
+app.delete('/api/announcements/:id', requireAuth, (req, res) => {
   const targetId = req.params.id;
   const deletedAnn = db.announcements.find((a) => a.id === targetId);
   if (!deletedAnn) {
@@ -1318,7 +1345,7 @@ app.post('/api/sos', (req, res) => {
   res.json({ success: true, alert: alertItem });
 });
 
-app.patch('/api/sos/:id/resolve', (req, res) => {
+app.patch('/api/sos/:id/resolve', requireAuth, (req, res) => {
   const alertItem = db.sosAlerts.find((s) => s.id === req.params.id);
   if (!alertItem) return res.status(404).json({ success: false });
   alertItem.status = 'resolved';
@@ -1334,7 +1361,7 @@ app.patch('/api/sos/:id/resolve', (req, res) => {
   res.json({ success: true, alert: alertItem });
 });
 
-app.delete('/api/sos/:id', (req, res) => {
+app.delete('/api/sos/:id', requireAuth, (req, res) => {
   const targetId = req.params.id;
   const targetAlert = db.sosAlerts.find((s) => s.id === targetId);
   if (!targetAlert) {

@@ -662,4 +662,24 @@
   SmartWebSocket.CLOSED = 3;
 
   window.WebSocket = SmartWebSocket;
+
+  // Yetkili oturumlarda (/panel ve /rehber) çerez engeli olsa bile tüm /api/ isteklerine Authorization başlığını otomatik ekle
+  const origFetch = window.fetch;
+  if (typeof origFetch === 'function') {
+    window.fetch = function (input, init) {
+      try {
+        const urlStr = typeof input === 'string' ? input : (input && input.url) || '';
+        if (urlStr.startsWith('/api/') || urlStr.includes('/api/')) {
+          const token = localStorage.getItem('ry_auth_token');
+          if (token) {
+            init = Object.assign({}, init);
+            init.headers = Object.assign({}, init.headers, {
+              Authorization: 'Bearer ' + token
+            });
+          }
+        }
+      } catch (e) {}
+      return origFetch.call(this, input, init);
+    };
+  }
 })();

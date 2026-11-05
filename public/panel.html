@@ -30,9 +30,9 @@
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=19"></script>
+  <script src="/vercel-ws-shim.js?v=30"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=19"></script>
+  <script src="/js/umrah-steps-map.js?v=30"></script>
   <style>
     .dashboard-layout {
       display: grid;
@@ -743,6 +743,15 @@
   <script>
     let appState = null;
 
+    function escapeHtml(str) {
+      return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function openTab(tabId, btnEl) {
       document.querySelectorAll('.tab-pane').forEach((p) => p.classList.remove('active'));
       document.getElementById(tabId).classList.add('active');
@@ -980,14 +989,14 @@
       document.getElementById('adminAnnouncementsList').innerHTML = appState.announcements.map((a) => `
         <div style="padding:14px 16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline);">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:0.76rem; font-weight:700; color:var(--color-emerald-deep);">
-            <span>Hedef: ${a.tourCode} • ${a.sender}</span>
+            <span>Hedef: ${escapeHtml(a.tourCode)} • ${escapeHtml(a.sender)}</span>
             <div style="display:flex; align-items:center; gap:8px;">
-              <span>${a.createdAt}</span>
-              <button type="button" class="btn btn-outline btn-sm" style="padding:2px 8px; font-size:0.7rem; color:var(--color-danger);" onclick="deleteAnnouncement('${a.id}')">Sil</button>
+              <span>${escapeHtml(a.createdAt)}</span>
+              <button type="button" class="btn btn-outline btn-sm" style="padding:2px 8px; font-size:0.7rem; color:var(--color-danger);" onclick="deleteAnnouncement('${escapeHtml(a.id)}')">Sil</button>
             </div>
           </div>
-          <div style="font-weight:800; color:var(--color-emerald-night); margin:4px 0;">${a.title}</div>
-          <div style="font-size:0.86rem; color:var(--color-ink-soft);">${a.message}</div>
+          <div style="font-weight:800; color:var(--color-emerald-night); margin:4px 0;">${escapeHtml(a.title)}</div>
+          <div style="font-size:0.86rem; color:var(--color-ink-soft);">${escapeHtml(a.message)}</div>
         </div>
       `).join('');
 
@@ -998,22 +1007,28 @@
         const bbox = `${(lng - 0.003).toFixed(5)}%2C${(lat - 0.002).toFixed(5)}%2C${(lng + 0.003).toFixed(5)}%2C${(lat + 0.002).toFixed(5)}`;
         const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
         const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+        const safeName = escapeHtml(s.pilgrimName || 'Hacı Misafir');
+        const safeTour = escapeHtml(s.tourCode || 'RY-KASIM');
+        const safePhone = escapeHtml(s.phone || '');
+        const safeNote = escapeHtml(s.locationNote || '');
+        const safeTime = escapeHtml(s.createdAt || '');
+        const safeId = escapeHtml(s.id || '');
         return `
         <div style="display:flex; flex-direction:column; gap:10px; padding:16px; border-radius:14px; background:${s.status === 'active' ? '#FFF5F5' : 'var(--color-ground)'}; border:1.5px solid ${s.status === 'active' ? 'var(--color-danger)' : 'var(--color-hairline)'}; margin-bottom:10px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
             <div>
               <div style="font-weight:800; color:${s.status === 'active' ? 'var(--color-danger)' : 'var(--color-emerald-night)'};">
-                ${s.status === 'active' ? 'AKTİF ALARM' : 'ÇÖZÜLDÜ'} — ${s.pilgrimName} (${s.tourCode})
+                ${s.status === 'active' ? 'AKTİF ALARM' : 'ÇÖZÜLDÜ'} — ${safeName} (${safeTour})
               </div>
               <div style="font-size:0.84rem; color:var(--color-muted); margin-top:2px;">
-                ${s.phone} • ${s.locationNote} (${lat.toFixed(5)}, ${lng.toFixed(5)}) • ${s.createdAt}
+                ${safePhone} • ${safeNote} (${lat.toFixed(5)}, ${lng.toFixed(5)}) • ${safeTime}
               </div>
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
               <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">Yol Tarifi</a>
               <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Harita</a>
-              ${s.status === 'active' ? `<button class="btn btn-primary btn-sm" onclick="resolveSosAdmin('${s.id}')">Çözüldü İşaretle</button>` : ''}
-              <button class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteSosAdmin('${s.id}')">Sil</button>
+              ${s.status === 'active' ? `<button class="btn btn-primary btn-sm" onclick="resolveSosAdmin('${safeId}')">Çözüldü İşaretle</button>` : ''}
+              <button class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteSosAdmin('${safeId}')">Sil</button>
             </div>
           </div>
           ${s.status === 'active' ? `
@@ -1029,9 +1044,9 @@
       // Hotels Grid
       document.getElementById('adminHotelsGrid').innerHTML = appState.hotels.map((h) => `
         <div style="padding:18px; border-radius:16px; background:var(--color-ground); border:1px solid var(--color-hairline);">
-          <span class="badge badge-emerald">${h.city}</span>
-          <h4 style="font-size:1.08rem; margin:10px 0 4px;">${h.name}</h4>
-          <p style="font-size:0.84rem; color:var(--color-muted); margin-bottom:12px;">${h.distance}</p>
+          <span class="badge badge-emerald">${escapeHtml(h.city)}</span>
+          <h4 style="font-size:1.08rem; margin:10px 0 4px;">${escapeHtml(h.name)}</h4>
+          <p style="font-size:0.84rem; color:var(--color-muted); margin-bottom:12px;">${escapeHtml(h.distance)}</p>
           <a href="https://www.google.com/maps?q=${h.coordinates.lat},${h.coordinates.lng}" target="_blank" class="btn btn-outline btn-sm">Harita Konumu</a>
         </div>
       `).join('');
@@ -1045,23 +1060,29 @@
         ? reqList.map((r) => {
             const cleanPhone = String(r.phone || '').replace(/[^0-9]/g, '');
             const waPhone = cleanPhone.startsWith('0') ? '90' + cleanPhone.slice(1) : cleanPhone;
-            const waUrl = waPhone ? `https://wa.me/${waPhone}?text=${encodeURIComponent(`Selamün Aleyküm ${r.name}, Rıdvan Yılmaz Turizm Umre ön kayıt talebiniz için iletişime geçiyoruz.`)}` : '';
+            const waUrl = waPhone ? `https://wa.me/${waPhone}?text=${encodeURIComponent(`Selamün Aleyküm ${r.name || ''}, Rıdvan Yılmaz Turizm Umre ön kayıt talebiniz için iletişime geçiyoruz.`)}` : '';
+            const safeName = escapeHtml(r.name || 'Misafir');
+            const safeComp = escapeHtml(r.company_name || 'Kasım Umresi');
+            const safeTime = escapeHtml(r.createdAt || '');
+            const safePhone = escapeHtml(r.phone || '—');
+            const safeMsg = escapeHtml(r.message || '');
+            const safeId = escapeHtml(r.id || '');
             return `
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:14px 16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline); margin-bottom:10px;">
               <div>
                 <div style="font-weight:800; color:var(--color-emerald-night); display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                  <span>👤 ${r.name || 'Misafir'}</span>
-                  <span class="badge badge-emerald">${r.company_name || 'Kasım Umresi'}</span>
-                  <span style="font-size:0.75rem; color:var(--color-muted); font-weight:600;">${r.createdAt || ''}</span>
+                  <span>👤 ${safeName}</span>
+                  <span class="badge badge-emerald">${safeComp}</span>
+                  <span style="font-size:0.75rem; color:var(--color-muted); font-weight:600;">${safeTime}</span>
                 </div>
                 <div style="font-size:0.84rem; color:var(--color-ink); margin-top:4px;">
-                  <strong>Tel:</strong> ${r.phone || '—'} ${r.message ? `• <strong>Not:</strong> ${r.message}` : ''}
+                  <strong>Tel:</strong> ${safePhone} ${safeMsg ? `• <strong>Not:</strong> ${safeMsg}` : ''}
                 </div>
               </div>
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                ${r.phone ? `<a href="tel:${r.phone}" class="btn btn-outline btn-sm">📞 Ara</a>` : ''}
+                ${r.phone ? `<a href="tel:${safePhone}" class="btn btn-outline btn-sm">📞 Ara</a>` : ''}
                 ${waUrl ? `<a href="${waUrl}" target="_blank" class="btn btn-primary btn-sm">💬 WhatsApp</a>` : ''}
-                <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteRequestAdmin('${r.id}')">Sil</button>
+                <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteRequestAdmin('${safeId}')">Sil</button>
               </div>
             </div>
           `;
@@ -1205,6 +1226,19 @@
       adminWs.onerror = () => {};
     }
     connectAdminWs();
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        if (!adminWsInstance || (adminWsInstance.readyState !== WebSocket.OPEN && adminWsInstance.readyState !== WebSocket.CONNECTING)) {
+          connectAdminWs();
+        }
+        fetchAdminData();
+      }
+    });
+    window.addEventListener('online', () => {
+      connectAdminWs();
+      fetchAdminData();
+    });
 
     document.getElementById('adminCreateStepForm').addEventListener('submit', async (e) => {
       e.preventDefault();
