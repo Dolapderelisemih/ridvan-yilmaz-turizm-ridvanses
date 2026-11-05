@@ -164,8 +164,9 @@
       <div class="rota-sticky-map">
         <div class="live-audio-banner">
           <div style="flex:1;min-width:210px;">
-            <div style="font-size:0.73rem;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:var(--color-emerald-deep);">
-              🎙️ Anlık Rehber Sohbet Konusu
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:0.73rem;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:var(--color-emerald-deep);">
+              <span>🎙️ Anlık Rehber Sohbet Konusu</span>
+              <span id="familyTawafBadge" class="badge badge-gold" style="display:none;font-size:0.68rem;padding:2px 8px;"></span>
             </div>
             <div id="liveTopicText" style="font-size:0.95rem;font-weight:800;color:var(--color-emerald-night);margin-top:2px;">
               Kasım Umresi — Kâbe’nin Huzuru &amp; Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk
@@ -360,11 +361,26 @@
         }
       }
 
+      function renderFamilyTawafStage(stage) {
+        const bEl = document.getElementById('familyTawafBadge');
+        if (!bEl) return;
+        if (stage && stage.badge) {
+          bEl.textContent = `🕋 ${stage.badge}`;
+          bEl.style.display = 'inline-flex';
+        } else {
+          bEl.textContent = '';
+          bEl.style.display = 'none';
+        }
+      }
+
       function applyRoomState(room) {
         if (!room) return;
         document.getElementById('statListeners').textContent = `${room.totalListeners || 0} Kişi`;
         if (room.currentTopic) {
           document.getElementById('liveTopicText').textContent = room.currentTopic;
+        }
+        if (typeof room.activeTawafStage !== 'undefined') {
+          renderFamilyTawafStage(room.activeTawafStage);
         }
         const badge = document.getElementById('heroLiveBadge');
         if (room.isLive) {
@@ -442,9 +458,33 @@
                 }
               } else if (msg.type === 'room-state') {
                 applyRoomState(msg.room);
+              } else if (msg.type === 'stream-state') {
+                if (msg.currentTopic) {
+                  document.getElementById('liveTopicText').textContent = msg.currentTopic;
+                }
+                const badge = document.getElementById('heroLiveBadge');
+                if (badge && typeof msg.isLive !== 'undefined') {
+                  if (msg.isLive) {
+                    badge.className = 'badge badge-live';
+                    badge.innerHTML = '<span class="pulse-dot"></span> CANLI SESLİ REHBERLİK AKTİF';
+                  } else {
+                    badge.className = 'badge badge-gold';
+                    badge.textContent = 'MANEVİ ROTA TAKİBİ AKTİF';
+                  }
+                }
+              } else if (msg.type === 'tawaf-stage') {
+                if (msg.currentTopic) {
+                  document.getElementById('liveTopicText').textContent = msg.currentTopic;
+                }
+                renderFamilyTawafStage(msg.activeTawafStage || null);
+                if (msg.activeTawafStage && msg.activeTawafStage.badge) {
+                  showToast(`🕋 ${msg.activeTawafStage.badge}: ${msg.activeTawafStage.title || ''}`);
+                }
               } else if (msg.type === 'new-announcement' && msg.announcement) {
                 fetchStepsRest(false);
                 showToast(`📢 Yeni Kafile Duyurusu: ${msg.announcement.title}`);
+              } else if (msg.type === 'announcement-deleted') {
+                fetchStepsRest(false);
               }
             } catch (_) {}
           };

@@ -146,15 +146,6 @@
     .pilgrim-row:hover {
       border-color: rgba(197, 160, 89, 0.45);
     }
-    .pilgrim-row.hand-raised {
-      background: var(--color-gold-soft);
-      border-color: var(--color-gold);
-      box-shadow: 0 6px 18px rgba(197, 160, 89, 0.15);
-    }
-    .pilgrim-row.mic-active {
-      background: #DCFCE7;
-      border-color: #16A34A;
-    }
     .section-card-head {
       display: flex;
       justify-content: space-between;
@@ -394,6 +385,16 @@
               Duyuruyu Tüm Kafileye Gönder
             </button>
           </div>
+
+          <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--color-hairline);">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
+              <span style="font-size:0.78rem; font-weight:800; color:var(--color-emerald-deep); text-transform:uppercase; letter-spacing:0.05em;">
+                📢 Gönderilen Aktif Duyurular
+              </span>
+              <span id="guideAnnCountBadge" class="badge badge-gold" style="font-size:0.7rem; padding:2px 8px;">0 Duyuru</span>
+            </div>
+            <div id="guideAnnouncementsList" style="display:flex; flex-direction:column; gap:8px; max-height:240px; overflow-y:auto;"></div>
+          </div>
         </div>
       </div>
 
@@ -588,6 +589,11 @@
           activeSosAlerts = data.sosAlerts.filter((a) => a.status === 'active' && (!a.tourCode || a.tourCode === currentCode));
           renderSosBanner();
         }
+        if (data && Array.isArray(data.announcements)) {
+          const currentCode = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').toUpperCase();
+          guideAnnouncements = data.announcements.filter((a) => a.tourCode === currentCode || a.tourCode === 'ALL');
+          renderGuideAnnouncements();
+        }
       })
       .catch((e) => console.log('Rehber bootstrap err:', e));
 
@@ -599,6 +605,7 @@
     let isDemoBroadcasting = false;
     let demoInterval = null;
     let activeSosAlerts = [];
+    let guideAnnouncements = [];
 
     // Canlı Rehber Konum Paylaşımı Durumu
     let isSharingGuideLocation = false;
@@ -631,6 +638,10 @@
 
       const tourCode = document.getElementById('guideTourSelect').value;
       const guideName = document.getElementById('guideNameSelect').value;
+      const guidePeerId =
+        typeof window.ryGetDynamicChannelId === 'function'
+          ? window.ryGetDynamicChannelId(tourCode, 'genel')
+          : `ridvanses-${String(tourCode || 'RY-KASIM').toLowerCase()}-genel-guide-v26`;
 
       ws.onopen = () => {
         ws.send(JSON.stringify({
@@ -638,14 +649,16 @@
           role: 'guide',
           tourCode,
           roomId: 'genel',
-          name: guideName
+          name: guideName,
+          guidePeerId
         }));
         if (isMicBroadcasting || isDemoBroadcasting) {
           ws.send(JSON.stringify({
             type: 'guide-stream-state',
             isLive: true,
             broadcastMode: isMicBroadcasting ? 'mic' : 'demo-synth',
-            topic: document.getElementById('topicInput')?.value?.trim() || ''
+            topic: document.getElementById('topicInput')?.value?.trim() || '',
+            guidePeerId
           }));
         }
         if (isSharingGuideLocation && lastGuideLocState) {
@@ -668,6 +681,23 @@
         if (msg.type === 'joined' || msg.type === 'room-state') {
           renderRoomState(msg.room);
           if (msg.steps) renderGuideStepsList(msg.steps);
+          if (Array.isArray(msg.announcements)) {
+            guideAnnouncements = msg.announcements;
+            renderGuideAnnouncements();
+          }
+        }
+
+        if (msg.type === 'new-announcement' && msg.announcement) {
+          guideAnnouncements = [
+            msg.announcement,
+            ...guideAnnouncements.filter((a) => a.id !== msg.announcement.id)
+          ];
+          renderGuideAnnouncements();
+        }
+
+        if (msg.type === 'announcement-deleted' && msg.id) {
+          guideAnnouncements = guideAnnouncements.filter((a) => a.id !== msg.id);
+          renderGuideAnnouncements();
         }
 
         if (msg.type === 'steps-updated' && Array.isArray(msg.steps)) {
@@ -1230,8 +1260,9 @@
           micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
 
+        const activeTourCode = document.getElementById('guideTourSelect').value || 'RY-KASIM';
         if (typeof window.ryBroadcastGuideStream === 'function') {
-          window.ryBroadcastGuideStream(micStream);
+          window.ryBroadcastGuideStream(micStream, activeTourCode, 'genel');
         }
 
         const source = audioCtx.createMediaStreamSource(micStream);
@@ -1325,11 +1356,16 @@
         }
         setTimeout(() => {
           if (ws && ws.readyState === WebSocket.OPEN) {
+            const currentCode = document.getElementById('guideTourSelect').value || 'RY-KASIM';
             ws.send(JSON.stringify({
               type: 'guide-stream-state',
               isLive: true,
               broadcastMode: 'mic',
-              topic: document.getElementById('topicInput').value
+              topic: document.getElementById('topicInput').value,
+              guidePeerId:
+                typeof window.ryGetDynamicChannelId === 'function'
+                  ? window.ryGetDynamicChannelId(currentCode, 'genel')
+                  : `ridvanses-${String(currentCode).toLowerCase()}-genel-guide-v26`
             }));
           }
         }, 150);
@@ -1489,6 +1525,50 @@
       }
       document.getElementById('annTitleInput').value = '';
       document.getElementById('annMsgInput').value = '';
+    }
+
+    function renderGuideAnnouncements() {
+      const container = document.getElementById('guideAnnouncementsList');
+      const countBadge = document.getElementById('guideAnnCountBadge');
+      if (countBadge) countBadge.textContent = `${guideAnnouncements.length} Duyuru`;
+      if (!container) return;
+      if (!guideAnnouncements.length) {
+        container.innerHTML = `
+          <div style="padding:10px 12px; border-radius:10px; background:var(--color-ground); border:1px dashed var(--color-hairline); color:var(--color-muted); font-size:0.8rem; text-align:center;">
+            Bu kafile için henüz aktif duyuru bulunmuyor.
+          </div>
+        `;
+        return;
+      }
+      container.innerHTML = guideAnnouncements
+        .map(
+          (a) => `
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:11px; background:${a.urgent ? 'var(--color-gold-soft)' : 'var(--color-ground)'}; border:1px solid var(--color-hairline);">
+            <div style="min-width:0; flex:1;">
+              <div style="font-size:0.73rem; font-weight:700; color:var(--color-emerald-deep);">
+                ${a.sender || 'Rehber Hoca'} • ${a.createdAt || ''}
+              </div>
+              <div style="font-weight:800; font-size:0.86rem; color:var(--color-emerald-night); margin-top:2px;">
+                ${String(a.title || '').replace(/^🕋\s*/, '')}
+              </div>
+              <div style="font-size:0.79rem; color:var(--color-ink); margin-top:2px; line-height:1.35;">
+                ${a.message || ''}
+              </div>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" style="padding:4px 9px; font-size:0.73rem; color:var(--color-danger); border-color:#FCA5A5; flex-shrink:0;" onclick="deleteGuideAnnouncement('${a.id}')">
+              Sil
+            </button>
+          </div>
+        `
+        )
+        .join('');
+    }
+
+    async function deleteGuideAnnouncement(id) {
+      if (!id) return;
+      await fetch(`/api/announcements/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+      guideAnnouncements = guideAnnouncements.filter((a) => a.id !== id);
+      renderGuideAnnouncements();
     }
 
     function playSosEmergencyTone() {

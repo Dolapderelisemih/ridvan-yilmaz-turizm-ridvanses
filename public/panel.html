@@ -1168,7 +1168,18 @@
             renderAll();
           }
           if (msg.type === 'new-announcement' && msg.announcement && appState) {
-            appState.announcements.unshift(msg.announcement);
+            appState.announcements = [
+              msg.announcement,
+              ...(appState.announcements || []).filter((a) => a.id !== msg.announcement.id)
+            ];
+            renderAll();
+          }
+          if (msg.type === 'announcement-deleted' && appState) {
+            if (Array.isArray(msg.announcements)) {
+              appState.announcements = msg.announcements;
+            } else if (msg.id) {
+              appState.announcements = (appState.announcements || []).filter((a) => a.id !== msg.id);
+            }
             renderAll();
           }
           if ((msg.type === 'new-request' || msg.type === 'requests-updated') && appState) {

@@ -197,10 +197,8 @@ function getOrCreateRoom(tourCode, roomId = 'genel') {
           ? 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk'
           : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti',
       activeTawafStage: null,
-      activeSpeakerClientId: null,
-      activeSpeakerName: null,
       guideLocation: null,
-      clients: new Map() // clientId -> { ws, id, role, name, phone, lang, handRaised, micGranted, joinedAt }
+      clients: new Map() // clientId -> { ws, id, role, name, phone, lang, joinedAt }
     });
   }
   return liveRooms.get(key);
@@ -225,8 +223,8 @@ function serializeRoom(room) {
   const seenIds = new Set();
 
   // Aynı kafiledeki (ör. RY-KASIM:genel ve RY-KASIM:siyer) tüm bağlı hacıları tek listede birleştir
-  // ki Siyer odasını seçen hacı da rehberin ekranında görünsün, el kaldırabilsin ve söz alabilsin.
-  const tourRooms = room.roomId === 'genel' ? getTourRooms(room.tourCode) : [room];
+  // ki Siyer odasını seçen hacı da rehberin ekranında görünsün ve toplam dinleyici sayısı tutarlı olsun.
+  const tourRooms = getTourRooms(room.tourCode);
   for (const r of tourRooms) {
     for (const c of r.clients.values()) {
       if (seenIds.has(c.id)) continue;
@@ -238,8 +236,6 @@ function serializeRoom(room) {
         role: c.role,
         roomId: r.roomId,
         lang: c.lang || 'tr',
-        handRaised: Boolean(c.handRaised),
-        micGranted: Boolean(c.micGranted),
         joinedAt: c.joinedAt
       };
       if (c.role === 'guide') guides.push(item);
@@ -258,15 +254,12 @@ function serializeRoom(room) {
     startedAt: room.startedAt,
     currentTopic: room.currentTopic,
     activeTawafStage: room.activeTawafStage || null,
-    activeSpeakerClientId: room.activeSpeakerClientId,
-    activeSpeakerName: room.activeSpeakerName,
+    guidePeerId: room.guidePeerId || null,
     guideLocation: room.guideLocation || null,
     connectedPilgrims: pilgrims,
     connectedGuides: guides,
     totalListeners: pilgrims.length,
-    realListenerCount: pilgrims.length,
-    raisedHandsCount: pilgrims.filter((p) => p.handRaised).length,
-    qnaEnabled: typeof room.qnaEnabled === 'undefined' ? true : Boolean(room.qnaEnabled)
+    realListenerCount: pilgrims.length
   };
 }
 
@@ -294,10 +287,6 @@ function cleanupStaleRelaySessions() {
     if (now - sess.lastSeen > 35000) {
       httpRelaySessions.delete(cid);
       if (sess.currentRoom) {
-        if (sess.currentRoom.activeSpeakerClientId === cid) {
-          sess.currentRoom.activeSpeakerClientId = null;
-          sess.currentRoom.activeSpeakerName = null;
-        }
         sess.currentRoom.clients.delete(cid);
         broadcastRoomState(sess.currentRoom);
       }
@@ -426,8 +415,6 @@ function processClientJsonMessage(ctx, msg) {
       name: msg.name || (role === 'guide' ? 'Ömer Ali Gültekin' : `Hacı Misafir #${clientSeq++}`),
       phone: msg.phone || '',
       lang: msg.lang || 'tr',
-      handRaised: false,
-      micGranted: false,
       joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
     };
     ctx.currentRoom.clients.set(clientId, clientObj);
@@ -474,9 +461,16 @@ function processClientJsonMessage(ctx, msg) {
           type: 'stream-state',
           isLive: r.isLive,
           broadcastMode: r.broadcastMode,
-          currentTopic: r.currentTopic
+          currentTopic: r.currentTopic,
+          guidePeerId: r.guidePeerId || null
         });
       }
+      broadcastToFamilyTrackers(currentRoom.tourCode, {
+        type: 'stream-state',
+        isLive: currentRoom.isLive,
+        broadcastMode: currentRoom.broadcastMode,
+        currentTopic: currentRoom.currentTopic
+      });
       broadcastRoomState(currentRoom);
       break;
     }
@@ -648,10 +642,6 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     if (ctx.currentRoom) {
-      if (ctx.currentRoom.activeSpeakerClientId === ctx.clientId) {
-        ctx.currentRoom.activeSpeakerClientId = null;
-        ctx.currentRoom.activeSpeakerName = null;
-      }
       ctx.currentRoom.clients.delete(ctx.clientId);
       broadcastRoomState(ctx.currentRoom);
     }
@@ -1280,13 +1270,24 @@ app.post('/api/announcements', (req, res) => {
 
 app.delete('/api/announcements/:id', (req, res) => {
   const targetId = req.params.id;
-  const prevLen = db.announcements.length;
-  db.announcements = db.announcements.filter((a) => a.id !== targetId);
-  if (db.announcements.length === prevLen) {
+  const deletedAnn = db.announcements.find((a) => a.id === targetId);
+  if (!deletedAnn) {
     return res.status(404).json({ success: false, message: 'Silinecek duyuru bulunamadı.' });
   }
+  db.announcements = db.announcements.filter((a) => a.id !== targetId);
   saveState(db);
-  return res.json({ success: true });
+  for (const room of liveRooms.values()) {
+    if (deletedAnn.tourCode === 'ALL' || room.tourCode === deletedAnn.tourCode) {
+      broadcastToRoom(room, { type: 'announcement-deleted', id: targetId });
+    }
+  }
+  if (deletedAnn.tourCode === 'ALL') {
+    db.tours.forEach((t) => broadcastToFamilyTrackers(t.code, { type: 'announcement-deleted', id: targetId }));
+  } else {
+    broadcastToFamilyTrackers(deletedAnn.tourCode, { type: 'announcement-deleted', id: targetId });
+  }
+  broadcastToAdmins({ type: 'announcement-deleted', id: targetId, announcements: db.announcements });
+  return res.json({ success: true, id: targetId, announcements: db.announcements });
 });
 
 // 7. SOS Emergency API

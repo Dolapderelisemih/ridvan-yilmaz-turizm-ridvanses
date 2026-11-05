@@ -194,6 +194,13 @@
       </div>
 
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1 1 280px;justify-content:flex-end;">
+        <select
+          id="bookTourSelect"
+          aria-label="Kafile Seçimi"
+          style="padding:8px 12px;border-radius:9px;border:1px solid rgba(224,190,119,0.55);background:rgba(255,255,255,0.12);color:#fff;font-weight:700;font-size:15px;min-width:155px;"
+        >
+          <option value="RY-KASIM" style="color:#06231b;">RY-KASIM — Kasım Umresi</option>
+        </select>
         <input
           id="pilgrimNameInput"
           type="text"
@@ -359,13 +366,51 @@
   <script>
     (function () {
       const params = new URLSearchParams(window.location.search);
-      const code = (params.get('code') || 'RY-KASIM').toUpperCase().trim();
+      let code = (params.get('code') || 'RY-KASIM').toUpperCase().trim();
       const initialName = (params.get('name') || localStorage.getItem('ridvanses_pilgrim_name') || '').trim();
 
       const nameInput = document.getElementById('pilgrimNameInput');
+      const tourSelect = document.getElementById('bookTourSelect');
       nameInput.value = initialName;
-      document.getElementById('backToRouteBtn').href = `/rota?code=${encodeURIComponent(code)}`;
-      document.getElementById('page2CodeBadge').textContent = code;
+
+      function syncBookCodeUi(nextCode) {
+        code = String(nextCode || 'RY-KASIM').toUpperCase().trim();
+        document.getElementById('backToRouteBtn').href = `/rota?code=${encodeURIComponent(code)}`;
+        document.getElementById('page2CodeBadge').textContent = code;
+        if (tourSelect && Array.from(tourSelect.options).some((o) => o.value === code)) {
+          tourSelect.value = code;
+        }
+      }
+
+      syncBookCodeUi(code);
+
+      fetch('/api/bootstrap')
+        .then((r) => r.json())
+        .then((data) => {
+          if (data && Array.isArray(data.tours) && data.tours.length > 0 && tourSelect) {
+            tourSelect.innerHTML = data.tours
+              .map(
+                (t) =>
+                  `<option value="${t.code}" style="color:#06231b;">${t.code} — ${String(t.name || '').replace(/^🕋\s*/, '')}</option>`
+              )
+              .join('');
+            if (!params.get('code') && !data.tours.some((t) => t.code === code)) {
+              code = data.tours[0].code;
+            }
+            syncBookCodeUi(code);
+          }
+        })
+        .catch(() => {});
+
+      if (tourSelect) {
+        tourSelect.addEventListener('change', () => {
+          syncBookCodeUi(tourSelect.value);
+          const url = new URL(window.location.href);
+          url.searchParams.set('code', code);
+          window.history.replaceState({}, '', url.toString());
+          loadBookData();
+        });
+      }
 
       function applyPilgrimName(rawName) {
         const clean = String(rawName || '').trim() || 'Muhterem Umre Misafirimiz';

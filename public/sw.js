@@ -1,10 +1,11 @@
-const CACHE_NAME = 'ridvanses-pwa-v25';
+const CACHE_NAME = 'ridvanses-pwa-v26';
 const ASSETS_TO_CACHE = [
   '/',
   '/dinle',
   '/rota',
   '/ani-kitabi',
   '/css/style.css',
+  '/vercel-ws-shim.js',
   '/js/umrah-steps-map.js',
   '/pcm-capture-worklet.js',
   '/manifest.json',

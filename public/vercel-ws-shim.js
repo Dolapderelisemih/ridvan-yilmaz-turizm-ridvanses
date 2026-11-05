@@ -26,6 +26,30 @@
   // MQTT betiği yalnızca bulut yedek (relay) modu devreye girdiğinde tembel (lazy) yüklenir.
   window.__ryActiveGuideStream = null;
   window.__ryActiveSocket = null;
+  window.__ryActiveGuideChannelId = null;
+
+  window.ryGetDynamicChannelId = function (tourCode, roomId) {
+    const cleanCode = String(tourCode || 'RY-KASIM')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || 'ry-kasim';
+    const cleanRoom = String(roomId || 'genel')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || 'genel';
+    return `ridvanses-${cleanCode}-${cleanRoom}-guide-v26`;
+  };
+
+  window.ryBroadcastGuideStream = function (stream, tourCode, roomId) {
+    window.__ryActiveGuideStream = stream || null;
+    const sock = window.__ryActiveSocket;
+    const resolvedTour = tourCode || (sock && sock._joinContext && sock._joinContext.tourCode) || 'RY-KASIM';
+    const resolvedRoom = roomId || (sock && sock._joinContext && sock._joinContext.roomId) || 'genel';
+    window.__ryActiveGuideChannelId = stream ? window.ryGetDynamicChannelId(resolvedTour, resolvedRoom) : null;
+    return window.__ryActiveGuideChannelId;
+  };
 
   const GLOBAL_SOS_TOPIC = 'ridvanses/v2/global/sos';
   // Birincil: test.mosquitto.org (ölçüm: %0 kayıp, p50 47ms) • Yedek: broker.emqx.io
@@ -281,45 +305,15 @@
       if (role === 'guide') {
         if (msg.type === 'p2p-pilgrim-hello') {
           const cid = msg.clientId || msg.senderClientId;
-          const existing = this._pilgrimMeta.get(cid);
           this._pilgrimMeta.set(cid, {
             id: cid,
             name: msg.name || 'Hacı Misafir',
             phone: msg.phone || '',
             lang: msg.lang || 'tr',
-            handRaised: existing ? existing.handRaised : false,
-            micGranted: existing ? existing.micGranted : false,
+            roomId: msg.roomId || 'genel',
             joinedAt: msg.joinedAt || 'Şimdi'
           });
           this._broadcastP2PRoomState();
-          return;
-        }
-
-        if (msg.type === 'raise-hand') {
-          const cid = msg.senderClientId;
-          let p = this._pilgrimMeta.get(cid);
-          if (!p) {
-            p = {
-              id: cid,
-              name: msg.name || 'Hacı Misafir',
-              phone: '',
-              lang: 'tr',
-              handRaised: false,
-              micGranted: false,
-              joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-            };
-            this._pilgrimMeta.set(cid, p);
-          }
-          p.handRaised = Boolean(msg.raised);
-          this._broadcastP2PRoomState();
-          this._deliverIncomingMessage({
-            _msgId: msg._msgId,
-            type: 'hand-event',
-            pilgrimId: cid,
-            pilgrimName: p.name,
-            raised: p.handRaised,
-            questionNote: msg.note || ''
-          });
           return;
         }
 
@@ -346,7 +340,11 @@
           return;
         }
 
-        if (msg.type === 'audio-chunk' && msg.speakerRole === 'pilgrim') {
+        if (
+          msg.type === 'new-announcement' ||
+          msg.type === 'announcement-deleted' ||
+          msg.type === 'steps-updated'
+        ) {
           this._deliverIncomingMessage(msg);
           return;
         }
@@ -357,19 +355,15 @@
         }
         if (
           msg.type === 'room-state' ||
+          msg.type === 'stream-state' ||
+          msg.type === 'tawaf-stage' ||
           msg.type === 'new-announcement' ||
+          msg.type === 'announcement-deleted' ||
           msg.type === 'guide-location' ||
-          msg.type === 'qna-state' ||
           msg.type === 'steps-updated' ||
           msg.type === 'family-state'
         ) {
           this._deliverIncomingMessage(msg);
-          return;
-        }
-        if (msg.type === 'mic-permission') {
-          if (!msg.targetClientId || msg.targetClientId === this._clientId) {
-            this._deliverIncomingMessage(msg);
-          }
           return;
         }
       }
@@ -383,23 +377,25 @@
         if (!this._joinContext || this._joinContext.role !== 'guide') return;
         const pilgrims = Array.from(this._pilgrimMeta.values());
         const tourCode = this._joinContext.tourCode || 'RY-KASIM';
-        const baseCount = tourCode === 'RY-KASIM' ? 38 : 0;
+        const roomId = this._joinContext.roomId || 'genel';
+        const isLive = typeof this._isLive === 'undefined' ? true : Boolean(this._isLive);
         const roomObj = {
           tourCode,
-          roomId: this._joinContext.roomId || 'genel',
+          roomId,
           guideName: this._joinContext.name || 'Ömer Ali Gültekin',
-          isLive: typeof this._isLive === 'undefined' ? true : this._isLive,
+          isLive,
+          broadcastMode: this._broadcastMode || (isLive ? 'mic' : 'idle'),
           currentTopic:
             this._currentTopic ||
             (tourCode === 'RY-KASIM'
               ? 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk'
               : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti'),
+          activeTawafStage: this._activeTawafStage || null,
+          guidePeerId: window.ryGetDynamicChannelId(tourCode, roomId),
           guideLocation: this._guideLocation || null,
           connectedPilgrims: pilgrims,
-          totalListeners: pilgrims.length + baseCount,
-          realListenerCount: pilgrims.length,
-          raisedHandsCount: pilgrims.filter((x) => x.handRaised).length,
-          qnaEnabled: typeof this._qnaEnabled === 'undefined' ? true : this._qnaEnabled
+          totalListeners: pilgrims.length,
+          realListenerCount: pilgrims.length
         };
         const payload = {
           _msgId: 'rs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
@@ -510,47 +506,49 @@
             }
           };
           this._publishMqtt(annPayload);
-        } else if (parsed.type === 'grant-mic') {
-          const target = this._pilgrimMeta.get(parsed.targetClientId);
-          if (target) {
-            target.micGranted = Boolean(parsed.granted);
-            if (target.micGranted) target.handRaised = false;
-          }
-          this._publishMqtt({
-            _msgId: parsed._msgId,
-            type: 'mic-permission',
-            targetClientId: parsed.targetClientId,
-            granted: Boolean(parsed.granted),
-            guideName: this._joinContext.name || 'Rehber Hoca'
-          });
-          this._broadcastP2PRoomState();
+          this._deliverIncomingMessage(annPayload);
         } else if (parsed.type === 'guide-stream-state') {
           if (typeof parsed.isLive !== 'undefined') this._isLive = Boolean(parsed.isLive);
+          this._broadcastMode = parsed.broadcastMode || (this._isLive ? 'mic' : 'idle');
           if (parsed.topic) this._currentTopic = parsed.topic;
+          this._publishMqtt({
+            _msgId: parsed._msgId,
+            type: 'stream-state',
+            isLive: this._isLive,
+            broadcastMode: this._broadcastMode,
+            currentTopic: this._currentTopic,
+            guidePeerId: window.ryGetDynamicChannelId(
+              this._joinContext.tourCode || 'RY-KASIM',
+              this._joinContext.roomId || 'genel'
+            )
+          });
           this._broadcastP2PRoomState();
-        } else if (parsed.type === 'set-qna-state') {
-          this._qnaEnabled = Boolean(parsed.enabled);
-          if (!this._qnaEnabled) {
-            for (const p of this._pilgrimMeta.values()) {
-              p.handRaised = false;
-              p.micGranted = false;
-            }
+        } else if (parsed.type === 'tawaf-stage-update') {
+          if (parsed.clear) {
+            this._activeTawafStage = null;
+          } else {
+            this._activeTawafStage = {
+              id: parsed.stageId || 'savt-1',
+              badge: parsed.badge || 'TAVAF AŞAMASI',
+              title: parsed.title || 'Tavaf & Sa’y Rehberliği',
+              arabic: parsed.arabic || '',
+              reading: parsed.reading || '',
+              meaning: parsed.meaning || '',
+              note: parsed.note || '',
+              updatedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+            };
+            if (parsed.topic) this._currentTopic = parsed.topic;
           }
           this._publishMqtt({
             _msgId: parsed._msgId,
-            type: 'qna-state',
-            enabled: this._qnaEnabled
+            type: 'tawaf-stage',
+            activeTawafStage: this._activeTawafStage,
+            currentTopic: this._currentTopic
           });
           this._broadcastP2PRoomState();
         }
       } else {
-        if (parsed.type === 'audio-chunk') {
-          this._publishMqtt({
-            ...parsed,
-            speakerRole: 'pilgrim',
-            speakerName: (this._joinContext && this._joinContext.name) || 'Hacı Misafir'
-          });
-        } else if (parsed.type === 'sos-trigger') {
+        if (parsed.type === 'sos-trigger') {
           const enrichedSos = {
             ...parsed,
             alertId: 'sos-' + Date.now(),
