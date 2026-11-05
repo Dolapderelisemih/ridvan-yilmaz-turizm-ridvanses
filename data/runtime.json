@@ -38,18 +38,18 @@
   "hotels": [
     {
       "id": "hotel-1",
-      "name": "Rayhaan Al Mashaer Hotel",
-      "city": "Mekke-i Mükerreme",
+      "name": "Mekke Otel Kudi Tower",
+      "city": "Mekke-i Mükerreme (Ajyad Street)",
       "stars": 4,
-      "distance": "Mescid-i Haram'a 7/24 Ücretsiz Servis & Yakın Mesafe",
+      "distance": "Mescid-i Haram'a 7/24 Ücretsiz Servis (Ajyad Caddesi • 23333 Mekke)",
       "features": [
-        "Türk Damak Tadına Uygun Açık Büfe",
-        "Geniş Lobi & Sohbet Salonu",
-        "7/24 Rehber Masası"
+        "7/24 Mescid-i Haram Ücretsiz Servis (Shuttle)",
+        "Geniş Lobi, Ücretsiz Wi-Fi & 24 Saat Resepsiyon",
+        "Türk Damak Tadına Uygun Yemek & Rehber Masası"
       ],
       "coordinates": {
-        "lat": 21.4185,
-        "lng": 39.8321
+        "lat": 21.4008,
+        "lng": 39.8261
       }
     },
     {
@@ -126,7 +126,7 @@
       "duration": "10 Gün (8 Gün Mekke | 2 Gün Medine)",
       "guideId": "guide-5",
       "guideName": "Ömer Ali Gültekin",
-      "makkahHotel": "8 Gün Mekke Konaklama (Yemek & Tüm Hizmetler Dahil)",
+      "makkahHotel": "Mekke Otel Kudi Tower",
       "madinahHotel": "2 Gün Medine-i Münevvere Konaklama",
       "pin": "",
       "pinProtected": false,

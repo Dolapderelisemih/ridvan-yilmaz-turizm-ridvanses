@@ -520,13 +520,35 @@
           </div>
         </div>
 
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px;">
           <button type="button" class="btn btn-primary btn-sm" style="padding:11px 10px;" onclick="shareFamilyLiveRoute()">
             📲 Ailemle Paylaş
           </button>
           <a id="pilgrimBookLink" href="/ani-kitabi?code=RY-KASIM" target="_blank" class="btn btn-gold btn-sm" style="padding:11px 10px; text-align:center;">
             📖 Hatıra Kitabım
           </a>
+        </div>
+
+        <!-- KAFİLE OTELİ & KÂBE-İ MUAZZAMA YOL TARİFİ KARTI -->
+        <div class="card-luxury" style="margin-bottom:16px; padding:14px 16px; border-color:rgba(202,138,4,0.38); background:linear-gradient(135deg,#fffdf8 0%,#fef3c7 100%);">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
+            <span class="badge badge-gold" style="font-size:0.68rem;">🏨 OTELİME & KÂBE'YE DÖNÜŞ REHBERİ</span>
+            <span style="font-size:0.72rem; font-weight:700; color:#92400e;">7/24 Harem Servisi</span>
+          </div>
+          <div style="font-size:0.9rem; font-weight:800; color:var(--color-emerald-night); margin-bottom:3px;" id="pilgrimMakkahHotelText">
+            🏨 Mekke: Mekke Otel Kudi Tower
+          </div>
+          <div style="font-size:0.76rem; color:var(--color-muted); margin-bottom:10px;" id="pilgrimMadinahHotelText">
+            📍 Ajyad Street, 23333 Mekke • Medine: 2 Gün Medine-i Münevvere Konaklama
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <a id="pilgrimHotelDirBtn" href="https://www.google.com/maps/dir/?api=1&destination=21.4008,39.8261&travelmode=walking" target="_blank" rel="noopener" class="btn btn-gold btn-sm" style="padding:10px 8px; font-size:0.76rem; text-align:center;">
+              🏨 Mekke Otelime Yol Tarifi
+            </a>
+            <a id="pilgrimKaabaDirBtn" href="https://www.google.com/maps/dir/?api=1&destination=21.4225,39.8262&travelmode=walking" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="padding:10px 8px; font-size:0.76rem; text-align:center; background:#fff;">
+              🕋 Kâbe-i Muazzama Yönü
+            </a>
+          </div>
         </div>
 
         <div class="card-luxury" style="margin-bottom:16px;">
@@ -595,6 +617,20 @@
             <a href="https://wa.me/905383999666" target="_blank" class="btn btn-primary" style="flex:1;">
               WhatsApp Destek
             </a>
+          </div>
+
+          <div style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--color-hairline);">
+            <div style="font-size:0.78rem; font-weight:800; color:var(--color-emerald-night); margin-bottom:6px;" id="sosHotelInfoLabel">
+              🏨 Kafile Oteli: Mekke Otel Kudi Tower (Ajyad Street, Mekke)
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <a id="sosHotelDirBtn" href="https://www.google.com/maps/dir/?api=1&destination=21.4008,39.8261&travelmode=walking" target="_blank" rel="noopener" class="btn btn-gold btn-sm" style="padding:10px 8px; font-size:0.76rem; text-align:center;">
+                🏨 Otelime Yol Tarifi (Kudi Tower)
+              </a>
+              <a id="sosKaabaDirBtn" href="https://www.google.com/maps/dir/?api=1&destination=21.4225,39.8262&travelmode=walking" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="padding:10px 8px; font-size:0.76rem; text-align:center;">
+                🕋 Kâbe-i Muazzama Yönü
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -988,9 +1024,51 @@
               roomSel.value = wantedRoom;
             }
           }
+          // Yaka kartı QR kodundan (?code=RY-KASIM&name=...) gelindiyse ve PIN koruması yoksa otomatik odaya bağlan
+          if (urlParams.get('code') && urlParams.get('name')) {
+            const targetTour = data.tours.find((t) => String(t.code || '').toUpperCase() === urlParams.get('code').trim().toUpperCase());
+            if (!targetTour || !targetTour.pinProtected) {
+              setTimeout(() => {
+                autoJoinFromQrParams();
+              }, 120);
+            }
+          }
         }
       })
       .catch((e) => console.log('Bootstrap dynamic load err:', e));
+
+    function updatePilgrimHotelNavigationUi(tour) {
+      if (!tour) return;
+      const makkahName = tour.makkahHotel || 'Mekke Otel Kudi Tower';
+      const madinahName = tour.madinahHotel || '2 Gün Medine-i Münevvere Konaklama';
+      const makkahEl = document.getElementById('pilgrimMakkahHotelText');
+      const madinahEl = document.getElementById('pilgrimMadinahHotelText');
+      const sosLabelEl = document.getElementById('sosHotelInfoLabel');
+      const hotelDirBtn = document.getElementById('pilgrimHotelDirBtn');
+      const sosHotelDirBtn = document.getElementById('sosHotelDirBtn');
+
+      if (makkahEl) makkahEl.textContent = `🏨 Mekke: ${makkahName}`;
+      if (madinahEl) madinahEl.textContent = `📍 Ajyad Street, 23333 Mekke • Medine: ${madinahName}`;
+      if (sosLabelEl) sosLabelEl.textContent = `🏨 Kafile Oteli: ${makkahName} (Ajyad Street, Mekke)`;
+
+      const isKudi = /kudi/i.test(makkahName);
+      const destQuery = isKudi
+        ? '21.4008,39.8261'
+        : encodeURIComponent(`${makkahName} Makkah`);
+      const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${destQuery}&travelmode=walking`;
+      if (hotelDirBtn) hotelDirBtn.href = mapsUrl;
+      if (sosHotelDirBtn) sosHotelDirBtn.href = mapsUrl;
+    }
+
+    function autoJoinFromQrParams() {
+      if (currentTour) return;
+      const form = document.getElementById('joinForm');
+      if (form && typeof form.requestSubmit === 'function') {
+        form.requestSubmit();
+      } else if (form) {
+        form.dispatchEvent(new Event('submit', { cancelable: true }));
+      }
+    }
 
     document.getElementById('joinForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1028,6 +1106,7 @@
         }
 
         currentTour = data.tour;
+        updatePilgrimHotelNavigationUi(currentTour);
         try {
           localStorage.setItem('ridvanses_pilgrim_name', name);
           if (phone && phone !== '+90 538 000 00 00') {
@@ -1039,6 +1118,19 @@
         document.getElementById('liveView').style.display = 'block';
         const bottomNav = document.getElementById('pilgrimBottomNav');
         if (bottomNav) bottomNav.style.display = 'flex';
+
+        const unlockOnFirstTap = () => {
+          try {
+            ensureAudioContext();
+            if (audioCtx && audioCtx.state === 'suspended') {
+              audioCtx.resume();
+            }
+          } catch {}
+          document.removeEventListener('pointerdown', unlockOnFirstTap);
+          document.removeEventListener('touchstart', unlockOnFirstTap);
+        };
+        document.addEventListener('pointerdown', unlockOnFirstTap, { once: true });
+        document.addEventListener('touchstart', unlockOnFirstTap, { once: true });
 
         document.getElementById('activeTourBadge').textContent = `${currentTour.code} • ${roomId.toUpperCase()}`;
         document.getElementById('liveTourTitle').textContent = currentTour.name.replace(/^🕋\s*/, '');

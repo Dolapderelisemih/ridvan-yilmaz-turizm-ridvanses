@@ -908,7 +908,7 @@ app.post('/api/tours', (req, res) => {
     duration: body.duration || '15 Gün',
     guideId: body.guideId || 'guide-1',
     guideName: body.guideName || 'Rıdvan Yılmaz Hoca',
-    makkahHotel: body.makkahHotel || 'Rayhaan Al Mashaer Hotel',
+    makkahHotel: body.makkahHotel || 'Mekke Otel Kudi Tower',
     madinahHotel: body.madinahHotel || 'Medine Merkezi Ravza Oteli',
     pin: body.pin || '',
     pinProtected: Boolean(body.pin),
@@ -1058,7 +1058,7 @@ app.get('/api/trips/:code/steps', (req, res) => {
     guideName: 'Ömer Ali Gültekin',
     dateText: 'Kasım 2026 • 10 Gün',
     duration: '10 Gün (8 Mekke + 2 Medine)',
-    makkahHotel: '8 Gün Mekke Konaklama (Harem Yakını)',
+    makkahHotel: 'Mekke Otel Kudi Tower',
     madinahHotel: '2 Gün Medine Konaklama (Merkezi Bölge)'
   };
   const steps = getTourSteps(code);
@@ -1450,7 +1450,7 @@ app.get('/api/qr', async (req, res) => {
       code,
       name: `Kasım Umresi Kafilesi`,
       guideName: 'Ömer Ali Gültekin',
-      makkahHotel: '8 Gün Mekke Konaklama',
+      makkahHotel: 'Mekke Otel Kudi Tower',
       madinahHotel: '2 Gün Medine Konaklama'
     };
 
