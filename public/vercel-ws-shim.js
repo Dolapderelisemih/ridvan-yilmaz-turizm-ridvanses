@@ -172,6 +172,11 @@
       } catch {}
 
       this.readyState = 1; // OPEN
+      if (this._joinContext) {
+        this._initMqttBus(this._joinContext, false);
+      } else if (this._isAdmin) {
+        this._initMqttBus(null, true);
+      }
       if (typeof this.onopen === 'function') {
         this.onopen({ type: 'open', relay: true });
       }
@@ -434,7 +439,7 @@
         }
         if (parsed.type === 'join') {
           this._joinContext = parsed;
-          this._initMqttBus(parsed, false);
+          if (this._isRelay) this._initMqttBus(parsed, false);
         } else if (parsed.type === 'family-subscribe') {
           this._joinContext = {
             type: 'join',
@@ -443,10 +448,10 @@
             roomId: 'genel',
             name: 'Aile Takipçisi'
           };
-          this._initMqttBus(this._joinContext, false);
+          if (this._isRelay) this._initMqttBus(this._joinContext, false);
         } else if (parsed.type === 'admin-subscribe') {
           this._isAdmin = true;
-          this._initMqttBus(null, true);
+          if (this._isRelay) this._initMqttBus(null, true);
         }
       }
 

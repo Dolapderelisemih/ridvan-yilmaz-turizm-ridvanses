@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ridvanses-pwa-v27';
+const CACHE_NAME = 'ridvanses-pwa-v28';
 const ASSETS_TO_CACHE = [
   '/',
   '/dinle',

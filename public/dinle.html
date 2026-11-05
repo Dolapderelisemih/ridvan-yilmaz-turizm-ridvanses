@@ -1277,9 +1277,9 @@
           animateSpectrumFromLevel(msg.level || 0.5);
           if (isAudioListening) {
             if (msg.pcm16) {
-              playPcmSamples(msg.pcm16, msg.sampleRate || 24000, true);
+              playPcmSamples(msg.pcm16, msg.sampleRate || 24000, true, msg.seq || 0);
             } else if (msg.samples && msg.samples.length) {
-              playPcmSamples(msg.samples, msg.sampleRate || 24000, false);
+              playPcmSamples(msg.samples, msg.sampleRate || 24000, false, msg.seq || 0);
             } else if (msg.synthNote) {
               playGentleHarmonyNote(msg.synthNote);
             }
@@ -1469,42 +1469,25 @@
     }
 
     let rxInputNode = null;
-    let rxLimiterNode = null;
 
     function ensureAudioContext() {
       if (!audioCtx) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
 
-        // 1. Telefon Hoparlörü Zırıltı Kesici (75 Hz High-Pass)
+        // 1. Telefon Hoparlörü Zırıltı / DC Kesici (65 Hz Butterworth High-Pass — %100 Doğal Faz)
+        // Not: Arka plan gürültüsünü +18 dB pompalayan DynamicsCompressor ve metalik 2750 Hz Peaking filtre kaldırıldı.
         const rxHighPass = audioCtx.createBiquadFilter();
         rxHighPass.type = 'highpass';
-        rxHighPass.frequency.value = 75;
+        rxHighPass.frequency.value = 65;
         rxHighPass.Q.value = 0.707;
 
-        // 2. Kalabalık Ortam (Tavaf / Mescid-i Haram) Ses Netleştirici (2750 Hz +2.2 dB)
-        const rxPresence = audioCtx.createBiquadFilter();
-        rxPresence.type = 'peaking';
-        rxPresence.frequency.value = 2750;
-        rxPresence.Q.value = 1.0;
-        rxPresence.gain.value = 2.2;
-
-        // 3. Kullanıcı Ses Güçlendirici (%0 - %200)
+        // 2. Kullanıcı Ses Güçlendirici (%0 - %200 Doğrusal Kazanç)
         gainNode = audioCtx.createGain();
         gainNode.gain.value = volumeMultiplier;
 
-        // 4. Kulaklık & Hoparlör Cızırtı / Patlama Koruyucu (Brickwall Limiter @ -1.2 dB)
-        rxLimiterNode = audioCtx.createDynamicsCompressor();
-        rxLimiterNode.threshold.value = -1.2;
-        rxLimiterNode.knee.value = 3.0;
-        rxLimiterNode.ratio.value = 12.0;
-        rxLimiterNode.attack.value = 0.002;
-        rxLimiterNode.release.value = 0.08;
-
-        rxHighPass.connect(rxPresence);
-        rxPresence.connect(gainNode);
-        gainNode.connect(rxLimiterNode);
-        rxLimiterNode.connect(audioCtx.destination);
+        rxHighPass.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
         rxInputNode = rxHighPass;
 
         audioCtx.onstatechange = () => {
@@ -1560,8 +1543,11 @@
     }
 
     let nextAudioTime = 0;
-    let prevEndSample = 0;
+    let lastHwEndSample = 0;
     let lastPacketReceivedAt = 0;
+    let lastReceivedAudioSeq = 0;
+    let rxHermiteHist = null;
+    let rxHermitePos = 0;
     const activeScheduledSources = [];
 
     function stopAllActiveSources() {
@@ -1572,74 +1558,155 @@
           src.disconnect();
         } catch {}
       }
+      rxHermiteHist = null;
+      rxHermitePos = 0;
     }
 
-    function playPcmSamples(samplesOrB64, sampleRate = 24000, isBase64 = false) {
+    // Durum Korumalı 4-Noktalı Kübik Hermite Donanım Örnekleme Hızı Dönüştürücüsü (24 kHz -> 48 kHz / 44.1 kHz):
+    // Paket sınırlarında sıfır faz kırılması (C1 sürekliliği) sağlar ve tarayıcının blok-resampler
+    // kaynaklı 15.6 Hz "Transformers / metalik" kenar bozulmasını %100 ortadan kaldırır.
+    function resampleChunkToHwRate(srcArr, srcRate, dstRate, isContiguous) {
+      if (!srcArr || !srcArr.length) return srcArr;
+      if (srcRate === dstRate) {
+        rxHermiteHist = null;
+        return srcArr;
+      }
+      const step = srcRate / dstRate;
+      if (!isContiguous || !rxHermiteHist) {
+        const s0 = srcArr[0];
+        rxHermiteHist = [s0, s0, s0, s0];
+        rxHermitePos = 0;
+      }
+
+      const extLen = 3 + srcArr.length;
+      const ext = new Float32Array(extLen);
+      ext[0] = rxHermiteHist[1];
+      ext[1] = rxHermiteHist[2];
+      ext[2] = rxHermiteHist[3];
+      ext.set(srcArr, 3);
+
+      const maxIdx = srcArr.length;
+      const estOutLen = Math.ceil((maxIdx - rxHermitePos) / step) + 2;
+      const tempOut = new Float32Array(estOutLen);
+      let outIdx = 0;
+
+      while (rxHermitePos < maxIdx) {
+        const iInt = Math.floor(rxHermitePos);
+        const frac = rxHermitePos - iInt;
+        const y0 = ext[iInt];
+        const y1 = ext[iInt + 1];
+        const y2 = ext[iInt + 2];
+        const y3 = iInt + 3 < extLen ? ext[iInt + 3] : y2;
+
+        const c0 = y1;
+        const c1 = 0.5 * (y2 - y0);
+        const c2 = y0 - 2.5 * y1 + 2.0 * y2 - 0.5 * y3;
+        const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+        tempOut[outIdx++] = ((c3 * frac + c2) * frac + c1) * frac + c0;
+        rxHermitePos += step;
+      }
+
+      rxHermitePos -= maxIdx;
+      const n = srcArr.length;
+      if (n >= 4) {
+        rxHermiteHist = [srcArr[n - 4], srcArr[n - 3], srcArr[n - 2], srcArr[n - 1]];
+      } else {
+        const last = srcArr[n - 1];
+        rxHermiteHist = [last, last, last, last];
+      }
+
+      return tempOut.subarray(0, outIdx);
+    }
+
+    function playPcmSamples(samplesOrB64, sampleRate = 24000, isBase64 = false, seq = 0) {
       ensureAudioContext();
       if (!audioCtx || !gainNode) return;
       try {
-        let floatArr;
+        // Çift veya eski sıradışı paketleri ele (bulut/ağ yedeklemesinde üst üste binmeyi önler)
+        if (seq > 0 && lastReceivedAudioSeq > 0) {
+          const diff = seq - lastReceivedAudioSeq;
+          if (diff <= 0 && diff > -300) {
+            return;
+          }
+        }
+        const isSeqContiguous = seq > 0 && lastReceivedAudioSeq > 0 && seq === lastReceivedAudioSeq + 1;
+        if (seq > 0) lastReceivedAudioSeq = seq;
+
+        let rawArr;
         if (isBase64 && typeof samplesOrB64 === 'string') {
           const bin = atob(samplesOrB64);
           const len = bin.length >> 1;
-          floatArr = new Float32Array(len);
+          rawArr = new Float32Array(len);
           for (let i = 0; i < len; i++) {
             const lo = bin.charCodeAt(i * 2);
             const hi = bin.charCodeAt(i * 2 + 1);
             let val = (hi << 8) | lo;
             if (val >= 0x8000) val -= 0x10000;
-            floatArr[i] = val / 32768;
+            rawArr[i] = val / 32768;
           }
         } else {
-          floatArr = new Float32Array(samplesOrB64);
+          rawArr = new Float32Array(samplesOrB64);
         }
-        if (!floatArr.length) return;
+        if (!rawArr.length) return;
 
         lastPacketReceivedAt = Date.now();
+        const hwRate = audioCtx.sampleRate || 48000;
         const now = audioCtx.currentTime;
         const lead = nextAudioTime - now;
-        const isFreshStart = lead < 0 || lead > 0.95;
 
-        // 1. Adaptif 4G/LTE Jitter Tamponu:
-        // Boşluk sonrası 95ms tampon bırakarak normal mobil şebeke dalgalanmalarında sesin kesilmesini engeller.
-        // Yalnızca 950ms üzeri aşırı ağ donmalarında kuyruğu sıfırlar.
-        if (lead > 0.95) {
+        // 1. Akıllı Kesintisiz Jitter Tamponu:
+        // - Konuşma yeni başladığında (>35ms boşluk sonrası) 115ms güvenli tampon bırakır.
+        // - Kelime ortasında çok küçük (0..35ms) ağ gecikmesi olursa 95ms boşluk açmak yerine
+        //   8ms sonra hemen çalarak sesin kesilmesini ve "lavabo/robotik" dalgalanmayı önler.
+        let isFreshPhrase = false;
+        let isMicroCatchup = false;
+
+        if (lead > 0.70) {
           stopAllActiveSources();
-          nextAudioTime = now + 0.095;
+          nextAudioTime = now + 0.115;
+          isFreshPhrase = true;
+        } else if (lead < -0.035) {
+          nextAudioTime = now + 0.115;
+          isFreshPhrase = true;
         } else if (lead < 0) {
-          nextAudioTime = now + 0.095;
+          nextAudioTime = now + 0.008;
+          isMicroCatchup = !isSeqContiguous;
         }
 
-        // 2. Çıtırtısız (Zero-Click) Kosinüs Fade-In & 8-Örnekli Sınır Yumuşatma:
-        if (isFreshStart) {
-          const fadeLen = Math.min(48, floatArr.length);
+        const hwSamples = resampleChunkToHwRate(
+          rawArr,
+          sampleRate,
+          hwRate,
+          !isFreshPhrase && isSeqContiguous
+        );
+        if (!hwSamples.length) return;
+
+        // 2. Yalnızca Yeni Cümle Başlangıcında veya Paket Kaybında Yumuşak Geçiş:
+        // (Sıralı gelen paketlerin ilk 8 örneğini ASLA ezmez — 15.6 Hz testere dişi bozulmasını %100 önler!)
+        if (isFreshPhrase) {
+          const fadeLen = Math.min(256, hwSamples.length);
           for (let i = 0; i < fadeLen; i++) {
             const w = 0.5 * (1 - Math.cos((Math.PI * i) / fadeLen));
-            floatArr[i] *= w;
+            hwSamples[i] *= w;
           }
-        } else if (floatArr.length >= 8) {
-          for (let k = 0; k < 8; k++) {
-            const alpha = (k + 1) / 9;
-            floatArr[k] = prevEndSample * (1 - alpha) + floatArr[k] * alpha;
+        } else if (isMicroCatchup || !isSeqContiguous) {
+          const blendLen = Math.min(32, hwSamples.length);
+          for (let k = 0; k < blendLen; k++) {
+            const alpha = (k + 1) / (blendLen + 1);
+            hwSamples[k] = lastHwEndSample * (1 - alpha) + hwSamples[k] * alpha;
           }
         }
-        prevEndSample = floatArr[floatArr.length - 1];
+        lastHwEndSample = hwSamples[hwSamples.length - 1];
 
-        const buffer = audioCtx.createBuffer(1, floatArr.length, sampleRate);
-        buffer.copyToChannel(floatArr, 0);
+        const buffer = audioCtx.createBuffer(1, hwSamples.length, hwRate);
+        buffer.copyToChannel(hwSamples, 0);
         const source = audioCtx.createBufferSource();
         source.buffer = buffer;
 
-        // 3. İki Kademeli Yumuşak Gecikme Eritme (Smooth Catch-Up):
-        // Kelimeleri kesmeden %4 veya %9 hızlandırarak canlı yayına yetişir.
-        const currentLead = nextAudioTime - now;
-        let rate = 1.0;
-        if (currentLead > 0.45) {
-          rate = 1.09;
-        } else if (currentLead > 0.24) {
-          rate = 1.04;
-        }
-        source.playbackRate.value = rate;
+        // 3. %100 Sabit Perde (playbackRate = 1.0):
+        // Ses hızını 1.04x / 1.09x değiştirerek insan sesini incelten/kalınlaştıran Doppler ("lavabo sesi")
+        // efekti tamamen kaldırıldı. Ses her zaman orijinal stüdyo perdesinde çalınır.
+        source.playbackRate.value = 1.0;
         source.connect(rxInputNode || gainNode);
 
         activeScheduledSources.push(source);
@@ -1650,8 +1717,7 @@
         };
 
         source.start(nextAudioTime);
-        const duration = buffer.duration / rate;
-        nextAudioTime += duration;
+        nextAudioTime += hwSamples.length / hwRate;
       } catch (e) {}
     }
 
@@ -2241,7 +2307,7 @@
       writeStr(36, 'data');
       view.setUint32(40, numSamples * 2, true);
       for (let i = 0; i < numSamples; i++) {
-        view.setInt16(44 + i * 2, 1, true);
+        view.setInt16(44 + i * 2, 0, true);
       }
       const bytes = new Uint8Array(buffer);
       let binary = '';

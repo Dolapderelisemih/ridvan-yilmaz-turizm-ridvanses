@@ -291,25 +291,36 @@
           <!-- Mikrofon Spektrum & Seviye -->
           <div class="studio-meter-box">
             <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.78rem; color:#CBD5E1; margin-bottom:10px; font-weight:600; flex-wrap:wrap; gap:6px;">
-              <span id="micSourceLabel">Yayın Kaynağı: Hazır (24 kHz HD Stüdyo DSP)</span>
+              <span id="micSourceLabel">Yayın Kaynağı: Hazır (24 kHz Saf Stüdyo HD • Gürültü Kapısı Aktif)</span>
               <span id="dbMeterText" style="color:#E2C785;">Ses Seviyesi: Beklemede</span>
             </div>
             <div class="spectrum" id="guideSpectrum"></div>
             <div style="display:flex; align-items:center; gap:10px; font-size:0.78rem; color:#CBD5E1; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08);">
               <span>🎙️ Mikrofon Hassasiyeti:</span>
-              <input type="range" id="guideMicGainSlider" min="80" max="200" value="135" style="flex:1; accent-color:#dfbe78;" oninput="updateGuideMicGain(this.value)" />
-              <span id="guideMicGainLabel" style="font-weight:800; color:#E2C785; min-width:42px; text-align:right;">%135</span>
+              <input type="range" id="guideMicGainSlider" min="60" max="180" value="100" style="flex:1; accent-color:#dfbe78;" oninput="updateGuideMicGain(this.value)" />
+              <span id="guideMicGainLabel" style="font-weight:800; color:#E2C785; min-width:42px; text-align:right;">%100</span>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; font-size:0.75rem; color:#CBD5E1; margin-top:8px; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.08);">
+              <label for="guideAcousticModeSelect" style="font-weight:700; color:#E2C785;">🎛️ Akustik Mod:</label>
+              <select id="guideAcousticModeSelect" class="studio-select" style="flex:1; min-width:210px; padding:6px 10px; font-size:0.75rem;" onchange="onAcousticModeChange()">
+                <option value="studio_clean" style="color:#000;" selected>✨ Saf Stüdyo HD + Gürültü Kapısı (Lavabo/Robotik Ses %0 — Önerilen)</option>
+                <option value="near_echo" style="color:#000;">🛡️ Yakın Hoparlör / Eko Korumalı Mod (Aynı Odada İki Cihazla Test)</option>
+              </select>
             </div>
           </div>
 
           <audio id="guideBgKeepAliveAudio" loop playsinline style="display:none;"></audio>
 
-          <!-- Yayın Başlatma Butonu -->
+          <!-- Yayın Başlatma & Kendi Sesini Test Etme Butonları -->
           <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <button type="button" id="startMicBtn" class="btn btn-gold" style="flex:1; padding:15px 20px; font-size:0.98rem;" onclick="toggleMicBroadcast()">
+            <button type="button" id="startMicBtn" class="btn btn-gold" style="flex:2; min-width:220px; padding:15px 18px; font-size:0.96rem;" onclick="toggleMicBroadcast()">
               🎙️ Gerçek Mikrofonla Canlı Yayını Başlat
             </button>
+            <button type="button" id="testMyVoiceBtn" class="btn btn-outline" style="flex:1; min-width:170px; padding:13px 14px; font-size:0.82rem; color:#F8F4EC; border-color:rgba(197,160,89,0.45); background:rgba(255,255,255,0.06);" onclick="testGuideVoiceLoopback()">
+              🎧 Sesimi Test Et (4 Sn Kaydet &amp; Dinle)
+            </button>
           </div>
+          <div id="voiceTestStatusBox" style="display:none; margin-top:10px; padding:10px 14px; border-radius:12px; background:rgba(0,0,0,0.35); border:1px solid rgba(197,160,89,0.4); font-size:0.8rem; color:#F8F4EC;"></div>
         </div>
 
         <!-- CANLI REHBER & KAFİLE KONUMU PAYLAŞIMI KARTI -->
@@ -1068,8 +1079,10 @@
     // Real Microphone Audio Streaming (24 kHz Wideband HD + 6-Stage Broadcast DSP + Soft Limiter)
     let zeroGainNode = null;
     let guideMicGainNode = null;
-    let guideMicGainMultiplier = 1.35;
+    let guideMicGainMultiplier = 1.0;
     let guideWakeLockSentinel = null;
+    let isVoiceLoopbackTesting = false;
+    let loopbackRecordedChunks = [];
 
     function updateGuideMicGain(val) {
       guideMicGainMultiplier = Number(val) / 100;
@@ -1077,6 +1090,15 @@
       if (lbl) lbl.textContent = `%${val}`;
       if (guideMicGainNode) {
         guideMicGainNode.gain.value = guideMicGainMultiplier;
+      }
+    }
+
+    async function onAcousticModeChange() {
+      if (isMicBroadcasting) {
+        stopMicBroadcast();
+        setTimeout(() => {
+          toggleMicBroadcast();
+        }, 180);
       }
     }
 
@@ -1102,7 +1124,7 @@
       writeStr(36, 'data');
       view.setUint32(40, numSamples * 2, true);
       for (let i = 0; i < numSamples; i++) {
-        view.setInt16(44 + i * 2, 1, true);
+        view.setInt16(44 + i * 2, 0, true);
       }
       const bytes = new Uint8Array(buffer);
       let binary = '';
@@ -1119,13 +1141,16 @@
           });
         }
       } catch {}
-      try {
-        const el = document.getElementById('guideBgKeepAliveAudio');
-        if (el) {
-          if (!el.src) el.src = createGuideSilentWavUri();
-          el.play().catch(() => {});
-        }
-      } catch {}
+      // Yalnızca ekran arka plana atıldığında sessiz WAV çal (ön planda OS mikrofon/hoparlör eko iptalini tetiklemesin)
+      if (document.visibilityState === 'hidden') {
+        try {
+          const el = document.getElementById('guideBgKeepAliveAudio');
+          if (el) {
+            if (!el.src) el.src = createGuideSilentWavUri();
+            el.play().catch(() => {});
+          }
+        } catch {}
+      }
     }
 
     async function disableGuideKeepAlive() {
@@ -1142,11 +1167,18 @@
     }
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && isMicBroadcasting) {
+      if (!isMicBroadcasting) return;
+      if (document.visibilityState === 'visible') {
+        try {
+          const el = document.getElementById('guideBgKeepAliveAudio');
+          if (el) el.pause();
+        } catch {}
         enableGuideKeepAlive();
         if (audioCtx && audioCtx.state !== 'running') {
           audioCtx.resume().catch(() => {});
         }
+      } else {
+        enableGuideKeepAlive();
       }
     });
 
@@ -1155,7 +1187,7 @@
       const bytes = new Uint8Array(len * 2);
       for (let i = 0; i < len; i++) {
         const s = Math.max(-1, Math.min(1, floatSamples[i]));
-        const intVal = s < 0 ? s * 0x8000 : s * 0x7fff;
+        const intVal = s < 0 ? Math.round(s * 0x8000) : Math.round(s * 0x7fff);
         const v = intVal & 0xffff;
         bytes[i * 2] = v & 0xff;
         bytes[i * 2 + 1] = (v >> 8) & 0xff;
@@ -1169,41 +1201,124 @@
 
     let workletModuleLoaded = false;
     let guideAudioSeq = 0;
-    let guidePrevRawSample = 0;
+    const guideFilterHist = new Float32Array(6);
+    let guideGateEnv = 0;
+    let guideGateGain = 0;
+    let guideHoldSamplesLeft = 0;
+    let guideSilentChunksCount = 0;
 
-    function handleGuideMicFloatChunk(input) {
-      if (!isMicBroadcasting || !audioCtx) return;
-      if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
-        audioCtx.resume().catch(() => {});
-      }
-      let sum = 0;
-      // 24 kHz HD Wideband Ses (step = 2): 3072 örnek -> tam 1536 örnek (örnek kaybı = 0)
-      const step = 2;
+    function processGuideFloatChunkDsp(input, hwSampleRate = 48000, isNearEchoMode = false) {
+      const step = hwSampleRate >= 40000 ? 2 : 1;
       const outLen = Math.floor(input.length / step);
       const downsampled = new Float32Array(outLen);
+      const outSampleRate = Math.round(hwSampleRate / step);
+
+      // Zaman-Düzlemi Akıllı Gürültü Kapısı (Time-Domain Smooth Speech Expander Gate):
+      // WebRTC'nin FFT spektral "lavabo/Transformers" gürültüsünü ve duraklamalardaki oda uğultusunu %100 keser.
+      const openThreshold = isNearEchoMode ? 0.022 : 0.011;
+      const floorThreshold = openThreshold * 0.42;
+      const holdSamplesMax = Math.round(outSampleRate * 0.19); // 190ms kelime sonu koruma süresi
+
+      let sum = 0;
       for (let j = 0; j < outLen; j++) {
-        const idx = j * step;
-        const s0 = idx === 0 ? guidePrevRawSample : input[idx - 1];
-        const s1 = input[idx];
-        const s2 = input[idx + 1] !== undefined ? input[idx + 1] : s1;
-        // 3-noktalı üçgen (1-2-1) anti-aliasing filtre + analog tanh yumuşak sınırlayıcı (cızırtı/patlama %0)
-        const filtered = 0.25 * s0 + 0.5 * s1 + 0.25 * s2;
-        const v = Math.tanh(filtered * 1.15);
+        let filtered;
+        if (step === 2) {
+          const idx = j * 2;
+          const xm3 = idx >= 3 ? input[idx - 3] : guideFilterHist[idx + 3];
+          const xm1 = idx >= 1 ? input[idx - 1] : guideFilterHist[idx + 5];
+          const x0 = input[idx];
+          const xp1 = idx + 1 < input.length ? input[idx + 1] : x0;
+          const xp3 = idx + 3 < input.length ? input[idx + 3] : xp1;
+          // 7-Tap Half-Band Sinc Anti-Aliasing Filtre (Sıfır faz bozulması, kristal netlik)
+          filtered = -0.045 * (xm3 + xp3) + 0.295 * (xm1 + xp1) + 0.500 * x0;
+        } else {
+          filtered = input[j];
+        }
+
+        const absV = Math.abs(filtered);
+        if (absV > guideGateEnv) {
+          guideGateEnv = 0.88 * guideGateEnv + 0.12 * absV; // ~1.5ms hızlı açılış (hece yutmaz)
+        } else {
+          guideGateEnv = 0.9992 * guideGateEnv + 0.0008 * absV; // yumuşak sönümlenme
+        }
+
+        let targetGate;
+        if (guideGateEnv >= openThreshold) {
+          targetGate = 1.0;
+          guideHoldSamplesLeft = holdSamplesMax;
+        } else if (guideHoldSamplesLeft > 0) {
+          guideHoldSamplesLeft--;
+          targetGate = 1.0;
+        } else if (guideGateEnv <= floorThreshold) {
+          targetGate = 0.0;
+        } else {
+          const norm = (guideGateEnv - floorThreshold) / (openThreshold - floorThreshold);
+          targetGate = norm * norm;
+        }
+
+        guideGateGain = 0.990 * guideGateGain + 0.010 * targetGate;
+        let v = filtered * guideGateGain;
+
+        // Yalnızca 0.85 (-1.4 dBFS) üzerindeki ani patlamalarda devreye giren şeffaf tavan koruyucu
+        // (Normal konuşmada %100 doğrusal — ses rengini asla robotikleştirmez)
+        if (Math.abs(v) > 0.85) {
+          const sign = v < 0 ? -1 : 1;
+          v = sign * (0.85 + 0.14 * Math.tanh((Math.abs(v) - 0.85) / 0.14));
+        }
+
         sum += v * v;
         downsampled[j] = v;
       }
-      if (input.length > 0) {
-        guidePrevRawSample = input[input.length - 1];
+
+      if (input.length >= 6) {
+        for (let h = 0; h < 6; h++) {
+          guideFilterHist[h] = input[input.length - 6 + h];
+        }
       }
 
       const rms = Math.sqrt(sum / (outLen || 1));
-      const level = Math.min(1, rms * 6.5);
+      return { downsampled, rms, outSampleRate };
+    }
+
+    function handleGuideMicFloatChunk(input) {
+      if ((!isMicBroadcasting && !isVoiceLoopbackTesting) || !audioCtx) return;
+      if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+        audioCtx.resume().catch(() => {});
+      }
+
+      const modeSel = document.getElementById('guideAcousticModeSelect');
+      const isNearEchoMode = modeSel && modeSel.value === 'near_echo';
+      const { downsampled, rms, outSampleRate } = processGuideFloatChunkDsp(
+        input,
+        audioCtx.sampleRate || 48000,
+        isNearEchoMode
+      );
+
+      const level = Math.min(1, rms * 6.0);
       animateGuideSpectrum(level);
 
       const dbEl = document.getElementById('dbMeterText');
       if (dbEl) {
         const dbVal = rms > 0.0001 ? Math.max(-48, Math.min(0, Math.round(20 * Math.log10(rms)))) : -48;
-        dbEl.textContent = dbVal <= -42 ? 'Ses Seviyesi: Sessiz (-42 dB)' : `Ses Seviyesi: HD Net (${dbVal} dB)`;
+        dbEl.textContent =
+          dbVal <= -43
+            ? 'Ses Seviyesi: Arka Plan Gürültü Kapısı Aktif (Sessiz)'
+            : `Ses Seviyesi: Saf HD Net (${dbVal} dB)`;
+      }
+
+      if (isVoiceLoopbackTesting) {
+        loopbackRecordedChunks.push({ samples: downsampled, sampleRate: outSampleRate });
+        return;
+      }
+
+      // Tam sessizlikte 2 kuyruk paketinden sonra boş paket göndermeyi durdur (arka plan uğultusunu %100 keser)
+      if (rms < 0.0004) {
+        guideSilentChunksCount++;
+        if (guideSilentChunksCount > 2) {
+          return;
+        }
+      } else {
+        guideSilentChunksCount = 0;
       }
 
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -1215,10 +1330,193 @@
           type: 'audio-chunk',
           seq: ++guideAudioSeq,
           sentAt: Date.now(),
-          sampleRate: Math.round(audioCtx.sampleRate / step),
+          sampleRate: outSampleRate,
           pcm16,
           level
         }));
+      }
+    }
+
+    async function setupGuideMicrophoneGraph() {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!audioCtx) {
+        audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
+        audioCtx.onstatechange = () => {
+          if ((isMicBroadcasting || isVoiceLoopbackTesting) && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+            audioCtx.resume().catch(() => {});
+          }
+        };
+      }
+      if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+        await audioCtx.resume();
+      }
+
+      const modeSel = document.getElementById('guideAcousticModeSelect');
+      const isNearEchoMode = modeSel && modeSel.value === 'near_echo';
+
+      // ÖNEMLİ: Tarayıcının WebRTC "noiseSuppression: true" ve "autoGainControl: true" filtreleri
+      // FFT spektral çıkarma yaptığı için arka planda "lavabo / Transformers" sesi üretir.
+      // Bunları kapatıp kendi zaman-düzlemi (Time-Domain) saf stüdyo filtremizi kullanıyoruz!
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: isNearEchoMode ? true : false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: 1,
+            sampleRate: 48000
+          }
+        });
+      } catch (strictErr) {
+        console.warn('Gelişmiş mikrofon ayarı kabul edilmedi, temel ses kullanılıyor:', strictErr);
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+
+      const source = audioCtx.createMediaStreamSource(micStream);
+
+      // 1. Rüzgâr ve El Çarpma Gürültüsü Kesici (90 Hz Butterworth High-Pass — Faz Bozulmasız)
+      const highPass = audioCtx.createBiquadFilter();
+      highPass.type = 'highpass';
+      highPass.frequency.value = 90;
+      highPass.Q.value = 0.707;
+
+      // 2. Doğal Anti-Aliasing Tiz Yumuşatıcı (9500 Hz Butterworth Low-Pass)
+      // (Yapay 2850 Hz metalik boost ve otomatik gürültü pompalayan DynamicsCompressor kaldırıldı!)
+      const lowPass = audioCtx.createBiquadFilter();
+      lowPass.type = 'lowpass';
+      lowPass.frequency.value = 9500;
+      lowPass.Q.value = 0.707;
+
+      // 3. Rehber Mikrofon Kazancı (Gain — Varsayılan %100 Doğal Birim Kazanç)
+      guideMicGainNode = audioCtx.createGain();
+      guideMicGainNode.gain.value = guideMicGainMultiplier;
+
+      zeroGainNode = audioCtx.createGain();
+      zeroGainNode.gain.value = 0;
+
+      source.connect(highPass);
+      highPass.connect(lowPass);
+      lowPass.connect(guideMicGainNode);
+
+      guideFilterHist.fill(0);
+      guideGateEnv = 0;
+      guideGateGain = 0;
+      guideHoldSamplesLeft = 0;
+      guideSilentChunksCount = 0;
+
+      let workletSuccess = false;
+      if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
+        try {
+          if (!workletModuleLoaded) {
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=28');
+            workletModuleLoaded = true;
+          }
+          scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
+          scriptProcessor.port.onmessage = (ev) => {
+            if (ev && ev.data) handleGuideMicFloatChunk(ev.data);
+          };
+          guideMicGainNode.connect(scriptProcessor);
+          scriptProcessor.connect(zeroGainNode);
+          zeroGainNode.connect(audioCtx.destination);
+          workletSuccess = true;
+        } catch (workletErr) {
+          console.warn('AudioWorklet yüklenemedi, ScriptProcessor fallback devrede:', workletErr);
+        }
+      }
+      if (!workletSuccess) {
+        scriptProcessor = audioCtx.createScriptProcessor(2048, 1, 1);
+        guideMicGainNode.connect(scriptProcessor);
+        scriptProcessor.connect(zeroGainNode);
+        zeroGainNode.connect(audioCtx.destination);
+        scriptProcessor.onaudioprocess = (e) => {
+          handleGuideMicFloatChunk(e.inputBuffer.getChannelData(0));
+        };
+      }
+    }
+
+    async function testGuideVoiceLoopback() {
+      const testBtn = document.getElementById('testMyVoiceBtn');
+      const statusBox = document.getElementById('voiceTestStatusBox');
+      if (isVoiceLoopbackTesting) return;
+      if (isMicBroadcasting) {
+        stopMicBroadcast();
+      }
+
+      try {
+        loopbackRecordedChunks = [];
+        isVoiceLoopbackTesting = true;
+        await setupGuideMicrophoneGraph();
+
+        if (testBtn) {
+          testBtn.disabled = true;
+          testBtn.textContent = '🔴 Kaydediliyor (4 Sn Konuşun)...';
+        }
+        if (statusBox) {
+          statusBox.style.display = 'block';
+          statusBox.innerHTML = '🎙️ <strong>Mikrofon Testi Başladı:</strong> Lütfen 4 saniye boyunca normal ses tonunuzla konuşun. Kayıt bittiğinde sesiniz (hoparlör yankısı olmadan) size dinletilecektir...';
+        }
+
+        await new Promise((r) => setTimeout(r, 4000));
+
+        // Kaydı durdur (hoparlörden çalarken mikrofona geri girmemesi için önce mikrofonu kapatıyoruz!)
+        isVoiceLoopbackTesting = false;
+        if (scriptProcessor) {
+          try {
+            if (scriptProcessor.port) scriptProcessor.port.onmessage = null;
+            scriptProcessor.disconnect();
+          } catch {}
+          scriptProcessor = null;
+        }
+        if (micStream) {
+          micStream.getTracks().forEach((t) => t.stop());
+          micStream = null;
+        }
+
+        if (!loopbackRecordedChunks.length) {
+          if (statusBox) statusBox.innerHTML = '⚠️ Mikrofon verisi alınamadı.';
+          return;
+        }
+
+        const sr = loopbackRecordedChunks[0].sampleRate || 24000;
+        let totalLen = 0;
+        for (const c of loopbackRecordedChunks) totalLen += c.samples.length;
+        const merged = new Float32Array(totalLen);
+        let offset = 0;
+        for (const c of loopbackRecordedChunks) {
+          merged.set(c.samples, offset);
+          offset += c.samples.length;
+        }
+
+        if (testBtn) testBtn.textContent = '🔊 Sesiniz Dinletiliyor...';
+        if (statusBox) {
+          statusBox.innerHTML = '🔊 <strong>Kayıt Tamamlandı — Şimdi Dinliyorsunuz:</strong> Hacıların kulaklığında duyacağı 24 kHz Saf Stüdyo HD sesiniz çalınıyor (Lavabo/Robotik ses %0).';
+        }
+
+        const buf = audioCtx.createBuffer(1, merged.length, sr);
+        buf.copyToChannel(merged, 0);
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(audioCtx.destination);
+        src.start();
+        await new Promise((r) => {
+          src.onended = r;
+          setTimeout(r, 4500);
+        });
+
+        if (statusBox) {
+          statusBox.innerHTML = '✅ <strong>Ses Kalitesi Testi Tamamlandı!</strong> Hacıların duyduğu net stüdyo sesini dinlediniz.';
+        }
+      } catch (err) {
+        if (statusBox) {
+          statusBox.style.display = 'block';
+          statusBox.innerHTML = '⚠️ Mikrofon testi başlatılamadı: ' + (err.message || err.name);
+        }
+      } finally {
+        isVoiceLoopbackTesting = false;
+        if (testBtn) {
+          testBtn.disabled = false;
+          testBtn.textContent = '🎧 Sesimi Test Et (4 Sn Kaydet & Dinle)';
+        }
       }
     }
 
@@ -1233,115 +1531,11 @@
       }
 
       try {
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (!audioCtx) {
-          audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
-          audioCtx.onstatechange = () => {
-            if (isMicBroadcasting && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
-              audioCtx.resume().catch(() => {});
-            }
-          };
-        }
-        if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
-          await audioCtx.resume();
-        }
-
-        try {
-          micStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-              channelCount: 1
-            }
-          });
-        } catch (strictErr) {
-          console.warn('Gelişmiş mikrofon ayarı kabul edilmedi, temel ses kullanılıyor:', strictErr);
-          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        }
+        await setupGuideMicrophoneGraph();
 
         const activeTourCode = document.getElementById('guideTourSelect').value || 'RY-KASIM';
         if (typeof window.ryBroadcastGuideStream === 'function') {
           window.ryBroadcastGuideStream(micStream, activeTourCode, 'genel');
-        }
-
-        const source = audioCtx.createMediaStreamSource(micStream);
-
-        // 1. Rüzgâr ve El Çarpma Gürültüsü Kesici (85 Hz High-Pass Butterworth)
-        const highPass = audioCtx.createBiquadFilter();
-        highPass.type = 'highpass';
-        highPass.frequency.value = 85;
-        highPass.Q.value = 0.707;
-
-        // 2. Boğukluk Giderici (280 Hz -2.0 dB Peaking Cut)
-        const mudCut = audioCtx.createBiquadFilter();
-        mudCut.type = 'peaking';
-        mudCut.frequency.value = 280;
-        mudCut.Q.value = 1.1;
-        mudCut.gain.value = -2.0;
-
-        // 3. Kâbe / Açık Alan Konuşma Netliği & Diksiyon Güçlendirici (2850 Hz +3.2 dB)
-        const presenceBoost = audioCtx.createBiquadFilter();
-        presenceBoost.type = 'peaking';
-        presenceBoost.frequency.value = 2850;
-        presenceBoost.Q.value = 1.0;
-        presenceBoost.gain.value = 3.2;
-
-        // 4. Anti-Aliasing Tiz Koruyucu (9800 Hz Low-Pass)
-        const lowPass = audioCtx.createBiquadFilter();
-        lowPass.type = 'lowpass';
-        lowPass.frequency.value = 9800;
-        lowPass.Q.value = 0.707;
-
-        // 5. Radyo Stüdyosu Dinamik Ses Dengeleyici (Compressor: fısıltıyı yükseltir, bağırmayı dengeler)
-        const compressor = audioCtx.createDynamicsCompressor();
-        compressor.threshold.value = -24;
-        compressor.knee.value = 14;
-        compressor.ratio.value = 4.5;
-        compressor.attack.value = 0.003;
-        compressor.release.value = 0.18;
-
-        // 6. Rehber Mikrofon Kazancı (Gain)
-        guideMicGainNode = audioCtx.createGain();
-        guideMicGainNode.gain.value = guideMicGainMultiplier;
-
-        zeroGainNode = audioCtx.createGain();
-        zeroGainNode.gain.value = 0; // Rehberin kendi cihazında yankı (eko) yapmasını önler
-
-        source.connect(highPass);
-        highPass.connect(mudCut);
-        mudCut.connect(presenceBoost);
-        presenceBoost.connect(lowPass);
-        lowPass.connect(compressor);
-        compressor.connect(guideMicGainNode);
-
-        let workletSuccess = false;
-        if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
-          try {
-            if (!workletModuleLoaded) {
-              await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=22');
-              workletModuleLoaded = true;
-            }
-            scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
-            scriptProcessor.port.onmessage = (ev) => {
-              if (ev && ev.data) handleGuideMicFloatChunk(ev.data);
-            };
-            guideMicGainNode.connect(scriptProcessor);
-            scriptProcessor.connect(zeroGainNode);
-            zeroGainNode.connect(audioCtx.destination);
-            workletSuccess = true;
-          } catch (workletErr) {
-            console.warn('AudioWorklet yüklenemedi, ScriptProcessor fallback devrede:', workletErr);
-          }
-        }
-        if (!workletSuccess) {
-          scriptProcessor = audioCtx.createScriptProcessor(2048, 1, 1);
-          guideMicGainNode.connect(scriptProcessor);
-          scriptProcessor.connect(zeroGainNode);
-          zeroGainNode.connect(audioCtx.destination);
-          scriptProcessor.onaudioprocess = (e) => {
-            handleGuideMicFloatChunk(e.inputBuffer.getChannelData(0));
-          };
         }
 
         isMicBroadcasting = true;
@@ -1349,7 +1543,7 @@
         startBroadcastClock();
         btn.textContent = '⏹️ Canlı Mikrofon Yayınını Durdur (YAYINDA)';
         btn.className = 'btn btn-danger';
-        document.getElementById('micSourceLabel').textContent = 'Yayın Kaynağı: 24 kHz HD Mikrofon (Gürültü Filtresi Aktif)';
+        document.getElementById('micSourceLabel').textContent = 'Yayın Kaynağı: 24 kHz Saf Stüdyo HD (Akıllı Gürültü Kapısı Aktif)';
 
         if (!ws || ws.readyState !== WebSocket.OPEN) {
           connectGuideWs();
