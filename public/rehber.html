@@ -1203,9 +1203,31 @@
     let guideAudioSeq = 0;
     const guideFilterHist = new Float32Array(6);
     let guideGateEnv = 0;
-    let guideGateGain = 0;
-    let guideHoldSamplesLeft = 0;
+    let guideGateGain = 0.05;
+    let guideNoiseFloor = 0.0018;
+    let guideEchoShadowEnv = 0;
+    let guideEchoShadowHold = 0;
     let guideSilentChunksCount = 0;
+    let guideWasIdlePaused = true;
+    let sameDeviceListenerActiveUntil = 0;
+
+    // Aynı bilgisayar/telefonda başka bir sekmede /dinle açıksa otomatik akustik geri besleme (loopback) koruması
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const audioGuardChannel = new BroadcastChannel('ridvanses_audio_guard');
+        audioGuardChannel.onmessage = (ev) => {
+          if (ev.data && ev.data.type === 'pilgrim-speaker-active') {
+            sameDeviceListenerActiveUntil = Date.now() + 4000;
+            const statusBox = document.getElementById('voiceTestStatusBox');
+            if (isMicBroadcasting && statusBox && statusBox.style.display === 'none') {
+              statusBox.style.display = 'block';
+              statusBox.innerHTML =
+                '🛡️ <strong>Aynı Cihazda Dinleme Algılandı:</strong> Bu cihazda aynı anda Hacı Dinleme (/dinle) sekmesi açık olduğu için hoparlör-mikrofon yankı/metalik geri beslemesini önleyen <strong>Akıllı Eko Kalkanı</strong> otomatik devreye alındı.';
+            }
+          }
+        };
+      }
+    } catch {}
 
     function processGuideFloatChunkDsp(input, hwSampleRate = 48000, isNearEchoMode = false) {
       const step = hwSampleRate >= 40000 ? 2 : 1;
@@ -1213,54 +1235,77 @@
       const downsampled = new Float32Array(outLen);
       const outSampleRate = Math.round(hwSampleRate / step);
 
-      // Zaman-Düzlemi Akıllı Gürültü Kapısı (Time-Domain Smooth Speech Expander Gate):
-      // WebRTC'nin FFT spektral "lavabo/Transformers" gürültüsünü ve duraklamalardaki oda uğultusunu %100 keser.
-      const openThreshold = isNearEchoMode ? 0.022 : 0.011;
-      const floorThreshold = openThreshold * 0.42;
-      const holdSamplesMax = Math.round(outSampleRate * 0.19); // 190ms kelime sonu koruma süresi
+      // 1. Adaptif Ortam Gürültü Tabanı İzleyici (Adaptive Ambient Noise Floor Tracker)
+      let rawSq = 0;
+      for (let i = 0; i < input.length; i += step) {
+        rawSq += input[i] * input[i];
+      }
+      const chunkRawRms = Math.sqrt(rawSq / (outLen || 1));
+      if (chunkRawRms < guideNoiseFloor * 1.8) {
+        guideNoiseFloor = Math.max(0.0006, Math.min(0.006, 0.96 * guideNoiseFloor + 0.04 * chunkRawRms));
+      }
+
+      const effectiveNearEcho = isNearEchoMode || Date.now() < sameDeviceListenerActiveUntil;
+      const baseSpeechThreshold = Math.max(
+        effectiveNearEcho ? 0.011 : 0.0075,
+        guideNoiseFloor * (effectiveNearEcho ? 3.8 : 3.2)
+      );
+      const echoShadowFactor = effectiveNearEcho ? 0.42 : 0.16;
+      const expanderExponent = effectiveNearEcho ? 2.8 : 1.40;
+      const minGateFloor = effectiveNearEcho ? 0.025 : 0.055; // Kelime sonlarında "şşş-tık" lavabo kesilmesi yapmayan yumuşak taban
 
       let sum = 0;
       for (let j = 0; j < outLen; j++) {
         let filtered;
         if (step === 2) {
           const idx = j * 2;
-          const xm3 = idx >= 3 ? input[idx - 3] : guideFilterHist[idx + 3];
-          const xm1 = idx >= 1 ? input[idx - 1] : guideFilterHist[idx + 5];
-          const x0 = input[idx];
-          const xp1 = idx + 1 < input.length ? input[idx + 1] : x0;
-          const xp3 = idx + 3 < input.length ? input[idx + 3] : xp1;
-          // 7-Tap Half-Band Sinc Anti-Aliasing Filtre (Sıfır faz bozulması, kristal netlik)
-          filtered = -0.045 * (xm3 + xp3) + 0.295 * (xm1 + xp1) + 0.500 * x0;
+          // 100% Nedensel (Causal) 7-Tap Half-Band Sinc Anti-Aliasing Filtre (idx - 3 merkezli):
+          // Paket sonlarında örnek sıkıştırması (clamping) yapmaz, sıfır faz kırılması sağlar.
+          const sM6 = idx >= 6 ? input[idx - 6] : guideFilterHist[idx];
+          const sM4 = idx >= 4 ? input[idx - 4] : guideFilterHist[idx + 2];
+          const sM3 = idx >= 3 ? input[idx - 3] : guideFilterHist[idx + 3];
+          const sM2 = idx >= 2 ? input[idx - 2] : guideFilterHist[idx + 4];
+          const s0 = input[idx];
+          filtered = -0.045 * (sM6 + s0) + 0.295 * (sM4 + sM2) + 0.500 * sM3;
         } else {
           filtered = input[j];
         }
 
+        // 2. Hece-Düzlemi Yumuşak Zarf İzleyici (Syllabic Smooth Envelope — 85-250Hz ses tellerini asla modüle etmez)
         const absV = Math.abs(filtered);
         if (absV > guideGateEnv) {
-          guideGateEnv = 0.88 * guideGateEnv + 0.12 * absV; // ~1.5ms hızlı açılış (hece yutmaz)
+          guideGateEnv = 0.980 * guideGateEnv + 0.020 * absV; // ~2.0ms doğal açılış
         } else {
-          guideGateEnv = 0.9992 * guideGateEnv + 0.0008 * absV; // yumuşak sönümlenme
+          guideGateEnv = 0.99952 * guideGateEnv + 0.00048 * absV; // ~88ms doğal hece sönümlenmesi (hold-timer uçurumu yok!)
         }
 
-        let targetGate;
-        if (guideGateEnv >= openThreshold) {
-          targetGate = 1.0;
-          guideHoldSamplesLeft = holdSamplesMax;
-        } else if (guideHoldSamplesLeft > 0) {
-          guideHoldSamplesLeft--;
-          targetGate = 1.0;
-        } else if (guideGateEnv <= floorThreshold) {
-          targetGate = 0.0;
+        // 3. Akustik Hoparlör Sızıntısı & Oda Yankısı Gölge Kalkanı (Slapback Echo Shadow Suppressor):
+        // Yakındaki bir telefon/bilgisayar hoparlöründen 140-350ms gecikmeyle mikrofona geri dönen
+        // zayıf hoparlör sesinin kapıyı tekrar açıp "Transformers / boru yankısı" yapmasını engeller.
+        if (guideGateEnv > guideEchoShadowEnv) {
+          guideEchoShadowEnv = guideGateEnv;
+          guideEchoShadowHold = Math.round(outSampleRate * 0.22); // 220ms akustik gidiş-dönüş koruma penceresi
+        } else if (guideEchoShadowHold > 0) {
+          guideEchoShadowHold--;
         } else {
-          const norm = (guideGateEnv - floorThreshold) / (openThreshold - floorThreshold);
-          targetGate = norm * norm;
+          guideEchoShadowEnv *= 0.9996;
         }
 
-        guideGateGain = 0.990 * guideGateGain + 0.010 * targetGate;
+        const effectiveThreshold = Math.max(baseSpeechThreshold, guideEchoShadowEnv * echoShadowFactor);
+
+        // 4. Soft-Knee Downward Expander (Lavabo/Pompalama sesi üretmeyen yumuşak genişletici)
+        let targetGain;
+        if (guideGateEnv >= effectiveThreshold) {
+          targetGain = 1.0;
+        } else {
+          const ratio = guideGateEnv / effectiveThreshold;
+          targetGain = Math.max(minGateFloor, Math.pow(ratio, expanderExponent));
+        }
+
+        guideGateGain = 0.9962 * guideGateGain + 0.0038 * targetGain;
         let v = filtered * guideGateGain;
 
-        // Yalnızca 0.85 (-1.4 dBFS) üzerindeki ani patlamalarda devreye giren şeffaf tavan koruyucu
-        // (Normal konuşmada %100 doğrusal — ses rengini asla robotikleştirmez)
+        // 5. Şeffaf Tavan Koruyucu (Yalnızca >0.85 ani patlamalarda devreye girer)
         if (Math.abs(v) > 0.85) {
           const sign = v < 0 ? -1 : 1;
           v = sign * (0.85 + 0.14 * Math.tanh((Math.abs(v) - 0.85) / 0.14));
@@ -1301,9 +1346,9 @@
       if (dbEl) {
         const dbVal = rms > 0.0001 ? Math.max(-48, Math.min(0, Math.round(20 * Math.log10(rms)))) : -48;
         dbEl.textContent =
-          dbVal <= -43
-            ? 'Ses Seviyesi: Arka Plan Gürültü Kapısı Aktif (Sessiz)'
-            : `Ses Seviyesi: Saf HD Net (${dbVal} dB)`;
+          dbVal <= -42
+            ? 'Ses Seviyesi: Stüdyo Sessizlik Kalkanı Aktif'
+            : `Ses Seviyesi: Saf Stüdyo HD (${dbVal} dB)`;
       }
 
       if (isVoiceLoopbackTesting) {
@@ -1311,15 +1356,22 @@
         return;
       }
 
-      // Tam sessizlikte 2 kuyruk paketinden sonra boş paket göndermeyi durdur (arka plan uğultusunu %100 keser)
-      if (rms < 0.0004) {
+      // Her 64ms çerçevede sıra numarasını (seq) kesintisiz artır.
+      // Kelime ve cümle aralarındaki doğal nefes boşluklarında (~2.9 saniyeye kadar = 45 paket)
+      // akışı ASLA kesme ki dinleyici tarafındaki dairesel tampon (Ring Buffer) sıfırlanmasın!
+      const currentSeq = ++guideAudioSeq;
+      if (rms < 0.00025) {
         guideSilentChunksCount++;
-        if (guideSilentChunksCount > 2) {
+        if (guideSilentChunksCount > 45) {
+          guideWasIdlePaused = true;
           return;
         }
       } else {
         guideSilentChunksCount = 0;
       }
+
+      const isPhraseStart = guideWasIdlePaused;
+      guideWasIdlePaused = false;
 
       if (ws && ws.readyState === WebSocket.OPEN) {
         if (ws.bufferedAmount && ws.bufferedAmount > 65536) {
@@ -1328,7 +1380,8 @@
         const pcm16 = floatTo16BitBase64(downsampled);
         ws.send(JSON.stringify({
           type: 'audio-chunk',
-          seq: ++guideAudioSeq,
+          seq: currentSeq,
+          phraseStart: isPhraseStart,
           sentAt: Date.now(),
           sampleRate: outSampleRate,
           pcm16,
@@ -1352,7 +1405,7 @@
       }
 
       const modeSel = document.getElementById('guideAcousticModeSelect');
-      const isNearEchoMode = modeSel && modeSel.value === 'near_echo';
+      const isNearEchoMode = (modeSel && modeSel.value === 'near_echo') || Date.now() < sameDeviceListenerActiveUntil;
 
       // ÖNEMLİ: Tarayıcının WebRTC "noiseSuppression: true" ve "autoGainControl: true" filtreleri
       // FFT spektral çıkarma yaptığı için arka planda "lavabo / Transformers" sesi üretir.
@@ -1381,7 +1434,6 @@
       highPass.Q.value = 0.707;
 
       // 2. Doğal Anti-Aliasing Tiz Yumuşatıcı (9500 Hz Butterworth Low-Pass)
-      // (Yapay 2850 Hz metalik boost ve otomatik gürültü pompalayan DynamicsCompressor kaldırıldı!)
       const lowPass = audioCtx.createBiquadFilter();
       lowPass.type = 'lowpass';
       lowPass.frequency.value = 9500;
@@ -1400,15 +1452,18 @@
 
       guideFilterHist.fill(0);
       guideGateEnv = 0;
-      guideGateGain = 0;
-      guideHoldSamplesLeft = 0;
+      guideGateGain = 0.05;
+      guideNoiseFloor = 0.0018;
+      guideEchoShadowEnv = 0;
+      guideEchoShadowHold = 0;
       guideSilentChunksCount = 0;
+      guideWasIdlePaused = true;
 
       let workletSuccess = false;
       if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
         try {
           if (!workletModuleLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=28');
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=29');
             workletModuleLoaded = true;
           }
           scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
@@ -1440,6 +1495,9 @@
       if (isVoiceLoopbackTesting) return;
       if (isMicBroadcasting) {
         stopMicBroadcast();
+      }
+      if (isDemoBroadcasting) {
+        toggleDemoBroadcast();
       }
 
       try {
@@ -1487,13 +1545,33 @@
           offset += c.samples.length;
         }
 
-        if (testBtn) testBtn.textContent = '🔊 Sesiniz Dinletiliyor...';
-        if (statusBox) {
-          statusBox.innerHTML = '🔊 <strong>Kayıt Tamamlandı — Şimdi Dinliyorsunuz:</strong> Hacıların kulaklığında duyacağı 24 kHz Saf Stüdyo HD sesiniz çalınıyor (Lavabo/Robotik ses %0).';
+        // Hacıların telefonundaki 4-Noktalı Kübik Hermite 48 kHz dönüştürücüsünün birebir aynısıyla çal
+        const hwRate = audioCtx.sampleRate || 48000;
+        const step = sr / hwRate;
+        const outLen = Math.floor(merged.length / step);
+        const upsampled = new Float32Array(outLen);
+        for (let i = 0; i < outLen; i++) {
+          const pos = i * step;
+          const idx = Math.floor(pos);
+          const frac = pos - idx;
+          const y0 = merged[Math.max(0, idx - 1)];
+          const y1 = merged[Math.min(merged.length - 1, idx)];
+          const y2 = merged[Math.min(merged.length - 1, idx + 1)];
+          const y3 = merged[Math.min(merged.length - 1, idx + 2)];
+          const c0 = y1;
+          const c1 = 0.5 * (y2 - y0);
+          const c2 = y0 - 2.5 * y1 + 2.0 * y2 - 0.5 * y3;
+          const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+          upsampled[i] = ((c3 * frac + c2) * frac + c1) * frac + c0;
         }
 
-        const buf = audioCtx.createBuffer(1, merged.length, sr);
-        buf.copyToChannel(merged, 0);
+        if (testBtn) testBtn.textContent = '🔊 Sesiniz Dinletiliyor...';
+        if (statusBox) {
+          statusBox.innerHTML = '🔊 <strong>Kayıt Tamamlandı — Şimdi Dinliyorsunuz:</strong> Hacıların kulaklığında duyacağı 24 kHz → 48 kHz Kübik Hermite Saf Stüdyo HD sesiniz çalınıyor (Lavabo/Robotik ses %0).';
+        }
+
+        const buf = audioCtx.createBuffer(1, upsampled.length, hwRate);
+        buf.copyToChannel(upsampled, 0);
         const src = audioCtx.createBufferSource();
         src.buffer = buf;
         src.connect(audioCtx.destination);
@@ -1528,6 +1606,11 @@
         btn.className = 'btn btn-gold';
         document.getElementById('micSourceLabel').textContent = 'Yayın Kaynağı: Durduruldu';
         return;
+      }
+
+      // Demo ses akışı açıksa otomatik kapat ki gerçek mikrofonun arkasına demo nota sesi karışmasın!
+      if (isDemoBroadcasting) {
+        toggleDemoBroadcast();
       }
 
       try {

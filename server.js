@@ -541,6 +541,7 @@ function processClientJsonMessage(ctx, msg) {
       const chunkPayload = {
         type: 'audio-chunk',
         seq: msg.seq || null,
+        phraseStart: Boolean(msg.phraseStart),
         speakerId: clientId,
         speakerName: sender.name,
         speakerRole: sender.role,

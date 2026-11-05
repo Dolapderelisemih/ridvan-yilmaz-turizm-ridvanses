@@ -1277,9 +1277,9 @@
           animateSpectrumFromLevel(msg.level || 0.5);
           if (isAudioListening) {
             if (msg.pcm16) {
-              playPcmSamples(msg.pcm16, msg.sampleRate || 24000, true, msg.seq || 0);
+              playPcmSamples(msg.pcm16, msg.sampleRate || 24000, true, msg.seq || 0, Boolean(msg.phraseStart));
             } else if (msg.samples && msg.samples.length) {
-              playPcmSamples(msg.samples, msg.sampleRate || 24000, false, msg.seq || 0);
+              playPcmSamples(msg.samples, msg.sampleRate || 24000, false, msg.seq || 0, Boolean(msg.phraseStart));
             } else if (msg.synthNote) {
               playGentleHarmonyNote(msg.synthNote);
             }
@@ -1469,6 +1469,40 @@
     }
 
     let rxInputNode = null;
+    let rxPlayerWorkletNode = null;
+    let rxPlayerWorkletLoading = false;
+    let pilgrimAudioGuardChannel = null;
+
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        pilgrimAudioGuardChannel = new BroadcastChannel('ridvanses_audio_guard');
+        setInterval(() => {
+          if (isAudioListening && pilgrimAudioGuardChannel) {
+            try {
+              pilgrimAudioGuardChannel.postMessage({ type: 'pilgrim-speaker-active', ts: Date.now() });
+            } catch {}
+          }
+        }, 1200);
+      }
+    } catch {}
+
+    function initRxPlayerWorklet() {
+      if (!audioCtx || rxPlayerWorkletNode || rxPlayerWorkletLoading) return;
+      if (!audioCtx.audioWorklet || typeof window.AudioWorkletNode === 'undefined') return;
+      rxPlayerWorkletLoading = true;
+      audioCtx.audioWorklet
+        .addModule('/pcm-player-worklet.js?v=29')
+        .then(() => {
+          if (!audioCtx || rxPlayerWorkletNode) return;
+          const node = new AudioWorkletNode(audioCtx, 'rys-pcm-player');
+          node.connect(rxInputNode || gainNode);
+          rxPlayerWorkletNode = node;
+        })
+        .catch(() => {})
+        .finally(() => {
+          rxPlayerWorkletLoading = false;
+        });
+    }
 
     function ensureAudioContext() {
       if (!audioCtx) {
@@ -1490,11 +1524,15 @@
         gainNode.connect(audioCtx.destination);
         rxInputNode = rxHighPass;
 
+        initRxPlayerWorklet();
+
         audioCtx.onstatechange = () => {
           if (isAudioListening && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
             audioCtx.resume().catch(() => {});
           }
         };
+      } else if (!rxPlayerWorkletNode && !rxPlayerWorkletLoading) {
+        initRxPlayerWorklet();
       }
       if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
         audioCtx.resume().catch(() => {});
@@ -1527,6 +1565,11 @@
         startBackgroundKeepAliveAudio();
         requestWakeLock();
         updateMediaSessionMetadata();
+        if (pilgrimAudioGuardChannel) {
+          try {
+            pilgrimAudioGuardChannel.postMessage({ type: 'pilgrim-speaker-active', ts: Date.now() });
+          } catch {}
+        }
       } else {
         btn.textContent = dict.audioPlayBtn || 'Sesi Aç / Rehberi Dinle';
         btn.className = 'btn btn-gold';
@@ -1551,6 +1594,11 @@
     const activeScheduledSources = [];
 
     function stopAllActiveSources() {
+      if (rxPlayerWorkletNode && rxPlayerWorkletNode.port) {
+        try {
+          rxPlayerWorkletNode.port.postMessage({ type: 'reset' });
+        } catch {}
+      }
       while (activeScheduledSources.length > 0) {
         const src = activeScheduledSources.shift();
         try {
@@ -1618,7 +1666,7 @@
       return tempOut.subarray(0, outIdx);
     }
 
-    function playPcmSamples(samplesOrB64, sampleRate = 24000, isBase64 = false, seq = 0) {
+    function playPcmSamples(samplesOrB64, sampleRate = 24000, isBase64 = false, seq = 0, phraseStart = false) {
       ensureAudioContext();
       if (!audioCtx || !gainNode) return;
       try {
@@ -1629,7 +1677,7 @@
             return;
           }
         }
-        const isSeqContiguous = seq > 0 && lastReceivedAudioSeq > 0 && seq === lastReceivedAudioSeq + 1;
+        const isSeqContiguous = !phraseStart && seq > 0 && lastReceivedAudioSeq > 0 && seq === lastReceivedAudioSeq + 1;
         if (seq > 0) lastReceivedAudioSeq = seq;
 
         let rawArr;
@@ -1651,46 +1699,49 @@
 
         lastPacketReceivedAt = Date.now();
         const hwRate = audioCtx.sampleRate || 48000;
-        const now = audioCtx.currentTime;
-        const lead = nextAudioTime - now;
-
-        // 1. Akıllı Kesintisiz Jitter Tamponu:
-        // - Konuşma yeni başladığında (>35ms boşluk sonrası) 115ms güvenli tampon bırakır.
-        // - Kelime ortasında çok küçük (0..35ms) ağ gecikmesi olursa 95ms boşluk açmak yerine
-        //   8ms sonra hemen çalarak sesin kesilmesini ve "lavabo/robotik" dalgalanmayı önler.
-        let isFreshPhrase = false;
-        let isMicroCatchup = false;
-
-        if (lead > 0.70) {
-          stopAllActiveSources();
-          nextAudioTime = now + 0.115;
-          isFreshPhrase = true;
-        } else if (lead < -0.035) {
-          nextAudioTime = now + 0.115;
-          isFreshPhrase = true;
-        } else if (lead < 0) {
-          nextAudioTime = now + 0.008;
-          isMicroCatchup = !isSeqContiguous;
-        }
 
         const hwSamples = resampleChunkToHwRate(
           rawArr,
           sampleRate,
           hwRate,
-          !isFreshPhrase && isSeqContiguous
+          isSeqContiguous
         );
         if (!hwSamples.length) return;
 
-        // 2. Yalnızca Yeni Cümle Başlangıcında veya Paket Kaybında Yumuşak Geçiş:
-        // (Sıralı gelen paketlerin ilk 8 örneğini ASLA ezmez — 15.6 Hz testere dişi bozulmasını %100 önler!)
+        // BİRİNCİL YOL (v29): Gerçek Zamanlı Donanım İş Parçacığı Dairesel Tamponu (AudioWorklet Ring Buffer)
+        // Ana iş parçacığı (DOM/Harita) gecikmelerinden %100 bağımsızdır ve paket sınırlarında 0 boşluk bırakır.
+        if (rxPlayerWorkletNode && rxPlayerWorkletNode.port) {
+          rxPlayerWorkletNode.port.postMessage({
+            type: 'push',
+            samples: hwSamples,
+            phraseStart: Boolean(phraseStart || !isSeqContiguous)
+          });
+          return;
+        }
+
+        // YEDEK YOL (Eski Tarayıcılar İçin): Sabit 135ms Yastıklı AudioBufferSourceNode Zamanlayıcı
+        // (8ms tampon çökmesi tamamen kaldırıldı — her zaman tam 135ms jitter yastığı korunur!)
+        const now = audioCtx.currentTime;
+        const lead = nextAudioTime - now;
+        let isFreshPhrase = false;
+
+        if (lead > 0.65) {
+          stopAllActiveSources();
+          nextAudioTime = now + 0.135;
+          isFreshPhrase = true;
+        } else if (lead < 0) {
+          nextAudioTime = now + 0.135;
+          isFreshPhrase = true;
+        }
+
         if (isFreshPhrase) {
           const fadeLen = Math.min(256, hwSamples.length);
           for (let i = 0; i < fadeLen; i++) {
             const w = 0.5 * (1 - Math.cos((Math.PI * i) / fadeLen));
             hwSamples[i] *= w;
           }
-        } else if (isMicroCatchup || !isSeqContiguous) {
-          const blendLen = Math.min(32, hwSamples.length);
+        } else if (!isSeqContiguous) {
+          const blendLen = Math.min(48, hwSamples.length);
           for (let k = 0; k < blendLen; k++) {
             const alpha = (k + 1) / (blendLen + 1);
             hwSamples[k] = lastHwEndSample * (1 - alpha) + hwSamples[k] * alpha;
@@ -1702,10 +1753,6 @@
         buffer.copyToChannel(hwSamples, 0);
         const source = audioCtx.createBufferSource();
         source.buffer = buffer;
-
-        // 3. %100 Sabit Perde (playbackRate = 1.0):
-        // Ses hızını 1.04x / 1.09x değiştirerek insan sesini incelten/kalınlaştıran Doppler ("lavabo sesi")
-        // efekti tamamen kaldırıldı. Ses her zaman orijinal stüdyo perdesinde çalınır.
         source.playbackRate.value = 1.0;
         source.connect(rxInputNode || gainNode);
 
