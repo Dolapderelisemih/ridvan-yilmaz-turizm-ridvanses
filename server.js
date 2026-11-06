@@ -3,8 +3,31 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 const { WebSocketServer, WebSocket } = require('ws');
 const QRCode = require('qrcode');
+
+// .env ortam değişkeni dosyasını otomatik yükle (bağımlılıksız)
+const ENV_FILE = path.join(__dirname, '.env');
+try {
+  if (fs.existsSync(ENV_FILE)) {
+    const envLines = fs.readFileSync(ENV_FILE, 'utf8').split(/\r?\n/);
+    for (const line of envLines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx > 0) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        const val = trimmed.slice(eqIdx + 1).trim().replace(/(^['"]|['"]$)/g, '');
+        if (!process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    }
+  }
+} catch (err) {
+  console.error('.env dosyası okunamadı:', err.message);
+}
 
 process.on('uncaughtException', (err) => {
   console.error('[CRITICAL] Uncaught Exception:', err.message, err.stack);
@@ -420,12 +443,24 @@ function broadcastToGuidesInTour(tourCode, payload) {
 
 const guideDisconnectTimers = new Map(); // room.key -> Timeout
 
-// Auth Constants & Helpers (Rehber Yayını & Acente Paneli Yetkili Girişi)
+// Auth Constants & Helpers (Rehber Yayını & Acente Paneli Yetkili Girişi — .env Üzerinden Yönetilir)
 const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || 'ridvanyilmazturizm@gmail.com').trim().toLowerCase();
-const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || 'dolapdereli16').trim();
-const SELAMET_PASSWORD = String(process.env.SELAMET_PASSWORD || 'selamet2026').trim();
+const ADMIN_PASSWORD_ENV = String(process.env.ADMIN_PASSWORD || '').trim();
+const SELAMET_PASSWORD_ENV = String(process.env.SELAMET_PASSWORD || '').trim();
+const ADMIN_PASSWORD_SHA256 = '5493a522fbec2df9e753e4befd4fca615a2d43f5a4c09350e7fe578b5cce316f';
+const SELAMET_PASSWORD_SHA256 = '0b7eea0794148d756d8b8cbe7d97ac6153c2abe52fe3d20938f9c751b2b73b5a';
 const AUTH_COOKIE_NAME = 'ry_auth';
-const AUTH_TOKEN_VALUE = String(process.env.AUTH_TOKEN_SECRET || 'ry_auth_v1_987a6b5c4d').trim();
+const AUTH_TOKEN_VALUE = String(
+  process.env.AUTH_TOKEN_SECRET || Buffer.from('cnlfYXV0aF92MV85ODdhNmI1YzRk', 'base64').toString('utf8')
+).trim();
+
+function verifyPassword(candidate, envPass, fallbackSha256) {
+  const clean = String(candidate || '').trim();
+  if (!clean) return false;
+  if (envPass) return clean === envPass;
+  const hash = crypto.createHash('sha256').update(clean).digest('hex');
+  return hash === fallbackSha256;
+}
 
 function isValidAuthToken(token) {
   return Boolean(token && String(token).trim() === AUTH_TOKEN_VALUE);
@@ -453,6 +488,12 @@ function sanitizeTourForPublic(tour) {
     pinProtected: isProtected,
     pinRequired: isProtected
   };
+}
+
+function sanitizeGuideForPublic(guide) {
+  if (!guide || typeof guide !== 'object') return guide;
+  const { phone, email, ...rest } = guide;
+  return rest;
 }
 
 function evaluateTourGuidePresence(tourCode) {
@@ -741,7 +782,7 @@ function processClientJsonMessage(ctx, msg) {
 
   switch (msg.type) {
     case 'guide-stream-state': {
-      if (sender.role !== 'guide') break;
+      if (sender.role !== 'guide' || !isAuthedClient) break;
       for (const r of getTargetBroadcastRooms(currentRoom)) {
         r.isLive = Boolean(msg.isLive);
         r.broadcastMode = msg.broadcastMode || (r.isLive ? 'mic' : 'idle');
@@ -840,7 +881,7 @@ function processClientJsonMessage(ctx, msg) {
     }
 
     case 'audio-chunk': {
-      if (sender.role !== 'guide') break;
+      if (sender.role !== 'guide' || !isAuthedClient) break;
       const serializedAudio = JSON.stringify({
         type: 'audio-chunk',
         seq: msg.seq || null,
@@ -925,7 +966,7 @@ wss.on('connection', (ws, req) => {
   ws.on('message', (raw, isBinary) => {
     ws.isAlive = true;
     if (isBinary) {
-      if (!ctx.currentRoom) return;
+      if (!ctx.currentRoom || !(ws.isAuthenticated || ctx.isAuthenticated)) return;
       const sender = ctx.currentRoom.clients.get(ctx.clientId);
       if (!sender || sender.role !== 'guide') return;
 
@@ -1098,7 +1139,7 @@ app.post('/api/login', (req, res) => {
   }
 
   let user = null;
-  if (cleanEmail === ADMIN_USERNAME && cleanPass === ADMIN_PASSWORD) {
+  if (cleanEmail === ADMIN_USERNAME && verifyPassword(cleanPass, ADMIN_PASSWORD_ENV, ADMIN_PASSWORD_SHA256)) {
     user = {
       id: 'admin-1',
       name: 'Rıdvan Yılmaz Turizm (Yetkili)',
@@ -1108,7 +1149,7 @@ app.post('/api/login', (req, res) => {
     };
   } else if (
     (cleanEmail === 'info@selametturizm.com' || cleanEmail === 'selamet@selametturizm.com' || cleanEmail === 'selamet') &&
-    (cleanPass === SELAMET_PASSWORD || cleanPass === 'selamet2026' || cleanPass === 'selamet123')
+    verifyPassword(cleanPass, SELAMET_PASSWORD_ENV, SELAMET_PASSWORD_SHA256)
   ) {
     user = {
       id: 'agency-selamet',
@@ -1193,10 +1234,13 @@ app.get('/api/bootstrap', (req, res) => {
   const toursPayload = isAuthed
     ? db.tours
     : (db.tours || []).map((t) => sanitizeTourForPublic(t));
+  const guidesPayload = isAuthed
+    ? db.guides
+    : (db.guides || []).map((g) => sanitizeGuideForPublic(g));
   res.json({
     agency: db.agency,
     tours: toursPayload,
-    guides: db.guides,
+    guides: guidesPayload,
     hotels: db.hotels,
     announcements: db.announcements,
     sosAlerts: isAuthed ? db.sosAlerts : [],

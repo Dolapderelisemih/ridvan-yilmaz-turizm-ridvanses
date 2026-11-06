@@ -112,11 +112,11 @@
       }
 
       // VDS / Özel Domain Ortamında Mobil Şebeke (Asansör/Tünel) El Sıkışma Zaman Aşımı:
-      // İstemciyi yalıtılmış MQTT adasına hapsetmek yerine cleanly close edip 1.5s içinde VDS'e yeniden bağlanmasını sağla!
-      const handshakeLimit = 7500;
+      // İlk hatada doğrudan VDS'i yeniden dene; VDS üst üste erişilemezse (bakım/ağ engeli) otomatik MQTT Bulut Rölesine geç!
+      const handshakeLimit = 6000;
       const fallbackTimeout = setTimeout(() => {
         if (!this._opened && !this._isRelay) {
-          console.warn('⚠️ [RıdvanSes WS] VDS el sıkışması zaman aşımına uğradı, doğrudan VDS yeniden denenecek...');
+          window.__ryConsecutiveVdsFailures = (window.__ryConsecutiveVdsFailures || 0) + 1;
           try {
             if (this._native) {
               this._native.onopen = null;
@@ -126,6 +126,12 @@
               this._native.close();
             }
           } catch {}
+          if (window.__ryConsecutiveVdsFailures >= 2) {
+            console.warn('⚠️ [RıdvanSes WS] VDS ardışık zaman aşımı — Kesintisiz yayın için MQTT Bulut Rölesi devreye alındı.');
+            this._activateCloudRelay();
+            return;
+          }
+          console.warn('⚠️ [RıdvanSes WS] VDS el sıkışması zaman aşımına uğradı, doğrudan VDS yeniden denenecek...');
           this.readyState = 3; // CLOSED
           if (typeof this.onclose === 'function') this.onclose({ type: 'close', timeout: true });
         }
@@ -134,6 +140,7 @@
       this._native.onopen = (ev) => {
         if (this._isRelay) return;
         clearTimeout(fallbackTimeout);
+        window.__ryConsecutiveVdsFailures = 0;
         this._opened = true;
         this.readyState = 1; // OPEN
         console.log('⚡ [RıdvanSes] VDS Doğrudan Yerel WebSocket Bağlandı (Ultra Düşük Gecikme Modu)');
@@ -155,6 +162,14 @@
       this._native.onclose = (ev) => {
         clearTimeout(fallbackTimeout);
         if (!this._isRelay) {
+          if (!this._opened) {
+            window.__ryConsecutiveVdsFailures = (window.__ryConsecutiveVdsFailures || 0) + 1;
+            if (window.__ryConsecutiveVdsFailures >= 2) {
+              console.warn('⚠️ [RıdvanSes WS] VDS bağlantı hatası — Kesintisiz yayın için MQTT Bulut Rölesi devreye alındı.');
+              this._activateCloudRelay();
+              return;
+            }
+          }
           this.readyState = 3; // CLOSED
           if (typeof this.onclose === 'function') this.onclose(ev);
         }
@@ -261,6 +276,9 @@
               client.subscribe(GLOBAL_SOS_TOPIC, { qos: 0 });
             }
             if (!joinMsg) return;
+            if (joinMsg.role !== 'guide' && roomClean !== 'GENEL') {
+              client.subscribe(`ridvanses/v2/room/${codeClean}/GENEL`, { qos: 0 });
+            }
             client.subscribe(topic, { qos: 0 }, () => {
               if (joinMsg.role !== 'guide') {
                 this._publishMqtt({
