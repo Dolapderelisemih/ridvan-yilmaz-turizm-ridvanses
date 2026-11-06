@@ -16,9 +16,9 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=38"></script>
+  <script src="/vercel-ws-shim.js?v=39"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=38"></script>
+  <script src="/js/umrah-steps-map.js?v=39"></script>
   <style>
     .app-shell {
       max-width: 540px;
@@ -1520,11 +1520,15 @@
     let rxPlayerWorkletAlive = false;
 
     function initRxPlayerWorklet() {
+      if (rxPlayerWorkletNode && rxPlayerWorkletNode.context !== audioCtx) {
+        rxPlayerWorkletNode = null;
+        rxPlayerWorkletAlive = false;
+      }
       if (!audioCtx || rxPlayerWorkletNode || rxPlayerWorkletLoading) return;
       if (!audioCtx.audioWorklet || typeof window.AudioWorkletNode === 'undefined') return;
       rxPlayerWorkletLoading = true;
       audioCtx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=38')
+        .addModule('/pcm-player-worklet.js?v=39')
         .then(() => {
           if (!audioCtx || rxPlayerWorkletNode) return;
           let node;
@@ -1705,6 +1709,8 @@
           src.disconnect();
         } catch {}
       }
+      nextAudioTime = 0;
+      lastHwEndSample = 0;
       rxHermiteHist = null;
       rxHermitePos = 0;
     }
@@ -2261,7 +2267,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=39').catch(() => {});
       });
     }
 
@@ -2473,8 +2479,8 @@
           audioCtx.resume().catch(() => {});
         }
         const bgEl = document.getElementById('bgKeepAliveAudio');
-        if (bgEl && bgEl.paused) {
-          bgEl.play().catch(() => {});
+        if (bgEl && (bgEl.paused || !bgEl.src)) {
+          startBackgroundKeepAliveAudio();
         }
       }
       if (ws && ws.readyState === WebSocket.OPEN) {

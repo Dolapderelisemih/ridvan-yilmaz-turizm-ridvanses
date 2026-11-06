@@ -29,8 +29,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=38"></script>
-  <script src="/js/umrah-steps-map.js?v=38"></script>
+  <script src="/vercel-ws-shim.js?v=39"></script>
+  <script src="/js/umrah-steps-map.js?v=39"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -771,11 +771,12 @@
       };
 
       ws.onclose = () => {
-        console.warn('Rehber bağlantısı kapandı, 1.5 sn içinde otomatik yeniden bağlanılacak...');
+        const retryMs = isMicBroadcasting || isDemoBroadcasting ? 600 : 1500;
+        console.warn(`Rehber bağlantısı kapandı, ${retryMs} ms içinde otomatik yeniden bağlanılacak...`);
         if (guideWsReconnectTimer) clearTimeout(guideWsReconnectTimer);
         guideWsReconnectTimer = setTimeout(() => {
           connectGuideWs();
-        }, 1500);
+        }, retryMs);
       };
 
       ws.onerror = (e) => {
@@ -1217,10 +1218,7 @@
 
     async function onAcousticModeChange() {
       if (isMicBroadcasting) {
-        stopMicBroadcast();
-        setTimeout(() => {
-          toggleMicBroadcast();
-        }, 180);
+        await healGuideMicrophoneIfNeeded(true);
       }
     }
 
@@ -1647,7 +1645,7 @@
       if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
         try {
           if (!workletModuleLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=38');
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=39');
             workletModuleLoaded = true;
           }
           scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
@@ -1694,12 +1692,12 @@
       }
     }
 
-    async function healGuideMicrophoneIfNeeded() {
+    async function healGuideMicrophoneIfNeeded(forceRebuild = false) {
       if (!isMicBroadcasting || isVoiceLoopbackTesting || isHealingGuideMic) return;
       const track = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
       const trackDead = !track || track.readyState === 'ended';
       const captureStalled = lastGuideMicChunkAt > 0 && (Date.now() - lastGuideMicChunkAt > 4000);
-      if (trackDead || captureStalled) {
+      if (forceRebuild || trackDead || captureStalled) {
         isHealingGuideMic = true;
         try {
           if (scriptProcessor) {
@@ -1723,7 +1721,11 @@
           }
           await setupGuideMicrophoneGraph();
           const lbl = document.getElementById('micSourceLabel');
-          if (lbl) lbl.textContent = 'Yayın Kaynağı: 24 kHz Saf Stüdyo HD (Otomatik Kurtarıldı)';
+          if (lbl) {
+            lbl.textContent = forceRebuild
+              ? 'Yayın Kaynağı: 24 kHz Saf Stüdyo HD (Akustik Mod Güncellendi)'
+              : 'Yayın Kaynağı: 24 kHz Saf Stüdyo HD (Otomatik Kurtarıldı)';
+          }
         } catch (e) {
           console.warn('Mikrofon otomatik kurtarma beklemede:', e);
         } finally {

@@ -674,9 +674,13 @@
   window.WebSocket = SmartWebSocket;
 
   // Yetkili oturumlarda (/panel ve /rehber) çerez engeli olsa bile tüm /api/ isteklerine Authorization başlığını otomatik ekle
+  // ve .vercel.app üzerinden girildiğinde tüm /api/ isteklerini ana Cidde VDS sunucusuna (https://ses.ridvanyilmazturizm.com) yönlendir
+  const VDS_API_ORIGIN = 'https://ses.ridvanyilmazturizm.com';
   const origFetch = window.fetch;
   if (typeof origFetch === 'function') {
     window.fetch = function (input, init) {
+      let targetInput = input;
+      let isCrossOriginVdsApi = false;
       try {
         const urlStr = typeof input === 'string' ? input : (input && input.url) || '';
         if (urlStr.startsWith('/api/') || urlStr.includes('/api/')) {
@@ -687,9 +691,23 @@
               Authorization: 'Bearer ' + token
             });
           }
+          if (
+            typeof input === 'string' &&
+            urlStr.startsWith('/api/') &&
+            !urlStr.startsWith('/api/ws-relay') &&
+            window.location &&
+            window.location.host &&
+            window.location.host.includes('vercel.app')
+          ) {
+            targetInput = VDS_API_ORIGIN + urlStr;
+            isCrossOriginVdsApi = true;
+          }
         }
       } catch (e) {}
-      return origFetch.call(this, input, init);
+      if (isCrossOriginVdsApi) {
+        return origFetch.call(this, targetInput, init).catch(() => origFetch.call(this, input, init));
+      }
+      return origFetch.call(this, targetInput, init);
     };
   }
 })();

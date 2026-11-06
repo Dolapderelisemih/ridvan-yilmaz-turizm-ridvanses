@@ -40,8 +40,8 @@ app.use((req, res, next) => {
       origin.startsWith('http://localhost:'))
   ) {
     res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-RY-Auth');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
   if (req.method === 'OPTIONS') {
@@ -261,8 +261,8 @@ function getOrCreateRoom(tourCode, roomId = 'genel') {
       roomId: rId,
       tourName: tour ? tour.name : code,
       guideName: tour ? tour.guideName : 'Ömer Ali Gültekin',
-      isLive: code === 'RY-KASIM',
-      broadcastMode: code === 'RY-KASIM' ? 'demo-synth' : 'idle',
+      isLive: false,
+      broadcastMode: 'idle',
       startedAt: Date.now() - 18 * 60 * 1000,
       currentTopic:
         code === 'RY-KASIM'
@@ -428,7 +428,7 @@ function evaluateTourGuidePresence(tourCode) {
   }
 }
 
-function removeClientFromRoom(room, clientId) {
+function removeClientFromRoom(room, clientId, graceMs = 2500) {
   if (!room) return;
   const prevClient = room.clients.get(clientId);
   room.clients.delete(clientId);
@@ -442,7 +442,7 @@ function removeClientFromRoom(room, clientId) {
       guideDisconnectTimers.delete(code);
       evaluateTourGuidePresence(code);
       broadcastRoomState(room);
-    }, 100);
+    }, graceMs);
     guideDisconnectTimers.set(code, timer);
     return;
   }
@@ -585,10 +585,6 @@ function processClientJsonMessage(ctx, msg) {
     const targetRoom = getOrCreateRoom(tourCode, roomId);
     ctx.currentRoom = targetRoom;
     const role = msg.role === 'guide' ? 'guide' : 'pilgrim';
-    if (role === 'guide' && guideDisconnectTimers.has(tourCode)) {
-      clearTimeout(guideDisconnectTimers.get(tourCode));
-      guideDisconnectTimers.delete(tourCode);
-    }
     const clientObj = {
       ws,
       id: clientId,
@@ -600,7 +596,11 @@ function processClientJsonMessage(ctx, msg) {
     };
     targetRoom.clients.set(clientId, clientObj);
     if (prevRoom && prevRoom !== targetRoom) {
-      removeClientFromRoom(prevRoom, clientId);
+      removeClientFromRoom(prevRoom, clientId, 80);
+    }
+    if (role === 'guide' && guideDisconnectTimers.has(tourCode) && (!prevRoom || prevRoom.tourCode !== tourCode)) {
+      clearTimeout(guideDisconnectTimers.get(tourCode));
+      guideDisconnectTimers.delete(tourCode);
     }
     if (role === 'guide' && msg.name) {
       for (const r of getTourRooms(tourCode)) {
