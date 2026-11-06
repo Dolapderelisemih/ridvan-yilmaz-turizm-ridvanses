@@ -36,12 +36,12 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
         return;
       }
       if (msg.type === 'push' && msg.samples) {
-        this._pushSamples(msg.samples, Boolean(msg.phraseStart));
+        this._pushSamples(msg.samples, Boolean(msg.phraseStart), Boolean(msg.isSilent));
       }
     };
   }
 
-  _pushSamples(samples, phraseStart) {
+  _pushSamples(samples, phraseStart, isSilent = false) {
     const len = samples.length;
     if (!len) return;
 
@@ -49,6 +49,30 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     if (phraseStart && this._available === 0) {
       this._state = 'buffering';
       this._fadeInPos = 0;
+    }
+
+    // 30+ Dakikalık Kesintisiz Sohbet Saat Sapması (Quartz Crystal Drift) Dengeleyicisi:
+    // Hoca nefes aldığında gelen sessiz çerçevelerde (isSilent === true) tampon 160ms ideal hedefinden
+    // aşağı düşmüşse sessizlikle 160ms'ye tamamla, yukarı çıkmışsa (>240ms) sessiz kısımdan kırp.
+    // Böylece konuşma sırasında perde/hız değiştirmeden saatlerce %0 underrun ile çalışır.
+    if (isSilent && this._state === 'playing') {
+      const highSilentThreshold = this._optimalTarget + Math.round(this._sampleRate * 0.08);
+      if (this._available + len > highSilentThreshold) {
+        const trim = (this._available + len) - this._optimalTarget;
+        if (trim > 0 && trim < this._available) {
+          this._readPtr = (this._readPtr + trim) % this._capacity;
+          this._available -= trim;
+        }
+      } else if (this._available + len < this._optimalTarget) {
+        const pad = Math.min(Math.round(this._sampleRate * 0.04), this._optimalTarget - (this._available + len));
+        for (let p = 0; p < pad; p++) {
+          if (this._available < this._capacity) {
+            this._ring[this._writePtr] = 0;
+            this._writePtr = (this._writePtr + 1) % this._capacity;
+            this._available++;
+          }
+        }
+      }
     }
 
     // Tampon aşırı dolmuşsa (>520ms) en güncel 160ms'ye yumuşak çapraz geçiş (crossfade) yap

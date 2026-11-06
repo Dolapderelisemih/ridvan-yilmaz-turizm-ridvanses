@@ -1273,6 +1273,7 @@
 
         if (msg.type === 'audio-chunk') {
           const pktLevel = typeof msg.level === 'number' ? msg.level : (msg.synthNote ? 0.5 : 0);
+          const isSilentFrame = pktLevel <= 0.008 && !msg.synthNote;
           if (pktLevel > 0.015 || msg.synthNote) {
             lastPacketReceivedAt = Date.now();
             updateGuideSpeakingIndicator(true, msg.sentAt);
@@ -1280,9 +1281,9 @@
           }
           if (isAudioListening) {
             if (msg.pcm16) {
-              playPcmSamples(msg.pcm16, msg.sampleRate || 24000, true, msg.seq || 0, Boolean(msg.phraseStart));
+              playPcmSamples(msg.pcm16, msg.sampleRate || 24000, true, msg.seq || 0, Boolean(msg.phraseStart), isSilentFrame);
             } else if (msg.samples && msg.samples.length) {
-              playPcmSamples(msg.samples, msg.sampleRate || 24000, false, msg.seq || 0, Boolean(msg.phraseStart));
+              playPcmSamples(msg.samples, msg.sampleRate || 24000, false, msg.seq || 0, Boolean(msg.phraseStart), isSilentFrame);
             } else if (msg.synthNote) {
               playGentleHarmonyNote(msg.synthNote);
             }
@@ -1669,7 +1670,7 @@
       return tempOut.subarray(0, outIdx);
     }
 
-    function playPcmSamples(samplesOrB64, sampleRate = 24000, isBase64 = false, seq = 0, phraseStart = false) {
+    function playPcmSamples(samplesOrB64, sampleRate = 24000, isBase64 = false, seq = 0, phraseStart = false, isSilent = false) {
       ensureAudioContext();
       if (!audioCtx || !gainNode) return;
       try {
@@ -1700,7 +1701,6 @@
         }
         if (!rawArr.length) return;
 
-        lastPacketReceivedAt = Date.now();
         const hwRate = audioCtx.sampleRate || 48000;
 
         const hwSamples = resampleChunkToHwRate(
@@ -1717,7 +1717,8 @@
           rxPlayerWorkletNode.port.postMessage({
             type: 'push',
             samples: hwSamples,
-            phraseStart: Boolean(phraseStart || !isSeqContiguous)
+            phraseStart: Boolean(phraseStart || !isSeqContiguous),
+            isSilent: Boolean(isSilent)
           });
           return;
         }

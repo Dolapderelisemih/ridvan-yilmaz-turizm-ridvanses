@@ -239,11 +239,12 @@ function getTargetBroadcastRooms(sourceRoom) {
   return getTourRooms(sourceRoom.tourCode).filter((r) => {
     if (r.roomId === sourceRoom.roomId) return true;
     const hasDedicatedGuide = Array.from(r.clients.values()).some((c) => c.role === 'guide');
-    return !hasDedicatedGuide && !r.isLive;
+    return !hasDedicatedGuide;
   });
 }
 
-function serializeRoom(room) {
+function serializeRoom(room, includePilgrimDetails = true) {
+  let pilgrimCount = 0;
   const pilgrims = [];
   const guides = [];
   const seenIds = new Set();
@@ -255,17 +256,30 @@ function serializeRoom(room) {
     for (const c of r.clients.values()) {
       if (seenIds.has(c.id)) continue;
       seenIds.add(c.id);
-      const item = {
-        id: c.id,
-        name: c.name,
-        phone: c.phone || '',
-        role: c.role,
-        roomId: r.roomId,
-        lang: c.lang || 'tr',
-        joinedAt: c.joinedAt
-      };
-      if (c.role === 'guide') guides.push(item);
-      else if (c.role === 'pilgrim') pilgrims.push(item);
+      if (c.role === 'guide') {
+        guides.push({
+          id: c.id,
+          name: c.name,
+          phone: includePilgrimDetails ? (c.phone || '') : '',
+          role: c.role,
+          roomId: r.roomId,
+          lang: c.lang || 'tr',
+          joinedAt: c.joinedAt
+        });
+      } else if (c.role === 'pilgrim') {
+        pilgrimCount++;
+        if (includePilgrimDetails) {
+          pilgrims.push({
+            id: c.id,
+            name: c.name,
+            phone: c.phone || '',
+            role: c.role,
+            roomId: r.roomId,
+            lang: c.lang || 'tr',
+            joinedAt: c.joinedAt
+          });
+        }
+      }
     }
   }
 
@@ -284,14 +298,14 @@ function serializeRoom(room) {
     guideLocation: room.guideLocation || null,
     connectedPilgrims: pilgrims,
     connectedGuides: guides,
-    totalListeners: pilgrims.length,
-    realListenerCount: pilgrims.length
+    totalListeners: pilgrimCount,
+    realListenerCount: pilgrimCount
   };
 }
 
-function broadcastToRoom(room, payload, excludeWs = null) {
-  const isAudio = payload && payload.type === 'audio-chunk';
-  const data = JSON.stringify(payload);
+function broadcastToRoom(room, payload, excludeWs = null, isAudioOverride = false) {
+  const isAudio = isAudioOverride || Boolean(payload && typeof payload === 'object' && payload.type === 'audio-chunk');
+  const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
   for (const client of room.clients.values()) {
     if (client.ws !== excludeWs && client.ws.readyState === WebSocket.OPEN) {
       // Dinleyicinin soketinde aşırı veri birikmişse (şebeke takılması), eski sesleri kuyruğa yığma.
@@ -300,6 +314,17 @@ function broadcastToRoom(room, payload, excludeWs = null) {
         continue;
       }
       client.ws.send(data);
+    }
+  }
+}
+
+function broadcastToGuidesInTour(tourCode, payload) {
+  const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  for (const r of getTourRooms(tourCode)) {
+    for (const client of r.clients.values()) {
+      if (client.role === 'guide' && client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(data);
+      }
     }
   }
 }
@@ -418,17 +443,25 @@ function broadcastRoomState(room) {
     room._broadcastTimer = null;
     const tourRooms = getTourRooms(room.tourCode);
     for (const r of tourRooms) {
-      const state = serializeRoom(r);
-      broadcastToRoom(r, { type: 'room-state', room: state });
+      const fullState = serializeRoom(r, true);
+      const compactState = serializeRoom(r, false);
+      const guidePayload = JSON.stringify({ type: 'room-state', room: fullState });
+      const pilgrimPayload = JSON.stringify({ type: 'room-state', room: compactState });
+
+      for (const client of r.clients.values()) {
+        if (client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(client.role === 'guide' ? guidePayload : pilgrimPayload);
+        }
+      }
       if (r.roomId === 'genel') {
-        broadcastToFamilyTrackers(r.tourCode, { type: 'room-state', room: state });
+        broadcastToFamilyTrackers(r.tourCode, { type: 'room-state', room: compactState });
       }
     }
     broadcastToAdmins({
       type: 'admin-rooms-update',
-      rooms: Array.from(liveRooms.values()).map(serializeRoom)
+      rooms: Array.from(liveRooms.values()).map((rm) => serializeRoom(rm, true))
     });
-  }, 100);
+  }, 150);
 }
 
 let clientSeq = 1;
@@ -458,7 +491,7 @@ function processClientJsonMessage(ctx, msg) {
       JSON.stringify({
         type: 'family-state',
         tourCode,
-        room: serializeRoom(room),
+        room: serializeRoom(room, false),
         steps,
         stats: computeJourneyStats(steps),
         announcements: db.announcements.filter((a) => a.tourCode === tourCode || a.tourCode === 'ALL')
@@ -496,7 +529,7 @@ function processClientJsonMessage(ctx, msg) {
       JSON.stringify({
         type: 'joined',
         clientId,
-        room: serializeRoom(ctx.currentRoom),
+        room: serializeRoom(ctx.currentRoom, role === 'guide'),
         announcements: db.announcements.filter((a) => a.tourCode === tourCode || a.tourCode === 'ALL'),
         siyerPoints: db.siyerPoints,
         steps: tourSteps,
@@ -605,7 +638,7 @@ function processClientJsonMessage(ctx, msg) {
 
     case 'audio-chunk': {
       if (sender.role !== 'guide') break;
-      const chunkPayload = {
+      const serializedAudio = JSON.stringify({
         type: 'audio-chunk',
         seq: msg.seq || null,
         phraseStart: Boolean(msg.phraseStart),
@@ -618,9 +651,9 @@ function processClientJsonMessage(ctx, msg) {
         level: msg.level || 0,
         synthNote: msg.synthNote || null,
         sentAt: msg.sentAt || Date.now()
-      };
+      });
       for (const r of getTargetBroadcastRooms(currentRoom)) {
-        broadcastToRoom(r, chunkPayload, ws);
+        broadcastToRoom(r, serializedAudio, ws, true);
       }
       break;
     }
@@ -640,9 +673,7 @@ function processClientJsonMessage(ctx, msg) {
       };
       db.sosAlerts.unshift(alertItem);
       saveState(db);
-      for (const r of getTourRooms(currentRoom.tourCode)) {
-        broadcastToRoom(r, { type: 'sos-alert', alert: alertItem });
-      }
+      broadcastToGuidesInTour(currentRoom.tourCode, { type: 'sos-alert', alert: alertItem });
       broadcastToAdmins({ type: 'sos-alert', alert: alertItem, sosAlerts: db.sosAlerts });
       break;
     }
@@ -955,7 +986,7 @@ app.post('/api/join-tour', (req, res) => {
       message: 'Bu kafile odası PIN korumalıdır. Lütfen geçerli PIN kodunu giriniz.'
     });
   }
-  const roomState = serializeRoom(getOrCreateRoom(tour.code, 'genel'));
+  const roomState = serializeRoom(getOrCreateRoom(tour.code, 'genel'), false);
   const steps = getTourSteps(tour.code);
   const stats = computeJourneyStats(steps);
   return res.json({
@@ -1142,7 +1173,7 @@ app.get('/api/trips/:code/steps', (req, res) => {
   };
   const steps = getTourSteps(code);
   const stats = computeJourneyStats(steps);
-  const room = serializeRoom(getOrCreateRoom(code, 'genel'));
+  const room = serializeRoom(getOrCreateRoom(code, 'genel'), false);
   const announcements = db.announcements.filter((a) => a.tourCode === code || a.tourCode === 'ALL');
   return res.json({
     success: true,
@@ -1387,11 +1418,7 @@ app.post('/api/sos', (req, res) => {
   db.sosAlerts.unshift(alertItem);
   saveState(db);
 
-  for (const room of liveRooms.values()) {
-    if (room.tourCode === alertItem.tourCode) {
-      broadcastToRoom(room, { type: 'sos-alert', alert: alertItem });
-    }
-  }
+  broadcastToGuidesInTour(alertItem.tourCode, { type: 'sos-alert', alert: alertItem });
   broadcastToAdmins({ type: 'sos-alert', alert: alertItem, sosAlerts: db.sosAlerts });
   res.json({ success: true, alert: alertItem });
 });
@@ -1403,11 +1430,7 @@ app.patch('/api/sos/:id/resolve', requireAuth, (req, res) => {
   alertItem.resolvedBy = (req.body && req.body.resolvedBy) || 'Rıdvan Yılmaz Hoca';
   saveState(db);
 
-  for (const room of liveRooms.values()) {
-    if (room.tourCode === alertItem.tourCode) {
-      broadcastToRoom(room, { type: 'sos-resolved', alert: alertItem });
-    }
-  }
+  broadcastToGuidesInTour(alertItem.tourCode, { type: 'sos-resolved', alert: alertItem });
   broadcastToAdmins({ type: 'sos-resolved', alert: alertItem, sosAlerts: db.sosAlerts });
   res.json({ success: true, alert: alertItem });
 });
@@ -1420,11 +1443,7 @@ app.delete('/api/sos/:id', requireAuth, (req, res) => {
   }
   db.sosAlerts = db.sosAlerts.filter((s) => s.id !== targetId);
   saveState(db);
-  for (const room of liveRooms.values()) {
-    if (room.tourCode === targetAlert.tourCode) {
-      broadcastToRoom(room, { type: 'sos-resolved', alert: targetAlert });
-    }
-  }
+  broadcastToGuidesInTour(targetAlert.tourCode, { type: 'sos-resolved', alert: targetAlert });
   broadcastToAdmins({ type: 'sos-resolved', alert: targetAlert, sosAlerts: db.sosAlerts });
   return res.json({ success: true, sosAlerts: db.sosAlerts });
 });
