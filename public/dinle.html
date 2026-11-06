@@ -1229,6 +1229,7 @@
         }
 
         if (msg.type === 'stream-state') {
+          lastReceivedAudioSeq = 0;
           if (msg.currentTopic) {
             document.getElementById('liveTopicText').textContent = msg.currentTopic;
           }
@@ -1490,17 +1491,43 @@
       }
     } catch {}
 
+    function createTransparentSoftClipperCurve() {
+      const n = 8193;
+      const curve = new Float32Array(n);
+      const knee = 0.84;
+      const headroom = 0.145;
+      for (let i = 0; i < n; i++) {
+        // [-2.0, +2.0] aralığı (%200 ses açıldığında gelen tepe noktaları)
+        const x = ((i / (n - 1)) * 4.0) - 2.0;
+        const absX = Math.abs(x);
+        if (absX <= knee) {
+          curve[i] = x;
+        } else {
+          const sign = x < 0 ? -1 : 1;
+          curve[i] = sign * (knee + headroom * Math.tanh((absX - knee) / headroom));
+        }
+      }
+      return curve;
+    }
+
     function initRxPlayerWorklet() {
       if (!audioCtx || rxPlayerWorkletNode || rxPlayerWorkletLoading) return;
       if (!audioCtx.audioWorklet || typeof window.AudioWorkletNode === 'undefined') return;
       rxPlayerWorkletLoading = true;
       audioCtx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=29')
+        .addModule('/pcm-player-worklet.js?v=34')
         .then(() => {
           if (!audioCtx || rxPlayerWorkletNode) return;
           const node = new AudioWorkletNode(audioCtx, 'rys-pcm-player');
           node.connect(rxInputNode || gainNode);
           rxPlayerWorkletNode = node;
+          while (activeScheduledSources.length > 0) {
+            const src = activeScheduledSources.shift();
+            try {
+              src.stop();
+              src.disconnect();
+            } catch {}
+          }
         })
         .catch(() => {})
         .finally(() => {
@@ -1514,7 +1541,6 @@
         audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
 
         // 1. Telefon Hoparlörü Zırıltı / DC Kesici (65 Hz Butterworth High-Pass — %100 Doğal Faz)
-        // Not: Arka plan gürültüsünü +18 dB pompalayan DynamicsCompressor ve metalik 2750 Hz Peaking filtre kaldırıldı.
         const rxHighPass = audioCtx.createBiquadFilter();
         rxHighPass.type = 'highpass';
         rxHighPass.frequency.value = 65;
@@ -1524,8 +1550,21 @@
         gainNode = audioCtx.createGain();
         gainNode.gain.value = volumeMultiplier;
 
+        // 3. Sıfır-Gecikmeli Doğrusal Soft-Clipper (%200 Seste Hoparlör Çatlamasını Önler, Sessizliği Asla Pompalamaz)
+        let softClipper = null;
+        if (typeof audioCtx.createWaveShaper === 'function') {
+          softClipper = audioCtx.createWaveShaper();
+          softClipper.curve = createTransparentSoftClipperCurve();
+          softClipper.oversample = '2x';
+        }
+
         rxHighPass.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+        if (softClipper) {
+          gainNode.connect(softClipper);
+          softClipper.connect(audioCtx.destination);
+        } else {
+          gainNode.connect(audioCtx.destination);
+        }
         rxInputNode = rxHighPass;
 
         initRxPlayerWorklet();
@@ -1592,6 +1631,7 @@
     let nextAudioTime = 0;
     let lastHwEndSample = 0;
     let lastPacketReceivedAt = 0;
+    let lastRawChunkAt = 0;
     let lastReceivedAudioSeq = 0;
     let rxHermiteHist = null;
     let rxHermitePos = 0;
@@ -1674,10 +1714,19 @@
       ensureAudioContext();
       if (!audioCtx || !gainNode) return;
       try {
-        // Çift veya eski sıradışı paketleri ele (bulut/ağ yedeklemesinde üst üste binmeyi önler)
-        if (seq > 0 && lastReceivedAudioSeq > 0) {
+        const nowMs = Date.now();
+        const gapSinceLastChunk = nowMs - lastRawChunkAt;
+        lastRawChunkAt = nowMs;
+
+        // Hoca yayını kapatıp açtığında veya 1.2 saniyeden uzun boşluk sonrası sıra sayacını sıfırla
+        if (phraseStart || gapSinceLastChunk > 1200) {
+          lastReceivedAudioSeq = 0;
+        }
+
+        // Yalnızca aktif akış içinde (<600ms) gelen gerçek mükerrer paketleri ele
+        if (!phraseStart && seq > 0 && lastReceivedAudioSeq > 0 && gapSinceLastChunk < 600) {
           const diff = seq - lastReceivedAudioSeq;
-          if (diff <= 0 && diff > -300) {
+          if (diff <= 0 && diff > -16) {
             return;
           }
         }
@@ -2367,6 +2416,27 @@
     window.addEventListener('online', () => {
       recoverPilgrimLiveSession();
     });
+
+    if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
+      navigator.mediaDevices.addEventListener('devicechange', () => {
+        if (isAudioListening) {
+          setTimeout(() => recoverPilgrimLiveSession(), 250);
+        }
+      });
+    }
+
+    // Telefon cepte ekran kilitliyken (hidden) gelen arama/bildirim sonrası sesi otomatik uyandır
+    setInterval(() => {
+      if (isAudioListening && currentTour && !intentionalLeave) {
+        if (audioCtx && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+          audioCtx.resume().catch(() => {});
+        }
+        const bgEl = document.getElementById('bgKeepAliveAudio');
+        if (bgEl && bgEl.paused) {
+          bgEl.play().catch(() => {});
+        }
+      }
+    }, 2500);
 
     function createSilentWavDataUri() {
       const sampleRate = 8000;

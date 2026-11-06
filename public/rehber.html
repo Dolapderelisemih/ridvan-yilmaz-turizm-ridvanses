@@ -696,6 +696,19 @@
             guidePeerId
           }));
         }
+        if (currentActiveTawafId && TAWAF_STAGES[currentActiveTawafId]) {
+          const st = TAWAF_STAGES[currentActiveTawafId];
+          ws.send(JSON.stringify({
+            type: 'tawaf-stage-update',
+            stageId: st.id,
+            badge: st.badge,
+            topic: st.topic,
+            title: st.title,
+            arabic: st.arabic,
+            reading: st.reading,
+            meaning: st.meaning
+          }));
+        }
         if (isSharingGuideLocation && lastGuideLocState) {
           ws.send(JSON.stringify({
             type: 'guide-location-update',
@@ -1311,7 +1324,8 @@
     }
 
     let workletModuleLoaded = false;
-    let guideAudioSeq = 0;
+    let guideAudioSeq = Math.floor((Date.now() % 10000000) / 10);
+    let isHealingGuideMic = false;
     const guideFilterHist = new Float32Array(6);
     let guideGateEnv = 0;
     let guideGateGain = 0.05;
@@ -1536,6 +1550,17 @@
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
 
+      // Gelen telefon araması veya Bluetooth/yaka mikrofonu çıkması durumunda otomatik mikrofon kurtarma (Auto-Heal)
+      const audioTrack = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
+      if (audioTrack) {
+        audioTrack.onended = () => {
+          if (isMicBroadcasting && !isHealingGuideMic) {
+            console.warn('🔄 [Rehber Mikrofon] Mikrofon izi kesildi (arama/kulaklık değişimi), 300ms içinde otomatik kurtarılıyor...');
+            setTimeout(() => healGuideMicrophoneIfNeeded(), 300);
+          }
+        };
+      }
+
       const source = audioCtx.createMediaStreamSource(micStream);
 
       // 1. Rüzgâr ve El Çarpma Gürültüsü Kesici (90 Hz Butterworth High-Pass — Faz Bozulmasız)
@@ -1574,7 +1599,7 @@
       if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
         try {
           if (!workletModuleLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=29');
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=34');
             workletModuleLoaded = true;
           }
           scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
@@ -1599,6 +1624,59 @@
         };
       }
     }
+
+    async function healGuideMicrophoneIfNeeded() {
+      if (!isMicBroadcasting || isVoiceLoopbackTesting || isHealingGuideMic) return;
+      const track = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
+      const trackDead = !track || track.readyState === 'ended';
+      if (trackDead) {
+        isHealingGuideMic = true;
+        try {
+          if (scriptProcessor) {
+            try {
+              if (scriptProcessor.port) scriptProcessor.port.onmessage = null;
+              scriptProcessor.disconnect();
+            } catch {}
+            scriptProcessor = null;
+          }
+          if (guideMicGainNode) {
+            try { guideMicGainNode.disconnect(); } catch {}
+            guideMicGainNode = null;
+          }
+          if (zeroGainNode) {
+            try { zeroGainNode.disconnect(); } catch {}
+            zeroGainNode = null;
+          }
+          if (micStream) {
+            try { micStream.getTracks().forEach((t) => t.stop()); } catch {}
+            micStream = null;
+          }
+          await setupGuideMicrophoneGraph();
+          const lbl = document.getElementById('micSourceLabel');
+          if (lbl) lbl.textContent = 'Yayın Kaynağı: 24 kHz Saf Stüdyo HD (Otomatik Kurtarıldı)';
+        } catch (e) {
+          console.warn('Mikrofon otomatik kurtarma beklemede:', e);
+        } finally {
+          isHealingGuideMic = false;
+        }
+      } else if (audioCtx && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+        audioCtx.resume().catch(() => {});
+      }
+    }
+
+    if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
+      navigator.mediaDevices.addEventListener('devicechange', () => {
+        if (isMicBroadcasting) {
+          setTimeout(() => healGuideMicrophoneIfNeeded(), 350);
+        }
+      });
+    }
+
+    setInterval(() => {
+      if (isMicBroadcasting) {
+        healGuideMicrophoneIfNeeded();
+      }
+    }, 2500);
 
     async function testGuideVoiceLoopback() {
       const testBtn = document.getElementById('testMyVoiceBtn');
@@ -1742,23 +1820,20 @@
 
         if (!ws || ws.readyState !== WebSocket.OPEN) {
           connectGuideWs();
+        } else {
+          const currentCode = document.getElementById('guideTourSelect').value || 'RY-KASIM';
+          const currentRoom = document.getElementById('guideRoomSelect')?.value || 'genel';
+          ws.send(JSON.stringify({
+            type: 'guide-stream-state',
+            isLive: true,
+            broadcastMode: 'mic',
+            topic: document.getElementById('topicInput').value,
+            guidePeerId:
+              typeof window.ryGetDynamicChannelId === 'function'
+                ? window.ryGetDynamicChannelId(currentCode, currentRoom)
+                : `ridvanses-${String(currentCode).toLowerCase()}-${currentRoom}-guide-v26`
+          }));
         }
-        setTimeout(() => {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            const currentCode = document.getElementById('guideTourSelect').value || 'RY-KASIM';
-            const currentRoom = document.getElementById('guideRoomSelect')?.value || 'genel';
-            ws.send(JSON.stringify({
-              type: 'guide-stream-state',
-              isLive: true,
-              broadcastMode: 'mic',
-              topic: document.getElementById('topicInput').value,
-              guidePeerId:
-                typeof window.ryGetDynamicChannelId === 'function'
-                  ? window.ryGetDynamicChannelId(currentCode, currentRoom)
-                  : `ridvanses-${String(currentCode).toLowerCase()}-${currentRoom}-guide-v26`
-            }));
-          }
-        }, 150);
       } catch (err) {
         console.error('Mikrofon başlatma hatası:', err);
         let errorMsg = 'Mikrofon başlatılamadı: ' + (err.message || err.name);
