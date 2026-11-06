@@ -987,14 +987,14 @@
       const matchedTour = availableToursCache.find((t) => String(t.code || '').toUpperCase() === code);
       const pinBox = document.getElementById('pinInputBox');
       if (pinBox && matchedTour) {
-        pinBox.style.display = matchedTour.pinProtected ? 'block' : 'none';
+        pinBox.style.display = (matchedTour.pinProtected || matchedTour.pinRequired) ? 'block' : 'none';
       }
       if (matchedTour && Array.isArray(matchedTour.rooms) && matchedTour.rooms.length > 0) {
         const roomSel = document.getElementById('roomSelect');
         if (roomSel) {
           const prevRoom = roomSel.value || 'genel';
           roomSel.innerHTML = matchedTour.rooms
-            .map((rm) => `<option value="${rm.id}">${rm.name} (${rm.guide || matchedTour.guideName || 'Rehber'})</option>`)
+            .map((rm) => `<option value="${escapeHtml(rm.id)}">${escapeHtml(rm.name)} (${escapeHtml(rm.guide || matchedTour.guideName || 'Rehber')})</option>`)
             .join('');
           if (matchedTour.rooms.some((rm) => rm.id === prevRoom)) {
             roomSel.value = prevRoom;
@@ -1195,6 +1195,7 @@
         ? 'ses.ridvanyilmazturizm.com'
         : window.location.host;
       ws = new WebSocket(`${proto}//${wsHost}/ws`);
+      ws.binaryType = 'arraybuffer';
 
       window.__ryActiveListenerChannelId =
         typeof window.ryGetDynamicChannelId === 'function'
@@ -1216,7 +1217,14 @@
       };
 
       ws.onmessage = (event) => {
-        if (event.data instanceof Blob) return;
+        if (event.data instanceof ArrayBuffer) {
+          handleBinaryAudioFrame(event.data);
+          return;
+        }
+        if (typeof Blob !== 'undefined' && event.data instanceof Blob) {
+          event.data.arrayBuffer().then((buf) => handleBinaryAudioFrame(buf)).catch(() => {});
+          return;
+        }
         let msg;
         try {
           msg = JSON.parse(event.data);
@@ -1502,17 +1510,29 @@
     let rxPlayerWorkletNode = null;
     let rxPlayerWorkletLoading = false;
     let pilgrimAudioGuardChannel = null;
+    let pilgrimAudioGuardTimer = null;
+
+    function startPilgrimAudioGuardTimer() {
+      if (!pilgrimAudioGuardChannel || pilgrimAudioGuardTimer) return;
+      pilgrimAudioGuardTimer = setInterval(() => {
+        if (isAudioListening && pilgrimAudioGuardChannel) {
+          try {
+            pilgrimAudioGuardChannel.postMessage({ type: 'pilgrim-speaker-active', ts: Date.now() });
+          } catch {}
+        }
+      }, 1200);
+    }
+
+    function stopPilgrimAudioGuardTimer() {
+      if (pilgrimAudioGuardTimer) {
+        clearInterval(pilgrimAudioGuardTimer);
+        pilgrimAudioGuardTimer = null;
+      }
+    }
 
     try {
       if (typeof BroadcastChannel !== 'undefined') {
         pilgrimAudioGuardChannel = new BroadcastChannel('ridvanses_audio_guard');
-        setInterval(() => {
-          if (isAudioListening && pilgrimAudioGuardChannel) {
-            try {
-              pilgrimAudioGuardChannel.postMessage({ type: 'pilgrim-speaker-active', ts: Date.now() });
-            } catch {}
-          }
-        }, 1200);
       }
     } catch {}
 
@@ -1692,7 +1712,9 @@
             pilgrimAudioGuardChannel.postMessage({ type: 'pilgrim-speaker-active', ts: Date.now() });
           } catch {}
         }
+        startPilgrimAudioGuardTimer();
       } else {
+        stopPilgrimAudioGuardTimer();
         syncAudioUnlockButtonUi();
         stopBackgroundKeepAliveAudio();
         stopAllActiveSources();
@@ -1789,6 +1811,38 @@
       return tempOut.subarray(0, outIdx);
     }
 
+    function handleBinaryAudioFrame(buffer) {
+      if (!buffer || buffer.byteLength <= 12) return;
+      const view = new DataView(buffer);
+      const rawSeq = view.getUint32(0, true);
+      const phraseStart = Boolean(rawSeq & 0x80000000);
+      const seq = rawSeq & 0x7fffffff;
+      const sentAt = view.getFloat64(4, true);
+      const sampleCount = (buffer.byteLength - 12) >> 1;
+      if (sampleCount <= 0) return;
+
+      const floatSamples = new Float32Array(sampleCount);
+      let sumSq = 0;
+      for (let i = 0; i < sampleCount; i++) {
+        const val = view.getInt16(12 + i * 2, true);
+        const sample = val / 32768;
+        floatSamples[i] = sample;
+        sumSq += sample * sample;
+      }
+      const rms = Math.sqrt(sumSq / sampleCount);
+      const pktLevel = Math.min(1, rms * 6.0);
+      const isSilentFrame = pktLevel <= 0.008;
+
+      if (pktLevel > 0.015) {
+        lastPacketReceivedAt = Date.now();
+        updateGuideSpeakingIndicator(true, sentAt);
+        animateSpectrumFromLevel(pktLevel);
+      }
+      if (isAudioListening) {
+        playPcmSamples(floatSamples, 24000, false, seq, phraseStart, isSilentFrame);
+      }
+    }
+
     function playPcmSamples(samplesOrB64, sampleRate = 24000, isBase64 = false, seq = 0, phraseStart = false, isSilent = false) {
       ensureAudioContext();
       if (!audioCtx || !gainNode) return;
@@ -1825,7 +1879,7 @@
             rawArr[i] = val / 32768;
           }
         } else {
-          rawArr = new Float32Array(samplesOrB64);
+          rawArr = samplesOrB64 instanceof Float32Array ? samplesOrB64 : new Float32Array(samplesOrB64);
         }
         if (!rawArr.length) return;
 
@@ -2563,7 +2617,9 @@
         const pilgrimWorkerBlob = new Blob(['setInterval(function(){postMessage(1);},2500);'], {
           type: 'application/javascript'
         });
-        const pilgrimBgWorker = new Worker(URL.createObjectURL(pilgrimWorkerBlob));
+        const pilgrimWorkerUrl = URL.createObjectURL(pilgrimWorkerBlob);
+        const pilgrimBgWorker = new Worker(pilgrimWorkerUrl);
+        URL.revokeObjectURL(pilgrimWorkerUrl);
         pilgrimBgWorker.onmessage = () => pilgrimBackgroundHeartbeatTick();
       }
     } catch {}

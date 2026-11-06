@@ -3,4 +3,12 @@ rea
 rea-umrahvoice-analysis.json
 .git
 .env
+.env.*
 *.log
+*.tif
+scripts/
+documents/
+data/outreach-log.json
+data/umre-acenteleri.json
+data/bounced-emails.json
+vercel private key.txt

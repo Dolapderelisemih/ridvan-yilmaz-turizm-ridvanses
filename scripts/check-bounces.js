@@ -3,9 +3,10 @@ const fs = require('fs');
 const path = require('path');
 
 // .env oku
-const env = fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8');
+const envPath = path.join(__dirname, '..', '.env');
+const env = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
 const passMatch = env.match(/GMAIL_APP_PASSWORD\s*=\s*(.*)/);
-const pass = passMatch ? passMatch[1].trim().replace(/\s+/g, '') : '';
+const pass = passMatch ? passMatch[1].trim().replace(/\s+/g, '') : (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
 
 const config = {
   imap: {
@@ -14,8 +15,7 @@ const config = {
     host: 'imap.gmail.com',
     port: 993,
     tls: true,
-    authTimeout: 10000,
-    tlsOptions: { rejectUnauthorized: false }
+    authTimeout: 10000
   }
 };
 

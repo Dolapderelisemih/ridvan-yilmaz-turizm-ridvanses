@@ -5,10 +5,6 @@ rea-umrahvoice-analysis.json
 .vercel/
 *.log
 .DS_Store
-
-.vercel
-
 *.key
 *.pem
 *private key*
-

@@ -392,7 +392,7 @@
             tourSelect.innerHTML = data.tours
               .map(
                 (t) =>
-                  `<option value="${t.code}" style="color:#06231b;">${t.code} — ${String(t.name || '').replace(/^🕋\s*/, '')}</option>`
+                  `<option value="${escapeHtml(t.code)}" style="color:#06231b;">${escapeHtml(t.code)} — ${escapeHtml(String(t.name || '').replace(/^🕋\s*/, ''))}</option>`
               )
               .join('');
             if (!params.get('code') && !data.tours.some((t) => t.code === code)) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ridvanses-pwa-v40';
+const CACHE_NAME = 'ridvanses-pwa-v41';
 const ASSETS_TO_CACHE = [
   '/',
   '/dinle',
@@ -50,8 +50,10 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        if (res && res.ok && res.status === 200 && res.type === 'basic') {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        }
         return res;
       })
       .catch(() => caches.match(event.request))

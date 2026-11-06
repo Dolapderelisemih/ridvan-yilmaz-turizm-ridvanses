@@ -133,7 +133,7 @@
       <select id="tourCodePicker" class="select" style="width:auto; padding:8px 12px; font-size:0.85rem;" onchange="updateBadges()">
         <option value="RY-KASIM">RY-KASIM (13-14 Kasım Umresi • Ömer Ali Gültekin)</option>
       </select>
-      <input type="text" id="customPilgrimInput" class="input" style="width:200px; padding:8px 12px; font-size:0.85rem;" placeholder="Tek İsim (Hızlı)" oninput="updateBadges()" />
+      <input type="text" id="customPilgrimInput" class="input" style="width:200px; padding:8px 12px; font-size:0.85rem;" placeholder="Tek İsim (Hızlı)" oninput="debouncedUpdateBadges()" />
       <button type="button" class="btn btn-outline btn-sm" style="color:#E2C785; border-color:rgba(226,199,133,0.5); background:rgba(197,160,89,0.12);" onclick="toggleBulkListPanel()">
         📋 Toplu Hacı İsim Listesi Yapıştır (<span id="badgeCountLabel">4</span> Kart)
       </button>
@@ -157,7 +157,7 @@
           <button type="button" class="btn btn-primary btn-sm" onclick="updateBadges()">Kartları Oluştur</button>
         </div>
       </div>
-      <textarea id="bulkPilgrimsTextarea" rows="6" class="textarea" placeholder="Örn:&#10;Hacı Mustafa Kaya&#10;Hacı Fatma Yıldırım&#10;Hacı Ahmet Demir&#10;Hacı Ayşe Çelik..." oninput="updateBadges()"></textarea>
+      <textarea id="bulkPilgrimsTextarea" rows="6" class="textarea" placeholder="Örn:&#10;Hacı Mustafa Kaya&#10;Hacı Fatma Yıldırım&#10;Hacı Ahmet Demir&#10;Hacı Ayşe Çelik..." oninput="debouncedUpdateBadges()"></textarea>
     </div>
   </div>
 
@@ -181,6 +181,15 @@
     }
 
     let toursData = [];
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     async function init() {
       try {
         const res = await fetch('/api/bootstrap');
@@ -189,7 +198,7 @@
         if (toursData.length > 0) {
           const sel = document.getElementById('tourCodePicker');
           const current = sel.value;
-          sel.innerHTML = toursData.map((t) => `<option value="${t.code}">${t.code} (${t.name} • ${t.guideName})</option>`).join('');
+          sel.innerHTML = toursData.map((t) => `<option value="${escapeHtml(t.code)}">${escapeHtml(t.code)} (${escapeHtml(t.name)} • ${escapeHtml(t.guideName)})</option>`).join('');
           if (toursData.some((t) => t.code === current)) sel.value = current;
         }
       } catch (e) {}
@@ -208,7 +217,19 @@
       updateBadges();
     }
 
+    let badgeDebounceTimer = null;
+    let renderSeq = 0;
+
+    function debouncedUpdateBadges() {
+      if (badgeDebounceTimer) clearTimeout(badgeDebounceTimer);
+      badgeDebounceTimer = setTimeout(() => {
+        badgeDebounceTimer = null;
+        updateBadges();
+      }, 300);
+    }
+
     async function updateBadges() {
+      const currentSeq = ++renderSeq;
       const code = document.getElementById('tourCodePicker').value;
       const customName = document.getElementById('customPilgrimInput').value.trim();
       const bulkRaw = (document.getElementById('bulkPilgrimsTextarea')?.value || '').trim();
@@ -222,6 +243,7 @@
 
       const qrRes = await fetch(`/api/qr?code=${encodeURIComponent(code)}`);
       const qrJson = await qrRes.json();
+      if (currentSeq !== renderSeq) return;
 
       let samplePilgrims = [];
       if (bulkRaw) {
@@ -265,7 +287,7 @@
             <span class="badge badge-gold" style="font-size:0.8rem;">KAFİLE KODU: ${escapeHtml(tour.code)}</span>
 
             <div class="qr-box">
-              <img src="/api/qr-img?code=${encodeURIComponent(tour.code)}&name=${encodeURIComponent(pName)}" onerror="this.onerror=null;this.src='${qrJson.dataUrl}'" alt="QR Code ${escapeHtml(tour.code)} - ${escapeHtml(pName)}" />
+              <img src="/api/qr-img?code=${encodeURIComponent(tour.code)}&name=${encodeURIComponent(pName)}" onerror="this.onerror=null;this.src='${escapeHtml(qrJson.dataUrl || '')}'" alt="QR Code ${escapeHtml(tour.code)} - ${escapeHtml(pName)}" />
             </div>
 
             <div style="font-size:0.79rem; color:var(--color-muted); max-width:265px; margin:0 auto 14px; line-height:1.45;">

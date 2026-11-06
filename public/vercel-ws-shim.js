@@ -102,6 +102,7 @@
 
       try {
         this._native = protocols ? new NativeWebSocket(url, protocols) : new NativeWebSocket(url);
+        this._native.binaryType = 'arraybuffer';
       } catch (e) {
         this.readyState = 3;
         setTimeout(() => {
@@ -167,6 +168,23 @@
       return 0;
     }
 
+    get isRelay() {
+      return Boolean(this._isRelay);
+    }
+
+    get binaryType() {
+      return (this._native && this._native.binaryType) || this._binaryType || 'arraybuffer';
+    }
+
+    set binaryType(val) {
+      this._binaryType = val;
+      if (this._native) {
+        try {
+          this._native.binaryType = val;
+        } catch {}
+      }
+    }
+
     _activateCloudRelay() {
       if (this._isRelay) return;
       this._isRelay = true;
@@ -214,10 +232,9 @@
         if (!window.mqtt) return;
         this._closeMqttClients();
 
-        // Rehber konsolu tek oda ("genel") üzerinden yayın yaptığı için bulut otobüsünde
-        // kafilenin tüm hacıları aynı kafile kanalında buluşur (farklı oda seçen hacı sessiz kalmaz).
         const codeClean = joinMsg ? this._sanitizeCode(joinMsg.tourCode) : 'ALL';
-        const topic = `ridvanses/v2/room/${codeClean}/GENEL`;
+        const roomClean = joinMsg && joinMsg.roomId ? String(joinMsg.roomId).trim().toUpperCase() : 'GENEL';
+        const topic = `ridvanses/v2/room/${codeClean}/${roomClean}`;
         this._mqttTopic = topic;
 
         // Ölçüm (30 sn, 23 paket/sn): broker.emqx.io yayıncı başına ~10 mesaj/sn ile sınırlıyor (%54 kayıp);
@@ -438,6 +455,16 @@
     }
 
     send(data) {
+      if (
+        (typeof ArrayBuffer !== 'undefined' && data instanceof ArrayBuffer) ||
+        (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView && ArrayBuffer.isView(data))
+      ) {
+        if (!this._isRelay && this._native && this._native.readyState === 1) {
+          this._native.send(data);
+        }
+        return;
+      }
+
       let parsed = null;
       try {
         parsed = typeof data === 'string' ? JSON.parse(data) : data;
@@ -618,6 +645,7 @@
       }
       this._inFlight = true;
       try {
+        const authToken = (localStorage.getItem('ry_auth_token') || '').trim();
         let res;
         if (batch.length > 0) {
           res = await fetch('/api/ws-relay', {
@@ -625,6 +653,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               clientId: this._clientId,
+              token: authToken,
               joinContext: this._joinContext,
               messages: batch
             })
@@ -638,6 +667,7 @@
             role: jc.role || 'pilgrim',
             name: jc.name || ''
           });
+          if (authToken) qs.set('token', authToken);
           res = await fetch('/api/ws-relay?' + qs.toString());
         }
         if (res && res.ok) {
@@ -683,13 +713,18 @@
       let isCrossOriginVdsApi = false;
       try {
         const urlStr = typeof input === 'string' ? input : (input && input.url) || '';
-        if (urlStr.startsWith('/api/') || urlStr.includes('/api/')) {
+        const parsedUrl = new URL(urlStr, window.location.origin);
+        const isTrustedOrigin =
+          parsedUrl.origin === window.location.origin || parsedUrl.origin === VDS_API_ORIGIN;
+        if (isTrustedOrigin && parsedUrl.pathname.startsWith('/api/')) {
           const token = localStorage.getItem('ry_auth_token');
           if (token) {
             init = Object.assign({}, init);
-            init.headers = Object.assign({}, init.headers, {
-              Authorization: 'Bearer ' + token
-            });
+            const mergedHeaders = new Headers(
+              init.headers || (typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined)
+            );
+            mergedHeaders.set('Authorization', 'Bearer ' + token);
+            init.headers = mergedHeaders;
           }
           if (
             typeof input === 'string' &&

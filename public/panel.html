@@ -12,13 +12,12 @@
   <link rel="stylesheet" href="/css/style.css?v=19" />
   <script>
     (function() {
-      const TOKEN = 'ry_auth_v1_987a6b5c4d';
-      const hasCookie = document.cookie.includes('ry_auth=' + TOKEN);
-      const hasLocal = localStorage.getItem('ry_auth_token') === TOKEN;
-      if (!hasCookie && !hasLocal) {
+      const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
+      const hasCookie = document.cookie.split(';').some((c) => c.trim().startsWith('ry_auth='));
+      if (!hasCookie && !savedToken) {
         window.location.replace('/login?next=' + encodeURIComponent(window.location.pathname + window.location.search));
-      } else if (!hasCookie && hasLocal) {
-        document.cookie = 'ry_auth=' + TOKEN + '; path=/; max-age=2592000; SameSite=Lax';
+      } else if (!hasCookie && savedToken) {
+        document.cookie = 'ry_auth=' + encodeURIComponent(savedToken) + '; path=/; max-age=2592000; SameSite=Lax';
       }
     })();
     async function ryLogout() {
@@ -1108,25 +1107,25 @@
           <div class="grid-3" style="margin-bottom:18px;">
             <div style="padding:16px; background:var(--color-ground); border-radius:14px; border:1px solid var(--color-hairline);">
               <div style="font-size:0.74rem; color:var(--color-muted); font-weight:800;">RIDVANSES EVIDENCE ID</div>
-              <div style="font-family:monospace; font-size:0.82rem; word-break:break-all; margin-top:4px;">${r.evidence_id}</div>
+              <div style="font-family:monospace; font-size:0.82rem; word-break:break-all; margin-top:4px;">${escapeHtml(r.evidence_id)}</div>
             </div>
             <div style="padding:16px; background:var(--color-ground); border-radius:14px; border:1px solid var(--color-hairline);">
               <div style="font-size:0.74rem; color:var(--color-muted); font-weight:800;">UYGULAMA GRAFİĞİ (NODES / EDGES)</div>
-              <div style="font-size:1.3rem; font-weight:800; color:var(--color-emerald-deep); margin-top:4px;">${r.totalNodes} Düğüm / ${r.totalEdges} Kenar</div>
+              <div style="font-size:1.3rem; font-weight:800; color:var(--color-emerald-deep); margin-top:4px;">${escapeHtml(r.totalNodes)} Düğüm / ${escapeHtml(r.totalEdges)} Kenar</div>
             </div>
             <div style="padding:16px; background:var(--color-ground); border-radius:14px; border:1px solid var(--color-hairline);">
               <div style="font-size:0.74rem; color:var(--color-muted); font-weight:800;">POLARSTEPS ENTEGRASYON GRAFİĞİ</div>
-              <div style="font-size:1.22rem; font-weight:800; color:var(--color-gold); margin-top:4px;">${ps ? `${ps.totalNodes} Düğüm / ${ps.totalEdges} Kenar` : 'Aktif'}</div>
+              <div style="font-size:1.22rem; font-weight:800; color:var(--color-gold); margin-top:4px;">${ps ? `${escapeHtml(ps.totalNodes)} Düğüm / ${escapeHtml(ps.totalEdges)} Kenar` : 'Aktif'}</div>
             </div>
           </div>
           ${ps ? `
           <div style="font-size:0.9rem; background:linear-gradient(180deg,#fffdf8 0%,#f9f2e2 100%); padding:18px; border-radius:14px; border:1px solid var(--color-gold); margin-bottom:16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
               <strong style="color:var(--color-emerald-night);">🧭 Polarsteps (morluto/rea) Tersine Mühendislik & RıdvanSes Entegrasyon Özeti</strong>
-              <span class="badge badge-gold">${ps.apiEndpointCount} API • ${ps.reduxModelCount} Redux Model</span>
+              <span class="badge badge-gold">${escapeHtml(ps.apiEndpointCount)} API • ${escapeHtml(ps.reduxModelCount)} Redux Model</span>
             </div>
             <div style="font-family:monospace; font-size:0.78rem; color:var(--color-muted); word-break:break-all; margin-bottom:8px;">
-              Core SPA Evidence: ${ps.coreEvidenceId} (${(ps.coreBundleBytes / (1024 * 1024)).toFixed(2)} MB • ${ps.astNodes.toLocaleString('tr-TR')} AST Düğümü)
+              Core SPA Evidence: ${escapeHtml(ps.coreEvidenceId)} (${(Number(ps.coreBundleBytes || 0) / (1024 * 1024)).toFixed(2)} MB • ${Number(ps.astNodes || 0).toLocaleString('tr-TR')} AST Düğümü)
             </div>
             <ul style="padding-left:20px; display:flex; flex-direction:column; gap:5px;">
               ${(ps.integratedModules || []).map((m) => `<li>${escapeHtml(m)}</li>`).join('')}
@@ -1170,7 +1169,8 @@
       const adminWs = new WebSocket(`${proto}//${wsHost}/ws`);
       adminWsInstance = adminWs;
       adminWs.onopen = () => {
-        adminWs.send(JSON.stringify({ type: 'admin-subscribe' }));
+        const authToken = (localStorage.getItem('ry_auth_token') || '').trim();
+        adminWs.send(JSON.stringify({ type: 'admin-subscribe', token: authToken }));
       };
       adminWs.onmessage = (ev) => {
         try {

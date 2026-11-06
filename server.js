@@ -56,6 +56,25 @@ const RUNTIME_FILE = process.env.VERCEL
   : path.join(__dirname, 'data', 'runtime.json');
 const REA_FILE = path.join(__dirname, 'rea-umrahvoice-analysis.json');
 
+function getDefaultState() {
+  return {
+    agency: {
+      name: 'Rıdvan Yılmaz Turizm',
+      shortName: 'RıdvanSes',
+      phone: '+90 538 399 96 66',
+      city: 'Osmangazi / Bursa'
+    },
+    tours: [],
+    guides: [],
+    hotels: [],
+    announcements: [],
+    sosAlerts: [],
+    requests: [],
+    siyerPoints: [],
+    journeySteps: {}
+  };
+}
+
 function loadState() {
   try {
     if (fs.existsSync(RUNTIME_FILE)) {
@@ -64,9 +83,18 @@ function loadState() {
   } catch (err) {
     console.error('Runtime state okunamadı, seed kullanılıyor:', err.message);
   }
-  const seed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  saveState(seed);
-  return seed;
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const seed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      saveState(seed);
+      return seed;
+    }
+  } catch (err) {
+    console.error('Seed state okunamadı, varsayılan boş şema kullanılıyor:', err.message);
+  }
+  const fallback = getDefaultState();
+  saveState(fallback);
+  return fallback;
 }
 
 let pendingSaveTimer = null;
@@ -79,9 +107,11 @@ async function flushAsyncRuntimeWrite() {
   isWritingRuntimeFile = true;
   const snapshot = pendingSaveStateRef;
   pendingSaveStateRef = null;
+  const tmpFile = `${RUNTIME_FILE}.tmp`;
   try {
     const payload = JSON.stringify(snapshot, null, 2);
-    await fs.promises.writeFile(RUNTIME_FILE, payload, 'utf8');
+    await fs.promises.writeFile(tmpFile, payload, 'utf8');
+    await fs.promises.rename(tmpFile, RUNTIME_FILE);
   } catch (err) {
     console.error('Runtime state asenkron kaydedilemedi:', err.message);
   } finally {
@@ -99,8 +129,10 @@ function flushPendingSaveSync() {
     pendingSaveTimer = null;
   }
   if (pendingSaveStateRef) {
+    const tmpFile = `${RUNTIME_FILE}.tmp`;
     try {
-      fs.writeFileSync(RUNTIME_FILE, JSON.stringify(pendingSaveStateRef, null, 2), 'utf8');
+      fs.writeFileSync(tmpFile, JSON.stringify(pendingSaveStateRef, null, 2), 'utf8');
+      fs.renameSync(tmpFile, RUNTIME_FILE);
       pendingSaveStateRef = null;
     } catch (err) {
       console.error('Runtime state senkron flush hatası:', err.message);
@@ -130,10 +162,6 @@ function saveState(state) {
         state.requests = state.requests.slice(0, 200);
       }
     }
-    if (process.env.VERCEL) {
-      fs.writeFileSync(RUNTIME_FILE, JSON.stringify(state, null, 2), 'utf8');
-      return;
-    }
     pendingSaveStateRef = state;
     if (isWritingRuntimeFile) {
       writeAgainAfterCurrent = true;
@@ -143,7 +171,7 @@ function saveState(state) {
     pendingSaveTimer = setTimeout(() => {
       pendingSaveTimer = null;
       flushAsyncRuntimeWrite();
-    }, 50);
+    }, 250);
   } catch (err) {
     console.error('Runtime state kaydedilemedi:', err.message);
   }
@@ -390,7 +418,42 @@ function broadcastToGuidesInTour(tourCode, payload) {
   }
 }
 
-const guideDisconnectTimers = new Map(); // tourCode -> Timeout
+const guideDisconnectTimers = new Map(); // room.key -> Timeout
+
+// Auth Constants & Helpers (Rehber Yayını & Acente Paneli Yetkili Girişi)
+const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || 'ridvanyilmazturizm@gmail.com').trim().toLowerCase();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || 'dolapdereli16').trim();
+const SELAMET_PASSWORD = String(process.env.SELAMET_PASSWORD || 'selamet2026').trim();
+const AUTH_COOKIE_NAME = 'ry_auth';
+const AUTH_TOKEN_VALUE = String(process.env.AUTH_TOKEN_SECRET || 'ry_auth_v1_987a6b5c4d').trim();
+
+function isValidAuthToken(token) {
+  return Boolean(token && String(token).trim() === AUTH_TOKEN_VALUE);
+}
+
+function isRequestAuthenticated(req) {
+  if (!req || !req.headers) return false;
+  const cookieHeader = String(req.headers.cookie || '');
+  if (cookieHeader.includes(`${AUTH_COOKIE_NAME}=${AUTH_TOKEN_VALUE}`) || cookieHeader.includes(`${AUTH_COOKIE_NAME}=${encodeURIComponent(AUTH_TOKEN_VALUE)}`)) {
+    return true;
+  }
+  const authHeader = String(req.headers.authorization || '');
+  if (authHeader === `Bearer ${AUTH_TOKEN_VALUE}`) return true;
+  const customHeader = String(req.headers['x-ry-auth'] || '');
+  if (customHeader === AUTH_TOKEN_VALUE) return true;
+  return false;
+}
+
+function sanitizeTourForPublic(tour) {
+  if (!tour || typeof tour !== 'object') return tour;
+  const { pin, ...rest } = tour;
+  const isProtected = Boolean(rest.pinProtected || pin);
+  return {
+    ...rest,
+    pinProtected: isProtected,
+    pinRequired: isProtected
+  };
+}
 
 function evaluateTourGuidePresence(tourCode) {
   const code = String(tourCode || 'RY-KASIM').toUpperCase().trim();
@@ -409,6 +472,21 @@ function evaluateTourGuidePresence(tourCode) {
   for (const r of getTourRooms(code)) {
     const roomHasGuide = Array.from(r.clients.values()).some((c) => c.role === 'guide');
     const coveredByGenel = r.roomId !== 'genel' && genelHasGuide && genelRoom.isLive;
+    if (!roomHasGuide && coveredByGenel) {
+      r.isLive = genelRoom.isLive;
+      r.broadcastMode = genelRoom.broadcastMode;
+      r.currentTopic = genelRoom.currentTopic;
+      r.guidePeerId = genelRoom.guidePeerId || null;
+      r.guideName = genelRoom.guideName;
+      broadcastToRoom(r, {
+        type: 'stream-state',
+        isLive: r.isLive,
+        broadcastMode: r.broadcastMode,
+        currentTopic: r.currentTopic,
+        guidePeerId: r.guidePeerId || null
+      });
+      continue;
+    }
     if (!roomHasGuide && !coveredByGenel && r.isLive) {
       r.isLive = false;
       r.broadcastMode = 'idle';
@@ -434,16 +512,17 @@ function removeClientFromRoom(room, clientId, graceMs = 2500) {
   room.clients.delete(clientId);
 
   if (prevClient && prevClient.role === 'guide') {
+    const timerKey = room.key;
     const code = room.tourCode;
-    if (guideDisconnectTimers.has(code)) {
-      clearTimeout(guideDisconnectTimers.get(code));
+    if (guideDisconnectTimers.has(timerKey)) {
+      clearTimeout(guideDisconnectTimers.get(timerKey));
     }
     const timer = setTimeout(() => {
-      guideDisconnectTimers.delete(code);
+      guideDisconnectTimers.delete(timerKey);
       evaluateTourGuidePresence(code);
       broadcastRoomState(room);
     }, graceMs);
-    guideDisconnectTimers.set(code, timer);
+    guideDisconnectTimers.set(timerKey, timer);
     return;
   }
 
@@ -546,13 +625,22 @@ let clientSeq = 1;
 
 function processClientJsonMessage(ctx, msg) {
   const { clientId, ws } = ctx;
+  if (msg && msg.token && isValidAuthToken(msg.token)) {
+    ws.isAuthenticated = true;
+    ctx.isAuthenticated = true;
+  }
+  const isAuthedClient = Boolean(ws.isAuthenticated || ctx.isAuthenticated);
 
   if (msg.type === 'admin-subscribe') {
+    if (!isAuthedClient) {
+      ws.send(JSON.stringify({ type: 'auth-error', message: 'Acente paneli aboneliği için yetkili oturum gereklidir.' }));
+      return;
+    }
     ws.isAdmin = true;
     ws.send(
       JSON.stringify({
         type: 'admin-rooms-update',
-        rooms: Array.from(liveRooms.values()).map(serializeRoom),
+        rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true)),
         sosAlerts: db.sosAlerts,
         announcements: db.announcements
       })
@@ -579,6 +667,10 @@ function processClientJsonMessage(ctx, msg) {
   }
 
   if (msg.type === 'join') {
+    if (msg.role === 'guide' && !isAuthedClient) {
+      ws.send(JSON.stringify({ type: 'auth-error', message: 'Rehber yayını başlatmak için yetkili girişi gereklidir.' }));
+      return;
+    }
     const tourCode = String(msg.tourCode || 'RY-KASIM').toUpperCase().trim();
     const roomId = String(msg.roomId || 'genel').trim();
     const prevRoom = ctx.currentRoom;
@@ -616,9 +708,9 @@ function processClientJsonMessage(ctx, msg) {
     if (prevRoom && prevRoom !== targetRoom) {
       removeClientFromRoom(prevRoom, clientId, 80);
     }
-    if (role === 'guide' && guideDisconnectTimers.has(tourCode) && (!prevRoom || prevRoom.tourCode !== tourCode)) {
-      clearTimeout(guideDisconnectTimers.get(tourCode));
-      guideDisconnectTimers.delete(tourCode);
+    if (role === 'guide' && guideDisconnectTimers.has(targetRoom.key)) {
+      clearTimeout(guideDisconnectTimers.get(targetRoom.key));
+      guideDisconnectTimers.delete(targetRoom.key);
     }
     if (role === 'guide' && msg.name) {
       for (const r of getTourRooms(tourCode)) {
@@ -816,8 +908,9 @@ function processClientJsonMessage(ctx, msg) {
 }
 
 // WebSocket Connection Handler
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   ws.isAlive = true;
+  ws.isAuthenticated = Boolean(req && isRequestAuthenticated(req));
   ws.on('pong', () => {
     ws.isAlive = true;
   });
@@ -825,7 +918,8 @@ wss.on('connection', (ws) => {
   const ctx = {
     clientId: `client-${Date.now()}-${clientSeq++}`,
     ws,
-    currentRoom: null
+    currentRoom: null,
+    isAuthenticated: ws.isAuthenticated
   };
 
   ws.on('message', (raw, isBinary) => {
@@ -835,10 +929,38 @@ wss.on('connection', (ws) => {
       const sender = ctx.currentRoom.clients.get(ctx.clientId);
       if (!sender || sender.role !== 'guide') return;
 
+      const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+      let fallbackJsonStr = null;
+
       for (const r of getTargetBroadcastRooms(ctx.currentRoom)) {
         for (const peer of r.clients.values()) {
-          if (peer.ws !== ws && peer.ws.readyState === WebSocket.OPEN && !peer.ws.isHttpRelay) {
-            peer.ws.send(raw, { binary: true });
+          if (peer.ws === ws || peer.ws.readyState !== WebSocket.OPEN) continue;
+          if (!peer.ws.isHttpRelay) {
+            if (peer.ws.bufferedAmount && peer.ws.bufferedAmount > 98304) {
+              continue;
+            }
+            peer.ws.send(buf, { binary: true });
+          } else if (buf.length > 12) {
+            if (!fallbackJsonStr) {
+              const rawSeq = buf.readUInt32LE(0);
+              const phraseStart = Boolean(rawSeq & 0x80000000);
+              const seq = rawSeq & 0x7fffffff;
+              const sentAt = buf.readDoubleLE(4);
+              const pcmSlice = buf.subarray(12);
+              fallbackJsonStr = JSON.stringify({
+                type: 'audio-chunk',
+                seq,
+                phraseStart,
+                speakerId: ctx.clientId,
+                speakerName: sender.name,
+                speakerRole: sender.role,
+                sampleRate: 24000,
+                pcm16: pcmSlice.toString('base64'),
+                level: 0.35,
+                sentAt
+              });
+            }
+            peer.ws.send(fallbackJsonStr);
           }
         }
       }
@@ -888,9 +1010,11 @@ function getOrCreateRelaySession(clientId) {
       outbox: [],
       currentRoom: null,
       lastSeen: Date.now(),
+      isAuthenticated: false,
       ws: {
         isHttpRelay: true,
         isAdmin: false,
+        isAuthenticated: false,
         readyState: WebSocket.OPEN,
         send(data) {
           try {
@@ -909,8 +1033,12 @@ function getOrCreateRelaySession(clientId) {
 }
 
 app.post('/api/ws-relay', (req, res) => {
-  const { clientId, messages, joinContext } = req.body || {};
+  const { clientId, messages, joinContext, token } = req.body || {};
   const session = getOrCreateRelaySession(clientId);
+  if (isRequestAuthenticated(req) || isValidAuthToken(token) || isValidAuthToken(joinContext?.token)) {
+    session.isAuthenticated = true;
+    session.ws.isAuthenticated = true;
+  }
   if (!session.currentRoom && joinContext && joinContext.type === 'join') {
     processClientJsonMessage(session, joinContext);
   }
@@ -926,13 +1054,18 @@ app.post('/api/ws-relay', (req, res) => {
 
 app.get('/api/ws-relay', (req, res) => {
   const session = getOrCreateRelaySession(req.query.clientId);
+  if (isRequestAuthenticated(req) || isValidAuthToken(req.query.token)) {
+    session.isAuthenticated = true;
+    session.ws.isAuthenticated = true;
+  }
   if (!session.currentRoom && req.query.tourCode) {
     processClientJsonMessage(session, {
       type: 'join',
       tourCode: req.query.tourCode,
       roomId: req.query.roomId || 'genel',
       role: req.query.role || 'pilgrim',
-      name: req.query.name || ''
+      name: req.query.name || '',
+      token: req.query.token || ''
     });
   }
   const drained = session.outbox.splice(0, session.outbox.length);
@@ -942,21 +1075,6 @@ app.get('/api/ws-relay', (req, res) => {
 // ======================== REST API ENDPOINTS ========================
 
 // 1. Auth Endpoints (Rehber Yayını & Acente Paneli Yetkili Girişi)
-const ADMIN_USERNAME = 'ridvanyilmazturizm@gmail.com';
-const ADMIN_PASSWORD = 'dolapdereli16';
-const AUTH_COOKIE_NAME = 'ry_auth';
-const AUTH_TOKEN_VALUE = 'ry_auth_v1_987a6b5c4d';
-
-function isRequestAuthenticated(req) {
-  const cookieHeader = String(req.headers.cookie || '');
-  if (cookieHeader.includes(`${AUTH_COOKIE_NAME}=${AUTH_TOKEN_VALUE}`)) return true;
-  const authHeader = String(req.headers.authorization || '');
-  if (authHeader === `Bearer ${AUTH_TOKEN_VALUE}`) return true;
-  const customHeader = String(req.headers['x-ry-auth'] || '');
-  if (customHeader === AUTH_TOKEN_VALUE) return true;
-  return false;
-}
-
 function requireAuth(req, res, next) {
   if (!isRequestAuthenticated(req)) {
     return res.status(401).json({
@@ -990,7 +1108,7 @@ app.post('/api/login', (req, res) => {
     };
   } else if (
     (cleanEmail === 'info@selametturizm.com' || cleanEmail === 'selamet@selametturizm.com' || cleanEmail === 'selamet') &&
-    (cleanPass === 'selamet2026' || cleanPass === 'selamet123')
+    (cleanPass === SELAMET_PASSWORD || cleanPass === 'selamet2026' || cleanPass === 'selamet123')
   ) {
     user = {
       id: 'agency-selamet',
@@ -1026,9 +1144,10 @@ app.post('/api/logout', (req, res) => {
 
 app.post('/api/forgot-password', (req, res) => {
   const { email } = req.body || {};
+  const cleanEmail = String(email || '').trim();
   return res.json({
     success: true,
-    message: `${email || 'Hesabınız'} için şifre sıfırlama bağlantısı Rıdvan Yılmaz Turizm sisteminden gönderildi.`
+    message: `${cleanEmail || 'Yetkili hesabınız'} için şifre yenileme talebiniz kaydedildi. Güvenlik nedeniyle yetkili şifre sıfırlama işlemleri Rıdvan Yılmaz Turizm Merkez Ofisi (+90 538 399 96 66) tarafından gerçekleştirilmektedir.`
   });
 });
 
@@ -1070,17 +1189,21 @@ app.delete('/api/requests/:id', requireAuth, (req, res) => {
 // 2. Bootstrap & System Overview
 app.get('/api/bootstrap', (req, res) => {
   ensureJourneySteps();
+  const isAuthed = isRequestAuthenticated(req);
+  const toursPayload = isAuthed
+    ? db.tours
+    : (db.tours || []).map((t) => sanitizeTourForPublic(t));
   res.json({
     agency: db.agency,
-    tours: db.tours,
+    tours: toursPayload,
     guides: db.guides,
     hotels: db.hotels,
     announcements: db.announcements,
-    sosAlerts: db.sosAlerts,
-    requests: db.requests || [],
+    sosAlerts: isAuthed ? db.sosAlerts : [],
+    requests: isAuthed ? db.requests || [] : [],
     siyerPoints: db.siyerPoints,
     journeySteps: db.journeySteps,
-    liveRooms: Array.from(liveRooms.values()).map(serializeRoom)
+    liveRooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, isAuthed))
   });
 });
 
@@ -1106,7 +1229,7 @@ app.post('/api/join-tour', (req, res) => {
   const stats = computeJourneyStats(steps);
   return res.json({
     success: true,
-    tour,
+    tour: sanitizeTourForPublic(tour),
     room: roomState,
     announcements: db.announcements.filter((a) => a.tourCode === tour.code || a.tourCode === 'ALL'),
     siyerPoints: db.siyerPoints,
@@ -1168,7 +1291,7 @@ app.post('/api/tours', requireAuth, (req, res) => {
   getOrCreateRoom(newTour.code, 'siyer');
   broadcastToAdmins({
     type: 'admin-rooms-update',
-    rooms: Array.from(liveRooms.values()).map(serializeRoom)
+    rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true))
   });
   res.json({ success: true, tour: newTour, steps: db.journeySteps[newTour.code] });
 });
@@ -1232,7 +1355,7 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
   } else {
     broadcastToAdmins({
       type: 'admin-rooms-update',
-      rooms: Array.from(liveRooms.values()).map(serializeRoom)
+      rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true))
     });
   }
   return res.json({ success: true, tour });
@@ -1257,7 +1380,7 @@ app.delete('/api/tours/:id', requireAuth, (req, res) => {
   saveState(db);
   broadcastToAdmins({
     type: 'admin-rooms-update',
-    rooms: Array.from(liveRooms.values()).map(serializeRoom)
+    rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true))
   });
   res.json({ success: true });
 });
@@ -1277,7 +1400,7 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 app.get('/api/trips/:code/steps', (req, res) => {
   const code = String(req.params.code || 'RY-KASIM').toUpperCase().trim();
-  const tour = db.tours.find((t) => t.code.toUpperCase() === code) || db.tours[0] || {
+  const rawTour = db.tours.find((t) => t.code.toUpperCase() === code) || db.tours[0] || {
     code,
     name: 'Kasım Umresi Kafilesi',
     guideName: 'Ömer Ali Gültekin',
@@ -1286,6 +1409,7 @@ app.get('/api/trips/:code/steps', (req, res) => {
     makkahHotel: 'Mekke Otel Kudi Tower',
     madinahHotel: '2 Gün Medine Konaklama (Merkezi Bölge)'
   };
+  const tour = isRequestAuthenticated(req) ? rawTour : sanitizeTourForPublic(rawTour);
   const steps = getTourSteps(code);
   const stats = computeJourneyStats(steps);
   const room = serializeRoom(getOrCreateRoom(code, 'genel'), false);
@@ -1590,13 +1714,29 @@ app.delete('/api/sos/:id', requireAuth, (req, res) => {
 
 // 8. REA Analysis Report Endpoint
 const REA_SUMMARY_FILE = path.join(__dirname, 'data', 'rea-summary.json');
-app.get('/api/rea-report', (req, res) => {
+const MAX_REA_INLINE_BYTES = 5 * 1024 * 1024; // 5 MB safety limit
+app.get('/api/rea-report', requireAuth, async (req, res) => {
   try {
     if (fs.existsSync(REA_SUMMARY_FILE)) {
-      return res.json(JSON.parse(fs.readFileSync(REA_SUMMARY_FILE, 'utf8')));
+      const summaryRaw = await fs.promises.readFile(REA_SUMMARY_FILE, 'utf8');
+      return res.json(JSON.parse(summaryRaw));
     }
     if (fs.existsSync(REA_FILE)) {
-      const reaData = JSON.parse(fs.readFileSync(REA_FILE, 'utf8'));
+      const stat = await fs.promises.stat(REA_FILE);
+      if (stat.size > MAX_REA_INLINE_BYTES) {
+        return res.json({
+          available: true,
+          summaryOnly: true,
+          fileSizeBytes: stat.size,
+          evidence_id: 'rea-umrahvoice-bundle',
+          provider: 'morluto/rea',
+          totalNodes: 0,
+          totalEdges: 0,
+          message: 'Rapor dosyası 5 MB sınırını aştığı için bellek koruması nedeniyle özet modunda döndürüldü.'
+        });
+      }
+      const rawContent = await fs.promises.readFile(REA_FILE, 'utf8');
+      const reaData = JSON.parse(rawContent);
       const graph = reaData.normalized_result.graph;
       const counts = graph.nodes.reduce((acc, n) => {
         acc[n.kind] = (acc[n.kind] || 0) + 1;
@@ -1716,7 +1856,7 @@ app.get('/api/qr', async (req, res) => {
       success: true,
       code,
       room,
-      tour,
+      tour: isRequestAuthenticated(req) ? tour : sanitizeTourForPublic(tour),
       joinUrl,
       familyTrackUrl,
       keepsakeBookUrl,
