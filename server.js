@@ -707,6 +707,15 @@ function processClientJsonMessage(ctx, msg) {
       broadcastToAdmins({ type: 'new-announcement', announcement: ann });
       break;
     }
+
+    case 'ping': {
+      if (ws && ws.readyState === WebSocket.OPEN && !ws.isHttpRelay) {
+        try {
+          ws.send(JSON.stringify({ type: 'pong', ts: Date.now() }));
+        } catch {}
+      }
+      break;
+    }
   }
 }
 
@@ -724,6 +733,7 @@ wss.on('connection', (ws) => {
   };
 
   ws.on('message', (raw, isBinary) => {
+    ws.isAlive = true;
     if (isBinary) {
       if (!ctx.currentRoom) return;
       const sender = ctx.currentRoom.clients.get(ctx.clientId);

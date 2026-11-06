@@ -1515,10 +1515,17 @@
       if (!audioCtx.audioWorklet || typeof window.AudioWorkletNode === 'undefined') return;
       rxPlayerWorkletLoading = true;
       audioCtx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=34')
+        .addModule('/pcm-player-worklet.js?v=35')
         .then(() => {
           if (!audioCtx || rxPlayerWorkletNode) return;
           const node = new AudioWorkletNode(audioCtx, 'rys-pcm-player');
+          node.port.onmessage = (ev) => {
+            if (ev && ev.data && ev.data.type === 'audio-heartbeat') {
+              if (typeof pilgrimBackgroundHeartbeatTick === 'function') {
+                pilgrimBackgroundHeartbeatTick();
+              }
+            }
+          };
           node.connect(rxInputNode || gainNode);
           rxPlayerWorkletNode = node;
           while (activeScheduledSources.length > 0) {
@@ -2407,9 +2414,42 @@
       }
     }
 
+    let lastPilgrimWsPingAt = 0;
+    let lastPilgrimBgReconnectAt = 0;
+
+    function pilgrimBackgroundHeartbeatTick() {
+      if (!currentTour || intentionalLeave) return;
+      const now = Date.now();
+      if (isAudioListening) {
+        if (audioCtx && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+          audioCtx.resume().catch(() => {});
+        }
+        const bgEl = document.getElementById('bgKeepAliveAudio');
+        if (bgEl && bgEl.paused) {
+          bgEl.play().catch(() => {});
+        }
+      }
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        if (now - lastPilgrimWsPingAt >= 12000) {
+          lastPilgrimWsPingAt = now;
+          try {
+            ws.send(JSON.stringify({ type: 'ping', ts: now }));
+          } catch {}
+        }
+      } else if ((!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) && now - lastPilgrimBgReconnectAt >= 2500) {
+        lastPilgrimBgReconnectAt = now;
+        const roomId = document.getElementById('roomSelect')?.value || 'genel';
+        const name = document.getElementById('pilgrimNameInput')?.value?.trim() || 'Hacı Misafir';
+        const phone = document.getElementById('pilgrimPhoneInput')?.value?.trim() || '+90 538 000 00 00';
+        connectWebSocket(currentTour.code, roomId, name, phone);
+      }
+    }
+
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         recoverPilgrimLiveSession();
+      } else {
+        pilgrimBackgroundHeartbeatTick();
       }
     });
 
@@ -2425,17 +2465,9 @@
       });
     }
 
-    // Telefon cepte ekran kilitliyken (hidden) gelen arama/bildirim sonrası sesi otomatik uyandır
+    // Telefon cepte ekran kilitliyken (hidden) veya WhatsApp'a geçildiğinde sesi ve WS'yi canlı tut
     setInterval(() => {
-      if (isAudioListening && currentTour && !intentionalLeave) {
-        if (audioCtx && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
-          audioCtx.resume().catch(() => {});
-        }
-        const bgEl = document.getElementById('bgKeepAliveAudio');
-        if (bgEl && bgEl.paused) {
-          bgEl.play().catch(() => {});
-        }
-      }
+      pilgrimBackgroundHeartbeatTick();
     }, 2500);
 
     function createSilentWavDataUri() {

@@ -1245,6 +1245,25 @@
       return 'data:audio/wav;base64,' + btoa(binary);
     }
 
+    function updateGuideMediaSession() {
+      if (!('mediaSession' in navigator)) return;
+      try {
+        const topic = document.getElementById('topicInput')?.value?.trim() || 'Canlı Tavaf & Siyer Rehberliği';
+        const guideName = document.getElementById('guideNameSelect')?.value || 'Ömer Ali Gültekin';
+        const tourCode = document.getElementById('guideTourSelect')?.value || 'RY-KASIM';
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: `🔴 CANLI YAYIN • ${topic}`,
+          artist: `${guideName} (${tourCode})`,
+          album: 'Rıdvan Yılmaz Turizm — Rehber Stüdyosu',
+          artwork: [
+            { src: '/icons/icon-192.png?v=19', sizes: '192x192', type: 'image/png' },
+            { src: '/icons/icon-512.png?v=19', sizes: '512x512', type: 'image/png' }
+          ]
+        });
+        navigator.mediaSession.playbackState = (isMicBroadcasting || isDemoBroadcasting) ? 'playing' : 'paused';
+      } catch {}
+    }
+
     async function enableGuideKeepAlive() {
       try {
         if ('wakeLock' in navigator && !guideWakeLockSentinel) {
@@ -1254,16 +1273,20 @@
           });
         }
       } catch {}
-      // Yalnızca ekran arka plana atıldığında sessiz WAV çal (ön planda OS mikrofon/hoparlör eko iptalini tetiklemesin)
-      if (document.visibilityState === 'hidden') {
-        try {
-          const el = document.getElementById('guideBgKeepAliveAudio');
-          if (el) {
-            if (!el.src) el.src = createGuideSilentWavUri();
+      // ÖNEMLİ: Rehber yayını başlattığı anda (kullanıcı dokunuşu aktifken) sessiz arka plan ses kanalını
+      // ve MediaSession'ı hemen başlatıyoruz. Böylece rehber sonradan WhatsApp veya Haritalar'a geçtiğinde
+      // (visibilityState === 'hidden') iOS Safari / Android Chrome autoplay engeline takılmadan yayın kesintisiz sürer!
+      try {
+        const el = document.getElementById('guideBgKeepAliveAudio');
+        if (el) {
+          if (!el.src) el.src = createGuideSilentWavUri();
+          el.volume = 0.01;
+          if (el.paused) {
             el.play().catch(() => {});
           }
-        } catch {}
-      }
+        }
+      } catch {}
+      updateGuideMediaSession();
     }
 
     async function disableGuideKeepAlive() {
@@ -1277,24 +1300,20 @@
         const el = document.getElementById('guideBgKeepAliveAudio');
         if (el) el.pause();
       } catch {}
+      updateGuideMediaSession();
     }
 
     function recoverGuideLiveSession() {
       if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) {
         connectGuideWs();
       }
-      if (!isMicBroadcasting) return;
-      if (document.visibilityState === 'visible') {
-        try {
-          const el = document.getElementById('guideBgKeepAliveAudio');
-          if (el) el.pause();
-        } catch {}
-        enableGuideKeepAlive();
+      if (!isMicBroadcasting && !isDemoBroadcasting) return;
+      enableGuideKeepAlive();
+      if (isMicBroadcasting) {
         if (audioCtx && audioCtx.state !== 'running') {
           audioCtx.resume().catch(() => {});
         }
-      } else {
-        enableGuideKeepAlive();
+        healGuideMicrophoneIfNeeded();
       }
     }
 
@@ -1325,6 +1344,7 @@
 
     let workletModuleLoaded = false;
     let guideAudioSeq = Math.floor((Date.now() % 10000000) / 10);
+    let lastGuideBgWsReconnectAt = 0;
     let isHealingGuideMic = false;
     const guideFilterHist = new Float32Array(6);
     let guideGateEnv = 0;
@@ -1481,6 +1501,14 @@
         return;
       }
 
+      // Arka planda (WhatsApp veya başka bir uygulamadayken) tarayıcı setTimeout/setInterval zamanlayıcılarını
+      // yavaşlatsa bile AudioWorklet her 64ms'de bir çalıştığı için WS bağlantısını buradan denetle ve canlı tut!
+      const nowMs = Date.now();
+      if ((!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) && nowMs - lastGuideBgWsReconnectAt >= 2500) {
+        lastGuideBgWsReconnectAt = nowMs;
+        connectGuideWs();
+      }
+
       // Her 64ms çerçevede sıra numarasını (seq) kesintisiz artır.
       // Kelime ve cümle aralarındaki doğal nefes boşluklarında (~2.9 saniyeye kadar = 45 paket)
       // akışı ASLA kesme ki dinleyici tarafındaki dairesel tampon (Ring Buffer) sıfırlanmasın!
@@ -1489,6 +1517,13 @@
         guideSilentChunksCount++;
         if (guideSilentChunksCount > 45) {
           guideWasIdlePaused = true;
+          // Rehber WhatsApp'ta mesaj okurken uzun süre konuşmasa bile her ~9.6 saniyede bir (150 paket)
+          // NAT / Proxy bağlantısının düşmemesi için hafif 'ping' gönder:
+          if (guideSilentChunksCount % 150 === 0 && ws && ws.readyState === WebSocket.OPEN) {
+            try {
+              ws.send(JSON.stringify({ type: 'ping', ts: nowMs }));
+            } catch {}
+          }
           return;
         }
       } else {
@@ -1507,7 +1542,7 @@
           type: 'audio-chunk',
           seq: currentSeq,
           phraseStart: isPhraseStart,
-          sentAt: Date.now(),
+          sentAt: nowMs,
           sampleRate: outSampleRate,
           pcm16,
           level
@@ -1599,7 +1634,7 @@
       if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
         try {
           if (!workletModuleLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=34');
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=35');
             workletModuleLoaded = true;
           }
           scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
@@ -1675,6 +1710,13 @@
     setInterval(() => {
       if (isMicBroadcasting) {
         healGuideMicrophoneIfNeeded();
+        const el = document.getElementById('guideBgKeepAliveAudio');
+        if (el && el.paused) {
+          el.play().catch(() => {});
+        }
+      }
+      if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) {
+        connectGuideWs();
       }
     }, 2500);
 
