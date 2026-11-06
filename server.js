@@ -571,7 +571,10 @@ function processClientJsonMessage(ctx, msg) {
         broadcastMode: currentRoom.broadcastMode,
         currentTopic: currentRoom.currentTopic
       });
-      broadcastRoomState(currentRoom);
+      broadcastToAdmins({
+        type: 'admin-rooms-update',
+        rooms: Array.from(liveRooms.values()).map((rm) => serializeRoom(rm, true))
+      });
       break;
     }
 
@@ -603,7 +606,10 @@ function processClientJsonMessage(ctx, msg) {
         activeTawafStage: msg.clear ? null : stagePayload,
         currentTopic: currentRoom.currentTopic
       });
-      broadcastRoomState(currentRoom);
+      broadcastToAdmins({
+        type: 'admin-rooms-update',
+        rooms: Array.from(liveRooms.values()).map((rm) => serializeRoom(rm, true))
+      });
       break;
     }
 
@@ -632,7 +638,10 @@ function processClientJsonMessage(ctx, msg) {
         broadcastToRoom(r, locPayload);
       }
       broadcastToFamilyTrackers(currentRoom.tourCode, locPayload);
-      broadcastRoomState(currentRoom);
+      broadcastToAdmins({
+        type: 'admin-rooms-update',
+        rooms: Array.from(liveRooms.values()).map((rm) => serializeRoom(rm, true))
+      });
       break;
     }
 

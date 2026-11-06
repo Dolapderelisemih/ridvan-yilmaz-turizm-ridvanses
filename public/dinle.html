@@ -1248,7 +1248,7 @@
           }
           renderLiveTawafStage(msg.activeTawafStage || null);
           if (msg.activeTawafStage && msg.activeTawafStage.badge) {
-            showAppToast(`🕋 <strong>${msg.activeTawafStage.badge}:</strong> ${msg.activeTawafStage.title}`, 4500);
+            showAppToast(`🕋 <strong>${escapeHtml(msg.activeTawafStage.badge)}:</strong> ${escapeHtml(msg.activeTawafStage.title)}`, 4500);
           }
         }
 
@@ -1263,7 +1263,7 @@
             if (rDot) rDot.style.display = 'block';
           }
           if (msg.stats && msg.stats.activeStepTitle) {
-            showAppToast(`🕋 Yeni Manevi Durak: <strong>${msg.stats.activeStepTitle}</strong>`, 4500);
+            showAppToast(`🕋 Yeni Manevi Durak: <strong>${escapeHtml(msg.stats.activeStepTitle)}</strong>`, 4500);
           }
         }
 
