@@ -16,9 +16,9 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=39"></script>
+  <script src="/vercel-ws-shim.js?v=40"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=39"></script>
+  <script src="/js/umrah-steps-map.js?v=40"></script>
   <style>
     .app-shell {
       max-width: 540px;
@@ -1013,9 +1013,13 @@
           availableToursCache = data.tours;
           const container = document.getElementById('tourPillsContainer');
           if (container) {
-            container.innerHTML = data.tours.map((t) => `
-              <button type="button" class="code-pill" style="padding:5px 12px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-gold); background:var(--color-gold-soft); font-weight:700; cursor:pointer;" onclick="selectTourCodePill('${t.code}')">${t.code} (${t.dateText || t.name})</button>
-            `).join('');
+            container.innerHTML = data.tours.map((t) => {
+              const safeCode = escapeHtml(t.code || '');
+              const safeLabel = escapeHtml(t.dateText || t.name || '');
+              return `
+              <button type="button" class="code-pill" style="padding:5px 12px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-gold); background:var(--color-gold-soft); font-weight:700; cursor:pointer;" onclick="selectTourCodePill('${safeCode}')">${safeCode} (${safeLabel})</button>
+            `;
+            }).join('');
           }
           if (!urlParams.get('code')) {
             document.getElementById('tourCodeInput').value = data.tours[0].code;
@@ -1160,6 +1164,19 @@
       }
     });
 
+    const pilgrimDeviceId = (function () {
+      try {
+        let id = sessionStorage.getItem('ry_pilgrim_device_id');
+        if (!id) {
+          id = 'pilgrim-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+          sessionStorage.setItem('ry_pilgrim_device_id', id);
+        }
+        return id;
+      } catch {
+        return 'pilgrim-' + Date.now();
+      }
+    })();
+
     function connectWebSocket(tourCode, roomId, name, phone) {
       if (window._ryWsReconnectTimeout) {
         clearTimeout(window._ryWsReconnectTimeout);
@@ -1189,6 +1206,7 @@
         ws.send(JSON.stringify({
           type: 'join',
           role: 'pilgrim',
+          deviceId: pilgrimDeviceId,
           tourCode,
           roomId,
           name,
@@ -1528,7 +1546,7 @@
       if (!audioCtx.audioWorklet || typeof window.AudioWorkletNode === 'undefined') return;
       rxPlayerWorkletLoading = true;
       audioCtx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=39')
+        .addModule('/pcm-player-worklet.js?v=40')
         .then(() => {
           if (!audioCtx || rxPlayerWorkletNode) return;
           let node;
@@ -2054,10 +2072,12 @@
         const tourCode = (currentTour && currentTour.code) || document.getElementById('tourCodeInput').value.trim().toUpperCase() || 'RY-KASIM';
         const pilgrimName = document.getElementById('pilgrimNameInput').value.trim() || 'Hacı Misafir';
         const phone = document.getElementById('pilgrimPhoneInput').value.trim() || '+90 538 399 96 66';
+        const sosId = `sos-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
             type: 'sos-trigger',
+            id: sosId,
             tourCode,
             pilgrimName,
             phone,
@@ -2072,11 +2092,13 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            id: sosId,
             tourCode,
             pilgrimName,
             phone,
             lat,
             lng,
+            accuracy,
             locationNote: note
           })
         }).catch(() => {});
@@ -2098,7 +2120,7 @@
           </div>
           ${permWarning ? `<div style="background:#fef3c7; color:#92400e; padding:8px 10px; border-radius:8px; font-size:0.78rem; margin-bottom:8px;">${permWarning}</div>` : ''}
           <div style="font-size:0.84rem; margin-bottom:6px;">
-            <strong>Açık Adres:</strong> ${note}<br/>
+            <strong>Açık Adres:</strong> ${escapeHtml(note)}<br/>
             <strong>GPS Koordinat:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)} ${accuracy ? `(±${accuracy}m hassasiyet)` : ''}
           </div>
           <div style="border-radius:10px; overflow:hidden; border:1px solid #fca5a5; margin:8px 0; height:170px;">
@@ -2119,9 +2141,12 @@
           : `Canlı Telefon GPS Konumu (±${gps.accuracy}m Hassasiyet)`;
         await deliverSosPayload(gps.lat, gps.lng, gps.accuracy, note);
       } catch (err) {
-        let fallbackLat = 40.1885;
-        let fallbackLng = 29.0610;
-        let fallbackCity = 'Bursa, Türkiye';
+        const activeStep = Array.isArray(pilgrimJourneySteps)
+          ? pilgrimJourneySteps.find((s) => s.status === 'active') || pilgrimJourneySteps[0]
+          : null;
+        let fallbackLat = activeStep && activeStep.lat ? Number(activeStep.lat) : 21.4225;
+        let fallbackLng = activeStep && activeStep.lng ? Number(activeStep.lng) : 39.8262;
+        let fallbackCity = (activeStep && activeStep.locationLabel) || 'Mescid-i Haram, Mekke-i Mükerreme';
         try {
           const ipRes = await fetch('https://ipwho.is/');
           const ipData = await ipRes.json();
@@ -2135,7 +2160,7 @@
         const warnText =
           err && err.code === 1
             ? `Telefon tarayıcınızda <strong>Konum (GPS) İzni Reddedilmiş</strong>. Tam sokak noktanız için adres çubuğunun yanındaki kilit simgesine dokunup <strong>Konum → İzin Ver</strong> yapın.`
-            : `Telefonunuzun GPS servisi kapalı olduğu için yaklaşık ağ konumu (${fallbackCity}) gönderildi.`;
+            : `Telefonunuzun GPS servisi kapalı olduğu için yaklaşık ağ/kafile konumu (${escapeHtml(fallbackCity)}) gönderildi.`;
 
         await deliverSosPayload(
           fallbackLat,
@@ -2176,6 +2201,9 @@
 
     function prependAnnouncement(a) {
       const container = document.getElementById('announcementsList');
+      if (!container.querySelector('[data-ann-id]')) {
+        container.innerHTML = '';
+      }
       if (a.id) {
         const existing = container.querySelector(`[data-ann-id="${a.id}"]`);
         if (existing) existing.remove();
@@ -2232,8 +2260,13 @@
         btn.className = 'btn btn-gold';
       }
       if (orb) orb.classList.remove('playing');
+      stopAllActiveSources();
       stopBackgroundKeepAliveAudio();
       releaseWakeLock();
+      if (gpsWatchId !== null && navigator.geolocation) {
+        try { navigator.geolocation.clearWatch(gpsWatchId); } catch {}
+        gpsWatchId = null;
+      }
       document.getElementById('liveView').style.display = 'none';
       const bottomNav = document.getElementById('pilgrimBottomNav');
       if (bottomNav) bottomNav.style.display = 'none';
@@ -2267,7 +2300,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=39').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=40').catch(() => {});
       });
     }
 
@@ -2524,6 +2557,16 @@
     setInterval(() => {
       pilgrimBackgroundHeartbeatTick();
     }, 2500);
+
+    try {
+      if (typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && typeof URL !== 'undefined') {
+        const pilgrimWorkerBlob = new Blob(['setInterval(function(){postMessage(1);},2500);'], {
+          type: 'application/javascript'
+        });
+        const pilgrimBgWorker = new Worker(URL.createObjectURL(pilgrimWorkerBlob));
+        pilgrimBgWorker.onmessage = () => pilgrimBackgroundHeartbeatTick();
+      }
+    } catch {}
 
     function createSilentWavDataUri() {
       const sampleRate = 8000;

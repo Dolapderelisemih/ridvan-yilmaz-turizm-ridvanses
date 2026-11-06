@@ -585,15 +585,33 @@ function processClientJsonMessage(ctx, msg) {
     const targetRoom = getOrCreateRoom(tourCode, roomId);
     ctx.currentRoom = targetRoom;
     const role = msg.role === 'guide' ? 'guide' : 'pilgrim';
+    const deviceId = msg.deviceId ? String(msg.deviceId).trim() : '';
     const clientObj = {
       ws,
       id: clientId,
+      deviceId,
       role,
       name: msg.name || (role === 'guide' ? 'Ömer Ali Gültekin' : `Hacı Misafir #${clientSeq++}`),
       phone: msg.phone || '',
       lang: msg.lang || 'tr',
       joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
     };
+    // 4G/5G hücre geçişlerinde aynı cihaza veya aynı rehbere ait yarı-açık (zombie) eski soketleri anında temizle
+    for (const r of getTourRooms(tourCode)) {
+      for (const [existingId, existingClient] of r.clients.entries()) {
+        if (existingId === clientId || existingClient.ws === ws) continue;
+        const sameDevice = Boolean(deviceId && existingClient.deviceId && existingClient.deviceId === deviceId);
+        const sameGuide = Boolean(role === 'guide' && existingClient.role === 'guide' && r.roomId === roomId && existingClient.name === clientObj.name);
+        if (sameDevice || sameGuide) {
+          r.clients.delete(existingId);
+          try {
+            if (existingClient.ws && !existingClient.ws.isHttpRelay && typeof existingClient.ws.terminate === 'function') {
+              existingClient.ws.terminate();
+            }
+          } catch {}
+        }
+      }
+    }
     targetRoom.clients.set(clientId, clientObj);
     if (prevRoom && prevRoom !== targetRoom) {
       removeClientFromRoom(prevRoom, clientId, 80);
@@ -752,22 +770,16 @@ function processClientJsonMessage(ctx, msg) {
     }
 
     case 'sos-trigger': {
-      const alertItem = {
-        id: `sos-${Date.now()}`,
+      recordAndBroadcastSosAlert({
+        id: msg.id,
         tourCode: currentRoom.tourCode,
-        pilgrimName: sender.name,
+        pilgrimName: sender.name || msg.pilgrimName,
         phone: sender.phone || msg.phone || '+90 538 000 00 00',
-        lat: Number(msg.lat) || 21.4225,
-        lng: Number(msg.lng) || 39.8262,
-        locationNote: msg.locationNote || 'Mescid-i Haram / Kâbe-i Muazzama Çevresi (Canlı GPS)',
-        createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-        status: 'active',
-        resolvedBy: null
-      };
-      db.sosAlerts.unshift(alertItem);
-      saveState(db);
-      broadcastToGuidesInTour(currentRoom.tourCode, { type: 'sos-alert', alert: alertItem });
-      broadcastToAdmins({ type: 'sos-alert', alert: alertItem, sosAlerts: db.sosAlerts });
+        lat: msg.lat,
+        lng: msg.lng,
+        accuracy: msg.accuracy,
+        locationNote: msg.locationNote || 'Mescid-i Haram / Kâbe-i Muazzama Çevresi (Canlı GPS)'
+      });
       break;
     }
 
@@ -1504,17 +1516,36 @@ app.delete('/api/announcements/:id', requireAuth, (req, res) => {
 });
 
 // 7. SOS Emergency API
-app.post('/api/sos', (req, res) => {
-  const body = req.body || {};
+function recordAndBroadcastSosAlert(raw) {
+  const nowMs = Date.now();
+  const requestedId = raw.id ? String(raw.id).trim() : '';
+  const tourCode = String(raw.tourCode || 'RY-KASIM').toUpperCase().trim();
+  const pilgrimName = String(raw.pilgrimName || 'Hacı Misafir').trim();
+
+  const existing = db.sosAlerts.find(
+    (s) =>
+      (requestedId && s.id === requestedId) ||
+      (s.status === 'active' &&
+        s.tourCode === tourCode &&
+        s.pilgrimName === pilgrimName &&
+        s.createdAtMs &&
+        nowMs - s.createdAtMs < 10000)
+  );
+  if (existing) {
+    return existing;
+  }
+
   const alertItem = {
-    id: `sos-${Date.now()}`,
-    tourCode: String(body.tourCode || 'RY-KASIM').toUpperCase(),
-    pilgrimName: body.pilgrimName || 'Hacı Misafir',
-    phone: body.phone || '+90 538 000 00 00',
-    lat: Number(body.lat) || 21.4225,
-    lng: Number(body.lng) || 39.8262,
-    locationNote: body.locationNote || 'Mescid-i Haram / Kâbe-i Muazzama Çevresi',
+    id: requestedId || `sos-${nowMs}`,
+    tourCode,
+    pilgrimName,
+    phone: raw.phone || '+90 538 000 00 00',
+    lat: Number(raw.lat) || 21.4225,
+    lng: Number(raw.lng) || 39.8262,
+    accuracy: raw.accuracy ? Number(raw.accuracy) : null,
+    locationNote: raw.locationNote || 'Mescid-i Haram / Kâbe-i Muazzama Çevresi',
     createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+    createdAtMs: nowMs,
     status: 'active',
     resolvedBy: null
   };
@@ -1523,6 +1554,12 @@ app.post('/api/sos', (req, res) => {
 
   broadcastToGuidesInTour(alertItem.tourCode, { type: 'sos-alert', alert: alertItem });
   broadcastToAdmins({ type: 'sos-alert', alert: alertItem, sosAlerts: db.sosAlerts });
+  return alertItem;
+}
+
+app.post('/api/sos', (req, res) => {
+  const body = req.body || {};
+  const alertItem = recordAndBroadcastSosAlert(body);
   res.json({ success: true, alert: alertItem });
 });
 
