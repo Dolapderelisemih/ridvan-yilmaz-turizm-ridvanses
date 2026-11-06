@@ -16,7 +16,7 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=30"></script>
+  <script src="/vercel-ws-shim.js?v=36"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=30"></script>
   <style>
@@ -1510,17 +1510,29 @@
       return curve;
     }
 
+    let rxPlayerWorkletAlive = false;
+
     function initRxPlayerWorklet() {
       if (!audioCtx || rxPlayerWorkletNode || rxPlayerWorkletLoading) return;
       if (!audioCtx.audioWorklet || typeof window.AudioWorkletNode === 'undefined') return;
       rxPlayerWorkletLoading = true;
       audioCtx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=35')
+        .addModule('/pcm-player-worklet.js?v=36')
         .then(() => {
           if (!audioCtx || rxPlayerWorkletNode) return;
-          const node = new AudioWorkletNode(audioCtx, 'rys-pcm-player');
+          let node;
+          try {
+            node = new AudioWorkletNode(audioCtx, 'rys-pcm-player', {
+              numberOfInputs: 0,
+              numberOfOutputs: 1,
+              outputChannelCount: [1]
+            });
+          } catch {
+            node = new AudioWorkletNode(audioCtx, 'rys-pcm-player');
+          }
           node.port.onmessage = (ev) => {
             if (ev && ev.data && ev.data.type === 'audio-heartbeat') {
+              rxPlayerWorkletAlive = true;
               if (typeof pilgrimBackgroundHeartbeatTick === 'function') {
                 pilgrimBackgroundHeartbeatTick();
               }
@@ -1528,6 +1540,7 @@
           };
           node.connect(rxInputNode || gainNode);
           rxPlayerWorkletNode = node;
+          rxPlayerWorkletAlive = true;
           while (activeScheduledSources.length > 0) {
             const src = activeScheduledSources.shift();
             try {
@@ -1540,6 +1553,27 @@
         .finally(() => {
           rxPlayerWorkletLoading = false;
         });
+    }
+
+    function syncAudioUnlockButtonUi() {
+      const btn = document.getElementById('toggleAudioBtn');
+      const orb = document.getElementById('playerOrb');
+      const dict = I18N[currentLang] || I18N.tr;
+      if (!btn) return;
+      if (!isAudioListening) {
+        btn.textContent = dict.audioPlayBtn || 'Sesi Aç / Rehberi Dinle';
+        btn.className = 'btn btn-gold';
+        if (orb) orb.classList.remove('playing');
+        return;
+      }
+      if (audioCtx && audioCtx.state !== 'running') {
+        btn.textContent = '🔊 Sesi Duyabilmek İçin Ekrana Dokunun';
+        btn.className = 'btn btn-gold';
+      } else {
+        btn.textContent = dict.audioMuteBtn || 'Sesi Kapat (Canlı Yayın Dinleniyor)';
+        btn.className = 'btn btn-primary';
+        if (orb) orb.classList.add('playing');
+      }
     }
 
     function ensureAudioContext() {
@@ -1577,6 +1611,7 @@
         initRxPlayerWorklet();
 
         audioCtx.onstatechange = () => {
+          syncAudioUnlockButtonUi();
           if (isAudioListening && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
             audioCtx.resume().catch(() => {});
           }
@@ -1585,16 +1620,19 @@
         initRxPlayerWorklet();
       }
       if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
-        audioCtx.resume().catch(() => {});
+        audioCtx.resume().then(() => syncAudioUnlockButtonUi()).catch(() => {});
       }
     }
 
-    ['touchstart', 'touchend', 'click'].forEach((evtName) => {
+    ['pointerdown', 'touchstart', 'touchend', 'click'].forEach((evtName) => {
       document.addEventListener(
         evtName,
         () => {
-          if (isAudioListening && audioCtx && audioCtx.state !== 'running') {
-            audioCtx.resume().catch(() => {});
+          if (isAudioListening) {
+            if (audioCtx && audioCtx.state !== 'running') {
+              audioCtx.resume().then(() => syncAudioUnlockButtonUi()).catch(() => {});
+            }
+            startBackgroundKeepAliveAudio();
           }
         },
         { passive: true }
@@ -1602,15 +1640,20 @@
     });
 
     function toggleAudioPlayback() {
+      const wasSuspendedWhileListening = isAudioListening && audioCtx && audioCtx.state !== 'running';
       ensureAudioContext();
-      isAudioListening = !isAudioListening;
-      const btn = document.getElementById('toggleAudioBtn');
-      const orb = document.getElementById('playerOrb');
-      const dict = I18N[currentLang] || I18N.tr;
+      if (wasSuspendedWhileListening) {
+        // QR kodla otomatik giriş sonrası ses kilidi askıdaysa ilk dokunuşta sesi kapatma, kilidi aç!
+        isAudioListening = true;
+      } else {
+        isAudioListening = !isAudioListening;
+      }
       if (isAudioListening) {
-        btn.textContent = dict.audioMuteBtn || 'Sesi Kapat (Canlı Yayın Dinleniyor)';
-        btn.className = 'btn btn-primary';
-        if (orb) orb.classList.add('playing');
+        if (audioCtx && audioCtx.state !== 'running') {
+          audioCtx.resume().then(() => syncAudioUnlockButtonUi()).catch(() => {});
+        }
+        syncAudioUnlockButtonUi();
+        setTimeout(() => syncAudioUnlockButtonUi(), 180);
         playNotificationChime();
         startBackgroundKeepAliveAudio();
         requestWakeLock();
@@ -1621,9 +1664,7 @@
           } catch {}
         }
       } else {
-        btn.textContent = dict.audioPlayBtn || 'Sesi Aç / Rehberi Dinle';
-        btn.className = 'btn btn-gold';
-        if (orb) orb.classList.remove('playing');
+        syncAudioUnlockButtonUi();
         stopBackgroundKeepAliveAudio();
         stopAllActiveSources();
       }
@@ -1769,7 +1810,7 @@
 
         // BİRİNCİL YOL (v29): Gerçek Zamanlı Donanım İş Parçacığı Dairesel Tamponu (AudioWorklet Ring Buffer)
         // Ana iş parçacığı (DOM/Harita) gecikmelerinden %100 bağımsızdır ve paket sınırlarında 0 boşluk bırakır.
-        if (rxPlayerWorkletNode && rxPlayerWorkletNode.port) {
+        if (rxPlayerWorkletNode && rxPlayerWorkletNode.port && rxPlayerWorkletAlive) {
           rxPlayerWorkletNode.port.postMessage({
             type: 'push',
             samples: hwSamples,

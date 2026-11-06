@@ -329,44 +329,61 @@ function broadcastToGuidesInTour(tourCode, payload) {
   }
 }
 
+const guideDisconnectTimers = new Map(); // tourCode -> Timeout
+
+function evaluateTourGuidePresence(tourCode) {
+  const code = String(tourCode || 'RY-KASIM').toUpperCase().trim();
+  const genelRoom = getOrCreateRoom(code, 'genel');
+  const genelHasGuide = Array.from(genelRoom.clients.values()).some((c) => c.role === 'guide');
+  if (!genelHasGuide && genelRoom.isLive) {
+    genelRoom.isLive = false;
+    genelRoom.broadcastMode = 'idle';
+    broadcastToFamilyTrackers(code, {
+      type: 'stream-state',
+      isLive: false,
+      broadcastMode: 'idle',
+      currentTopic: genelRoom.currentTopic
+    });
+  }
+  for (const r of getTourRooms(code)) {
+    const roomHasGuide = Array.from(r.clients.values()).some((c) => c.role === 'guide');
+    const coveredByGenel = r.roomId !== 'genel' && genelHasGuide && genelRoom.isLive;
+    if (!roomHasGuide && !coveredByGenel && r.isLive) {
+      r.isLive = false;
+      r.broadcastMode = 'idle';
+    }
+    if (!r.isLive && r.broadcastMode !== 'idle') {
+      r.broadcastMode = 'idle';
+    }
+    if (!roomHasGuide && !coveredByGenel) {
+      broadcastToRoom(r, {
+        type: 'stream-state',
+        isLive: r.isLive,
+        broadcastMode: r.broadcastMode,
+        currentTopic: r.currentTopic,
+        guidePeerId: r.guidePeerId || null
+      });
+    }
+  }
+}
+
 function removeClientFromRoom(room, clientId) {
   if (!room) return;
   const prevClient = room.clients.get(clientId);
   room.clients.delete(clientId);
 
   if (prevClient && prevClient.role === 'guide') {
-    const genelRoom = getOrCreateRoom(room.tourCode, 'genel');
-    const genelHasGuide = Array.from(genelRoom.clients.values()).some((c) => c.role === 'guide');
-    if (!genelHasGuide && genelRoom.isLive) {
-      genelRoom.isLive = false;
-      genelRoom.broadcastMode = 'idle';
-      broadcastToFamilyTrackers(room.tourCode, {
-        type: 'stream-state',
-        isLive: false,
-        broadcastMode: 'idle',
-        currentTopic: genelRoom.currentTopic
-      });
+    const code = room.tourCode;
+    if (guideDisconnectTimers.has(code)) {
+      clearTimeout(guideDisconnectTimers.get(code));
     }
-    for (const r of getTourRooms(room.tourCode)) {
-      const roomHasGuide = Array.from(r.clients.values()).some((c) => c.role === 'guide');
-      const coveredByGenel = r.roomId !== 'genel' && genelHasGuide && genelRoom.isLive;
-      if (!roomHasGuide && !coveredByGenel && r.isLive) {
-        r.isLive = false;
-        r.broadcastMode = 'idle';
-      }
-      if (!r.isLive && r.broadcastMode !== 'idle') {
-        r.broadcastMode = 'idle';
-      }
-      if (!roomHasGuide && !coveredByGenel) {
-        broadcastToRoom(r, {
-          type: 'stream-state',
-          isLive: r.isLive,
-          broadcastMode: r.broadcastMode,
-          currentTopic: r.currentTopic,
-          guidePeerId: r.guidePeerId || null
-        });
-      }
-    }
+    const timer = setTimeout(() => {
+      guideDisconnectTimers.delete(code);
+      evaluateTourGuidePresence(code);
+      broadcastRoomState(room);
+    }, 100);
+    guideDisconnectTimers.set(code, timer);
+    return;
   }
 
   broadcastRoomState(room);
@@ -503,11 +520,14 @@ function processClientJsonMessage(ctx, msg) {
   if (msg.type === 'join') {
     const tourCode = String(msg.tourCode || 'RY-KASIM').toUpperCase().trim();
     const roomId = String(msg.roomId || 'genel').trim();
-    if (ctx.currentRoom) {
-      removeClientFromRoom(ctx.currentRoom, clientId);
-    }
-    ctx.currentRoom = getOrCreateRoom(tourCode, roomId);
+    const prevRoom = ctx.currentRoom;
+    const targetRoom = getOrCreateRoom(tourCode, roomId);
+    ctx.currentRoom = targetRoom;
     const role = msg.role === 'guide' ? 'guide' : 'pilgrim';
+    if (role === 'guide' && guideDisconnectTimers.has(tourCode)) {
+      clearTimeout(guideDisconnectTimers.get(tourCode));
+      guideDisconnectTimers.delete(tourCode);
+    }
     const clientObj = {
       ws,
       id: clientId,
@@ -517,7 +537,10 @@ function processClientJsonMessage(ctx, msg) {
       lang: msg.lang || 'tr',
       joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
     };
-    ctx.currentRoom.clients.set(clientId, clientObj);
+    targetRoom.clients.set(clientId, clientObj);
+    if (prevRoom && prevRoom !== targetRoom) {
+      removeClientFromRoom(prevRoom, clientId);
+    }
     if (role === 'guide' && msg.name) {
       for (const r of getTourRooms(tourCode)) {
         r.guideName = msg.name;

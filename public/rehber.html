@@ -29,7 +29,7 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=30"></script>
+  <script src="/vercel-ws-shim.js?v=36"></script>
   <script src="/js/umrah-steps-map.js?v=30"></script>
   <style>
     .console-wrap {
@@ -651,6 +651,54 @@
         .replace(/'/g, '&#39;');
     }
 
+    function sendGuideJoinAndSync() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const tourCode = document.getElementById('guideTourSelect').value;
+      const roomId = document.getElementById('guideRoomSelect')?.value || 'genel';
+      const guideName = document.getElementById('guideNameSelect').value;
+      const guidePeerId =
+        typeof window.ryGetDynamicChannelId === 'function'
+          ? window.ryGetDynamicChannelId(tourCode, roomId)
+          : `ridvanses-${String(tourCode || 'RY-KASIM').toLowerCase()}-${roomId}-guide-v26`;
+
+      ws.send(JSON.stringify({
+        type: 'join',
+        role: 'guide',
+        tourCode,
+        roomId,
+        name: guideName,
+        guidePeerId
+      }));
+      if (isMicBroadcasting || isDemoBroadcasting) {
+        ws.send(JSON.stringify({
+          type: 'guide-stream-state',
+          isLive: true,
+          broadcastMode: isMicBroadcasting ? 'mic' : 'demo-synth',
+          topic: document.getElementById('topicInput')?.value?.trim() || '',
+          guidePeerId
+        }));
+      }
+      if (currentActiveTawafId && TAWAF_STAGES[currentActiveTawafId]) {
+        const st = TAWAF_STAGES[currentActiveTawafId];
+        ws.send(JSON.stringify({
+          type: 'tawaf-stage-update',
+          stageId: st.id,
+          badge: st.badge,
+          topic: st.topic,
+          title: st.title,
+          arabic: st.arabic,
+          reading: st.reading,
+          meaning: st.meaning
+        }));
+      }
+      if (isSharingGuideLocation && lastGuideLocState) {
+        ws.send(JSON.stringify({
+          type: 'guide-location-update',
+          ...lastGuideLocState
+        }));
+      }
+    }
+
     function connectGuideWs() {
       if (guideWsReconnectTimer) {
         clearTimeout(guideWsReconnectTimer);
@@ -670,51 +718,8 @@
         : window.location.host;
       ws = new WebSocket(`${proto}//${wsHost}/ws`);
 
-      const tourCode = document.getElementById('guideTourSelect').value;
-      const roomId = document.getElementById('guideRoomSelect')?.value || 'genel';
-      const guideName = document.getElementById('guideNameSelect').value;
-      const guidePeerId =
-        typeof window.ryGetDynamicChannelId === 'function'
-          ? window.ryGetDynamicChannelId(tourCode, roomId)
-          : `ridvanses-${String(tourCode || 'RY-KASIM').toLowerCase()}-${roomId}-guide-v26`;
-
       ws.onopen = () => {
-        ws.send(JSON.stringify({
-          type: 'join',
-          role: 'guide',
-          tourCode,
-          roomId,
-          name: guideName,
-          guidePeerId
-        }));
-        if (isMicBroadcasting || isDemoBroadcasting) {
-          ws.send(JSON.stringify({
-            type: 'guide-stream-state',
-            isLive: true,
-            broadcastMode: isMicBroadcasting ? 'mic' : 'demo-synth',
-            topic: document.getElementById('topicInput')?.value?.trim() || '',
-            guidePeerId
-          }));
-        }
-        if (currentActiveTawafId && TAWAF_STAGES[currentActiveTawafId]) {
-          const st = TAWAF_STAGES[currentActiveTawafId];
-          ws.send(JSON.stringify({
-            type: 'tawaf-stage-update',
-            stageId: st.id,
-            badge: st.badge,
-            topic: st.topic,
-            title: st.title,
-            arabic: st.arabic,
-            reading: st.reading,
-            meaning: st.meaning
-          }));
-        }
-        if (isSharingGuideLocation && lastGuideLocState) {
-          ws.send(JSON.stringify({
-            type: 'guide-location-update',
-            ...lastGuideLocState
-          }));
-        }
+        sendGuideJoinAndSync();
       };
 
       ws.onmessage = (ev) => {
@@ -904,7 +909,11 @@
     loadGuideSteps();
 
     function switchGuideRoom() {
-      connectGuideWs();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        sendGuideJoinAndSync();
+      } else {
+        connectGuideWs();
+      }
       loadGuideSteps();
     }
 
@@ -1470,8 +1479,11 @@
       return { downsampled, rms, outSampleRate };
     }
 
+    let lastGuideMicChunkAt = 0;
+
     function handleGuideMicFloatChunk(input) {
       if ((!isMicBroadcasting && !isVoiceLoopbackTesting) || !audioCtx) return;
+      lastGuideMicChunkAt = Date.now();
       if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
         audioCtx.resume().catch(() => {});
       }
@@ -1630,21 +1642,43 @@
       guideSilentChunksCount = 0;
       guideWasIdlePaused = true;
 
+      lastGuideMicChunkAt = Date.now();
       let workletSuccess = false;
       if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
         try {
           if (!workletModuleLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=35');
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=36');
             workletModuleLoaded = true;
           }
           scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
+          const setupStartedAt = Date.now();
+          let gotFirstWorkletChunk = false;
           scriptProcessor.port.onmessage = (ev) => {
+            gotFirstWorkletChunk = true;
             if (ev && ev.data) handleGuideMicFloatChunk(ev.data);
           };
           guideMicGainNode.connect(scriptProcessor);
           scriptProcessor.connect(zeroGainNode);
           zeroGainNode.connect(audioCtx.destination);
           workletSuccess = true;
+          // Mobil WebKit/Android'de AudioWorklet düğümü oluşup 900ms içinde tetiklenmezse otomatik ScriptProcessor yedeğine geç:
+          setTimeout(() => {
+            if (!gotFirstWorkletChunk && (isMicBroadcasting || isVoiceLoopbackTesting) && audioCtx && guideMicGainNode && zeroGainNode) {
+              try {
+                if (scriptProcessor) {
+                  if (scriptProcessor.port) scriptProcessor.port.onmessage = null;
+                  scriptProcessor.disconnect();
+                }
+              } catch {}
+              scriptProcessor = audioCtx.createScriptProcessor(2048, 1, 1);
+              guideMicGainNode.connect(scriptProcessor);
+              scriptProcessor.connect(zeroGainNode);
+              zeroGainNode.connect(audioCtx.destination);
+              scriptProcessor.onaudioprocess = (e) => {
+                handleGuideMicFloatChunk(e.inputBuffer.getChannelData(0));
+              };
+            }
+          }, 900);
         } catch (workletErr) {
           console.warn('AudioWorklet yüklenemedi, ScriptProcessor fallback devrede:', workletErr);
         }
@@ -1664,7 +1698,8 @@
       if (!isMicBroadcasting || isVoiceLoopbackTesting || isHealingGuideMic) return;
       const track = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
       const trackDead = !track || track.readyState === 'ended';
-      if (trackDead) {
+      const captureStalled = lastGuideMicChunkAt > 0 && (Date.now() - lastGuideMicChunkAt > 4000);
+      if (trackDead || captureStalled) {
         isHealingGuideMic = true;
         try {
           if (scriptProcessor) {

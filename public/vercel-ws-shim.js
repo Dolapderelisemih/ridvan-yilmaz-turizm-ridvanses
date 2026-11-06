@@ -95,7 +95,6 @@
       this._mqttTopic = null;
 
       const isTargetServerlessOnly = typeof url === 'string' && url.includes('.vercel.app/ws');
-      const isVercelHost = window.location.hostname.endsWith('.vercel.app');
       if (isTargetServerlessOnly) {
         setTimeout(() => this._activateCloudRelay(), 15);
         return;
@@ -104,16 +103,30 @@
       try {
         this._native = protocols ? new NativeWebSocket(url, protocols) : new NativeWebSocket(url);
       } catch (e) {
-        this._activateCloudRelay();
+        this.readyState = 3;
+        setTimeout(() => {
+          if (typeof this.onclose === 'function') this.onclose({ type: 'close' });
+        }, 50);
         return;
       }
 
-      // VDS / Özel Domain Ortamında Mobil Şebeke için El Sıkışma Süresi Tanı
-      const handshakeLimit = isVercelHost ? 4500 : 8000;
+      // VDS / Özel Domain Ortamında Mobil Şebeke (Asansör/Tünel) El Sıkışma Zaman Aşımı:
+      // İstemciyi yalıtılmış MQTT adasına hapsetmek yerine cleanly close edip 1.5s içinde VDS'e yeniden bağlanmasını sağla!
+      const handshakeLimit = 7500;
       const fallbackTimeout = setTimeout(() => {
         if (!this._opened && !this._isRelay) {
-          console.warn('⚠️ [RıdvanSes WS] Yerel VDS bağlantısı zaman aşımına uğradı, bulut köprüsü deneniyor.');
-          this._activateCloudRelay();
+          console.warn('⚠️ [RıdvanSes WS] VDS el sıkışması zaman aşımına uğradı, doğrudan VDS yeniden denenecek...');
+          try {
+            if (this._native) {
+              this._native.onopen = null;
+              this._native.onmessage = null;
+              this._native.onerror = null;
+              this._native.onclose = null;
+              this._native.close();
+            }
+          } catch {}
+          this.readyState = 3; // CLOSED
+          if (typeof this.onclose === 'function') this.onclose({ type: 'close', timeout: true });
         }
       }, handshakeLimit);
 
@@ -134,27 +147,24 @@
       this._native.onerror = (err) => {
         if (!this._opened && !this._isRelay) {
           console.warn('⚠️ [RıdvanSes WS] Doğrudan VDS WebSocket hatası:', err);
-          // VDS ortamında hemen pes etme, zaman aşımı sonuna kadar bekle
-          if (isVercelHost) {
-            clearTimeout(fallbackTimeout);
-            this._activateCloudRelay();
-          }
         }
+        if (typeof this.onerror === 'function') this.onerror(err);
       };
 
       this._native.onclose = (ev) => {
         clearTimeout(fallbackTimeout);
-        if (!this._opened && !this._isRelay) {
-          if (isVercelHost) {
-            this._activateCloudRelay();
-            return;
-          }
-        }
         if (!this._isRelay) {
           this.readyState = 3; // CLOSED
           if (typeof this.onclose === 'function') this.onclose(ev);
         }
       };
+    }
+
+    get bufferedAmount() {
+      if (!this._isRelay && this._native && typeof this._native.bufferedAmount === 'number') {
+        return this._native.bufferedAmount;
+      }
+      return 0;
     }
 
     _activateCloudRelay() {
