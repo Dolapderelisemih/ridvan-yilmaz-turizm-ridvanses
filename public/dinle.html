@@ -919,9 +919,13 @@
       });
       const sosBtnTxt = document.getElementById('sosBtnText');
       if (sosBtnTxt && dict.sosHoldBtnText) sosBtnTxt.textContent = dict.sosHoldBtnText;
-      const audioBtn = document.getElementById('toggleAudioBtn');
-      if (audioBtn) {
-        audioBtn.textContent = isAudioListening ? dict.audioMuteBtn : dict.audioPlayBtn;
+      if (typeof syncAudioUnlockButtonUi === 'function') {
+        syncAudioUnlockButtonUi();
+      } else {
+        const audioBtn = document.getElementById('toggleAudioBtn');
+        if (audioBtn) {
+          audioBtn.textContent = isAudioListening ? dict.audioMuteBtn : dict.audioPlayBtn;
+        }
       }
     }
 
@@ -1217,8 +1221,11 @@
             if (typeof r.activeTawafStage !== 'undefined') {
               renderLiveTawafStage(r.activeTawafStage);
             }
-            if (r.broadcastMode === 'mic') {
-              updateGuideSpeakingIndicator(true);
+            if (r.broadcastMode === 'mic' && r.isLive !== false) {
+              const recentlySpeaking = lastPacketReceivedAt > 0 && (Date.now() - lastPacketReceivedAt < 1800);
+              if (recentlySpeaking || msg.type === 'joined') {
+                updateGuideSpeakingIndicator(recentlySpeaking);
+              }
             } else {
               updateGuideSpeakingIndicator(false);
             }
@@ -2187,11 +2194,11 @@
       container.innerHTML = window._loadedPrayers.map((p) => `
         <div class="prayer-card">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-            <strong style="font-size:0.96rem; color:var(--color-emerald-night);">${p.title}</strong>
+            <strong style="font-size:0.96rem; color:var(--color-emerald-night);">${escapeHtml(p.title || '')}</strong>
           </div>
-          <div class="arabic-text">${p.arabic}</div>
-          <div style="font-size:0.85rem; font-weight:600; color:var(--color-emerald-deep); margin-bottom:6px;"><em>${p.reading}</em></div>
-          <div style="font-size:0.83rem; color:var(--color-muted);"><strong>Anlamı:</strong> ${p.meaning}</div>
+          <div class="arabic-text">${escapeHtml(p.arabic || '')}</div>
+          <div style="font-size:0.85rem; font-weight:600; color:var(--color-emerald-deep); margin-bottom:6px;"><em>${escapeHtml(p.reading || '')}</em></div>
+          <div style="font-size:0.83rem; color:var(--color-muted);"><strong>Anlamı:</strong> ${escapeHtml(p.meaning || '')}</div>
         </div>
       `).join('');
     }
@@ -2501,6 +2508,7 @@
     if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
       navigator.mediaDevices.addEventListener('devicechange', () => {
         if (isAudioListening) {
+          stopAllActiveSources();
           setTimeout(() => recoverPilgrimLiveSession(), 250);
         }
       });

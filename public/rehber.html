@@ -1928,6 +1928,14 @@
     let broadcastStartedAtTs = 0;
     let broadcastClockInterval = null;
 
+    // Canlı yayın açıkken yanlışlıkla geri tuşu veya sayfa yenilemeye karşı koruma
+    window.addEventListener('beforeunload', (e) => {
+      if (isMicBroadcasting) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
+
     function formatElapsedClock(ms) {
       const totalSec = Math.max(0, Math.floor(ms / 1000));
       const h = String(Math.floor(totalSec / 3600)).padStart(2, '0');

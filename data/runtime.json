@@ -152,6 +152,24 @@
   ],
   "announcements": [
     {
+      "id": "ann-1793946300161",
+      "tourCode": "RY-KASIM",
+      "title": "Medine Toplanma Duyurusu",
+      "message": "Sohbetimiz sonrası saat 17:30’da Bâbül Mecîdî (32 Nolu Kapı) önünde buluşuyoruz.",
+      "sender": "Ömer Ali Gültekin",
+      "createdAt": "09:25",
+      "urgent": true
+    },
+    {
+      "id": "ann-1793946195105",
+      "tourCode": "RY-KASIM",
+      "title": "Medine Toplanma Duyurusu",
+      "message": "Sohbetimiz sonrası saat 17:30’da Bâbül Mecîdî (32 Nolu Kapı) önünde buluşuyoruz.",
+      "sender": "Ömer Ali Gültekin",
+      "createdAt": "09:23",
+      "urgent": true
+    },
+    {
       "id": "ann-kasim-1",
       "tourCode": "RY-KASIM",
       "title": "Kasım Umresi — Kutsal Topraklara Manevi Yolculuk",
@@ -170,7 +188,92 @@
       "urgent": true
     }
   ],
-  "sosAlerts": [],
+  "sosAlerts": [
+    {
+      "id": "sos-1793947264143",
+      "tourCode": "RY-KASIM",
+      "pilgrimName": "Mekke Tavaf Hacı #281",
+      "phone": "+90 533 100 0281",
+      "lat": 21.4253,
+      "lng": 39.826,
+      "locationNote": "SA’Y • 7. ŞAVT (SAFA → MERVE • SON ŞAVT) esnasında kalabalıkta gruptan ayrıldı",
+      "createdAt": "09:41",
+      "status": "active",
+      "resolvedBy": null
+    },
+    {
+      "id": "sos-1793947263066",
+      "tourCode": "RY-KASIM",
+      "pilgrimName": "Mekke Tavaf Hacı #181",
+      "phone": "+90 533 100 0181",
+      "lat": 21.4253,
+      "lng": 39.826,
+      "locationNote": "SA’Y • 2. ŞAVT (MERVE → SAFA) esnasında kalabalıkta gruptan ayrıldı",
+      "createdAt": "09:41",
+      "status": "active",
+      "resolvedBy": null
+    },
+    {
+      "id": "sos-1793947261749",
+      "tourCode": "RY-KASIM",
+      "pilgrimName": "Mekke Tavaf Hacı #61",
+      "phone": "+90 533 100 0061",
+      "lat": 21.4223,
+      "lng": 39.8261,
+      "locationNote": "TAVAF • 4. ŞAVT esnasında kalabalıkta gruptan ayrıldı",
+      "createdAt": "09:41",
+      "status": "active",
+      "resolvedBy": null
+    },
+    {
+      "id": "sos-1793946299409",
+      "tourCode": "RY-KASIM",
+      "pilgrimName": "Medine Hacı Misafir #411",
+      "phone": "+90 532 000 0411",
+      "lat": 24.4665,
+      "lng": 39.6102,
+      "locationNote": "Bâbüsselâm Kapısı Yakını",
+      "createdAt": "09:24",
+      "status": "active",
+      "resolvedBy": null
+    },
+    {
+      "id": "sos-1793946299408",
+      "tourCode": "RY-KASIM",
+      "pilgrimName": "Medine Hacı Misafir #13",
+      "phone": "+90 532 000 0013",
+      "lat": 24.4681,
+      "lng": 39.6125,
+      "locationNote": "Mescid-i Nebevî 21 Nolu Kapı Çıkışı",
+      "createdAt": "09:24",
+      "status": "active",
+      "resolvedBy": null
+    },
+    {
+      "id": "sos-1793946194119",
+      "tourCode": "RY-KASIM",
+      "pilgrimName": "Medine Hacı Misafir #411",
+      "phone": "+90 532 000 0411",
+      "lat": 24.4665,
+      "lng": 39.6102,
+      "locationNote": "Bâbüsselâm Kapısı Yakını",
+      "createdAt": "09:23",
+      "status": "active",
+      "resolvedBy": null
+    },
+    {
+      "id": "sos-1793946194118",
+      "tourCode": "RY-KASIM",
+      "pilgrimName": "Medine Hacı Misafir #13",
+      "phone": "+90 532 000 0013",
+      "lat": 24.4681,
+      "lng": 39.6125,
+      "locationNote": "Mescid-i Nebevî 21 Nolu Kapı Çıkışı",
+      "createdAt": "09:23",
+      "status": "active",
+      "resolvedBy": null
+    }
+  ],
   "siyerPoints": [
     {
       "id": "sp-1",
@@ -211,7 +314,7 @@
         "locationLabel": "Osmangazi / Bursa — İstanbul Havalimanı",
         "category": "ulasim",
         "lat": 40.1885,
-        "lng": 29.0610,
+        "lng": 29.061,
         "distanceKm": 0,
         "status": "completed",
         "timestamp": "13 Kasım • 09:30",
