@@ -1886,7 +1886,15 @@ app.use((req, res, next) => {
   return next();
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html') || filePath.endsWith('.js')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+    }
+  })
+);
 
 app.get('/favicon.ico', (req, res) => {
   res.type('image/svg+xml');
@@ -1924,6 +1932,7 @@ const routeMap = {
 
 Object.entries(routeMap).forEach(([routePath, fileName]) => {
   app.get(routePath, (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(__dirname, 'public', fileName));
   });
 });

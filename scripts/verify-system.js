@@ -566,7 +566,7 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
     `runtime.json geçerli: ${runtimeExists}, kalıntı .tmp yok: ${!tmpLeftover}`
   );
 
-  // 4.5 Kristal Netlik + 450ms Cümle Korumalı Yakın-Alan Ses Kilidi (v43 DSP) Doğrulaması
+  // 4.5 Saf Stüdyo Kristal HD (Tek Seçenek + Boğukluk Giderici EQ + 24 kHz Resampler + Cümle Korumalı Ses Kilidi) Doğrulaması
   const rehberHtml = fs.readFileSync(path.join(ROOT_DIR, 'public', 'rehber.html'), 'utf8');
   const dspStartIdx = rehberHtml.indexOf('const guideFilterHist = new Float32Array(6);');
   const dspEndIdx = rehberHtml.indexOf('let lastGuideMicChunkAt = 0;');
@@ -589,16 +589,16 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
   }
   let guideOut;
   for (let c = 0; c < 6; c++) {
-    guideOut = dspSandbox.processGuideFloatChunkDsp(guideChunk, 48000, 'crowd_isolation');
+    guideOut = dspSandbox.processGuideFloatChunkDsp(guideChunk, 48000);
   }
 
-  // A-2) Cümle ortası kısa nefes/hece boşluğunda (128ms = 2 chunk) 450ms Cümle Koruması kapıyı açık tutuyor mu?
+  // A-2) Cümle ortası kısa nefes/hece boşluğunda Cümle Koruması kapıyı açık tutuyor mu?
   const silenceChunk = new Float32Array(3072);
-  const midSentenceHoldOut = dspSandbox.processGuideFloatChunkDsp(silenceChunk, 48000, 'crowd_isolation');
+  const midSentenceHoldOut = dspSandbox.processGuideFloatChunkDsp(silenceChunk, 48000);
 
-  // B) Rehber cümlesini bitirip >450ms sustuktan sonra (8 chunk = 512ms) 1.2 metre yanındaki başka bir kişi konuşuyor (Genlik = 0.026)
+  // B) Rehber cümlesini bitirip sustuktan sonra (8 chunk = 512ms) 1.2 metre yanındaki başka bir kişi konuşuyor (Genlik = 0.026)
   for (let c = 0; c < 8; c++) {
-    dspSandbox.processGuideFloatChunkDsp(silenceChunk, 48000, 'crowd_isolation');
+    dspSandbox.processGuideFloatChunkDsp(silenceChunk, 48000);
   }
   const sidePersonChunk = new Float32Array(3072);
   for (let i = 0; i < sidePersonChunk.length; i++) {
@@ -606,35 +606,46 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
   }
   let sideOut;
   for (let c = 0; c < 4; c++) {
-    sideOut = dspSandbox.processGuideFloatChunkDsp(sidePersonChunk, 48000, 'crowd_isolation');
+    sideOut = dspSandbox.processGuideFloatChunkDsp(sidePersonChunk, 48000);
   }
 
-  // C) Geçici Sustur (Mute) kontrolü
+  // C) 44100 Hz donanımdan tam 24000 Hz çıktı üretildiği ve Geçici Sustur (Mute) kontrolü
+  const resampled44k = dspSandbox.processGuideFloatChunkDsp(guideChunk, 44100);
   dspSandbox.isGuideMicMuted = true;
-  const mutedOut = dspSandbox.processGuideFloatChunkDsp(guideChunk, 48000, 'crowd_isolation');
+  const mutedOut = dspSandbox.processGuideFloatChunkDsp(guideChunk, 48000);
+
+  // D) Ses seçeneklerinde (#guideAcousticModeSelect) SADECE 1 adet en kaliteli seçeneğin (studio_crystal_hd) bulunduğu kontrolü
+  const selectMatch = rehberHtml.match(/<select id="guideAcousticModeSelect"[\s\S]*?<\/select>/);
+  const optionCount = selectMatch ? (selectMatch[0].match(/<option /g) || []).length : 0;
+  const hasSingleCrystalOption = optionCount === 1 && selectMatch[0].includes('value="studio_crystal_hd"');
 
   const hasGain100 = rehberHtml.includes('guideMicGainMultiplier = 1.0');
-  const hasWidebandFilters =
-    rehberHtml.includes('highPass.frequency.value = isCrowdIsolation ? 105 : 90') &&
-    rehberHtml.includes('lowPass.frequency.value = isCrowdIsolation ? 9200 : 9500');
+  const hasClarityEq =
+    rehberHtml.includes('highPass.frequency.value = 85') &&
+    rehberHtml.includes('mudCut.frequency.value = 210') &&
+    rehberHtml.includes('presence.frequency.value = 3200') &&
+    rehberHtml.includes('lowPass.frequency.value = 10500');
   const hasPureMicNoMuffling =
+    rehberHtml.includes('echoCancellation: false') &&
     rehberHtml.includes('noiseSuppression: false') &&
     rehberHtml.includes('autoGainControl: false');
 
   const sideAttenuationRatio = sideOut.rms / (0.026 * 0.707);
   assertCondition(
-    'ADIM-4.5 (KRİSTAL NETLİK 105-9200Hz + 450ms CÜMLE KORUMASI + YAN SES KİLİDİ)',
-    'Rehber sesi boğuklaştırılmadan (%100 Gain, 105-9200Hz, noiseSuppression=false) iletildi, cümle ortası (450ms) korundu ve sustuktan sonra yan konuşma (0.026) bastırıldı',
-    guideOut.gateOpen === true &&
-      guideOut.rms > 0.12 &&
+    'ADIM-4.5 (SAF STÜDYO KRİSTAL HD + TEK SES SEÇENEĞİ + BOĞUKLUK GİDERİCİ EQ)',
+    'Ses seçeneklerinde yalnızca 1 adet en kaliteli seçenek (Saf Stüdyo Kristal HD) bırakıldı; boğukluk giderici EQ (85Hz HP, 210Hz MudCut, 3.2kHz Presence, 10.5kHz LP), 24kHz örnekleme ve yan ses kilidi doğrulandı',
+    hasSingleCrystalOption &&
+      guideOut.gateOpen === true &&
+      guideOut.rms > 0.15 &&
       midSentenceHoldOut.gateOpen === true &&
       sideOut.gateOpen === false &&
       sideAttenuationRatio < 0.08 &&
+      resampled44k.outSampleRate === 24000 &&
       mutedOut.rms === 0 &&
       hasGain100 &&
-      hasWidebandFilters &&
+      hasClarityEq &&
       hasPureMicNoMuffling,
-    `Rehber RMS: ${guideOut.rms.toFixed(3)}, Cümle Tutma: ${midSentenceHoldOut.gateOpen}, Yan Ses Bastırma: %${((1 - sideAttenuationRatio) * 100).toFixed(1)}, Wideband(105-9200Hz): ${hasWidebandFilters}, NS=false: ${hasPureMicNoMuffling}`
+    `Tek Seçenek (studio_crystal_hd): ${hasSingleCrystalOption} (${optionCount} adet), Rehber RMS: ${guideOut.rms.toFixed(3)}, Yan Ses Bastırma: %${((1 - sideAttenuationRatio) * 100).toFixed(1)}, ClarityEQ: ${hasClarityEq}`
   );
 }
 

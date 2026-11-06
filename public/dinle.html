@@ -16,9 +16,9 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=43"></script>
+  <script src="/vercel-ws-shim.js?v=44"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=43"></script>
+  <script src="/js/umrah-steps-map.js?v=44"></script>
   <style>
     .app-shell {
       max-width: 540px;
@@ -1566,7 +1566,7 @@
       if (!audioCtx.audioWorklet || typeof window.AudioWorkletNode === 'undefined') return;
       rxPlayerWorkletLoading = true;
       audioCtx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=43')
+        .addModule('/pcm-player-worklet.js?v=44')
         .then(() => {
           if (!audioCtx || rxPlayerWorkletNode) return;
           let node;
@@ -1636,6 +1636,13 @@
         rxHighPass.frequency.value = 65;
         rxHighPass.Q.value = 0.707;
 
+        // 1-B. Kulaklık & Hoparlör Konuşma Netleştirici (3000 Hz +2.0 dB Presence — Boğukluğu önler, kelimeleri tane tane duyurur)
+        const rxClarity = audioCtx.createBiquadFilter();
+        rxClarity.type = 'peaking';
+        rxClarity.frequency.value = 3000;
+        rxClarity.Q.value = 0.85;
+        rxClarity.gain.value = 2.0;
+
         // 2. Kullanıcı Ses Güçlendirici (%0 - %200 Doğrusal Kazanç)
         gainNode = audioCtx.createGain();
         gainNode.gain.value = volumeMultiplier;
@@ -1648,7 +1655,8 @@
           softClipper.oversample = '2x';
         }
 
-        rxHighPass.connect(gainNode);
+        rxHighPass.connect(rxClarity);
+        rxClarity.connect(gainNode);
         if (softClipper) {
           gainNode.connect(softClipper);
           softClipper.connect(audioCtx.destination);
@@ -1816,9 +1824,7 @@
       const view = new DataView(buffer);
       const rawSeq = view.getUint32(0, true);
       const phraseStart = Boolean(rawSeq & 0x80000000);
-      const is22k = Boolean(rawSeq & 0x40000000);
-      const seq = rawSeq & 0x3fffffff;
-      const pktSampleRate = is22k ? 22050 : 24000;
+      const seq = rawSeq & 0x7fffffff;
       const sentAt = view.getFloat64(4, true);
       const sampleCount = (buffer.byteLength - 12) >> 1;
       if (sampleCount <= 0) return;
@@ -1841,7 +1847,7 @@
         animateSpectrumFromLevel(pktLevel);
       }
       if (isAudioListening) {
-        playPcmSamples(floatSamples, pktSampleRate, false, seq, phraseStart, isSilentFrame);
+        playPcmSamples(floatSamples, 24000, false, seq, phraseStart, isSilentFrame);
       }
     }
 
@@ -2356,7 +2362,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=43').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=44').catch(() => {});
       });
     }
 
