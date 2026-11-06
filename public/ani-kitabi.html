@@ -463,20 +463,29 @@
             document.getElementById('coverStepsCount').textContent = `${steps.length} Durak`;
             document.getElementById('coverDuration').textContent = String(tour.duration || '10 Gün').split('(')[0].trim();
 
+            function escapeHtml(str) {
+              return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+            }
+
             const container = document.getElementById('journalStepsContainer');
             container.innerHTML = steps
               .map(
                 (s, idx) => `
                 <div class="journal-step-row">
-                  <div class="journal-num">${s.order || idx + 1}</div>
+                  <div class="journal-num">${escapeHtml(s.order || idx + 1)}</div>
                   <div>
                     <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-                      <span style="font-size:0.73rem;font-weight:800;color:var(--color-emerald-deep);text-transform:uppercase;">${s.dayLabel || ''}</span>
-                      <span style="font-size:0.73rem;color:var(--color-muted);font-weight:700;">📍 ${s.locationLabel || ''} (${Number(s.distanceKm) || 0} km)</span>
+                      <span style="font-size:0.73rem;font-weight:800;color:var(--color-emerald-deep);text-transform:uppercase;">${escapeHtml(s.dayLabel || '')}</span>
+                      <span style="font-size:0.73rem;color:var(--color-muted);font-weight:700;">📍 ${escapeHtml(s.locationLabel || '')} (${Number(s.distanceKm) || 0} km)</span>
                     </div>
-                    <div style="font-size:1rem;font-weight:800;color:var(--color-emerald-night);margin-top:2px;">${s.title}</div>
-                    ${s.guideNote ? `<div style="font-size:0.84rem;color:var(--color-ink);margin-top:4px;line-height:1.5;">${s.guideNote}</div>` : ''}
-                    ${s.prayerSummary ? `<div style="font-size:0.79rem;font-style:italic;color:var(--color-emerald-deep);margin-top:5px;">🤲 “${s.prayerSummary}”</div>` : ''}
+                    <div style="font-size:1rem;font-weight:800;color:var(--color-emerald-night);margin-top:2px;">${escapeHtml(s.title)}</div>
+                    ${s.guideNote ? `<div style="font-size:0.84rem;color:var(--color-ink);margin-top:4px;line-height:1.5;">${escapeHtml(s.guideNote)}</div>` : ''}
+                    ${s.prayerSummary ? `<div style="font-size:0.79rem;font-style:italic;color:var(--color-emerald-deep);margin-top:5px;">🤲 “${escapeHtml(s.prayerSummary)}”</div>` : ''}
                   </div>
                 </div>
               `

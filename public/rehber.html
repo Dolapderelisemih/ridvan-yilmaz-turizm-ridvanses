@@ -1015,11 +1015,12 @@
 
     function updateTopic() {
       const topic = document.getElementById('topicInput').value.trim();
+      const currentlyLive = Boolean(isMicBroadcasting || isDemoBroadcasting);
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
           type: 'guide-stream-state',
-          isLive: true,
-          broadcastMode: isMicBroadcasting ? 'mic' : 'demo-synth',
+          isLive: currentlyLive,
+          broadcastMode: isMicBroadcasting ? 'mic' : (isDemoBroadcasting ? 'demo-synth' : 'idle'),
           topic
         }));
       }
@@ -1775,6 +1776,14 @@
     // Demo Audio Broadcast (Works without physical mic)
     function toggleDemoBroadcast() {
       const btn = document.getElementById('startDemoStreamBtn');
+      const micBtn = document.getElementById('startMicBtn');
+      if (!isDemoBroadcasting && isMicBroadcasting) {
+        stopMicBroadcast();
+        if (micBtn) {
+          micBtn.textContent = '🎙️ Gerçek Mikrofonla Canlı Yayını Başlat';
+          micBtn.className = 'btn btn-gold';
+        }
+      }
       isDemoBroadcasting = !isDemoBroadcasting;
       if (isDemoBroadcasting) {
         startBroadcastClock();
@@ -1783,6 +1792,14 @@
           btn.className = 'btn btn-primary';
         }
         document.getElementById('micSourceLabel').textContent = 'Yayın Kaynağı: Canlı Demo Ses Akışı';
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'guide-stream-state',
+            isLive: true,
+            broadcastMode: 'demo-synth',
+            topic: document.getElementById('topicInput').value.trim()
+          }));
+        }
         const notes = [440, 493.88, 523.25, 587.33, 659.25, 587.33, 523.25, 493.88];
         let idx = 0;
         demoInterval = setInterval(() => {
@@ -1799,7 +1816,17 @@
         }, 420);
       } else {
         clearInterval(demoInterval);
-        if (!isMicBroadcasting) stopBroadcastClock();
+        if (!isMicBroadcasting) {
+          stopBroadcastClock();
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              type: 'guide-stream-state',
+              isLive: false,
+              broadcastMode: 'idle',
+              topic: document.getElementById('topicInput').value.trim()
+            }));
+          }
+        }
         if (btn) {
           btn.textContent = '📡 Demo Siyer Ses Akışı Gönder (Test)';
           btn.className = 'btn btn-outline';

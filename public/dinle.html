@@ -1272,9 +1272,12 @@
         }
 
         if (msg.type === 'audio-chunk') {
-          lastPacketReceivedAt = Date.now();
-          updateGuideSpeakingIndicator(true, msg.sentAt);
-          animateSpectrumFromLevel(msg.level || 0.5);
+          const pktLevel = typeof msg.level === 'number' ? msg.level : (msg.synthNote ? 0.5 : 0);
+          if (pktLevel > 0.015 || msg.synthNote) {
+            lastPacketReceivedAt = Date.now();
+            updateGuideSpeakingIndicator(true, msg.sentAt);
+            animateSpectrumFromLevel(pktLevel);
+          }
           if (isAudioListening) {
             if (msg.pcm16) {
               playPcmSamples(msg.pcm16, msg.sampleRate || 24000, true, msg.seq || 0, Boolean(msg.phraseStart));

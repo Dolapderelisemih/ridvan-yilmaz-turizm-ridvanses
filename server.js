@@ -71,6 +71,17 @@ function loadState() {
 
 function saveState(state) {
   try {
+    if (state && typeof state === 'object') {
+      if (Array.isArray(state.sosAlerts) && state.sosAlerts.length > 100) {
+        state.sosAlerts = state.sosAlerts.slice(0, 100);
+      }
+      if (Array.isArray(state.announcements) && state.announcements.length > 100) {
+        state.announcements = state.announcements.slice(0, 100);
+      }
+      if (Array.isArray(state.requests) && state.requests.length > 200) {
+        state.requests = state.requests.slice(0, 200);
+      }
+    }
     fs.writeFileSync(RUNTIME_FILE, JSON.stringify(state, null, 2), 'utf8');
   } catch (err) {
     console.error('Runtime state kaydedilemedi:', err.message);
@@ -293,6 +304,49 @@ function broadcastToRoom(room, payload, excludeWs = null) {
   }
 }
 
+function removeClientFromRoom(room, clientId) {
+  if (!room) return;
+  const prevClient = room.clients.get(clientId);
+  room.clients.delete(clientId);
+
+  if (prevClient && prevClient.role === 'guide') {
+    const genelRoom = getOrCreateRoom(room.tourCode, 'genel');
+    const genelHasGuide = Array.from(genelRoom.clients.values()).some((c) => c.role === 'guide');
+    if (!genelHasGuide && genelRoom.isLive) {
+      genelRoom.isLive = false;
+      genelRoom.broadcastMode = 'idle';
+      broadcastToFamilyTrackers(room.tourCode, {
+        type: 'stream-state',
+        isLive: false,
+        broadcastMode: 'idle',
+        currentTopic: genelRoom.currentTopic
+      });
+    }
+    for (const r of getTourRooms(room.tourCode)) {
+      const roomHasGuide = Array.from(r.clients.values()).some((c) => c.role === 'guide');
+      const coveredByGenel = r.roomId !== 'genel' && genelHasGuide && genelRoom.isLive;
+      if (!roomHasGuide && !coveredByGenel && r.isLive) {
+        r.isLive = false;
+        r.broadcastMode = 'idle';
+      }
+      if (!r.isLive && r.broadcastMode !== 'idle') {
+        r.broadcastMode = 'idle';
+      }
+      if (!roomHasGuide && !coveredByGenel) {
+        broadcastToRoom(r, {
+          type: 'stream-state',
+          isLive: r.isLive,
+          broadcastMode: r.broadcastMode,
+          currentTopic: r.currentTopic,
+          guidePeerId: r.guidePeerId || null
+        });
+      }
+    }
+  }
+
+  broadcastRoomState(room);
+}
+
 // HTTP Relay Sessions for Serverless (Vercel) Fallback
 const httpRelaySessions = new Map(); // clientId -> { clientId, ws, outbox: [], currentRoom: null, lastSeen: number }
 
@@ -302,8 +356,7 @@ function cleanupStaleRelaySessions() {
     if (now - sess.lastSeen > 35000) {
       httpRelaySessions.delete(cid);
       if (sess.currentRoom) {
-        sess.currentRoom.clients.delete(cid);
-        broadcastRoomState(sess.currentRoom);
+        removeClientFromRoom(sess.currentRoom, cid);
       }
     }
   }
@@ -418,8 +471,7 @@ function processClientJsonMessage(ctx, msg) {
     const tourCode = String(msg.tourCode || 'RY-KASIM').toUpperCase().trim();
     const roomId = String(msg.roomId || 'genel').trim();
     if (ctx.currentRoom) {
-      ctx.currentRoom.clients.delete(clientId);
-      broadcastRoomState(ctx.currentRoom);
+      removeClientFromRoom(ctx.currentRoom, clientId);
     }
     ctx.currentRoom = getOrCreateRoom(tourCode, roomId);
     const role = msg.role === 'guide' ? 'guide' : 'pilgrim';
@@ -658,8 +710,7 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     if (ctx.currentRoom) {
-      ctx.currentRoom.clients.delete(ctx.clientId);
-      broadcastRoomState(ctx.currentRoom);
+      removeClientFromRoom(ctx.currentRoom, ctx.clientId);
     }
   });
 });
