@@ -30,9 +30,9 @@
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=30"></script>
+  <script src="/vercel-ws-shim.js?v=38"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=30"></script>
+  <script src="/js/umrah-steps-map.js?v=38"></script>
   <style>
     .dashboard-layout {
       display: grid;
@@ -893,14 +893,14 @@
       const qrSel = document.getElementById('qrTourSelect');
       if (qrSel) {
         const prev = qrSel.value || 'RY-KASIM';
-        qrSel.innerHTML = appState.tours.map((t) => `<option value="${t.code}">${t.code} — ${t.name}</option>`).join('');
+        qrSel.innerHTML = appState.tours.map((t) => `<option value="${escapeHtml(t.code)}">${escapeHtml(t.code)} — ${escapeHtml(t.name)}</option>`).join('');
         if (appState.tours.some((t) => t.code === prev)) qrSel.value = prev;
       }
 
       const routeSel = document.getElementById('adminRouteTourSelect');
       if (routeSel) {
         const prevR = routeSel.value || 'RY-KASIM';
-        routeSel.innerHTML = appState.tours.map((t) => `<option value="${t.code}">${t.code} — ${t.name}</option>`).join('');
+        routeSel.innerHTML = appState.tours.map((t) => `<option value="${escapeHtml(t.code)}">${escapeHtml(t.code)} — ${escapeHtml(t.name)}</option>`).join('');
         if (appState.tours.some((t) => t.code === prevR)) routeSel.value = prevR;
       }
 
@@ -910,7 +910,7 @@
         const prevAnn = annSel.value || 'ALL';
         annSel.innerHTML = `
           <option value="ALL">Tüm Aktif Kafileler (Genel Duyuru)</option>
-          ${appState.tours.map((t) => `<option value="${t.code}">${t.code} — ${t.name}</option>`).join('')}
+          ${appState.tours.map((t) => `<option value="${escapeHtml(t.code)}">${escapeHtml(t.code)} — ${escapeHtml(t.name)}</option>`).join('')}
         `;
         if (prevAnn === 'ALL' || appState.tours.some((t) => t.code === prevAnn)) annSel.value = prevAnn;
       }
@@ -922,14 +922,14 @@
           <div>
             <div style="font-weight:800; color:var(--color-emerald-night);">
               <span class="live-dot" style="display:inline-block; margin-right:6px;"></span>
-              ${r.tourCode} (${r.roomId.toUpperCase()}) — ${r.guideName}
+              ${escapeHtml(r.tourCode)} (${escapeHtml(String(r.roomId || '').toUpperCase())}) — ${escapeHtml(r.guideName)}
             </div>
-            <div style="font-size:0.8rem; color:var(--color-muted); margin-top:2px;">${r.currentTopic}</div>
+            <div style="font-size:0.8rem; color:var(--color-muted); margin-top:2px;">${escapeHtml(r.currentTopic)}</div>
           </div>
           <div style="display:flex; align-items:center; gap:8px;">
-            <span class="badge badge-gold">${r.totalListeners} Hacı</span>
-            <a href="/dinle?code=${r.tourCode}" target="_blank" class="btn btn-outline btn-sm">Dinle</a>
-            <a href="/rehber?code=${r.tourCode}" target="_blank" class="btn btn-primary btn-sm">Stüdyo</a>
+            <span class="badge badge-gold">${Number(r.totalListeners) || 0} Hacı</span>
+            <a href="/dinle?code=${encodeURIComponent(r.tourCode)}" target="_blank" class="btn btn-outline btn-sm">Dinle</a>
+            <a href="/rehber?code=${encodeURIComponent(r.tourCode)}" target="_blank" class="btn btn-primary btn-sm">Stüdyo</a>
           </div>
         </div>
       `).join('');
@@ -937,20 +937,20 @@
       // Overview Tours Table
       document.getElementById('overviewToursTable').innerHTML = appState.tours.map((t) => `
         <tr>
-          <td><strong style="color:var(--color-emerald-deep);">${t.code}</strong></td>
-          <td><strong>${t.name}</strong></td>
-          <td>${t.dateText} (${t.duration})</td>
-          <td>${t.guideName}</td>
-          <td>${t.makkahHotel}</td>
-          <td><span class="badge badge-emerald">${t.registeredCount} / ${t.capacity}</span></td>
+          <td><strong style="color:var(--color-emerald-deep);">${escapeHtml(t.code)}</strong></td>
+          <td><strong>${escapeHtml(t.name)}</strong></td>
+          <td>${escapeHtml(t.dateText)} (${escapeHtml(t.duration)})</td>
+          <td>${escapeHtml(t.guideName)}</td>
+          <td>${escapeHtml(t.makkahHotel)}</td>
+          <td><span class="badge badge-emerald">${Number(t.registeredCount) || 0} / ${Number(t.capacity) || 0}</span></td>
           <td>
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
-              <button type="button" class="btn btn-primary btn-sm" onclick="openQrGeneratorForTour('${t.code}')">QR & WhatsApp</button>
-              <a href="/rota?code=${t.code}" target="_blank" class="btn btn-gold btn-sm">📍 Rota</a>
-              <a href="/ani-kitabi?code=${t.code}" target="_blank" class="btn btn-outline btn-sm">📖 Kitap</a>
-              <a href="/yaka-karti?code=${t.code}" target="_blank" class="btn btn-outline btn-sm">Yaka Kartı</a>
-              <a href="/dinle?code=${t.code}" target="_blank" class="btn btn-outline btn-sm">Hacı</a>
-              <a href="/rehber?code=${t.code}" target="_blank" class="btn btn-gold btn-sm">Yayın</a>
+              <button type="button" class="btn btn-primary btn-sm" onclick="openQrGeneratorForTour('${escapeHtml(t.code)}')">QR & WhatsApp</button>
+              <a href="/rota?code=${encodeURIComponent(t.code)}" target="_blank" class="btn btn-gold btn-sm">📍 Rota</a>
+              <a href="/ani-kitabi?code=${encodeURIComponent(t.code)}" target="_blank" class="btn btn-outline btn-sm">📖 Kitap</a>
+              <a href="/yaka-karti?code=${encodeURIComponent(t.code)}" target="_blank" class="btn btn-outline btn-sm">Yaka Kartı</a>
+              <a href="/dinle?code=${encodeURIComponent(t.code)}" target="_blank" class="btn btn-outline btn-sm">Hacı</a>
+              <a href="/rehber?code=${encodeURIComponent(t.code)}" target="_blank" class="btn btn-gold btn-sm">Yayın</a>
             </div>
           </td>
         </tr>
@@ -960,13 +960,13 @@
       document.getElementById('toursManageList').innerHTML = appState.tours.map((t) => `
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:14px 16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline);">
           <div>
-            <div style="font-weight:800; color:var(--color-emerald-night);">${t.code} — ${t.name}</div>
-            <div style="font-size:0.8rem; color:var(--color-muted); margin-top:2px;">Rehber: ${t.guideName} • Otel: ${t.makkahHotel}</div>
+            <div style="font-weight:800; color:var(--color-emerald-night);">${escapeHtml(t.code)} — ${escapeHtml(t.name)}</div>
+            <div style="font-size:0.8rem; color:var(--color-muted); margin-top:2px;">Rehber: ${escapeHtml(t.guideName)} • Otel: ${escapeHtml(t.makkahHotel)}</div>
           </div>
           <div style="display:flex; gap:6px; flex-wrap:wrap;">
-            <button type="button" class="btn btn-primary btn-sm" onclick="startEditTour('${t.id}')">Düzenle</button>
-            <button type="button" class="btn btn-gold btn-sm" onclick="openQrGeneratorForTour('${t.code}')">QR & Davet</button>
-            <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteTour('${t.id}')">Sil</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="startEditTour('${escapeHtml(t.id)}')">Düzenle</button>
+            <button type="button" class="btn btn-gold btn-sm" onclick="openQrGeneratorForTour('${escapeHtml(t.code)}')">QR & Davet</button>
+            <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteTour('${escapeHtml(t.id)}')">Sil</button>
           </div>
         </div>
       `).join('');
@@ -976,12 +976,12 @@
         <div style="padding:14px 16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
           <div>
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-              <strong style="color:var(--color-emerald-night);">${g.name}</strong>
-              <span class="badge badge-emerald">${g.assignedTour}</span>
+              <strong style="color:var(--color-emerald-night);">${escapeHtml(g.name)}</strong>
+              <span class="badge badge-emerald">${escapeHtml(g.assignedTour)}</span>
             </div>
-            <div style="font-size:0.82rem; color:var(--color-muted); margin-top:4px;">${g.title} • ${g.phone}</div>
+            <div style="font-size:0.82rem; color:var(--color-muted); margin-top:4px;">${escapeHtml(g.title)} • ${escapeHtml(g.phone)}</div>
           </div>
-          ${appState.guides.length > 1 ? `<button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteGuide('${g.id}', '${g.name.replace(/'/g, "\\'")}')">Sil</button>` : ''}
+          ${appState.guides.length > 1 ? `<button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteGuide('${escapeHtml(g.id)}', '${escapeHtml(String(g.name || '').replace(/'/g, "\\'"))}')">Sil</button>` : ''}
         </div>
       `).join('');
 

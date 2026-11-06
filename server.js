@@ -69,6 +69,54 @@ function loadState() {
   return seed;
 }
 
+let pendingSaveTimer = null;
+let pendingSaveStateRef = null;
+let isWritingRuntimeFile = false;
+let writeAgainAfterCurrent = false;
+
+async function flushAsyncRuntimeWrite() {
+  if (isWritingRuntimeFile || !pendingSaveStateRef) return;
+  isWritingRuntimeFile = true;
+  const snapshot = pendingSaveStateRef;
+  pendingSaveStateRef = null;
+  try {
+    const payload = JSON.stringify(snapshot, null, 2);
+    await fs.promises.writeFile(RUNTIME_FILE, payload, 'utf8');
+  } catch (err) {
+    console.error('Runtime state asenkron kaydedilemedi:', err.message);
+  } finally {
+    isWritingRuntimeFile = false;
+    if (writeAgainAfterCurrent || pendingSaveStateRef) {
+      writeAgainAfterCurrent = false;
+      flushAsyncRuntimeWrite();
+    }
+  }
+}
+
+function flushPendingSaveSync() {
+  if (pendingSaveTimer) {
+    clearTimeout(pendingSaveTimer);
+    pendingSaveTimer = null;
+  }
+  if (pendingSaveStateRef) {
+    try {
+      fs.writeFileSync(RUNTIME_FILE, JSON.stringify(pendingSaveStateRef, null, 2), 'utf8');
+      pendingSaveStateRef = null;
+    } catch (err) {
+      console.error('Runtime state senkron flush hatası:', err.message);
+    }
+  }
+}
+
+process.on('SIGINT', () => {
+  flushPendingSaveSync();
+  process.exit(0);
+});
+process.on('SIGTERM', () => {
+  flushPendingSaveSync();
+  process.exit(0);
+});
+
 function saveState(state) {
   try {
     if (state && typeof state === 'object') {
@@ -82,7 +130,20 @@ function saveState(state) {
         state.requests = state.requests.slice(0, 200);
       }
     }
-    fs.writeFileSync(RUNTIME_FILE, JSON.stringify(state, null, 2), 'utf8');
+    if (process.env.VERCEL) {
+      fs.writeFileSync(RUNTIME_FILE, JSON.stringify(state, null, 2), 'utf8');
+      return;
+    }
+    pendingSaveStateRef = state;
+    if (isWritingRuntimeFile) {
+      writeAgainAfterCurrent = true;
+      return;
+    }
+    if (pendingSaveTimer) clearTimeout(pendingSaveTimer);
+    pendingSaveTimer = setTimeout(() => {
+      pendingSaveTimer = null;
+      flushAsyncRuntimeWrite();
+    }, 50);
   } catch (err) {
     console.error('Runtime state kaydedilemedi:', err.message);
   }

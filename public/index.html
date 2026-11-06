@@ -828,6 +828,15 @@
     });
 
     // Load Tours & Hotels from API
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     async function loadBootstrap() {
       try {
         const res = await fetch('/api/bootstrap');
@@ -839,19 +848,19 @@
             <div>
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
                 <span class="badge ${t.status === 'live' ? 'badge-live' : 'badge-gold'}">
-                  ${t.status === 'live' ? '<span class="live-dot"></span> ŞU AN CANLI' : t.dateText}
+                  ${t.status === 'live' ? '<span class="live-dot"></span> ŞU AN CANLI' : escapeHtml(t.dateText)}
                 </span>
                 <span style="font-weight:800; font-size:0.84rem; color:var(--color-emerald-deep); background:var(--color-emerald-soft); padding:4px 10px; border-radius:8px;">
-                  KOD: ${t.code}
+                  KOD: ${escapeHtml(t.code)}
                 </span>
               </div>
-              <h3 style="font-size:1.22rem; margin-bottom:8px; color:var(--color-emerald-night);">${t.name.replace(/^🕋\s*/, '')}</h3>
-              <p style="font-size:0.88rem; color:var(--color-muted); margin-bottom:16px;">${t.description}</p>
+              <h3 style="font-size:1.22rem; margin-bottom:8px; color:var(--color-emerald-night);">${escapeHtml(String(t.name || '').replace(/^🕋\s*/, ''))}</h3>
+              <p style="font-size:0.88rem; color:var(--color-muted); margin-bottom:16px;">${escapeHtml(t.description)}</p>
               <div style="font-size:0.84rem; color:var(--color-ink); display:flex; flex-direction:column; gap:6px; margin-bottom:18px; background:var(--color-ground); padding:14px; border-radius:12px; border:1px solid var(--color-hairline);">
-                <div><strong>Rehber:</strong> ${t.guideName}</div>
-                <div><strong>Mekke:</strong> ${t.makkahHotel}</div>
-                <div><strong>Medine:</strong> ${t.madinahHotel}</div>
-                <div><strong>Kayıtlı:</strong> ${t.registeredCount} / ${t.capacity} Misafir</div>
+                <div><strong>Rehber:</strong> ${escapeHtml(t.guideName)}</div>
+                <div><strong>Mekke:</strong> ${escapeHtml(t.makkahHotel)}</div>
+                <div><strong>Medine:</strong> ${escapeHtml(t.madinahHotel)}</div>
+                <div><strong>Kayıtlı:</strong> ${Number(t.registeredCount) || 0} / ${Number(t.capacity) || 0} Misafir</div>
               </div>
             </div>
             <div style="display:flex; gap:8px;">
@@ -865,13 +874,13 @@
         hotelsGrid.innerHTML = data.hotels.map((h) => `
           <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-              <span class="badge badge-emerald">${h.city}</span>
-              <span style="color:var(--color-gold); font-weight:800; letter-spacing:2px;">${'★'.repeat(h.stars)}</span>
+              <span class="badge badge-emerald">${escapeHtml(h.city)}</span>
+              <span style="color:var(--color-gold); font-weight:800; letter-spacing:2px;">${'★'.repeat(Math.max(1, Math.min(5, Number(h.stars) || 5)))}</span>
             </div>
-            <h3 style="font-size:1.18rem; margin-bottom:6px;">${h.name}</h3>
-            <p style="font-size:0.86rem; color:var(--color-muted); margin-bottom:14px;">${h.distance}</p>
+            <h3 style="font-size:1.18rem; margin-bottom:6px;">${escapeHtml(h.name)}</h3>
+            <p style="font-size:0.86rem; color:var(--color-muted); margin-bottom:14px;">${escapeHtml(h.distance)}</p>
             <div style="display:flex; flex-wrap:wrap; gap:6px;">
-              ${h.features.map((f) => `<span style="font-size:0.75rem; background:var(--color-ground); border:1px solid var(--color-hairline); padding:4px 10px; border-radius:8px; font-weight:600;">${f}</span>`).join('')}
+              ${(h.features || []).map((f) => `<span style="font-size:0.75rem; background:var(--color-ground); border:1px solid var(--color-hairline); padding:4px 10px; border-radius:8px; font-weight:600;">${escapeHtml(f)}</span>`).join('')}
             </div>
           </div>
         `).join('');
@@ -885,7 +894,7 @@
           const pillsBox = document.getElementById('homeQuickPills');
           if (pillsBox) {
             pillsBox.innerHTML = `<span style="font-size:0.76rem; color:var(--color-muted); font-weight:700;">Aktif Kafile:</span>` +
-              data.tours.map((t) => `<button type="button" class="code-pill" onclick="setQuickCode('${t.code}')">${t.code} (${t.dateText || t.name})</button>`).join('');
+              data.tours.map((t) => `<button type="button" class="code-pill" onclick="setQuickCode('${escapeHtml(t.code)}')">${escapeHtml(t.code)} (${escapeHtml(t.dateText || t.name)})</button>`).join('');
           }
         }
       } catch (e) {

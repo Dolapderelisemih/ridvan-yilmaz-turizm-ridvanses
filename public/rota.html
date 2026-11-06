@@ -9,7 +9,7 @@
   <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=30"></script>
+  <script src="/vercel-ws-shim.js?v=38"></script>
   <style>
     .rota-hero-strip {
       background:
@@ -248,15 +248,26 @@
   <div id="rotaToast" class="toast-banner"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=19"></script>
+  <script src="/js/umrah-steps-map.js?v=38"></script>
   <script>
     (function () {
       const params = new URLSearchParams(window.location.search);
       let currentCode = (params.get('code') || 'RY-KASIM').toUpperCase().trim();
       let currentSteps = [];
       let currentTour = null;
+      let currentActiveStepTitle = 'Mescid-i Haram & Kâbe-i Muazzama';
       let ws = null;
       let pollTimer = null;
+      let wsReconnectTimer = null;
+
+      function escapeHtml(str) {
+        return String(str ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
 
       const codeInput = document.getElementById('codeInput');
       codeInput.value = currentCode;
@@ -306,10 +317,10 @@
             <div style="padding:12px 14px;border-radius:12px;background:${a.urgent ? '#fef2f2' : 'var(--color-ground)'};border:1px solid ${a.urgent ? 'rgba(220,38,38,0.28)' : 'var(--color-hairline)'};">
               <div style="display:flex;justify-content:space-between;gap:8px;font-size:0.75rem;font-weight:800;color:${a.urgent ? '#dc2626' : 'var(--color-emerald-deep)'};">
                 <span>${a.urgent ? '🚨 ÖNEMLİ DUYURU' : '📌 KAFİLE BİLGİSİ'}</span>
-                <span>${a.createdAt || ''}</span>
+                <span>${escapeHtml(a.createdAt || '')}</span>
               </div>
-              <div style="font-weight:800;font-size:0.9rem;color:var(--color-emerald-night);margin-top:3px;">${a.title || ''}</div>
-              <div style="font-size:0.83rem;color:var(--color-ink);margin-top:3px;">${a.message || ''}</div>
+              <div style="font-weight:800;font-size:0.9rem;color:var(--color-emerald-night);margin-top:3px;">${escapeHtml(a.title || '')}</div>
+              <div style="font-size:0.83rem;color:var(--color-ink);margin-top:3px;">${escapeHtml(a.message || '')}</div>
             </div>
           `
           )
@@ -322,7 +333,7 @@
           currentTour = data.tour;
           document.getElementById('tourTitle').textContent = `${data.tour.name} — Manevi Yolculuk Haritası`;
           document.getElementById('tourMeta').innerHTML =
-            `Rehber: <strong>${data.tour.guideName || 'Ömer Ali Gültekin'}</strong> • ${data.tour.dateText || ''} • ${data.tour.duration || ''}`;
+            `Rehber: <strong>${escapeHtml(data.tour.guideName || 'Ömer Ali Gültekin')}</strong> • ${escapeHtml(data.tour.dateText || '')} • ${escapeHtml(data.tour.duration || '')}`;
           document.getElementById('hotelInfoText').textContent =
             `🏨 Mekke: ${data.tour.makkahHotel || '-'} • Medine: ${data.tour.madinahHotel || '-'}`;
         }
@@ -347,8 +358,9 @@
           document.getElementById('statDay').textContent = shortDay;
           document.getElementById('statKm').textContent = `${Number(data.stats.currentDistanceKm || 0).toLocaleString('tr-TR')} km`;
           document.getElementById('statVisited').textContent = `${data.stats.visitedCount || 0} / ${data.stats.totalSteps || 0}`;
+          currentActiveStepTitle = data.stats.activeStepTitle || 'Kâbe-i Muazzama';
           if (!data.room || !data.room.guideLocation) {
-            document.getElementById('guideGpsText').textContent = `📍 Aktif Durak: ${data.stats.activeStepTitle || 'Kâbe-i Muazzama'}`;
+            document.getElementById('guideGpsText').textContent = `📍 Aktif Durak: ${currentActiveStepTitle}`;
           }
         }
 
@@ -396,6 +408,7 @@
             `🛰️ Canlı Rehber GPS Konumu Aktif (Son güncelleme: ${room.guideLocation.updatedAt || 'Şimdi'})`;
         } else {
           routeMap.updateGuideLocation(null);
+          document.getElementById('guideGpsText').textContent = `📍 Aktif Durak: ${currentActiveStepTitle}`;
         }
       }
 
@@ -412,6 +425,10 @@
       }
 
       function connectRealtime() {
+        if (wsReconnectTimer) {
+          clearTimeout(wsReconnectTimer);
+          wsReconnectTimer = null;
+        }
         if (ws) {
           try {
             ws.onclose = null;
@@ -419,10 +436,6 @@
             ws.close();
           } catch (_) {}
           ws = null;
-        }
-        if (pollTimer) {
-          clearInterval(pollTimer);
-          pollTimer = null;
         }
 
         const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -432,6 +445,10 @@
         try {
           ws = new WebSocket(`${proto}//${wsHost}/ws`);
           ws.onopen = () => {
+            if (pollTimer) {
+              clearInterval(pollTimer);
+              pollTimer = null;
+            }
             document.getElementById('syncIndicator').textContent = '● Canlı Bağlantı';
             ws.send(JSON.stringify({ type: 'family-subscribe', tourCode: currentCode }));
           };
@@ -455,6 +472,7 @@
                     `🛰️ Canlı Rehber GPS Güncellendi (${gLoc.updatedAt || 'Şimdi'})`;
                 } else {
                   routeMap.updateGuideLocation(null);
+                  document.getElementById('guideGpsText').textContent = `📍 Aktif Durak: ${currentActiveStepTitle}`;
                 }
               } else if (msg.type === 'room-state') {
                 applyRoomState(msg.room);
@@ -493,9 +511,13 @@
           };
           ws.onclose = () => {
             startFallbackPolling();
+            if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+            wsReconnectTimer = setTimeout(connectRealtime, 3500);
           };
         } catch (_) {
           startFallbackPolling();
+          if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+          wsReconnectTimer = setTimeout(connectRealtime, 3500);
         }
       }
 

@@ -29,8 +29,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=36"></script>
-  <script src="/js/umrah-steps-map.js?v=30"></script>
+  <script src="/vercel-ws-shim.js?v=38"></script>
+  <script src="/js/umrah-steps-map.js?v=38"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -1647,7 +1647,7 @@
       if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
         try {
           if (!workletModuleLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=36');
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=38');
             workletModuleLoaded = true;
           }
           scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
