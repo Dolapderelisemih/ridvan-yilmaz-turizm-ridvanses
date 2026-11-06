@@ -16,9 +16,9 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=42"></script>
+  <script src="/vercel-ws-shim.js?v=43"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=42"></script>
+  <script src="/js/umrah-steps-map.js?v=43"></script>
   <style>
     .app-shell {
       max-width: 540px;
@@ -1566,7 +1566,7 @@
       if (!audioCtx.audioWorklet || typeof window.AudioWorkletNode === 'undefined') return;
       rxPlayerWorkletLoading = true;
       audioCtx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=42')
+        .addModule('/pcm-player-worklet.js?v=43')
         .then(() => {
           if (!audioCtx || rxPlayerWorkletNode) return;
           let node;
@@ -1816,7 +1816,9 @@
       const view = new DataView(buffer);
       const rawSeq = view.getUint32(0, true);
       const phraseStart = Boolean(rawSeq & 0x80000000);
-      const seq = rawSeq & 0x7fffffff;
+      const is22k = Boolean(rawSeq & 0x40000000);
+      const seq = rawSeq & 0x3fffffff;
+      const pktSampleRate = is22k ? 22050 : 24000;
       const sentAt = view.getFloat64(4, true);
       const sampleCount = (buffer.byteLength - 12) >> 1;
       if (sampleCount <= 0) return;
@@ -1831,7 +1833,7 @@
       }
       const rms = Math.sqrt(sumSq / sampleCount);
       const pktLevel = Math.min(1, rms * 6.0);
-      const isSilentFrame = pktLevel <= 0.008;
+      const isSilentFrame = pktLevel <= 0.002;
 
       if (pktLevel > 0.015) {
         lastPacketReceivedAt = Date.now();
@@ -1839,7 +1841,7 @@
         animateSpectrumFromLevel(pktLevel);
       }
       if (isAudioListening) {
-        playPcmSamples(floatSamples, 24000, false, seq, phraseStart, isSilentFrame);
+        playPcmSamples(floatSamples, pktSampleRate, false, seq, phraseStart, isSilentFrame);
       }
     }
 
@@ -2354,7 +2356,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=42').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=43').catch(() => {});
       });
     }
 

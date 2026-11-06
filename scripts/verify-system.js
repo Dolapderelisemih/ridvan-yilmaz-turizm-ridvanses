@@ -566,7 +566,7 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
     `runtime.json geçerli: ${runtimeExists}, kalıntı .tmp yok: ${!tmpLeftover}`
   );
 
-  // 4.5 Yakın-Alan Ses Kilidi (Near-Field Voice Lock & Yan Ses Bastırma) DSP Doğrulaması
+  // 4.5 Kristal Netlik + 450ms Cümle Korumalı Yakın-Alan Ses Kilidi (v43 DSP) Doğrulaması
   const rehberHtml = fs.readFileSync(path.join(ROOT_DIR, 'public', 'rehber.html'), 'utf8');
   const dspStartIdx = rehberHtml.indexOf('const guideFilterHist = new Float32Array(6);');
   const dspEndIdx = rehberHtml.indexOf('let lastGuideMicChunkAt = 0;');
@@ -576,7 +576,7 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
     Float32Array,
     Math,
     Date: { now: () => 100000 },
-    guideSideVoiceRejectLevel: 0.65,
+    guideSideVoiceRejectLevel: 0.50,
     isGuideMicMuted: false
   };
   vm.createContext(dspSandbox);
@@ -592,9 +592,12 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
     guideOut = dspSandbox.processGuideFloatChunkDsp(guideChunk, 48000, 'crowd_isolation');
   }
 
-  // B) Rehber sustuktan sonra 1.2 metre yanındaki başka bir kişi konuşuyor (Genlik = 0.026)
+  // A-2) Cümle ortası kısa nefes/hece boşluğunda (128ms = 2 chunk) 450ms Cümle Koruması kapıyı açık tutuyor mu?
   const silenceChunk = new Float32Array(3072);
-  for (let c = 0; c < 5; c++) {
+  const midSentenceHoldOut = dspSandbox.processGuideFloatChunkDsp(silenceChunk, 48000, 'crowd_isolation');
+
+  // B) Rehber cümlesini bitirip >450ms sustuktan sonra (8 chunk = 512ms) 1.2 metre yanındaki başka bir kişi konuşuyor (Genlik = 0.026)
+  for (let c = 0; c < 8; c++) {
     dspSandbox.processGuideFloatChunkDsp(silenceChunk, 48000, 'crowd_isolation');
   }
   const sidePersonChunk = new Float32Array(3072);
@@ -610,26 +613,28 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
   dspSandbox.isGuideMicMuted = true;
   const mutedOut = dspSandbox.processGuideFloatChunkDsp(guideChunk, 48000, 'crowd_isolation');
 
-  const hasGain085 = rehberHtml.includes('guideMicGainMultiplier = 0.85');
-  const hasHighPass300 = rehberHtml.includes('highPass.frequency.value = isCrowdIsolation ? 300 : 90');
-  const hasHwBeamformingNoAgc =
-    rehberHtml.includes('echoCancellation: isCrowdIsolation || isNearEchoMode ? true : false') &&
-    rehberHtml.includes('noiseSuppression: isCrowdIsolation ? true : false') &&
+  const hasGain100 = rehberHtml.includes('guideMicGainMultiplier = 1.0');
+  const hasWidebandFilters =
+    rehberHtml.includes('highPass.frequency.value = isCrowdIsolation ? 105 : 90') &&
+    rehberHtml.includes('lowPass.frequency.value = isCrowdIsolation ? 9200 : 9500');
+  const hasPureMicNoMuffling =
+    rehberHtml.includes('noiseSuppression: false') &&
     rehberHtml.includes('autoGainControl: false');
 
   const sideAttenuationRatio = sideOut.rms / (0.026 * 0.707);
   assertCondition(
-    'ADIM-4.5 (AKUSTİK YAKIN-ALAN KİLİDİ & 300Hz HIGH-PASS)',
-    'Yakın rehber sesi (0.22) kapıyı açtı; 1.2m yandaki kişinin konuşması (0.026) bastırıldı; Gain=0.85, HighPass=300Hz ve AGC=false doğrulandı',
+    'ADIM-4.5 (KRİSTAL NETLİK 105-9200Hz + 450ms CÜMLE KORUMASI + YAN SES KİLİDİ)',
+    'Rehber sesi boğuklaştırılmadan (%100 Gain, 105-9200Hz, noiseSuppression=false) iletildi, cümle ortası (450ms) korundu ve sustuktan sonra yan konuşma (0.026) bastırıldı',
     guideOut.gateOpen === true &&
-      guideOut.rms > 0.08 &&
+      guideOut.rms > 0.12 &&
+      midSentenceHoldOut.gateOpen === true &&
       sideOut.gateOpen === false &&
-      sideAttenuationRatio < 0.06 &&
+      sideAttenuationRatio < 0.08 &&
       mutedOut.rms === 0 &&
-      hasGain085 &&
-      hasHighPass300 &&
-      hasHwBeamformingNoAgc,
-    `Rehber Gate: ${guideOut.gateOpen}, Yan Ses Bastırma: %${((1 - sideAttenuationRatio) * 100).toFixed(1)}, Gain=0.85: ${hasGain085}, HighPass=300Hz: ${hasHighPass300}, AGC=false: ${hasHwBeamformingNoAgc}`
+      hasGain100 &&
+      hasWidebandFilters &&
+      hasPureMicNoMuffling,
+    `Rehber RMS: ${guideOut.rms.toFixed(3)}, Cümle Tutma: ${midSentenceHoldOut.gateOpen}, Yan Ses Bastırma: %${((1 - sideAttenuationRatio) * 100).toFixed(1)}, Wideband(105-9200Hz): ${hasWidebandFilters}, NS=false: ${hasPureMicNoMuffling}`
   );
 }
 

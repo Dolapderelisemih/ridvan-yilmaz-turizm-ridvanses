@@ -28,8 +28,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=42"></script>
-  <script src="/js/umrah-steps-map.js?v=42"></script>
+  <script src="/vercel-ws-shim.js?v=43"></script>
+  <script src="/js/umrah-steps-map.js?v=43"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -304,19 +304,19 @@
           <!-- Mikrofon Spektrum & Seviye -->
           <div class="studio-meter-box">
             <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.78rem; color:#CBD5E1; margin-bottom:10px; font-weight:600; flex-wrap:wrap; gap:6px;">
-              <span id="micSourceLabel">Yayın Kaynağı: Hazır (24 kHz Yakın-Alan Ses Kilidi • Yan Ses Kalkanı Aktif)</span>
+              <span id="micSourceLabel">Yayın Kaynağı: Hazır (24 kHz Kristal HD • Cümle Korumalı Ses Kilidi)</span>
               <span id="dbMeterText" style="color:#E2C785;">Ses Seviyesi: Beklemede</span>
             </div>
             <div class="spectrum" id="guideSpectrum"></div>
             <div style="display:flex; align-items:center; gap:10px; font-size:0.78rem; color:#CBD5E1; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08);">
               <span>🎙️ Mikrofon Hassasiyeti:</span>
-              <input type="range" id="guideMicGainSlider" min="60" max="180" value="85" style="flex:1; accent-color:#dfbe78;" oninput="updateGuideMicGain(this.value)" />
-              <span id="guideMicGainLabel" style="font-weight:800; color:#E2C785; min-width:42px; text-align:right;">%85</span>
+              <input type="range" id="guideMicGainSlider" min="60" max="180" value="100" style="flex:1; accent-color:#dfbe78;" oninput="updateGuideMicGain(this.value)" />
+              <span id="guideMicGainLabel" style="font-weight:800; color:#E2C785; min-width:42px; text-align:right;">%100</span>
             </div>
             <div style="display:flex; align-items:center; gap:10px; font-size:0.78rem; color:#CBD5E1; margin-top:8px; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.08); flex-wrap:wrap;">
-              <span title="Yanınızdaki kişilerin konuşmalarını kesen Yakın-Alan Ses Kilidi gücü">🎯 Yan Ses Kesici (Yakınlık Kilidi):</span>
-              <input type="range" id="guideSideVoiceRejectSlider" min="15" max="90" value="65" style="flex:1; min-width:110px; accent-color:#4ADE80;" oninput="updateGuideSideVoiceReject(this.value)" />
-              <span id="guideSideVoiceRejectLabel" style="font-weight:800; color:#4ADE80; min-width:86px; text-align:right;">%65 (Güçlü)</span>
+              <span title="Siz sustuktan 450ms sonra devreye girerek yanınızdaki kişilerin konuşmalarını kesen Yakın-Alan Ses Kilidi gücü">🎯 Yan Ses Kesici (Yakınlık Kilidi):</span>
+              <input type="range" id="guideSideVoiceRejectSlider" min="15" max="85" value="50" style="flex:1; min-width:110px; accent-color:#4ADE80;" oninput="updateGuideSideVoiceReject(this.value)" />
+              <span id="guideSideVoiceRejectLabel" style="font-weight:800; color:#4ADE80; min-width:86px; text-align:right;">%50 (Dengeli)</span>
               <button type="button" class="code-pill" style="background:rgba(255,255,255,0.1); color:#E2C785; border-color:rgba(197,160,89,0.35); font-size:0.68rem; padding:3px 8px; cursor:pointer;" onclick="resetGuideVoiceLock()" title="Mikrofon mesafenizi değiştirdiyseniz ses referansını yeniden kalibre eder">🔄 Sesimi Kalibre Et</button>
             </div>
             <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; font-size:0.75rem; color:#CBD5E1; margin-top:8px; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.08);">
@@ -1224,11 +1224,11 @@
       }).join('');
     }
 
-    // Real Microphone Audio Streaming (24 kHz Wideband HD + Near-Field Voice Lock + Side-Voice Reject DSP)
+    // Real Microphone Audio Streaming (24 kHz Wideband HD + Sentence-Hold Near-Field Voice Lock DSP)
     let zeroGainNode = null;
     let guideMicGainNode = null;
-    let guideMicGainMultiplier = 0.85; // Varsayılan %85 (0.85) — Çevredeki uzak sesleri aşırı yükseltmez
-    let guideSideVoiceRejectLevel = 0.65; // Varsayılan %65 Yakın-Alan Ses Kilidi (Yan konuşmaları keser)
+    let guideMicGainMultiplier = 1.0; // Varsayılan %100 (1.0) — Rehberin sesi kısılmadan doğal ve gür iletilir
+    let guideSideVoiceRejectLevel = 0.50; // Varsayılan %50 Dengeli Yakın-Alan Ses Kilidi (Rehber sustuktan 450ms sonra yan konuşmaları keser)
     let isGuideMicMuted = false; // Yanındaki kişiyle özel konuşurken yayını düşürmeden geçici susturma
     let guideWakeLockSentinel = null;
     let isVoiceLoopbackTesting = false;
@@ -1244,26 +1244,25 @@
     }
 
     function updateGuideSideVoiceReject(val) {
-      const num = Math.max(15, Math.min(90, Number(val) || 65));
+      const num = Math.max(15, Math.min(85, Number(val) || 50));
       guideSideVoiceRejectLevel = num / 100;
       const lbl = document.getElementById('guideSideVoiceRejectLabel');
       if (lbl) {
-        let tag = 'Orta';
-        if (num >= 75) tag = 'Çok Sıkı';
-        else if (num >= 55) tag = 'Güçlü';
+        let tag = 'Dengeli';
+        if (num >= 70) tag = 'Güçlü';
         else if (num <= 30) tag = 'Hafif';
         lbl.textContent = `%${num} (${tag})`;
       }
     }
 
     function resetGuideVoiceLock() {
-      guideVoiceRefEnv = 0.065;
-      guideNoiseFloor = 0.0018;
+      guideVoiceRefEnv = 0.055;
+      guideNoiseFloor = 0.0014;
       guideSpeechHoldSamples = 0;
       const statusBox = document.getElementById('voiceTestStatusBox');
       if (statusBox) {
         statusBox.style.display = 'block';
-        statusBox.innerHTML = '🎯 <strong>Yakın-Alan Ses Kilidi Sıfırlandı:</strong> Şimdi mikrofona normal mesafenizden (10-15 cm) konuştuğunuzda sistem sadece sizin ses seviyenize kilitlenecek ve yanınızdaki uzak konuşmaları kesecektir.';
+        statusBox.innerHTML = '🎯 <strong>Yakın-Alan Ses Kilidi Sıfırlandı:</strong> Şimdi mikrofona normal mesafenizden (10-15 cm) konuştuğunuzda sistem sadece sizin ses seviyenize kilitlenecek, konuşmanız sırasında sesi %100 kristal netlikte tutup sustuğunuzda yan konuşmaları kesecektir.';
         setTimeout(() => {
           if (statusBox.innerHTML.includes('Yakın-Alan Ses Kilidi Sıfırlandı')) {
             statusBox.style.display = 'none';
@@ -1299,11 +1298,11 @@
       const mode = modeSel ? modeSel.value : 'crowd_isolation';
       if (guideHighPassNode && guideLowPassNode) {
         const isCrowd = mode === 'crowd_isolation';
-        guideHighPassNode.frequency.value = isCrowd ? 300 : 90;
-        guideLowPassNode.frequency.value = isCrowd ? 4200 : 9500;
+        guideHighPassNode.frequency.value = isCrowd ? 105 : 90;
+        guideLowPassNode.frequency.value = isCrowd ? 9200 : 9500;
       }
       if (guidePresenceNode) {
-        guidePresenceNode.gain.value = mode === 'crowd_isolation' ? 2.4 : 0.0;
+        guidePresenceNode.gain.value = mode === 'crowd_isolation' ? 1.2 : 0.0;
       }
       if (isMicBroadcasting) {
         await healGuideMicrophoneIfNeeded(true);
@@ -1437,12 +1436,17 @@
       return btoa(binary);
     }
 
-    // 12-Bayt Başlıklı ([seq: uint32, sentAt: float64] + Int16Array PCM16) İkili (Binary) Ses Çerçevesi Üretici
-    function encodeBinaryAudioPacket(floatSamples, seq, sentAt, phraseStart) {
+    // 12-Bayt Başlıklı ([seqFlags: uint32, sentAt: float64] + Int16Array PCM16) İkili (Binary) Ses Çerçevesi Üretici
+    // Bit 31 (0x80000000): phraseStart | Bit 30 (0x40000000): 22050 Hz (44.1 kHz donanım) bayrağı | Bit 0..29: seq
+    function encodeBinaryAudioPacket(floatSamples, seq, sentAt, phraseStart, outSampleRate = 24000) {
       const len = floatSamples.length;
       const buffer = new ArrayBuffer(12 + len * 2);
       const view = new DataView(buffer);
-      const packedSeq = ((seq >>> 0) & 0x7fffffff) | (phraseStart ? 0x80000000 : 0);
+      const is22k = outSampleRate >= 21000 && outSampleRate <= 23000;
+      const packedSeq =
+        ((seq >>> 0) & 0x3fffffff) |
+        (phraseStart ? 0x80000000 : 0) |
+        (is22k ? 0x40000000 : 0);
       view.setUint32(0, packedSeq >>> 0, true);
       view.setFloat64(4, Number(sentAt) || Date.now(), true);
       for (let i = 0; i < len; i++) {
@@ -1497,10 +1501,10 @@
     }
     const guideFilterHist = new Float32Array(6);
     let guideGateEnv = 0;
-    let guideGateGain = 0.001;
-    let guideNoiseFloor = 0.0018;
-    let guideVoiceRefEnv = 0.065; // Rehberin yakın mikrofon (10-15 cm) konuşma referans zarfı
-    let guideSpeechHoldSamples = 0; // Kelime sonu doğal hece koruma sayacı (Histerezis)
+    let guideGateGain = 0.01;
+    let guideNoiseFloor = 0.0014;
+    let guideVoiceRefEnv = 0.055; // Rehberin yakın mikrofon (10-15 cm) konuşma referans zarfı
+    let guideSpeechHoldSamples = 0; // 450ms Cümle Koruma Sayacı (Konuşurken kapının asla kapanmamasını sağlar)
     let guideEchoShadowEnv = 0;
     let guideEchoShadowHold = 0;
     let guideSilentChunksCount = 0;
@@ -1540,7 +1544,7 @@
 
       const isCrowdIsolation = acousticMode === 'crowd_isolation';
       const effectiveNearEcho = acousticMode === 'near_echo' || Date.now() < sameDeviceListenerActiveUntil;
-      const reject = Math.max(0.15, Math.min(0.90, guideSideVoiceRejectLevel));
+      const reject = Math.max(0.15, Math.min(0.85, guideSideVoiceRejectLevel));
 
       // 1. Adaptif Ortam Gürültü Tabanı & Paket Tepe Değeri Analizi
       let rawSq = 0;
@@ -1553,25 +1557,25 @@
       }
       const chunkRawRms = Math.sqrt(rawSq / (outLen || 1));
       if (chunkRawRms < guideNoiseFloor * 1.9) {
-        guideNoiseFloor = Math.max(0.0006, Math.min(0.008, 0.95 * guideNoiseFloor + 0.05 * chunkRawRms));
+        guideNoiseFloor = Math.max(0.0005, Math.min(0.006, 0.95 * guideNoiseFloor + 0.05 * chunkRawRms));
       }
 
-      // 2. Yakın-Alan Ses Kilidi (Dynamic Near-Field Voice Lock):
-      // Rehber mikrofona yakın (5-15 cm) konuştuğunda kendi ses enerjisini referans alır.
-      // 1-2 metre uzaktaki yan konuşmalar bu referansın %35-42 altında kaldığı için kapıyı açamaz!
+      // 2. Yakın-Alan Ses Kilidi (Sentence-Hold Near-Field Voice Lock):
+      // Rehber konuştuğu anda kapı rahatça açılır ve 450ms boyunca %100 şeffaf (boğuklaştırmadan) açık kalır.
+      // Rehber sustuktan (>450ms) sonra 1-2 metre uzaktaki yan konuşmalar referansın altında kaldığı için kapıyı açamaz!
       const minAbsOpen = isCrowdIsolation
-        ? 0.014 + reject * 0.030
+        ? 0.009 + reject * 0.012
         : effectiveNearEcho
-        ? 0.012 + reject * 0.018
-        : 0.008 + reject * 0.014;
+        ? 0.009 + reject * 0.010
+        : 0.006 + reject * 0.008;
 
       const nearFieldRatio = isCrowdIsolation
-        ? 0.24 + reject * 0.24
+        ? 0.24 + reject * 0.20
         : effectiveNearEcho
-        ? 0.22 + reject * 0.18
-        : 0.16 + reject * 0.14;
+        ? 0.20 + reject * 0.16
+        : 0.14 + reject * 0.10;
 
-      const noiseMultiplier = isCrowdIsolation ? 4.2 + reject * 3.5 : effectiveNearEcho ? 3.8 : 3.2;
+      const noiseMultiplier = isCrowdIsolation ? 3.8 + reject * 2.4 : effectiveNearEcho ? 3.2 : 2.6;
       const baseSpeechThreshold = Math.max(
         minAbsOpen,
         guideNoiseFloor * noiseMultiplier,
@@ -1579,25 +1583,25 @@
       );
 
       // Rehberin kendi yakın konuşma enerjisini adapte et (uzak/zayıf yan sesleri referansa dahil etme)
-      if (chunkRawRms > baseSpeechThreshold * 1.15 && chunkPeak > 0.032) {
-        const clampedPeak = Math.min(0.40, chunkPeak * 0.85);
+      if (chunkRawRms > baseSpeechThreshold * 1.1 && chunkPeak > 0.028) {
+        const clampedPeak = Math.min(0.42, chunkPeak * 0.85);
         if (clampedPeak > guideVoiceRefEnv) {
-          guideVoiceRefEnv = 0.88 * guideVoiceRefEnv + 0.12 * clampedPeak;
+          guideVoiceRefEnv = 0.85 * guideVoiceRefEnv + 0.15 * clampedPeak;
         } else {
           guideVoiceRefEnv = 0.992 * guideVoiceRefEnv + 0.008 * clampedPeak;
         }
       } else {
-        // Rehber sustuğunda referans kilidini çok yavaş gevşet ki yan konuşmalar hemen içeri sızmasın
-        guideVoiceRefEnv = Math.max(0.035, guideVoiceRefEnv * 0.9985);
+        // Rehber sustuğunda referans kilidini yavaşça gevşet
+        guideVoiceRefEnv = Math.max(0.032, guideVoiceRefEnv * 0.9985);
       }
 
-      const echoShadowFactor = effectiveNearEcho ? 0.42 : isCrowdIsolation ? 0.30 : 0.18;
+      const echoShadowFactor = effectiveNearEcho ? 0.38 : isCrowdIsolation ? 0.24 : 0.15;
       const expanderExponent = isCrowdIsolation
-        ? 2.8 + reject * 2.4
+        ? 4.2 + reject * 2.4
         : effectiveNearEcho
-        ? 2.8
-        : 1.8 + reject * 1.2;
-      const minGateFloor = isCrowdIsolation ? 0.0008 : effectiveNearEcho ? 0.004 : 0.012;
+        ? 3.2
+        : 1.8 + reject * 1.0;
+      const minGateFloor = isCrowdIsolation ? 0.001 : effectiveNearEcho ? 0.004 : 0.012;
 
       let sum = 0;
       let gateOpenedInChunk = false;
@@ -1620,11 +1624,10 @@
         // 3. Hece-Düzlemi Zarf İzleyici (Syllabic Smooth Envelope)
         const absV = Math.abs(filtered);
         if (absV > guideGateEnv) {
-          guideGateEnv = 0.976 * guideGateEnv + 0.024 * absV; // ~1.8ms hızlı açılış
+          guideGateEnv = 0.972 * guideGateEnv + 0.028 * absV; // ~1.5ms hızlı açılış (ilk harfi yutmaz)
         } else {
-          // Kalabalık modda hece aralarında daha hızlı sönümlenme (~45ms) ile yan ses sızıntısını kes
-          const releaseCoeff = isCrowdIsolation ? 0.9991 : 0.99945;
-          guideGateEnv = releaseCoeff * guideGateEnv + (1 - releaseCoeff) * absV;
+          // Doğal hece sönümlenmesi (~65ms) — kelime ortasında dalgalanma yapmaz
+          guideGateEnv = 0.99935 * guideGateEnv + 0.00065 * absV;
         }
 
         // 4. Akustik Hoparlör Sızıntısı & Oda Yankısı Gölge Kalkanı
@@ -1639,30 +1642,28 @@
 
         const openThreshold = Math.max(baseSpeechThreshold, guideEchoShadowEnv * echoShadowFactor);
 
-        // 5. Çift Eşikli Histerezis (Dual-Threshold Hysteresis):
-        // Kapı yalnızca rehberin güçlü yakın sesiyle (openThreshold) açılır;
-        // açıldıktan sonra kelime sonlarının yutulmaması için 150ms boyunca %58 eşikle (closeThreshold) tutunur.
+        // 5. ~400 ms Cümle Koruma Kilidi (Sentence-Hold Hysteresis):
+        // Rehber konuştuğu sürece (280ms sayaç + ~120ms zarf sönümlenmesi = ~400ms) kapı %100 açık (targetGain = 1.0) tutulur;
+        // böylece kelime aralarında, nefes geçişlerinde veya sessiz harflerde ses ASLA boğuklaşmaz/kesilmez!
         if (guideGateEnv >= openThreshold) {
-          guideSpeechHoldSamples = Math.round(outSampleRate * 0.15); // 150ms doğal hece tutma
+          guideSpeechHoldSamples = Math.round(outSampleRate * 0.28);
           gateOpenedInChunk = true;
         } else if (guideSpeechHoldSamples > 0) {
           guideSpeechHoldSamples--;
         }
 
-        const activeThreshold = guideSpeechHoldSamples > 0 ? openThreshold * 0.58 : openThreshold;
-
-        // 6. Downward Expander (Yakın Ses Geçirici / Uzak Yan-Ses Bastırıcı)
+        // 6. Downward Expander (Rehber Konuşurken %100 Şeffaf / Rehber Sustuktan Sonra Yan-Ses Bastırıcı)
         let targetGain;
-        if (guideGateEnv >= activeThreshold) {
+        if (guideSpeechHoldSamples > 0 || guideGateEnv >= openThreshold) {
           targetGain = 1.0;
           gateOpenedInChunk = true;
         } else {
-          const ratio = guideGateEnv / (activeThreshold || 0.01);
+          const ratio = guideGateEnv / (openThreshold || 0.01);
           targetGain = Math.max(minGateFloor, Math.pow(ratio, expanderExponent));
         }
 
-        // Kapı açılırken hızlı (0.012), kapanırken yumuşak-keskin (0.0055) geçiş
-        const gainSmooth = targetGain > guideGateGain ? 0.012 : 0.0055;
+        // Kapı açılırken hızlı (0.018), cümle bittiğinde yumuşak-net (0.008) geçiş
+        const gainSmooth = targetGain > guideGateGain ? 0.018 : 0.008;
         guideGateGain = (1 - gainSmooth) * guideGateGain + gainSmooth * targetGain;
         let v = filtered * guideGateGain;
 
@@ -1713,9 +1714,9 @@
         } else {
           const dbVal = rms > 0.0001 ? Math.max(-48, Math.min(0, Math.round(20 * Math.log10(rms)))) : -48;
           dbEl.textContent =
-            !gateOpen || dbVal <= -40
+            !gateOpen || dbVal <= -42
               ? '🛡️ Yakın-Alan Ses Kilidi: Yan Sesler Engelleniyor'
-              : `🎙️ Rehber Sesi Yayında (${dbVal} dB)`;
+              : `🎙️ Rehber Sesi Yayında (${dbVal} dB • Kristal HD)`;
         }
       }
 
@@ -1733,11 +1734,11 @@
       }
 
       // Her 64ms çerçevede sıra numarasını (seq) kesintisiz artır.
-      // Yan sesler kapı tarafından bastırıldığında (rms < 0.0008 veya geçici sessizdeyken) gereksiz gürültü gönderme!
+      // Rehber tamamen sustuktan ~2.9 saniye sonra (45 çerçeve) sessizlik paketlerini durdur ki cümle ortasında tampon sıfırlanmasın!
       const currentSeq = ++guideAudioSeq;
-      if (isGuideMicMuted || rms < 0.0008) {
+      if (isGuideMicMuted || rms < 0.00025) {
         guideSilentChunksCount++;
-        if (guideSilentChunksCount > 32) {
+        if (guideSilentChunksCount > 45) {
           guideWasIdlePaused = true;
           // Rehber WhatsApp'ta mesaj okurken uzun süre konuşmasa bile her ~9.6 saniyede bir (150 paket)
           // NAT / Proxy bağlantısının düşmemesi için hafif 'ping' gönder:
@@ -1761,7 +1762,7 @@
         }
         const isRelayMode = Boolean(ws._isRelay || ws.isRelay);
         if (!isRelayMode) {
-          const binaryFrame = encodeBinaryAudioPacket(downsampled, currentSeq, nowMs, isPhraseStart);
+          const binaryFrame = encodeBinaryAudioPacket(downsampled, currentSeq, nowMs, isPhraseStart, outSampleRate);
           ws.send(binaryFrame);
         } else {
           const pcm16 = floatTo16BitBase64(downsampled);
@@ -1797,14 +1798,14 @@
       const isCrowdIsolation = acousticMode === 'crowd_isolation';
       const isNearEchoMode = acousticMode === 'near_echo' || Date.now() < sameDeviceListenerActiveUntil;
 
-      // ÖNEMLİ: Kalabalık & Yan Ses Engelleme modunda telefonun donanımsal çift-mikrofon odaklamasını (Beamforming)
-      // devreye sokmak için echoCancellation ve noiseSuppression açılır, ancak rehber sustuğunda yan sesleri
-      // yükseltmemesi için autoGainControl KESİNLİKLE false (kapalı) tutulur!
+      // ÖNEMLİ: Tarayıcının yerleşik WebRTC noiseSuppression ve autoGainControl filtreleri insan sesinin
+      // tiz harflerini ezerek sesi "su altındaymış gibi boğuk" yaptığı için KESİNLİKLE false (kapalı) tutulur!
+      // Eko engelleme (echoCancellation) yalnızca aynı odada hoparlör testi (near_echo) modunda açılır.
       try {
         micStream = await navigator.mediaDevices.getUserMedia({
           audio: {
-            echoCancellation: isCrowdIsolation || isNearEchoMode ? true : false,
-            noiseSuppression: isCrowdIsolation ? true : false,
+            echoCancellation: isNearEchoMode ? true : false,
+            noiseSuppression: false,
             autoGainControl: false,
             channelCount: 1,
             sampleRate: 48000
@@ -1830,29 +1831,29 @@
       const source = audioCtx.createMediaStreamSource(micStream);
       guideSourceNode = source;
 
-      // 1. Uzak Kalabalık Uğultusu ve Yan Ses Bas Kesici (Kalabalık modda 300 Hz High-Pass Filtre)
+      // 1. Rüzgar ve Mekanik Dip Uğultu Kesici (105 Hz — İnsan sesinin gövde sıcaklığını korur, boğuklaştırmaz)
       const highPass = audioCtx.createBiquadFilter();
       highPass.type = 'highpass';
-      highPass.frequency.value = isCrowdIsolation ? 300 : 90;
+      highPass.frequency.value = isCrowdIsolation ? 105 : 90;
       highPass.Q.value = 0.707;
       guideHighPassNode = highPass;
 
-      // 2. Çevre Hışırtısı ve Uzak Yansıma Kesici (Kalabalık modda 4200 Hz Odaklı Konuşma Bandı)
+      // 2. Geniş-Bant HD Konuşma Netliği (9200 Hz — s, ş, ç, t, k, f harflerinin kristal netlikte anlaşılmasını sağlar)
       const lowPass = audioCtx.createBiquadFilter();
       lowPass.type = 'lowpass';
-      lowPass.frequency.value = isCrowdIsolation ? 4200 : 9500;
+      lowPass.frequency.value = isCrowdIsolation ? 9200 : 9500;
       lowPass.Q.value = 0.707;
       guideLowPassNode = lowPass;
 
-      // 3. Yakın Mikrofon Konuşma Netliği (2.2 kHz Presence Vurgusu)
+      // 3. Hafif ve Doğal Konuşma Netliği (2.5 kHz +1.2 dB Presence)
       const presence = audioCtx.createBiquadFilter();
       presence.type = 'peaking';
-      presence.frequency.value = 2200;
-      presence.Q.value = 1.0;
-      presence.gain.value = isCrowdIsolation ? 2.4 : 0.0;
+      presence.frequency.value = 2500;
+      presence.Q.value = 0.9;
+      presence.gain.value = isCrowdIsolation ? 1.2 : 0.0;
       guidePresenceNode = presence;
 
-      // 4. Rehber Mikrofon Kazancı (Gain — Varsayılan %85 / 0.85 Optimize Kazanç)
+      // 4. Rehber Mikrofon Kazancı (Gain — Varsayılan %100 / 1.0 Doğal Gür Ses)
       guideMicGainNode = audioCtx.createGain();
       guideMicGainNode.gain.value = guideMicGainMultiplier;
 
@@ -1866,9 +1867,9 @@
 
       guideFilterHist.fill(0);
       guideGateEnv = 0;
-      guideGateGain = 0.001;
-      guideNoiseFloor = 0.0018;
-      guideVoiceRefEnv = 0.065;
+      guideGateGain = 0.01;
+      guideNoiseFloor = 0.0014;
+      guideVoiceRefEnv = 0.055;
       guideSpeechHoldSamples = 0;
       guideEchoShadowEnv = 0;
       guideEchoShadowHold = 0;
@@ -1880,7 +1881,7 @@
       if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
         try {
           if (!workletModuleLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=42');
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=43');
             workletModuleLoaded = true;
           }
           scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
