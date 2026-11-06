@@ -28,8 +28,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=41"></script>
-  <script src="/js/umrah-steps-map.js?v=41"></script>
+  <script src="/vercel-ws-shim.js?v=42"></script>
+  <script src="/js/umrah-steps-map.js?v=42"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -310,8 +310,8 @@
             <div class="spectrum" id="guideSpectrum"></div>
             <div style="display:flex; align-items:center; gap:10px; font-size:0.78rem; color:#CBD5E1; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08);">
               <span>🎙️ Mikrofon Hassasiyeti:</span>
-              <input type="range" id="guideMicGainSlider" min="60" max="180" value="100" style="flex:1; accent-color:#dfbe78;" oninput="updateGuideMicGain(this.value)" />
-              <span id="guideMicGainLabel" style="font-weight:800; color:#E2C785; min-width:42px; text-align:right;">%100</span>
+              <input type="range" id="guideMicGainSlider" min="60" max="180" value="85" style="flex:1; accent-color:#dfbe78;" oninput="updateGuideMicGain(this.value)" />
+              <span id="guideMicGainLabel" style="font-weight:800; color:#E2C785; min-width:42px; text-align:right;">%85</span>
             </div>
             <div style="display:flex; align-items:center; gap:10px; font-size:0.78rem; color:#CBD5E1; margin-top:8px; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.08); flex-wrap:wrap;">
               <span title="Yanınızdaki kişilerin konuşmalarını kesen Yakın-Alan Ses Kilidi gücü">🎯 Yan Ses Kesici (Yakınlık Kilidi):</span>
@@ -1227,7 +1227,7 @@
     // Real Microphone Audio Streaming (24 kHz Wideband HD + Near-Field Voice Lock + Side-Voice Reject DSP)
     let zeroGainNode = null;
     let guideMicGainNode = null;
-    let guideMicGainMultiplier = 1.0;
+    let guideMicGainMultiplier = 0.85; // Varsayılan %85 (0.85) — Çevredeki uzak sesleri aşırı yükseltmez
     let guideSideVoiceRejectLevel = 0.65; // Varsayılan %65 Yakın-Alan Ses Kilidi (Yan konuşmaları keser)
     let isGuideMicMuted = false; // Yanındaki kişiyle özel konuşurken yayını düşürmeden geçici susturma
     let guideWakeLockSentinel = null;
@@ -1299,13 +1299,13 @@
       const mode = modeSel ? modeSel.value : 'crowd_isolation';
       if (guideHighPassNode && guideLowPassNode) {
         const isCrowd = mode === 'crowd_isolation';
-        guideHighPassNode.frequency.value = isCrowd ? 145 : 90;
-        guideLowPassNode.frequency.value = isCrowd ? 4600 : 9500;
+        guideHighPassNode.frequency.value = isCrowd ? 300 : 90;
+        guideLowPassNode.frequency.value = isCrowd ? 4200 : 9500;
       }
       if (guidePresenceNode) {
-        guidePresenceNode.gain.value = mode === 'crowd_isolation' ? 2.2 : 0.0;
+        guidePresenceNode.gain.value = mode === 'crowd_isolation' ? 2.4 : 0.0;
       }
-      if (isMicBroadcasting && mode === 'near_echo') {
+      if (isMicBroadcasting) {
         await healGuideMicrophoneIfNeeded(true);
       }
     }
@@ -1797,14 +1797,14 @@
       const isCrowdIsolation = acousticMode === 'crowd_isolation';
       const isNearEchoMode = acousticMode === 'near_echo' || Date.now() < sameDeviceListenerActiveUntil;
 
-      // ÖNEMLİ: Tarayıcının WebRTC "noiseSuppression: true" ve "autoGainControl: true" filtreleri
-      // FFT spektral çıkarma yaptığı için arka planda "lavabo / Transformers" sesi üretir.
-      // Bunları kapatıp kendi zaman-düzlemi (Time-Domain) Yakın-Alan Ses Kilidi filtremizi kullanıyoruz!
+      // ÖNEMLİ: Kalabalık & Yan Ses Engelleme modunda telefonun donanımsal çift-mikrofon odaklamasını (Beamforming)
+      // devreye sokmak için echoCancellation ve noiseSuppression açılır, ancak rehber sustuğunda yan sesleri
+      // yükseltmemesi için autoGainControl KESİNLİKLE false (kapalı) tutulur!
       try {
         micStream = await navigator.mediaDevices.getUserMedia({
           audio: {
-            echoCancellation: isNearEchoMode ? true : false,
-            noiseSuppression: false,
+            echoCancellation: isCrowdIsolation || isNearEchoMode ? true : false,
+            noiseSuppression: isCrowdIsolation ? true : false,
             autoGainControl: false,
             channelCount: 1,
             sampleRate: 48000
@@ -1830,17 +1830,17 @@
       const source = audioCtx.createMediaStreamSource(micStream);
       guideSourceNode = source;
 
-      // 1. Uzak Kalabalık Uğultusu ve Rüzgâr Kesici (Kalabalık modda 145 Hz Yakın-Konuşma High-Pass)
+      // 1. Uzak Kalabalık Uğultusu ve Yan Ses Bas Kesici (Kalabalık modda 300 Hz High-Pass Filtre)
       const highPass = audioCtx.createBiquadFilter();
       highPass.type = 'highpass';
-      highPass.frequency.value = isCrowdIsolation ? 145 : 90;
+      highPass.frequency.value = isCrowdIsolation ? 300 : 90;
       highPass.Q.value = 0.707;
       guideHighPassNode = highPass;
 
-      // 2. Çevre Hışırtısı ve Uzak Yansıma Kesici (Kalabalık modda 4600 Hz Odaklı Konuşma Bandı)
+      // 2. Çevre Hışırtısı ve Uzak Yansıma Kesici (Kalabalık modda 4200 Hz Odaklı Konuşma Bandı)
       const lowPass = audioCtx.createBiquadFilter();
       lowPass.type = 'lowpass';
-      lowPass.frequency.value = isCrowdIsolation ? 4600 : 9500;
+      lowPass.frequency.value = isCrowdIsolation ? 4200 : 9500;
       lowPass.Q.value = 0.707;
       guideLowPassNode = lowPass;
 
@@ -1849,10 +1849,10 @@
       presence.type = 'peaking';
       presence.frequency.value = 2200;
       presence.Q.value = 1.0;
-      presence.gain.value = isCrowdIsolation ? 2.2 : 0.0;
+      presence.gain.value = isCrowdIsolation ? 2.4 : 0.0;
       guidePresenceNode = presence;
 
-      // 4. Rehber Mikrofon Kazancı (Gain — Varsayılan %100 Doğal Birim Kazanç)
+      // 4. Rehber Mikrofon Kazancı (Gain — Varsayılan %85 / 0.85 Optimize Kazanç)
       guideMicGainNode = audioCtx.createGain();
       guideMicGainNode.gain.value = guideMicGainMultiplier;
 
@@ -1880,7 +1880,7 @@
       if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
         try {
           if (!workletModuleLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=41');
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=42');
             workletModuleLoaded = true;
           }
           scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');

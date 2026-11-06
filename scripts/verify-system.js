@@ -610,16 +610,26 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
   dspSandbox.isGuideMicMuted = true;
   const mutedOut = dspSandbox.processGuideFloatChunkDsp(guideChunk, 48000, 'crowd_isolation');
 
+  const hasGain085 = rehberHtml.includes('guideMicGainMultiplier = 0.85');
+  const hasHighPass300 = rehberHtml.includes('highPass.frequency.value = isCrowdIsolation ? 300 : 90');
+  const hasHwBeamformingNoAgc =
+    rehberHtml.includes('echoCancellation: isCrowdIsolation || isNearEchoMode ? true : false') &&
+    rehberHtml.includes('noiseSuppression: isCrowdIsolation ? true : false') &&
+    rehberHtml.includes('autoGainControl: false');
+
   const sideAttenuationRatio = sideOut.rms / (0.026 * 0.707);
   assertCondition(
-    'ADIM-4.5 (AKUSTİK YAKIN-ALAN KİLİDİ)',
-    'Yakın rehber sesi (0.22) kapıyı açtı; 1.2m yandaki kişinin konuşması (0.026) kapıyı açamadı ve bastırıldı',
+    'ADIM-4.5 (AKUSTİK YAKIN-ALAN KİLİDİ & 300Hz HIGH-PASS)',
+    'Yakın rehber sesi (0.22) kapıyı açtı; 1.2m yandaki kişinin konuşması (0.026) bastırıldı; Gain=0.85, HighPass=300Hz ve AGC=false doğrulandı',
     guideOut.gateOpen === true &&
       guideOut.rms > 0.08 &&
       sideOut.gateOpen === false &&
       sideAttenuationRatio < 0.06 &&
-      mutedOut.rms === 0,
-    `Rehber Gate: ${guideOut.gateOpen} (RMS: ${guideOut.rms.toFixed(4)}), Yan Ses Gate: ${sideOut.gateOpen} (Bastırma: %${((1 - sideAttenuationRatio) * 100).toFixed(1)}), Mute RMS: ${mutedOut.rms}`
+      mutedOut.rms === 0 &&
+      hasGain085 &&
+      hasHighPass300 &&
+      hasHwBeamformingNoAgc,
+    `Rehber Gate: ${guideOut.gateOpen}, Yan Ses Bastırma: %${((1 - sideAttenuationRatio) * 100).toFixed(1)}, Gain=0.85: ${hasGain085}, HighPass=300Hz: ${hasHighPass300}, AGC=false: ${hasHwBeamformingNoAgc}`
   );
 }
 

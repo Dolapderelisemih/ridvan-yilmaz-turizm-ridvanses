@@ -16,9 +16,9 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=41"></script>
+  <script src="/vercel-ws-shim.js?v=42"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=41"></script>
+  <script src="/js/umrah-steps-map.js?v=42"></script>
   <style>
     .app-shell {
       max-width: 540px;
@@ -1566,7 +1566,7 @@
       if (!audioCtx.audioWorklet || typeof window.AudioWorkletNode === 'undefined') return;
       rxPlayerWorkletLoading = true;
       audioCtx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=41')
+        .addModule('/pcm-player-worklet.js?v=42')
         .then(() => {
           if (!audioCtx || rxPlayerWorkletNode) return;
           let node;
@@ -2354,7 +2354,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=41').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=42').catch(() => {});
       });
     }
 
