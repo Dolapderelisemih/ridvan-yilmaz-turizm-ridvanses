@@ -427,16 +427,24 @@ function serializeRoom(room, includePilgrimDetails = true) {
   };
 }
 
-// PATCH: fanout-v51
-function rysSendAudio(socket,data,binary=false){
-  if(socket.readyState!==WebSocket.OPEN)return false;
-  if(!socket.isHttpRelay&&socket.bufferedAmount>(binary?9600:13200)){
-    socket._rysAudioDrops=(socket._rysAudioDrops||0)+1;
-    if(typeof socket.terminate==='function')socket.terminate();return false;
+// PATCH: fanout-v52
+function rysSendAudio(socket,data,binary=false,now=Date.now()){
+  if(socket.readyState!==WebSocket.OPEN||socket._rysClosing)return false;
+  const stop=()=>{socket._rysClosing=true;try{socket.terminate?.();}catch(e){}};
+  const queued=Number(socket.bufferedAmount)||0,soft=binary?9720:16000;
+  if(!socket.isHttpRelay){
+    if(queued>65536){stop();return false;}
+    if(queued>soft){
+      socket._rysAudioDrops=(socket._rysAudioDrops||0)+1;
+      if(socket._rysCongestedAt==null)socket._rysCongestedAt=now;
+      if(now-socket._rysCongestedAt>=2000)stop();
+      return false;
+    }
+    socket._rysCongestedAt=null;
   }
   try{
     if(socket.isHttpRelay)socket.send(data);
-    else socket.send(data,{binary},err=>{if(err&&typeof socket.terminate==='function')socket.terminate();});
+    else socket.send(data,{binary},err=>{if(err)stop();});
     return true;
   }catch(e){socket._rysAudioErrors=(socket._rysAudioErrors||0)+1;return false;}
 }

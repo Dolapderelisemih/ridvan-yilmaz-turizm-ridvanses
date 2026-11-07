@@ -1054,115 +1054,180 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
   );
 }
 
-// PATCH: verify-v51
-async function runStep5V51AudioChecks(options={}){
-  const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-  const cp=require('node:child_process'),crypto=require('node:crypto');
-  const report=fs.readFileSync('AUDIO_EXCELLENCE_REPORT.md','utf8').replace(/\r\n/g,'\n');
-  const fence=String.fromCharCode(96).repeat(3);
-  const blocks=[...report.matchAll(new RegExp(fence+'js\\s*\\n([\\s\\S]*?)'+fence,'g'))].map(m=>m[1]);
-  const get=id=>{const code=blocks.find(x=>x.startsWith('// PATCH: '+id+'\n'));assert(code,id);return code;};
-  const source=file=>fs.readFileSync(file,'utf8');
-  function scope(code,extra='',globals={}){
-    let P;const c={Float32Array,Float64Array,Math,Number,Boolean,Buffer,Promise,
-      sampleRate:48000,currentTime:0,structuredClone,
+// PATCH: verify-v52
+async function runStep5V52AudioChecks(){
+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+  const assert=require('node:assert/strict');
+  const root=typeof ROOT_DIR==='string'?ROOT_DIR:process.cwd();
+  const read=file=>fs.readFileSync(path.join(root,file),'utf8').replace(/\r\n/g,'\n');
+  const capture=read('public/pcm-capture-worklet.js'),player=read('public/pcm-player-worklet.js');
+  const guide=read('public/rehber.html'),listener=read('public/dinle.html');
+  const shim=read('public/vercel-ws-shim.js'),server=read('server.js');
+  // Top-level function/class or class method: close at the declaration's indentation.
+  function pick(text,name,kind='function'){
+    const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const head=kind==='class'?'class ':kind==='method'?'(?:async )?':'(?:async )?function ';
+    const re=new RegExp('^([ \\t]*)'+head+escaped+(kind==='class'?'\\b':'\\([^\\n]*\\)\\s*\\{'),'m');
+    const m=re.exec(text);assert(m,'Missing source symbol '+name);
+    for(let end=text.indexOf('}',m.index+m[0].length);end>=0;end=text.indexOf('}',end+1)){
+      const code=text.slice(m.index,end+1).trim();
+      try{new vm.Script(kind==='method'?'class Probe{'+code+'}':code);return code;}catch(e){if(!(e instanceof SyntaxError))throw e;}
+    }
+    throw new Error('Unterminated source symbol '+name);
+  }
+  function box(code,tail='',globals={}){
+    let P;const c={Float32Array,Float64Array,ArrayBuffer,DataView,Buffer,Math,Number,Boolean,Promise,
+      sampleRate:48000,currentTime:0,console,AbortController,URLSearchParams,
+      setTimeout,clearTimeout,queueMicrotask,
       AudioWorkletProcessor:class{constructor(){this.port={postMessage(){}};}},
-      registerProcessor:(n,K)=>P=K,...globals};
-    vm.createContext(c);vm.runInContext(code.replace(/^export .*$/mg,'')+'\n'+extra,c);return {c,P};
+      registerProcessor:(name,K)=>P=K,...globals};
+    vm.createContext(c);vm.runInContext(code.replace(/^export .*$/mg,'')+'\n'+tail,c);return {c,P};
   }
-  const patchMode=options.patches===true;
-  const capture=patchMode?get('capture-v51'):source('public/pcm-capture-worklet.js');
-  const player=patchMode?get('player-v51'):source('public/pcm-player-worklet.js');
-  const compile=code=>{
-    const r=cp.spawnSync(process.execPath,['--check','--input-type=module'],{input:code,encoding:'utf8'});
-    assert.equal(r.status,0,r.stderr);
-  };
-  for(let code of blocks){
-    if(code.startsWith('// PATCH: binary-v51'))code='function binaryBlock(ctx,ws,raw,isBinary){'+code+'}';
-    if(code.startsWith('// PATCH: seq-v51'))code='const o={'+code+'};';
-    compile(code);
-  }
-  const cap=scope(capture,'globalThis.G=RysNearExpander;globalThis.F=RysFir24;globalThis.K=RysCaptureKernel;').c;
-  const guard=new cap.G();
-  for(const x of [NaN,Infinity,-Infinity,1e308,-1e308,1e-300,0])assert(Number.isFinite(guard.step(x)));
-  const f=new cap.F(48000);let bad=0;
-  for(let i=0;i<600;i++)f.push(i===0?1e308:0,y=>{if(!Number.isFinite(y))bad++;});assert.equal(bad,0);
-  const long=new cap.G();
-  for(let i=0;i<24000;i++)long.step(.0001*Math.sin(2*Math.PI*220*i/24000));
-  long.setProfile({continuousSpeech:true});
-  for(let i=0;i<24000*12;i++)long.step(.1*Math.sin(2*Math.PI*220*i/24000));
-  assert(long.g>.98,'Manual continuous speech must not be learned away');
+  const cap=box(capture,'globalThis.K=RysCaptureKernel;globalThis.G=RysNearExpander;globalThis.F=RysFir24;').c;
+  const edge=new cap.G();for(const x of [NaN,Infinity,-Infinity,1e308,-1e308,1e-300,0])assert(Number.isFinite(edge.step(x)));
+  assert.throws(()=>new cap.F(0));
   for(const sr of [44100,48000]){
-    const run=size=>{let out=[];const k=new cap.K(sr,{},m=>out.push(...m.samples));
-      for(let i=0;i<sr;i+=size)k.process(Float32Array.from({length:Math.min(size,sr-i)},(_,j)=>.01*Math.sin((i+j)*.1)));
-      assert.equal(k.offset,0);assert.equal(out.length,24000);assert(out.every(Number.isFinite));return out;};
-    assert.deepEqual(run(128),run(2048));
+    function renderCapture(size){
+      const frames=[],k=new cap.K(sr,{comfortFade:false},m=>frames.push(...m.samples));
+      for(let i=0;i<sr;i+=size)k.process(Float32Array.from({length:Math.min(size,sr-i)},(_,j)=>.01*Math.sin((i+j)*.1)),i/sr);
+      assert.equal(k.offset,0);assert.equal(frames.length,24000);return frames;
+    }
+    assert.deepEqual(renderCapture(128),renderCapture(2048));
     for(const hz of [16000,20000]){
-      const fir=new cap.F(sr);let sq=0,n=0,count=0;
-      for(let i=0;i<sr;i++)fir.push(Math.sin(2*Math.PI*hz*i/sr),y=>{if(count++>2400){sq+=y*y;n++;}});
-      assert(20*Math.log10(Math.sqrt(sq/n)*Math.SQRT2)<-60);
+      const fir=new cap.F(sr);let n=0,sq=0,total=0;
+      for(let i=0;i<sr;i++)fir.push(Math.sin(2*Math.PI*hz*i/sr),x=>{if(total++>2400){sq+=x*x;n++;}});
+      assert.equal(total,24000);assert(20*Math.log10(Math.sqrt(sq/n)*Math.SQRT2)<-60);
     }
   }
-  const {P,c:pc}=scope(player,'globalThis.diff=rysDiff;');
-  const p=new P();p.expected=7;p.missing=1;
-  p.plc={fill(a){a.fill(.2);},append(){}};
-  p.q.set(7,new Float32Array(480).fill(-.2));p._nextFrame();
-  assert(Math.abs(p.frame[0]-.2)<1e-6);assert(Math.abs(p.frame[71]+.2)<1e-6);
-  const queue=new P();
-  const push=(seq,phrase=false)=>queue._push({samples:new Float32Array(480).fill(.1),seq,phraseStart:phrase,arrival:seq*20});
-  push(11);push(10,true);assert(queue.q.has(11));push(11);assert.equal(queue.stats.duplicate,1);
+  let lastFrame;const quiet=new cap.K(24000,{},m=>lastFrame=m);
+  for(let i=0;i<24000*3;i+=128)quiet.process(Float32Array.from({length:Math.min(128,72000-i)},(_,j)=>.005*Math.sin(2*Math.PI*700*(i+j)/24000)),i/24000);
+  assert(lastFrame.samples.every(x=>x===0),'Comfort fade must eventually emit zero PCM frames');
+  const long=new cap.G();for(let i=0;i<24000;i++)long.step(.0001*Math.sin(i*.05));
+  long.setProfile({continuousSpeech:true});
+  for(let i=0;i<24000*8;i++)long.step(.1*Math.sin(2*Math.PI*220*i/24000));assert(long.g>.98);
+  quiet.control({type:'set-profile',continuousSpeech:true});
+  for(let i=0;i<2400;i+=128)quiet.process(Float32Array.from({length:Math.min(128,2400-i)},(_,j)=>.1*Math.sin((i+j)*.05)),3+i/24000);
+  assert(quiet.comfortGain>.99,'Continuous speech must bypass comfort fade');
+  assert(guide.includes('id="guideContinuousSpeech"')&&guide.includes('id="guideComfortFade"'));
+  const profileCode=['syncGuideAudioProfile','setGuideContinuousSpeech','setGuideComfortFade'].map(n=>pick(guide,n)).join('\n');
+  const nodes={guideContinuousSpeech:{},guideComfortFade:{},guideProfileStatus:{}};let profiles=[];
+  const ui=box(profileCode,'',{guideContinuousSpeech:false,guideComfortFade:true,guideSideVoiceRejectLevel:.5,
+    document:{getElementById:id=>nodes[id]||null},scriptProcessor:{port:{postMessage:m=>profiles.push(m)}}}).c;
+  ui.setGuideContinuousSpeech(true);ui.setGuideComfortFade(false);
+  assert(nodes.guideContinuousSpeech.checked);assert(!nodes.guideComfortFade.checked);
+  assert.equal(profiles.at(-1).continuousSpeech,true);assert.equal(profiles.at(-1).comfortFade,false);
+  const graph=pick(guide,'setupGuideMicrophoneGraph');
+  for(const worklet of [true,false]){
+    let opts,fallbackAt;
+    const node=()=>({connect(){},disconnect(){}});
+    const ctx={state:'running',sampleRate:48000,currentTime:10,
+      createMediaStreamSource:node,createGain:()=>({...node(),gain:{value:0}}),
+      createBiquadFilter:()=>({...node(),frequency:{value:0},Q:{value:0},gain:{value:0}}),
+      createScriptProcessor:node,destination:{}};
+    if(worklet)ctx.audioWorklet={addModule:async()=>{}};
+    class Kernel{constructor(rate,o){opts=o;}control(){}process(ch,t){fallbackAt=t;}}
+    class AW{constructor(context,name,o){opts=o.processorOptions;this.port={postMessage(){}};}connect(){}}
+    const g=box(graph.replace(/\bimport\(url\)/g,'loadCaptureModule(url)')+'\n'+profileCode,'',{
+      audioCtx:ctx,window:{AudioContext:class{}},AudioWorkletNode:worklet?AW:undefined,
+      navigator:{mediaDevices:{getUserMedia:async()=>({getAudioTracks:()=>[{}]})}},
+      loadCaptureModule:async()=>({RysCaptureKernel:Kernel}),
+      disconnectGuideAudioNodes(){g.scriptProcessor=null;},
+      handleGuideMicFloatChunk(){},scriptProcessor:null,guideContinuousSpeech:true,guideComfortFade:false,
+      guideSideVoiceRejectLevel:.5,isGuideMicMuted:false,guideMicGainMultiplier:1,
+      guideTxRmsRing:new Float32Array(8),document:{getElementById:()=>null}
+    }).c;
+    await g.setupGuideMicrophoneGraph();assert(opts.continuousSpeech);assert(!opts.comfortFade);
+    if(!worklet){g.scriptProcessor.onaudioprocess({inputBuffer:{getChannelData:()=>new Float32Array(2048)},playbackTime:99});
+      assert(Math.abs(fallbackAt-(10-2048/48000))<1e-9);}
+  }
+  const {P,c:pc}=box(player,'globalThis.diff=rysDiff;');
+  const p=new P();p.playing=true;p.fi=120;p.phase=.25;
+  for(let i=0;i<33;i++)p._push({type:'push',samples:new Float32Array(480).fill(.1),seq:i,arrival:i*20});
+  assert.equal(p.q.size,24);assert.equal(p.expected,9);assert.equal(p.stats.queueDropped,9);
+  assert(p.q.has(32));assert.equal(p.stats.resync,0);assert(p.playing);assert.equal(p.fi,120);assert.equal(p.phase,.25);
+  const recovery=new P();recovery.expected=7;recovery.missing=1;
+  recovery.plc={fill(a){a.fill(.2);},append(){}};recovery.q.set(7,new Float32Array(480).fill(-.2));recovery._nextFrame();
+  assert(Math.abs(recovery.frame[0]-.2)<1e-6);assert(Math.abs(recovery.frame[71]+.2)<1e-6);
+  const seq=new P();const push=(n,phrase=false)=>seq._push({samples:new Float32Array(480).fill(.1),seq:n,phraseStart:phrase,arrival:n*20});
+  push(11);push(10,true);assert(seq.q.has(11));push(11);assert.equal(seq.stats.duplicate,1);
   for(let i=12;i<20;i++)push(i);
-  for(let i=0;i<500;i++){const a=new Float32Array(128);queue.process([],[[a]]);assert(a.every(Number.isFinite));}
-  assert(!queue.playing);assert.equal(pc.diff(0,0x7fffffff),1);
-  const framing=source('public/vercel-ws-shim.js');
-  const start=framing.indexOf('  function validRysAudio('),end=framing.indexOf('  // PATCH: coalescing',start);
-  const validCode=framing.slice(start,end);
+  for(let i=0;i<500;i++){const out=new Float32Array(128);seq.process([],[[out]]);assert(out.every(Number.isFinite));}
+  assert(!seq.playing);assert.equal(pc.diff(0,0x7fffffff),1);
+  const wrap=new P(),base=0x80000000-16;
+  for(let i=0;i<33;i++)wrap._push({samples:new Float32Array(480),seq:(base+i)%0x80000000,arrival:i*20});
+  assert.equal(wrap.q.size,24);assert.equal(wrap.expected,(base+9)%0x80000000);assert(wrap.q.has(16));
+  // Binary and JSON hit the same timeline; duplicate seq is concealed neither twice nor scheduled separately.
+  const rxP=new P();
+  const rx=box(['playPcmSamples','flushPendingRxFrames','handleBinaryAudioFrame'].map(n=>pick(listener,n)).join('\n'),'',{
+    isAudioListening:true,audioCtx:{state:'running',createBufferSource(){throw Error('Unexpected fallback playback');}},
+    rxPlayerWorkletNode:{port:{postMessage:m=>rxP._push(m)}},pendingRxFrames:[],
+    ensureAudioContext(){},forceResurrectPilgrimAudio(){},pilgrimAudioGuardChannel:null,
+    window:{},updateGuideSpeakingIndicator(){},animateSpectrumFromLevel(){},
+    atob:s=>Buffer.from(s,'base64').toString('binary'),performance:{now:()=>100}
+  }).c;
+  const frame=new ArrayBuffer(972),view=new DataView(frame);view.setUint32(0,0,true);view.setFloat64(4,1,true);
+  rx.handleBinaryAudioFrame(frame);rx.playPcmSamples(Buffer.alloc(960).toString('base64'),24000,true,0,false,true);
+  assert.equal(rxP.q.size,1);assert.equal(rxP.stats.duplicate,1);
+  const helpers=['validRysAudio','unpackRysAudio'].map(n=>pick(shim,n,'function')).join('\n');
+  const co=box(helpers+'\n'+pick(shim,'RysAudioCoalescer','class'),'globalThis.C=RysAudioCoalescer;').c;
   let jobs=[],now=0,sent=[];
-  const cc=scope(validCode+'\n'+get('coalescer-v51'),'globalThis.C=RysAudioCoalescer;').c;
-  const co=new cc.C(m=>sent.push(m),()=>now,fn=>{jobs.push(fn);return jobs.length;},()=>{});
+  const c=new co.C(m=>sent.push(m),()=>now,fn=>{jobs.push(fn);return jobs.length;},()=>{});
   const unit=i=>({type:'audio-chunk',seq:i,sentAt:1,sampleRate:24000,pcm16:Buffer.alloc(960).toString('base64')});
-  co.push(unit(0));const oldJob=jobs[0];now=20;co.push(unit(1));now=40;co.push(unit(2));
-  assert.equal(sent.length,1);assert.equal(sent[0]._queuedAt,0);
-  now=60;co.push(unit(3));oldJob();assert.equal(sent.length,1);jobs[jobs.length-1]();assert.equal(sent.length,2);
-  let fast=0,terminated=0;
-  const fc=scope(get('fanout-v51'),'',{WebSocket:{OPEN:1}}).c;
-  const slow={readyState:1,bufferedAmount:20000,terminate(){terminated++;},send(){throw Error('unexpected send');}};
+  c.push(unit(0));const oldJob=jobs[0];now=20;c.push(unit(1));now=40;c.push(unit(2));
+  assert.equal(sent[0]._queuedAt,0);now=60;c.push(unit(3));oldJob();assert.equal(sent.length,1);jobs.at(-1)();assert.equal(sent.length,2);
+  const fan=box(pick(server,'rysSendAudio')+'\n'+pick(server,'broadcastToRoom'),'',{WebSocket:{OPEN:1}}).c;
+  let terminated=0,fast=0;
+  const slow={readyState:1,bufferedAmount:9720,send(){},terminate(){terminated++;}};
+  assert(fan.rysSendAudio(slow,Buffer.alloc(972),true,0));assert.equal(terminated,0);
+  slow.bufferedAmount=12000;assert(!fan.rysSendAudio(slow,Buffer.alloc(972),true,100));assert.equal(terminated,0);
+  slow.bufferedAmount=0;assert(fan.rysSendAudio(slow,Buffer.alloc(972),true,400));
+  slow.bufferedAmount=12000;fan.rysSendAudio(slow,Buffer.alloc(972),true,500);fan.rysSendAudio(slow,Buffer.alloc(972),true,2600);
+  assert.equal(terminated,1);
+  const hard={readyState:1,bufferedAmount:65537,terminate(){terminated++;}};fan.rysSendAudio(hard,'',true,0);assert.equal(terminated,2);
   const throws={readyState:1,bufferedAmount:0,send(){throw Error('peer gone');}};
   const good={readyState:1,bufferedAmount:0,send(){fast++;}};
-  fc.broadcastToRoom({clients:new Map([[1,{ws:slow}],[2,{ws:throws}],[3,{ws:good}]])},{type:'audio-chunk'});
-  assert.equal(fast,1);assert.equal(terminated,1);
-  const drainText=source('server.js');const da=drainText.indexOf('function drainRysRelaySession(');
-  const db=drainText.indexOf("\napp.post('/api/ws-relay'",da);
-  const dc=scope(drainText.slice(da,db),'',{Date:{now:()=>450}}).c;
-  const sess={outbox:Array.from({length:23},(_,i)=>({at:i*20,message:{type:'audio-chunk',seq:i}}))};
-  const kept=dc.drainRysRelaySession(sess).length;assert.equal(kept,10);
-  const makeFn=(text,name)=>{
-    const m=new RegExp('^    (?:async )?function '+name+'\\(','m').exec(text);assert(m,name);
-    return text.slice(m.index,text.indexOf('\n    }',m.index)+6).trim();
-  };
-  let resumes=0;
-  const recoveryCode=patchMode?get('recovery-v51'):makeFn(source('public/dinle.html'),'forceResurrectPilgrimAudio');
-  const rc=scope(recoveryCode,'',{isAudioListening:true,intentionalLeave:false,rxRecoveryBusy:true,
-    audioCtx:{resume(){resumes++;return Promise.resolve();}},ensureAudioContext(){}}).c;
+  fan.broadcastToRoom({clients:new Map([[1,{ws:throws}],[2,{ws:good}]])},{type:'audio-chunk'});assert.equal(fast,1);
+  let httpJobs=[],fetchCalls=0,resolveFirst,delivered=0,fetchSignal;
+  const relayMethods=['_enqueueRelayMessage','_flushAndPoll','close'].map(n=>pick(shim,n,'method')).join('\n');
+  const hc=box('class Relay{'+relayMethods+'}\nglobalThis.R=Relay;','',{
+    Date:{now:()=>0},setTimeout:()=>1,clearTimeout(){},queueMicrotask:f=>httpJobs.push(f),
+    localStorage:{getItem:()=>''},fetch:(url,options)=>{
+      fetchCalls++;fetchSignal=options.signal;
+      const ok={ok:true,json:async()=>({messages:[{type:'room-state'}]})};
+      if(fetchCalls===1)return new Promise(r=>resolveFirst=()=>r(ok));return Promise.resolve(ok);
+    }
+  }).c;
+  const relay=new hc.R();Object.assign(relay,{readyState:1,_isRelay:true,_inFlight:false,_sendQueue:[],
+    _clientId:'unit',_joinContext:{},_busConnected:()=>false,_deliverIncomingMessage(){delivered++;},_closeMqttClients(){}});
+  relay._enqueueRelayMessage({type:'ping'});const flight=relay._flushAndPoll();
+  relay._enqueueRelayMessage({type:'join'});await relay._flushAndPoll();assert.equal(fetchCalls,1);
+  resolveFirst();await flight;assert.equal(delivered,1);assert.equal(httpJobs.length,1);
+  httpJobs.shift()();await new Promise(r=>setImmediate(r));assert.equal(fetchCalls,2);assert.equal(delivered,2);
+  relay._sendQueue=[];
+  for(let i=0;i<64;i++)assert(relay._enqueueRelayMessage({type:'ping',i}));
+  for(let i=0;i<5;i++)relay._enqueueRelayMessage({type:'audio-chunk',_queuedAt:0,frames:[unit(i)]});
+  assert.equal(relay._sendQueue.filter(m=>m.type==='ping').length,64);assert.equal(relay._sendQueue.filter(m=>m.type==='audio-chunk').length,4);
+  assert(!relay._enqueueRelayMessage({type:'join'}));
+  fetchCalls=0;relay._sendQueue=[{type:'ping'}];const closing=relay._flushAndPoll();
+  relay.close();assert(fetchSignal.aborted);resolveFirst();await closing;assert.equal(delivered,2);assert.equal(relay._sendQueue.length,0);
+  let resumes=0;const rc=box(pick(listener,'forceResurrectPilgrimAudio'),'',{
+    isAudioListening:true,intentionalLeave:false,rxRecoveryBusy:true,ensureAudioContext(){},
+    audioCtx:{resume(){resumes++;return Promise.resolve();}}
+  }).c;
   await rc.forceResurrectPilgrimAudio('user-gesture');assert.equal(resumes,1);
-  let requests=0,releaseCount=0,resolve;
-  const sentinel={released:false,release(){releaseCount++;return Promise.resolve();},addEventListener(){}};
-  const wc=scope(get('wakelock-v51'),'',{wakeLockDesired:true,wakeLockSentinel:null,
-    document:{visibilityState:'visible',getElementById(){return null;}},
-    navigator:{wakeLock:{request(){requests++;return new Promise(r=>resolve=r);}}}}).c;
-  const wa=wc.requestWakeLock(),wb=wc.requestWakeLock();assert.equal(requests,1);
-  wc.wakeLockDesired=false;resolve(sentinel);await Promise.all([wa,wb]);assert.equal(releaseCount,1);
-  let pauses=0;const mediaCode=patchMode?get('media-pilgrim-v51'):makeFn(source('public/dinle.html'),'updateMediaSessionMetadata');
-  const handlers={};const mc=scope(mediaCode,'',{currentTour:null,isAudioListening:true,document:{getElementById(){return null;}},
-    navigator:{mediaSession:{setActionHandler(n,f){handlers[n]=f;}}},MediaMetadata:class{},
-    toggleAudioPlayback(){pauses++;},forceResurrectPilgrimAudio(){}}).c;
-  mc.updateMediaSessionMetadata();assert(handlers.pause);handlers.pause();assert.equal(pauses,1);
-  if(patchMode){
-    const hashes=JSON.parse(report.match(/<!-- BASELINE-HASHES (.*?) -->/)[1]);
-    for(const [file,h]of Object.entries(hashes))assert.equal(crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'),h,file);
-  }
-  console.log('V51 PASS: syntax, finite extremes, manual long speech, FIR/SRC, continuation blend, reorder, timer generation/TTL, peer isolation, gesture, wake single-flight, user pause');
-  console.log('HTTP baseline: 23 frames / 450 ms drain -> '+kept+' survive; this is not zero-drop HTTP');
+  const wakeCode='let rysWakePending=null;\n'+pick(listener,'requestWakeLock');let requests=0,resolveWake,released=0;
+  const wc=box(wakeCode,'',{wakeLockDesired:true,wakeLockSentinel:null,
+    document:{visibilityState:'visible',getElementById:()=>null},
+    navigator:{wakeLock:{request(){requests++;return new Promise(r=>resolveWake=r);}}}}).c;
+  const wa=wc.requestWakeLock(),wb=wc.requestWakeLock();assert.equal(requests,1);wc.wakeLockDesired=false;
+  resolveWake({released:false,release(){released++;return Promise.resolve();},addEventListener(){}});await Promise.all([wa,wb]);assert.equal(released,1);
+  let paused=0;const actions={};
+  const mc=box(pick(listener,'updateMediaSessionMetadata'),'',{currentTour:null,isAudioListening:true,
+    document:{getElementById:()=>null},MediaMetadata:class{},navigator:{mediaSession:{setActionHandler(n,f){actions[n]=f;}}},
+    toggleAudioPlayback(){paused++;},forceResurrectPilgrimAudio(){}}).c;
+  mc.updateMediaSessionMetadata();actions.pause();assert.equal(paused,1);
+  if(typeof recordResult==='function')recordResult('ADIM-5.V52','Kaynak dosyalarından DSP, profil, sıra, fanout ve relay davranışları doğrulandı',true);
+  console.log('V52 PASS: source-only DSP/SRC/comfort/profile, queue/PLC/seq, binary+JSON dedup, coalescer, congestion, HTTP single-flight/drain/close, gesture/wake/pause');
 }
 
 async function main() {
@@ -1172,7 +1237,7 @@ async function main() {
     await runStep1StaticAndSyntaxChecks();
     await runStep2And3LiveServerAndWsTests();
     await runStep4FrontendPwaAndAtomicWriteChecks();
-    await runStep5V51AudioChecks();
+    await runStep5V52AudioChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);

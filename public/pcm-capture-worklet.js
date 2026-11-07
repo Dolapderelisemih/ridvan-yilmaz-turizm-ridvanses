@@ -1,3 +1,4 @@
+// PATCH: capture-v52
 // PATCH: capture-v51
 // PATCH: capture-v50
 // RıdvanSes v50 — Gerçek Zamanlı AudioWorklet Yakalama Motoru
@@ -153,6 +154,9 @@ class RysCaptureKernel {
     this.gate = new RysNearExpander(o);
     this.muted = Boolean(o.muted);
     this.mg = this.muted ? 0 : 1;
+    this.comfortFade=o.comfortFade!==false;this.comfortGain=1;this.quietSamples=0;
+    this.comfortAttack=1-Math.exp(-1/(24000*.003));
+    this.comfortRelease=1-Math.exp(-1/(24000*.080));
     this.frame = new Float32Array(480);
     this.offset = 0;
     this.sq = 0;
@@ -161,7 +165,12 @@ class RysCaptureKernel {
     this.accept = (s) => {
       const v = this.gate.step(s);
       this.mg += ((this.muted ? 0 : 1) - this.mg) * 0.0083;
-      const y = v * this.mg;
+      const active=this.gate.ready&&(this.gate.hold>0||this.gate.continuousSpeech);
+      this.quietSamples=active?0:this.quietSamples+1;
+      const want=(!this.comfortFade||active||this.quietSamples<=14400)?1:0;
+      this.comfortGain+=(want-this.comfortGain)*(want>this.comfortGain?this.comfortAttack:this.comfortRelease);
+      if(want===0&&this.comfortGain<1e-6)this.comfortGain=0;
+      const y = v * this.mg * this.comfortGain;
       this.frame[this.offset++] = y;
       this.sq += y * y;
       if (this.offset === 480) {
@@ -171,6 +180,7 @@ class RysCaptureKernel {
           rms: Math.sqrt(this.sq / 480),
           gateOpen: !this.muted && (this.gate.hold > 0 || this.gate.continuousSpeech),
           ready: this.gate.ready,
+          comfortSilent:this.comfortGain===0,
           capturedAt: this.time
         });
         this.frame = new Float32Array(480);
@@ -182,12 +192,15 @@ class RysCaptureKernel {
 
   control(m) {
     if (m.type === 'set-mute') this.muted = Boolean(m.muted);
-    if (m.type === 'set-profile') this.gate.setProfile(m);
+    if (m.type === 'set-profile') {
+      this.gate.setProfile(m);
+      if(m.comfortFade!==undefined)this.comfortFade=!!m.comfortFade;
+    }
   }
 
   process(ch, time = 0) {
-    this.time = time;
     for (let i = 0; i < ch.length; i++) {
+      this.time = time + i / this.fir.rate;
       this.fir.push(ch[i], this.accept);
     }
   }

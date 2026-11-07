@@ -28,7 +28,7 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=51"></script>
+  <script src="/vercel-ws-shim.js?v=52"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .console-wrap {
@@ -308,6 +308,14 @@
               <span id="dbMeterText" style="color:#E2C785;">Ses Seviyesi: Beklemede</span>
             </div>
             <div class="spectrum" id="guideSpectrum"></div>
+            <div style="margin:12px 0;color:#CBD5E1;">
+              <label><input id="guideContinuousSpeech" type="checkbox" onchange="setGuideContinuousSpeech(this.checked)" />
+                Kesintisiz uzun dua / okuma</label>
+              <p style="font-size:.8rem;">Uzun okumada ses kapısı kapanmaz; çevredeki konuşmalar da duyulabilir.</p>
+              <label><input id="guideComfortFade" type="checkbox" checked onchange="setGuideComfortFade(this.checked)" />
+                Cümle sonrasında dip sesi yumuşat</label>
+              <p id="guideProfileStatus" role="status" style="font-size:.8rem;">Dengeli ses profili</p>
+            </div>
             <div style="display:flex; align-items:center; gap:10px; font-size:0.78rem; color:#CBD5E1; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08);">
               <span>🎙️ Mikrofon Hassasiyeti:</span>
               <input type="range" id="guideMicGainSlider" min="60" max="180" value="100" style="flex:1; accent-color:#dfbe78;" oninput="updateGuideMicGain(this.value)" />
@@ -1223,6 +1231,22 @@
     }
 
     // Real Microphone Audio Streaming (24 kHz Saf Stüdyo Kristal HD + Boğukluk Giderici EQ + Cümle Korumalı Ses Kilidi)
+    // PATCH: guide-profile-v52
+    let guideContinuousSpeech=false;
+    let guideComfortFade=true;
+    function syncGuideAudioProfile(){
+      const speech=document.getElementById('guideContinuousSpeech');
+      const comfort=document.getElementById('guideComfortFade');
+      const status=document.getElementById('guideProfileStatus');
+      if(speech)speech.checked=guideContinuousSpeech;if(comfort)comfort.checked=guideComfortFade;
+      if(status)status.textContent=guideContinuousSpeech?'Uzun okuma açık; çevre sesi de geçebilir.':
+        (guideComfortFade?'Dengeli profil; cümle sonrası dip ses yumuşar.':'Dengeli profil; ortam tabanı korunur.');
+      try{scriptProcessor?.port?.postMessage({type:'set-profile',reject:guideSideVoiceRejectLevel,
+        continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade});}catch(e){console.warn('Ses profili sonraki mikrofon kurulumunda uygulanacak',e);}
+    }
+    function setGuideContinuousSpeech(enabled){guideContinuousSpeech=!!enabled;syncGuideAudioProfile();}
+    function setGuideComfortFade(enabled){guideComfortFade=!!enabled;syncGuideAudioProfile();}
+
     let zeroGainNode = null;
     let guideMicGainNode = null;
     let guideMicGainMultiplier = 1.0; // Varsayılan %100 (1.0) — Rehberin sesi kısılmadan doğal ve gür iletilir
@@ -1794,7 +1818,7 @@
       }
     }
 
-    // PATCH: guide-graph-v50
+    // PATCH: guide-graph-v52
     async function setupGuideMicrophoneGraph() {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!audioCtx) {
@@ -1901,7 +1925,7 @@
 
       lastGuideMicChunkAt = Date.now();
       const ctx = audioCtx;
-      const url = "/pcm-capture-worklet.js?v=51-audio";
+      const url = "/pcm-capture-worklet.js?v=52-audio";
       if (ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
         try {
           await ctx.audioWorklet.addModule(url);
@@ -1912,7 +1936,8 @@
             outputChannelCount: [1],
             processorOptions: {
               muted: isGuideMicMuted,
-              reject: guideSideVoiceRejectLevel
+              reject: guideSideVoiceRejectLevel,
+              continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade
             }
           });
           scriptProcessor.port.onmessage = (e) => {
@@ -1928,18 +1953,22 @@
         if (audioCtx !== ctx) throw Error('Eski bağlam');
         const k = new RysCaptureKernel(
           ctx.sampleRate,
-          { muted: isGuideMicMuted, reject: guideSideVoiceRejectLevel },
+          { muted: isGuideMicMuted, reject: guideSideVoiceRejectLevel,continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade },
           handleGuideMicFloatChunk
         );
         scriptProcessor = ctx.createScriptProcessor(2048, 1, 1);
         scriptProcessor.port = { postMessage: (m) => k.control(m) };
         scriptProcessor.onaudioprocess = (e) => {
-          if (audioCtx === ctx) k.process(e.inputBuffer.getChannelData(0), e.playbackTime);
+          if(audioCtx!==ctx)return;
+          const data=e.inputBuffer.getChannelData(0);
+          const estimatedStart=Math.max(0,ctx.currentTime-data.length/ctx.sampleRate);
+          k.process(data,estimatedStart);
         };
       }
       guideMicGainNode.connect(scriptProcessor);
       scriptProcessor.connect(zeroGainNode);
       zeroGainNode.connect(ctx.destination);
+      syncGuideAudioProfile();
     }
 
     async function healGuideMicrophoneIfNeeded(forceRebuild = false) {

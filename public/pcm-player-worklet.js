@@ -1,3 +1,4 @@
+// PATCH: player-v52
 // PATCH: player-v51
 // PATCH: player-v50
 // RıdvanSes v50 — Sıra Numarası (Seq) Tabanlı Jitter Tamponu, 48..400 Lag Pitch-PLC ve ±1000 ppm Hermite ASRC Oynatıcı
@@ -83,7 +84,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     this.jitter = 0;
     this.lastArrival = null;
     this.lastSeq = null;
-    this.stats = { late: 0, duplicate: 0, concealed: 0, resync: 0 };
+    this.stats = { late: 0, duplicate: 0, concealed: 0, resync: 0, queueDropped:0 };
     this.phraseSeen = new Set();
     this.tail = new Float32Array(Math.max(2, Math.round(this.rate * 0.005)));
     this.blend = new Float32Array(this.tail.length);
@@ -103,6 +104,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     this.plc = new RysPitchPlc();
     this.plcFrame = new Float32Array(480);
     this.recoveryFrame=new Float32Array(480);this.continuation=new Float32Array(480);
+    this.pendingQueueBlend=false;
     this.q = new Map();
     this.expected = null;
     this.playing = false;
@@ -132,58 +134,36 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
   }
 
   _push(m) {
-    if (
-      !(m.samples instanceof Float32Array) ||
-      m.samples.length !== 480 ||
-      !Number.isInteger(m.seq) ||
-      m.seq < 0 ||
-      m.seq >= RYS_MOD ||
-      !Number.isFinite(m.arrival)
-    ) {
-      return;
+    if(!(m?.samples instanceof Float32Array)||m.samples.length!==480||!Number.isInteger(m.seq)||
+      m.seq<0||m.seq>=RYS_MOD||!Number.isFinite(m.arrival))return;
+    for(const x of m.samples)if(!Number.isFinite(x))return;
+    if(this.expected===null)this.expected=m.seq;
+    let d=rysDiff(m.seq,this.expected);
+    if(d<0&&!this.playing&&d>=-12){this.expected=m.seq;d=0;}
+    if(d<0){this.stats.late++;return;}
+    if(this.q.has(m.seq)){this.stats.duplicate++;return;}
+    // Large discontinuities or an isolated far-future packet still require a new buffer anchor.
+    if(d>128||(d>32&&this.q.size<24)){
+      this.stats.resync++;this._reset();this.expected=m.seq;
     }
-    for (const x of m.samples) {
-      if (!Number.isFinite(x)) return;
-    }
-    // phraseStart is a hint, not a new media epoch.
-    if (this.expected === null) this.expected = m.seq;
-    let d = rysDiff(m.seq, this.expected);
-    if (d < 0 && !this.playing && d >= -12) {
-      this.expected = m.seq;
-      d = 0;
-    }
-    if (d < 0) {
-      this.stats.late++;
-      return;
-    }
-    if (this.q.has(m.seq)) {
-      this.stats.duplicate++;
-      return;
-    }
-    // Uzun kopma/yeniden bağlanmada eski zamanı sonsuza dek takip etmeyin.
-    if (d > 32) {
-      this.stats.resync++;
-      this._reset();
-      this.expected = m.seq;
-    }
-    if (this.lastArrival !== null && this.lastSeq !== null) {
-      const ds = rysDiff(m.seq, this.lastSeq);
-      if (ds > 0 && ds < 32) {
-        const delta = Math.abs((m.arrival - this.lastArrival) / 1000 - ds * 0.020);
-        this.jitter += (Math.min(0.5, delta) - this.jitter) / 16;
-        const wanted = Math.max(0.080, Math.min(0.260, 0.060 + 4 * this.jitter));
-        // Büyüme hızlı, küçülme yavaş. Aktif akışta hedef değişimi ASRC'ye yansır.
-        this.target += (wanted - this.target) * (wanted > this.target ? 0.25 : 0.002);
+    if(this.lastArrival!==null&&this.lastSeq!==null){
+      const ds=rysDiff(m.seq,this.lastSeq);
+      if(ds>0&&ds<32){
+        const delta=Math.abs((m.arrival-this.lastArrival)/1000-ds*.020);
+        this.jitter+=(Math.min(.5,delta)-this.jitter)/16;
+        const wanted=Math.max(.080,Math.min(.260,.060+4*this.jitter));
+        this.target+=(wanted-this.target)*(wanted>this.target ? .25 : .002);
       }
     }
-    this.lastArrival = m.arrival;
-    this.lastSeq = m.seq;
-    if (this.q.size >= 32) {
-      this.stats.resync++;
-      this._reset();
-      this.expected = m.seq;
+    this.lastArrival=m.arrival;this.lastSeq=m.seq;this.q.set(m.seq,m.samples);
+    if(this.q.size>32){
+      const keys=Array.from(this.q.keys()).sort((a,b)=>rysDiff(a,this.expected)-rysDiff(b,this.expected));
+      const remove=keys.length-24;
+      for(let i=0;i<remove;i++)this.q.delete(keys[i]);
+      this.expected=keys[remove];this.stats.queueDropped+=remove;
+      // Preserve current frame/phase. Blend at the next source frame boundary.
+      this.pendingQueueBlend=true;
     }
-    this.q.set(m.seq, m.samples);
   }
 
   _startBlend() {
@@ -199,7 +179,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     const packet=this.q.get(this.expected);this.q.delete(this.expected);
     this.expected=(this.expected+1)%RYS_MOD;this.fi=0;
     if(packet){
-      const recovery=this.missing>0;
+      const recovery=this.missing>0||this.pendingQueueBlend;this.pendingQueueBlend=false;
       if(recovery){
         // Predict the next PLC samples before replacing its state with real media.
         this.plc.fill(this.continuation);this.recoveryFrame.set(packet);
