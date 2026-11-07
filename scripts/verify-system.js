@@ -692,6 +692,26 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
       hasEchoCancelNoMuffling,
     `Tek Seçenek: ${hasSingleCrystalOption}, Yumuşak Hece: ${softSyllableOut.gateOpen} (RMS:${softSyllableOut.rms.toFixed(3)}), Yankı Bastırma: %${((1 - echoAttenuationRatio) * 100).toFixed(1)}, Yan Ses Bastırma: %${((1 - sideAttenuationRatio) * 100).toFixed(1)}`
   );
+
+  // 4.6 Alarm / Telefon Araması / Bildirim Kesintisi Sonrası Otomatik Ses ve Yayın Diriltme Doğrulaması
+  const dinleHtml = fs.readFileSync(path.join(ROOT_DIR, 'public', 'dinle.html'), 'utf8');
+  const workletCode = fs.readFileSync(path.join(ROOT_DIR, 'public', 'pcm-player-worklet.js'), 'utf8');
+  const hasMediaSessionSafePause =
+    dinleHtml.includes("handleSystemAudioInterruption('mediasession-pause')") &&
+    dinleHtml.includes("handleSystemAudioInterruption('mediasession-stop')");
+  const hasHotSwapRebuild =
+    dinleHtml.includes('function rebuildPilgrimAudioEngine(') &&
+    dinleHtml.includes('function forceResurrectPilgrimAudio(') &&
+    dinleHtml.includes('function verifyPilgrimWebSocketAfterInterruption(') &&
+    dinleHtml.includes('attachBgKeepAliveAudioListeners(');
+  const hasFastWorkletHeartbeat = workletCode.includes('this._heartbeatTicks >= 150');
+
+  assertCondition(
+    'ADIM-4.6 (ALARM / ARAMA / BİLDİRİM SONRASI OTOMATİK SES VE YAYIN DİRİLTME)',
+    'MediaSession pause/stop tuzağı kaldırıldı; AudioContext/AudioWorklet sıfırdan otomatik kurulum (rebuildPilgrimAudioEngine) ve yarı-açık WS onarımı doğrulandı',
+    hasMediaSessionSafePause && hasHotSwapRebuild && hasFastWorkletHeartbeat,
+    `MediaSession Koruması: ${hasMediaSessionSafePause}, HotSwap Rebuild: ${hasHotSwapRebuild}, 400ms Nabız: ${hasFastWorkletHeartbeat}`
+  );
 }
 
 async function main() {

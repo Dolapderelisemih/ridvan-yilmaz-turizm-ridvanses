@@ -28,8 +28,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=46"></script>
-  <script src="/js/umrah-steps-map.js?v=46"></script>
+  <script src="/vercel-ws-shim.js?v=47"></script>
+  <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -1355,8 +1355,22 @@
           ]
         });
         navigator.mediaSession.playbackState = (isMicBroadcasting || isDemoBroadcasting) ? 'playing' : 'paused';
+        navigator.mediaSession.setActionHandler('play', () => {
+          recoverGuideLiveSession();
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+          // Alarm veya bildirim geldiğinde işletim sisteminin yayını kapatmasını engelle, kesinti sonrası otomatik kurtar:
+          if (isMicBroadcasting || isDemoBroadcasting) {
+            setTimeout(() => recoverGuideLiveSession(), 450);
+            try {
+              navigator.mediaSession.playbackState = 'playing';
+            } catch {}
+          }
+        });
       } catch {}
     }
+
+    let guideBgAudioListenersBound = false;
 
     async function enableGuideKeepAlive() {
       try {
@@ -1373,6 +1387,17 @@
       try {
         const el = document.getElementById('guideBgKeepAliveAudio');
         if (el) {
+          if (!guideBgAudioListenersBound) {
+            guideBgAudioListenersBound = true;
+            ['pause', 'ended', 'stalled', 'suspend'].forEach((evt) => {
+              el.addEventListener(evt, () => {
+                if (isMicBroadcasting || isDemoBroadcasting) {
+                  setTimeout(() => recoverGuideLiveSession(), 450);
+                  setTimeout(() => recoverGuideLiveSession(), 1200);
+                }
+              });
+            });
+          }
           if (!el.src) el.src = createGuideSilentWavUri();
           el.volume = 0.01;
           if (el.paused) {
@@ -1412,6 +1437,14 @@
     }
 
     document.addEventListener('visibilitychange', () => {
+      recoverGuideLiveSession();
+    });
+
+    window.addEventListener('focus', () => {
+      recoverGuideLiveSession();
+    });
+
+    window.addEventListener('pageshow', () => {
       recoverGuideLiveSession();
     });
 
@@ -1870,7 +1903,7 @@
       if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
         try {
           if (!workletModuleLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=46');
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=47');
             workletModuleLoaded = true;
           }
           scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
@@ -1921,7 +1954,7 @@
       if (!isMicBroadcasting || isVoiceLoopbackTesting || isHealingGuideMic) return;
       const track = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
       const trackDead = !track || track.readyState === 'ended';
-      const captureStalled = lastGuideMicChunkAt > 0 && (Date.now() - lastGuideMicChunkAt > 4000);
+      const captureStalled = lastGuideMicChunkAt > 0 && (Date.now() - lastGuideMicChunkAt > 2000);
       if (forceRebuild || trackDead || captureStalled) {
         isHealingGuideMic = true;
         try {
@@ -1929,6 +1962,16 @@
           if (micStream) {
             try { micStream.getTracks().forEach((t) => t.stop()); } catch {}
             micStream = null;
+          }
+          // Alarm veya telefon araması sonrası AudioContext kilitlendiyse sıfırdan temiz AudioContext aç:
+          if ((trackDead || captureStalled) && audioCtx) {
+            const oldCtx = audioCtx;
+            audioCtx = null;
+            workletModuleLoaded = false;
+            try {
+              oldCtx.onstatechange = null;
+              oldCtx.close().catch(() => {});
+            } catch {}
           }
           await setupGuideMicrophoneGraph();
           if (typeof window.ryBroadcastGuideStream === 'function') {

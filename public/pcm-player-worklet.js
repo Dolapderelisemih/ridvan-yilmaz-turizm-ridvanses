@@ -33,7 +33,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     this._fadeInSamples = Math.round(sr * 0.005); // 5ms kosinüs yumuşak giriş
     this._fadeInPos = 0;
     this._lastSample = 0;
-    this._heartbeatTicks = 749;
+    this._heartbeatTicks = 149;
 
     this.port.onmessage = (ev) => {
       const msg = ev.data;
@@ -104,7 +104,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
 
   process(inputs, outputs) {
     this._heartbeatTicks = (this._heartbeatTicks + 1) | 0;
-    if (this._heartbeatTicks >= 750) {
+    if (this._heartbeatTicks >= 150) {
       this._heartbeatTicks = 0;
       try {
         this.port.postMessage({ type: 'audio-heartbeat' });

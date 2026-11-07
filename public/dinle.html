@@ -16,9 +16,9 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=46"></script>
+  <script src="/vercel-ws-shim.js?v=47"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=46"></script>
+  <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .app-shell {
       max-width: 540px;
@@ -1218,6 +1218,7 @@
       };
 
       ws.onmessage = (event) => {
+        window.__ryLastServerMsgAt = Date.now();
         if (event.data instanceof ArrayBuffer) {
           handleBinaryAudioFrame(event.data);
           return;
@@ -1565,6 +1566,15 @@
     }
 
     let rxPlayerWorkletAlive = false;
+    let lastRxWorkletHeartbeatAt = 0;
+    let lastAudioCtxTimeVal = -1;
+    let lastAudioCtxTimeCheckedAt = 0;
+    let audioCtxStuckCount = 0;
+    let isRebuildingAudioEngine = false;
+    let lastAudioEngineRebuildAt = 0;
+    let wasSystemAudioInterrupted = false;
+    let systemInterruptionStartedAt = 0;
+    let interruptionRecoveryTimer = null;
 
     function initRxPlayerWorklet() {
       if (rxPlayerWorkletNode && rxPlayerWorkletNode.context !== audioCtx) {
@@ -1575,7 +1585,7 @@
       if (!audioCtx.audioWorklet || typeof window.AudioWorkletNode === 'undefined') return;
       rxPlayerWorkletLoading = true;
       audioCtx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=46')
+        .addModule('/pcm-player-worklet.js?v=47')
         .then(() => {
           if (!audioCtx || rxPlayerWorkletNode) return;
           let node;
@@ -1591,6 +1601,7 @@
           node.port.onmessage = (ev) => {
             if (ev && ev.data && ev.data.type === 'audio-heartbeat') {
               rxPlayerWorkletAlive = true;
+              lastRxWorkletHeartbeatAt = Date.now();
               if (typeof pilgrimBackgroundHeartbeatTick === 'function') {
                 pilgrimBackgroundHeartbeatTick();
               }
@@ -1599,11 +1610,14 @@
           node.connect(rxInputNode || gainNode);
           rxPlayerWorkletNode = node;
           rxPlayerWorkletAlive = true;
+          lastRxWorkletHeartbeatAt = Date.now();
           while (activeScheduledSources.length > 0) {
             const src = activeScheduledSources.shift();
             try {
+              src.onended = null;
               src.stop();
               src.disconnect();
+              src.buffer = null;
             } catch {}
           }
         })
@@ -1611,6 +1625,181 @@
         .finally(() => {
           rxPlayerWorkletLoading = false;
         });
+    }
+
+    function rebuildPilgrimAudioEngine(reason = 'auto-heal') {
+      if (!isAudioListening || isRebuildingAudioEngine) return;
+      const now = Date.now();
+      if (now - lastAudioEngineRebuildAt < 1100) return;
+      isRebuildingAudioEngine = true;
+      lastAudioEngineRebuildAt = now;
+      try {
+        stopAllActiveSources();
+        if (rxPlayerWorkletNode) {
+          try {
+            if (rxPlayerWorkletNode.port) rxPlayerWorkletNode.port.onmessage = null;
+            rxPlayerWorkletNode.disconnect();
+          } catch {}
+          rxPlayerWorkletNode = null;
+        }
+        rxPlayerWorkletAlive = false;
+        rxPlayerWorkletLoading = false;
+        if (window.__ryInternalKeepAliveOsc) {
+          try {
+            window.__ryInternalKeepAliveOsc.stop();
+            window.__ryInternalKeepAliveOsc.disconnect();
+          } catch {}
+          window.__ryInternalKeepAliveOsc = null;
+        }
+        if (audioCtx) {
+          const oldCtx = audioCtx;
+          audioCtx = null;
+          gainNode = null;
+          rxInputNode = null;
+          try {
+            oldCtx.onstatechange = null;
+            oldCtx.close().catch(() => {});
+          } catch {}
+        }
+        lastAudioCtxTimeVal = -1;
+        audioCtxStuckCount = 0;
+        lastReceivedAudioSeq = 0;
+        ensureAudioContext();
+        if (audioCtx && audioCtx.state !== 'running') {
+          audioCtx.resume().then(() => syncAudioUnlockButtonUi()).catch(() => {});
+        }
+        startBackgroundKeepAliveAudio();
+        syncAudioUnlockButtonUi();
+        console.log(`🔄 [RıdvanSes Ses Motoru] Alarm/Arama/Bildirim sonrası ses motoru sıfırdan yenilendi (${reason})`);
+      } catch (e) {} finally {
+        isRebuildingAudioEngine = false;
+      }
+    }
+
+    function handleSystemAudioInterruption(source = 'os-interruption') {
+      if (!isAudioListening || intentionalLeave) return;
+      if (!wasSystemAudioInterrupted) {
+        wasSystemAudioInterrupted = true;
+        systemInterruptionStartedAt = Date.now();
+      }
+      // Alarm veya arama başladığında eski tampondaki yarım paketleri temizle ki bittiğinde bayat kuyruk oluşmasın
+      stopAllActiveSources();
+      lastReceivedAudioSeq = 0;
+      startSystemInterruptionRecoveryLoop();
+    }
+
+    function startSystemInterruptionRecoveryLoop() {
+      if (interruptionRecoveryTimer) return;
+      interruptionRecoveryTimer = setInterval(() => {
+        if (!isAudioListening || intentionalLeave) {
+          clearInterval(interruptionRecoveryTimer);
+          interruptionRecoveryTimer = null;
+          wasSystemAudioInterrupted = false;
+          return;
+        }
+        forceResurrectPilgrimAudio('interruption-poll');
+      }, 450);
+    }
+
+    function verifyPilgrimWebSocketAfterInterruption() {
+      if (!currentTour || intentionalLeave) return;
+      const roomId = document.getElementById('roomSelect')?.value || 'genel';
+      const name = document.getElementById('pilgrimNameInput')?.value?.trim() || 'Hacı Misafir';
+      const phone = document.getElementById('pilgrimPhoneInput')?.value?.trim() || '+90 538 000 00 00';
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        connectWebSocket(currentTour.code, roomId, name, phone);
+        return;
+      }
+      // Arama sırasında soket yarı-açık (zombie) kaldıysa ping gönder ve 1.8 sn içinde yanıt gelmezse soketi yenile
+      const pingSentAt = Date.now();
+      try {
+        ws.send(JSON.stringify({ type: 'ping', ts: pingSentAt }));
+      } catch {
+        connectWebSocket(currentTour.code, roomId, name, phone);
+        return;
+      }
+      setTimeout(() => {
+        if (intentionalLeave || !currentTour) return;
+        const lastMsg = window.__ryLastServerMsgAt || 0;
+        if (!ws || ws.readyState !== WebSocket.OPEN || lastMsg < pingSentAt) {
+          connectWebSocket(currentTour.code, roomId, name, phone);
+        }
+      }, 1800);
+    }
+
+    function forceResurrectPilgrimAudio(trigger = 'manual') {
+      if (!isAudioListening || intentionalLeave) return;
+      const now = Date.now();
+
+      // 1. Arka plan medya kanalını uyandır
+      startBackgroundKeepAliveAudio();
+
+      // 2. AudioContext yoksa oluştur, askıdaysa (suspended / interrupted) uyandır
+      if (!audioCtx || audioCtx.state === 'closed') {
+        rebuildPilgrimAudioEngine('closed-ctx-' + trigger);
+        verifyPilgrimWebSocketAfterInterruption();
+        return;
+      }
+
+      if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+        audioCtx
+          .resume()
+          .then(() => {
+            // iOS/Android alarm veya arama sonrasında resume() başarılı görünse bile donanım saati veya worklet ölmüş olabilir:
+            setTimeout(() => {
+              if (!isAudioListening || !audioCtx) return;
+              const workletDead = rxPlayerWorkletNode && (Date.now() - lastRxWorkletHeartbeatAt > 1500);
+              if (audioCtx.state !== 'running' || workletDead || wasSystemAudioInterrupted) {
+                wasSystemAudioInterrupted = false;
+                rebuildPilgrimAudioEngine('post-interruption-' + trigger);
+              }
+              syncAudioUnlockButtonUi();
+            }, 160);
+          })
+          .catch(() => {
+            // Kullanıcı dokunuşu sırasında resume() reddedildiyse doğrudan yeni AudioContext kur
+            if (trigger === 'user-gesture') {
+              rebuildPilgrimAudioEngine('gesture-rebuild');
+            }
+          });
+        verifyPilgrimWebSocketAfterInterruption();
+        return;
+      }
+
+      // 3. AudioContext 'running' görünüyor ama saati (currentTime) donmuş mu veya Worklet kalp atışı durmuş mu?
+      if (now - lastAudioCtxTimeCheckedAt >= 400) {
+        const curT = audioCtx.currentTime;
+        if (lastAudioCtxTimeVal >= 0 && Math.abs(curT - lastAudioCtxTimeVal) < 0.005) {
+          audioCtxStuckCount++;
+        } else {
+          audioCtxStuckCount = 0;
+        }
+        lastAudioCtxTimeVal = curT;
+        lastAudioCtxTimeCheckedAt = now;
+      }
+
+      const workletSilentMs = lastRxWorkletHeartbeatAt > 0 ? now - lastRxWorkletHeartbeatAt : 0;
+      if (workletSilentMs > 1500) {
+        rxPlayerWorkletAlive = false;
+      }
+
+      if (audioCtxStuckCount >= 2 || workletSilentMs > 2200 || wasSystemAudioInterrupted) {
+        wasSystemAudioInterrupted = false;
+        if (interruptionRecoveryTimer) {
+          clearInterval(interruptionRecoveryTimer);
+          interruptionRecoveryTimer = null;
+        }
+        rebuildPilgrimAudioEngine('watchdog-' + trigger);
+        verifyPilgrimWebSocketAfterInterruption();
+        return;
+      }
+
+      if (interruptionRecoveryTimer && audioCtx.state === 'running' && audioCtxStuckCount === 0) {
+        clearInterval(interruptionRecoveryTimer);
+        interruptionRecoveryTimer = null;
+        wasSystemAudioInterrupted = false;
+      }
+      syncAudioUnlockButtonUi();
     }
 
     function syncAudioUnlockButtonUi() {
@@ -1692,14 +1881,16 @@
 
         audioCtx.onstatechange = () => {
           syncAudioUnlockButtonUi();
-          if (isAudioListening && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
-            audioCtx.resume().catch(() => {});
+          if (isAudioListening && audioCtx && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+            handleSystemAudioInterruption('audioctx-' + audioCtx.state);
+          } else if (isAudioListening && audioCtx && audioCtx.state === 'running' && wasSystemAudioInterrupted) {
+            forceResurrectPilgrimAudio('audioctx-running');
           }
         };
       } else if (!rxPlayerWorkletNode && !rxPlayerWorkletLoading) {
         initRxPlayerWorklet();
       }
-      if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+      if (audioCtx && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
         audioCtx.resume().then(() => syncAudioUnlockButtonUi()).catch(() => {});
       }
     }
@@ -1709,10 +1900,16 @@
         evtName,
         () => {
           if (isAudioListening) {
-            if (audioCtx && audioCtx.state !== 'running') {
-              audioCtx.resume().then(() => syncAudioUnlockButtonUi()).catch(() => {});
+            if (
+              !audioCtx ||
+              audioCtx.state !== 'running' ||
+              wasSystemAudioInterrupted ||
+              (lastRxWorkletHeartbeatAt > 0 && Date.now() - lastRxWorkletHeartbeatAt > 1600)
+            ) {
+              forceResurrectPilgrimAudio('user-gesture');
+            } else {
+              startBackgroundKeepAliveAudio();
             }
-            startBackgroundKeepAliveAudio();
           }
         },
         { passive: true }
@@ -1885,6 +2082,16 @@
       if (!audioCtx || !gainNode) return;
       try {
         const nowMs = Date.now();
+        // Alarm, telefon araması veya bildirim sonrası AudioContext askıda kaldıysa veya Worklet kalp atışı durduysa anında dirilt!
+        if (lastRxWorkletHeartbeatAt > 0 && nowMs - lastRxWorkletHeartbeatAt > 1500) {
+          rxPlayerWorkletAlive = false;
+        }
+        if (audioCtx.state !== 'running' || wasSystemAudioInterrupted) {
+          forceResurrectPilgrimAudio('incoming-audio-packet');
+          if (!audioCtx || audioCtx.state !== 'running') {
+            return;
+          }
+        }
         const gapSinceLastChunk = nowMs - lastRawChunkAt;
         lastRawChunkAt = nowMs;
 
@@ -2418,7 +2625,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=46').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=47').catch(() => {});
       });
     }
 
@@ -2605,18 +2812,10 @@
       if (wakeLockDesired && isAudioListening) {
         requestWakeLock();
       }
-      if (isAudioListening && audioCtx && audioCtx.state !== 'running') {
-        audioCtx.resume().catch(() => {});
-      }
       if (isAudioListening) {
-        startBackgroundKeepAliveAudio();
+        forceResurrectPilgrimAudio('session-recover');
       }
-      if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) {
-        const roomId = document.getElementById('roomSelect')?.value || 'genel';
-        const name = document.getElementById('pilgrimNameInput')?.value?.trim() || 'Hacı Misafir';
-        const phone = document.getElementById('pilgrimPhoneInput')?.value?.trim() || '+90 538 000 00 00';
-        connectWebSocket(currentTour.code, roomId, name, phone);
-      }
+      verifyPilgrimWebSocketAfterInterruption();
     }
 
     let lastPilgrimWsPingAt = 0;
@@ -2626,22 +2825,26 @@
       if (!currentTour || intentionalLeave) return;
       const now = Date.now();
       if (isAudioListening) {
-        if (audioCtx && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
-          audioCtx.resume().catch(() => {});
-        }
         const bgEl = document.getElementById('bgKeepAliveAudio');
-        if (bgEl && (bgEl.paused || !bgEl.src)) {
-          startBackgroundKeepAliveAudio();
+        const workletDead = lastRxWorkletHeartbeatAt > 0 && (now - lastRxWorkletHeartbeatAt > 1800);
+        if (
+          !audioCtx ||
+          audioCtx.state !== 'running' ||
+          wasSystemAudioInterrupted ||
+          workletDead ||
+          (bgEl && (bgEl.paused || !bgEl.src))
+        ) {
+          forceResurrectPilgrimAudio('bg-heartbeat');
         }
       }
       if (ws && ws.readyState === WebSocket.OPEN) {
-        if (now - lastPilgrimWsPingAt >= 12000) {
+        if (now - lastPilgrimWsPingAt >= 10000) {
           lastPilgrimWsPingAt = now;
           try {
             ws.send(JSON.stringify({ type: 'ping', ts: now }));
           } catch {}
         }
-      } else if ((!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) && now - lastPilgrimBgReconnectAt >= 2500) {
+      } else if ((!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) && now - lastPilgrimBgReconnectAt >= 1500) {
         lastPilgrimBgReconnectAt = now;
         const roomId = document.getElementById('roomSelect')?.value || 'genel';
         const name = document.getElementById('pilgrimNameInput')?.value?.trim() || 'Hacı Misafir';
@@ -2656,6 +2859,14 @@
       } else {
         pilgrimBackgroundHeartbeatTick();
       }
+    });
+
+    window.addEventListener('focus', () => {
+      recoverPilgrimLiveSession();
+    });
+
+    window.addEventListener('pageshow', () => {
+      recoverPilgrimLiveSession();
     });
 
     window.addEventListener('online', () => {
@@ -2718,13 +2929,38 @@
       return 'data:audio/wav;base64,' + btoa(binary);
     }
 
+    let bgAudioListenersAttached = false;
+
+    function attachBgKeepAliveAudioListeners(audioEl) {
+      if (!audioEl || bgAudioListenersAttached) return;
+      bgAudioListenersAttached = true;
+      // Telefon alarmı, gelen arama veya sesli bildirim (WhatsApp/SMS) işletim sistemi düzeyinde
+      // <audio> kanalını duraklattığında anında kesinti kurtarma döngüsünü başlat!
+      ['pause', 'ended', 'stalled', 'suspend'].forEach((evt) => {
+        audioEl.addEventListener(evt, () => {
+          if (isAudioListening && !intentionalLeave) {
+            handleSystemAudioInterruption('bg-audio-' + evt);
+          }
+        });
+      });
+      audioEl.addEventListener('playing', () => {
+        if (isAudioListening && wasSystemAudioInterrupted) {
+          forceResurrectPilgrimAudio('bg-audio-playing');
+        }
+      });
+    }
+
     function startBackgroundKeepAliveAudio() {
       const audioEl = document.getElementById('bgKeepAliveAudio');
       if (!audioEl) return;
+      attachBgKeepAliveAudioListeners(audioEl);
       if (!audioEl.src) {
         audioEl.src = createSilentWavDataUri();
       }
-      audioEl.play().catch(() => {});
+      audioEl.volume = 0.01;
+      if (audioEl.paused) {
+        audioEl.play().catch(() => {});
+      }
     }
 
     function stopBackgroundKeepAliveAudio() {
@@ -2750,13 +2986,30 @@
 
       navigator.mediaSession.playbackState = isAudioListening ? 'playing' : 'paused';
       navigator.mediaSession.setActionHandler('play', () => {
-        if (!isAudioListening) toggleAudioPlayback();
+        if (!isAudioListening) {
+          toggleAudioPlayback();
+        } else {
+          forceResurrectPilgrimAudio('mediasession-play');
+        }
       });
+      // KRİTİK DÜZELTME: Alarm çaldığında veya arama geldiğinde iOS/Android işletim sistemi otomatik olarak
+      // MediaSession 'pause'/'stop' tetikler! Burada toggleAudioPlayback() çağrılırsa isAudioListening = false olur
+      // ve alarm bittiğinde ses bir daha asla geri gelmez! Bunun yerine kesinti kurtarma döngüsünü başlatıyoruz:
       navigator.mediaSession.setActionHandler('pause', () => {
-        if (isAudioListening) toggleAudioPlayback();
+        if (isAudioListening) {
+          handleSystemAudioInterruption('mediasession-pause');
+          try {
+            navigator.mediaSession.playbackState = 'playing';
+          } catch {}
+        }
       });
       navigator.mediaSession.setActionHandler('stop', () => {
-        if (isAudioListening) toggleAudioPlayback();
+        if (isAudioListening) {
+          handleSystemAudioInterruption('mediasession-stop');
+          try {
+            navigator.mediaSession.playbackState = 'playing';
+          } catch {}
+        }
       });
     }
   </script>
