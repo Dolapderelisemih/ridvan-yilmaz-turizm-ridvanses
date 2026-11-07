@@ -1463,8 +1463,8 @@
         bytes[i * 2 + 1] = (v >> 8) & 0xff;
       }
       let binary = '';
-      for (let i = 0; i < bytes.length; i++) {
-        binary += String.fromCharCode(bytes[i]);
+      for (let i = 0; i < bytes.length; i += 4096) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 4096));
       }
       return btoa(binary);
     }
@@ -1532,7 +1532,6 @@
         zeroGainNode = null;
       }
     }
-    const guideFilterHist = new Float32Array(6);
     let guideGateEnv = 0;
     let guideGateGain = 1.0;
     let guideNoiseFloor = 0.0012;
@@ -1637,8 +1636,10 @@
         let sample;
         if (step === 2) {
           sample = input[j * 2];
+        } else if (step === 1) {
+          sample = input[j];
         } else {
-          const srcPos = j * step;
+          const srcPos = (j * (inLen - 1)) / Math.max(1, outLen - 1);
           const idx0 = Math.min(inLen - 1, Math.floor(srcPos));
           const idx1 = Math.min(inLen - 1, idx0 + 1);
           const frac = srcPos - idx0;
@@ -1800,7 +1801,11 @@
     async function setupGuideMicrophoneGraph() {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!audioCtx) {
-        audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
+        try {
+          audioCtx = new AudioContextClass({ latencyHint: 'interactive', sampleRate: 48000 });
+        } catch {
+          audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
+        }
         audioCtx.onstatechange = () => {
           if ((isMicBroadcasting || isVoiceLoopbackTesting) && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
             audioCtx.resume().catch(() => {});
@@ -1887,7 +1892,6 @@
       presence.connect(lowPass);
       lowPass.connect(guideMicGainNode);
 
-      guideFilterHist.fill(0);
       guideGateEnv = 0;
       guideGateGain = 1.0;
       guideNoiseFloor = 0.0012;
@@ -2018,10 +2022,9 @@
       }
     }
 
-    setInterval(guideBackgroundHeartbeatTick, 2500);
-
     // Arka planda (WhatsApp veya kilit ekranında) tarayıcı ana iş parçacığı zamanlayıcılarını yavaşlatsa bile
     // kısıtlanmayan (unthrottled) Web Worker saat vuruşu ile her 2.5 saniyede bir ses ve bağlantıyı denetle:
+    let guideBgHeartbeatWorkerActive = false;
     try {
       if (typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && typeof URL !== 'undefined') {
         const guideWorkerBlob = new Blob(['setInterval(function(){postMessage(1);},2500);'], {
@@ -2031,8 +2034,12 @@
         const guideBgWorker = new Worker(guideWorkerUrl);
         URL.revokeObjectURL(guideWorkerUrl);
         guideBgWorker.onmessage = () => guideBackgroundHeartbeatTick();
+        guideBgHeartbeatWorkerActive = true;
       }
     } catch {}
+    if (!guideBgHeartbeatWorkerActive) {
+      setInterval(guideBackgroundHeartbeatTick, 2500);
+    }
 
     async function testGuideVoiceLoopback() {
       const testBtn = document.getElementById('testMyVoiceBtn');
@@ -2527,9 +2534,17 @@
       ) {
         return lastGeocodedAddress;
       }
+      let geoTimer = null;
       try {
+        const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        if (ctrl) {
+          geoTimer = setTimeout(() => {
+            try { ctrl.abort(); } catch {}
+          }, 2200);
+        }
         const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&accept-language=tr`
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&accept-language=tr`,
+          ctrl ? { signal: ctrl.signal } : undefined
         );
         if (res.ok) {
           const data = await res.json();
@@ -2541,7 +2556,9 @@
             return addr;
           }
         }
-      } catch {}
+      } catch {} finally {
+        if (geoTimer) clearTimeout(geoTimer);
+      }
       return lastGeocodedAddress || 'Canlı GPS Konumu';
     }
 
@@ -2583,8 +2600,15 @@
     }
 
     async function fetchFallbackIpPosition() {
+      let ipTimer = null;
       try {
-        const r = await fetch('https://ipwho.is/');
+        const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        if (ctrl) {
+          ipTimer = setTimeout(() => {
+            try { ctrl.abort(); } catch {}
+          }, 2200);
+        }
+        const r = await fetch('https://ipwho.is/', ctrl ? { signal: ctrl.signal } : undefined);
         const d = await r.json();
         if (d && d.latitude && d.longitude) {
           return {
@@ -2594,7 +2618,9 @@
             city: [d.city, d.region, d.country].filter(Boolean).join(', ')
           };
         }
-      } catch {}
+      } catch {} finally {
+        if (ipTimer) clearTimeout(ipTimer);
+      }
       return { lat: 21.4225, lng: 39.8262, accuracy: 25, city: 'Mescid-i Haram, Mekke' };
     }
 

@@ -260,15 +260,6 @@
       const countLbl = document.getElementById('badgeCountLabel');
       if (countLbl) countLbl.textContent = samplePilgrims.length;
 
-      function escapeHtml(str) {
-        return String(str ?? '')
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#39;');
-      }
-
       const container = document.getElementById('badgesContainer');
       container.innerHTML = samplePilgrims.map((pName) => `
         <div class="neck-badge">

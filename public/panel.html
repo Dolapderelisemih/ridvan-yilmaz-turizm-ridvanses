@@ -717,7 +717,7 @@
               <span class="badge badge-emerald">morluto/rea • JavaScript Application Graph</span>
               <h3 style="margin-top:6px;">RıdvanSes Kurumsal Mimari & REA Analiz Raporu</h3>
             </div>
-            <a href="/api/rea-report" target="_blank" class="btn btn-outline btn-sm">Ham JSON Raporu Gör</a>
+            <a href="/api/rea-report" id="rawReaReportLink" target="_blank" class="btn btn-outline btn-sm" onclick="this.href='/api/rea-report?token='+encodeURIComponent(localStorage.getItem('ry_auth_token')||'')">Ham JSON Raporu Gör</a>
           </div>
           <div id="reaReportBox">Yükleniyor...</div>
         </div>

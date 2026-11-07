@@ -464,15 +464,6 @@
             document.getElementById('coverStepsCount').textContent = `${steps.length} Durak`;
             document.getElementById('coverDuration').textContent = String(tour.duration || '10 Gün').split('(')[0].trim();
 
-            function escapeHtml(str) {
-              return String(str ?? '')
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
-            }
-
             const container = document.getElementById('journalStepsContainer');
             container.innerHTML = steps
               .map(

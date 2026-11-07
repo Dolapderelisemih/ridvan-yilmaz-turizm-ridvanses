@@ -371,6 +371,11 @@
             try {
               const msg = JSON.parse(payloadBuf.toString());
               if (!msg || msg.senderClientId === this._clientId) return;
+              // KRİTİK-02: Herkese açık MQTT broker'larından gelen imzasız veya bayat (>60sn) paketleri reddet
+              const frameTs = Number(msg._ryTs) || 0;
+              if (!frameTs || Math.abs(Date.now() - frameTs) > 60000) return;
+              const expectedSig = this._computeMqttFrameSig(t, msg.type, frameTs, msg.senderClientId);
+              if (!msg._rySig || msg._rySig !== expectedSig) return;
               // Aynı mesaj iki brokerdan da gelir: ilk geleni işle, ikincisini at
               if (msg._msgId) {
                 if (this._busSeen.has(msg._msgId)) return;
@@ -392,10 +397,25 @@
       });
     }
 
+    _computeMqttFrameSig(topic, type, ts, senderId) {
+      const raw = `ryv2|${String(topic || '')}|${String(type || '')}|${Number(ts) || 0}|${String(senderId || '')}|kabe_shield_2026`;
+      let h1 = 0x811c9dc5;
+      let h2 = 0x1505;
+      for (let i = 0; i < raw.length; i++) {
+        const c = raw.charCodeAt(i);
+        h1 ^= c;
+        h1 = Math.imul(h1, 0x01000193) >>> 0;
+        h2 = ((h2 << 5) + h2 + c) >>> 0;
+      }
+      return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
+    }
+
     _publishMqtt(obj, customTopic = null) {
       const targetTopic = customTopic || this._mqttTopic;
       if (!targetTopic) return;
-      const payload = JSON.stringify({ ...obj, senderClientId: this._clientId });
+      const nowTs = Date.now();
+      const sig = this._computeMqttFrameSig(targetTopic, obj && obj.type, nowTs, this._clientId);
+      const payload = JSON.stringify({ ...obj, senderClientId: this._clientId, _ryTs: nowTs, _rySig: sig });
       for (const c of this._mqttClients) {
         if (c && c.connected) {
           try { c.publish(targetTopic, payload, { qos: 0 }); } catch {}
@@ -818,7 +838,6 @@
           if (
             typeof input === 'string' &&
             urlStr.startsWith('/api/') &&
-            !urlStr.startsWith('/api/ws-relay') &&
             window.location &&
             window.location.host &&
             window.location.host.includes('vercel.app')

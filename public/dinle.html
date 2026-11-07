@@ -1205,6 +1205,7 @@
       ws.onopen = () => {
         window.__ryPilgrimReconnectAttempts = 0;
         updatePilgrimConnectionUi('connected');
+        const currentPin = (document.getElementById('tourPinInput')?.value || '').trim();
         ws.send(JSON.stringify({
           type: 'join',
           role: 'pilgrim',
@@ -1213,6 +1214,7 @@
           roomId,
           name,
           phone,
+          pin: currentPin,
           lang: currentLang
         }));
       };
@@ -2321,9 +2323,17 @@
     }
 
     async function reverseGeocodeAddress(lat, lng) {
+      let timer = null;
       try {
+        const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        if (ctrl) {
+          timer = setTimeout(() => {
+            try { ctrl.abort(); } catch {}
+          }, 2200);
+        }
         const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&accept-language=tr`
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&accept-language=tr`,
+          ctrl ? { signal: ctrl.signal } : undefined
         );
         if (!res.ok) return null;
         const data = await res.json();
@@ -2331,7 +2341,9 @@
           const parts = data.display_name.split(',').map((s) => s.trim());
           return parts.slice(0, 4).join(', ');
         }
-      } catch {}
+      } catch {} finally {
+        if (timer) clearTimeout(timer);
+      }
       return null;
     }
 
@@ -2472,15 +2484,24 @@
         let fallbackLat = activeStep && activeStep.lat ? Number(activeStep.lat) : 21.4225;
         let fallbackLng = activeStep && activeStep.lng ? Number(activeStep.lng) : 39.8262;
         let fallbackCity = (activeStep && activeStep.locationLabel) || 'Mescid-i Haram, Mekke-i Mükerreme';
+        let ipTimer = null;
         try {
-          const ipRes = await fetch('https://ipwho.is/');
+          const ipCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+          if (ipCtrl) {
+            ipTimer = setTimeout(() => {
+              try { ipCtrl.abort(); } catch {}
+            }, 2200);
+          }
+          const ipRes = await fetch('https://ipwho.is/', ipCtrl ? { signal: ipCtrl.signal } : undefined);
           const ipData = await ipRes.json();
           if (ipData && ipData.latitude && ipData.longitude) {
             fallbackLat = Number(ipData.latitude);
             fallbackLng = Number(ipData.longitude);
             fallbackCity = [ipData.city, ipData.region, ipData.country].filter(Boolean).join(', ');
           }
-        } catch {}
+        } catch {} finally {
+          if (ipTimer) clearTimeout(ipTimer);
+        }
 
         const warnText =
           err && err.code === 1
@@ -2883,10 +2904,7 @@
     }
 
     // Telefon cepte ekran kilitliyken (hidden) veya WhatsApp'a geçildiğinde sesi ve WS'yi canlı tut
-    setInterval(() => {
-      pilgrimBackgroundHeartbeatTick();
-    }, 2500);
-
+    let pilgrimBgHeartbeatWorkerActive = false;
     try {
       if (typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && typeof URL !== 'undefined') {
         const pilgrimWorkerBlob = new Blob(['setInterval(function(){postMessage(1);},2500);'], {
@@ -2896,8 +2914,14 @@
         const pilgrimBgWorker = new Worker(pilgrimWorkerUrl);
         URL.revokeObjectURL(pilgrimWorkerUrl);
         pilgrimBgWorker.onmessage = () => pilgrimBackgroundHeartbeatTick();
+        pilgrimBgHeartbeatWorkerActive = true;
       }
     } catch {}
+    if (!pilgrimBgHeartbeatWorkerActive) {
+      setInterval(() => {
+        pilgrimBackgroundHeartbeatTick();
+      }, 2500);
+    }
 
     function createSilentWavDataUri() {
       const sampleRate = 8000;
@@ -2925,7 +2949,9 @@
       }
       const bytes = new Uint8Array(buffer);
       let binary = '';
-      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      for (let i = 0; i < bytes.byteLength; i += 4096) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 4096));
+      }
       return 'data:audio/wav;base64,' + btoa(binary);
     }
 

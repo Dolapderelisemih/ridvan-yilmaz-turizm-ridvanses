@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ridvanses-pwa-v47';
+const CACHE_NAME = 'ridvanses-pwa-v48';
 const ASSETS_TO_CACHE = [
   '/',
   '/dinle',
@@ -18,7 +18,15 @@ const ASSETS_TO_CACHE = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE)).catch(() => {})
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => {
+        if (typeof cache.add === 'function') {
+          return Promise.allSettled(ASSETS_TO_CACHE.map((asset) => cache.add(asset)));
+        }
+        return cache.addAll(ASSETS_TO_CACHE);
+      })
+      .catch(() => {})
   );
   self.skipWaiting();
 });

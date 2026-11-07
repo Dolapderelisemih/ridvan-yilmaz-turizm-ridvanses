@@ -395,6 +395,182 @@ async function runStep2And3LiveServerAndWsTests() {
     `Genel isLive: ${genelRoomAfter?.isLive}, Siyer isLive (coveredByGenel): ${siyerRoomAfter?.isLive}`
   );
 
+  // 3.4 Faz 1 & Faz 2 Yeni Güvenlik/Mimari Onarımları (KRİTİK-01, KRİTİK-03, YÜKSEK-03, YÜKSEK-04)
+  // A) Rastgele kafile koduyla GET /api/trips/:code/steps çağrıldığında db.journeySteps kirlenmemeli (KRİTİK-03)
+  const fakeCode = 'SAHTE-KAFILE-9999';
+  const fakeStepsRes = await fetch(`${baseUrl}/api/trips/${fakeCode}/steps`);
+  const bootAfterFakeRes = await fetch(`${baseUrl}/api/bootstrap`, {
+    headers: { Authorization: `Bearer ${authToken}` }
+  });
+  const bootAfterFake = await bootAfterFakeRes.json();
+  const pollutedJourneySteps = Boolean(bootAfterFake.journeySteps && bootAfterFake.journeySteps[fakeCode]);
+
+  // B) Alt acente (Selamet Turizm) girişi, yetki izolasyonu (YÜKSEK-03) ve /api/logout ile jeton iptali (KRİTİK-01)
+  const selametLoginRes = await fetch(`${baseUrl}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: 'info@selametturizm.com',
+      password: process.env.SELAMET_PASSWORD || 'selamet2026'
+    })
+  });
+  const selametData = await selametLoginRes.json();
+  const selametToken = selametData.token;
+  const selametCreateTourRes = await fetch(`${baseUrl}/api/tours`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${selametToken}`
+    },
+    body: JSON.stringify({ code: 'YETKISIZ-TUR', name: 'Yetkisiz Tur' })
+  });
+  const selametLogoutRes = await fetch(`${baseUrl}/api/logout`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${selametToken}` }
+  });
+  const selametAfterLogoutRes = await fetch(`${baseUrl}/api/rea-report`, {
+    headers: { Authorization: `Bearer ${selametToken}` }
+  });
+
+  assertCondition(
+    'ADIM-3.4 (KRİTİK-01, KRİTİK-03, YÜKSEK-03)',
+    'Rastgele kafile kodu DB şişirmedi, alt acente yetki sınırı (403) korundu ve /api/logout oturum jetonunu sunucuda iptal etti (401)',
+    fakeStepsRes.status === 200 &&
+      !pollutedJourneySteps &&
+      selametLoginRes.status === 200 &&
+      selametCreateTourRes.status === 403 &&
+      selametLogoutRes.status === 200 &&
+      selametAfterLogoutRes.status === 401,
+    `DB Kirlenmedi: ${!pollutedJourneySteps}, Alt Acente Kısıtı: ${selametCreateTourRes.status}, Logout Sonrası: ${selametAfterLogoutRes.status}`
+  );
+
+  // 3.5 PIN Korumalı Kafile CRUD, WebSocket PIN Doğrulaması (YÜKSEK-02) ve 0ms Rehber Oda Değişimi (YÜKSEK-04)
+  const createPinTourRes = await fetch(`${baseUrl}/api/tours`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${authToken}`
+    },
+    body: JSON.stringify({
+      code: 'RY-E2E-PIN',
+      name: 'PIN Korumalı E2E Test Kafilesi',
+      pin: '1453',
+      guideName: 'Ömer Ali Gültekin'
+    })
+  });
+  const wrongPinHttpRes = await fetch(`${baseUrl}/api/join-tour`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: 'RY-E2E-PIN', pin: '0000' })
+  });
+  const rightPinHttpRes = await fetch(`${baseUrl}/api/join-tour`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: 'RY-E2E-PIN', pin: '1453' })
+  });
+
+  const pinTestWs = new WebSocket(wsUrl);
+  const pinWsMsgs = [];
+  await new Promise((resolve, reject) => {
+    pinTestWs.on('open', resolve);
+    pinTestWs.on('error', reject);
+  });
+  pinTestWs.on('message', (raw) => {
+    try {
+      pinWsMsgs.push(JSON.parse(raw.toString()));
+    } catch {}
+  });
+  // PIN olmadan WebSocket join dene -> pin-error dönmeli
+  pinTestWs.send(JSON.stringify({ type: 'join', role: 'pilgrim', tourCode: 'RY-E2E-PIN', roomId: 'genel', name: 'PINsiz Hacı' }));
+  await new Promise((r) => setTimeout(r, 120));
+  // Doğru PIN (1453) ile WebSocket join dene -> joined dönmeli
+  pinTestWs.send(JSON.stringify({ type: 'join', role: 'pilgrim', tourCode: 'RY-E2E-PIN', roomId: 'genel', pin: '1453', name: 'PINli Hacı' }));
+  await new Promise((r) => setTimeout(r, 120));
+  pinTestWs.close();
+
+  const deletePinTourRes = await fetch(`${baseUrl}/api/tours/RY-E2E-PIN`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${authToken}` }
+  });
+
+  const gotPinErrorOnWs = pinWsMsgs.some((m) => m.type === 'pin-error');
+  const gotJoinedWithPinOnWs = pinWsMsgs.some((m) => m.type === 'joined' && m.room?.tourCode === 'RY-E2E-PIN');
+
+  assertCondition(
+    'ADIM-3.5 (YÜKSEK-02 PIN Koruması & Tur CRUD E2E)',
+    'PIN korumalı kafilede yanlış PIN (HTTP 403 & WS pin-error) reddedildi, doğru PIN (1453) ile giriş ve tur temizliği doğrulandı',
+    createPinTourRes.status === 200 &&
+      wrongPinHttpRes.status === 403 &&
+      rightPinHttpRes.status === 200 &&
+      gotPinErrorOnWs &&
+      gotJoinedWithPinOnWs &&
+      deletePinTourRes.status === 200,
+    `HTTP Yanlış PIN: ${wrongPinHttpRes.status}, WS pin-error: ${gotPinErrorOnWs}, WS Doğru PIN joined: ${gotJoinedWithPinOnWs}`
+  );
+
+  // 3.6 Canlı Acil SOS İletimi & Çözümü, HTTP Relay (/api/ws-relay) Yedek Kanalı ve QR Üretimi E2E Kontrolü
+  const sosId = `sos-e2e-${Date.now()}`;
+  const sosPostRes = await fetch(`${baseUrl}/api/sos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: sosId,
+      tourCode: 'RY-KASIM',
+      pilgrimName: 'Hacı Mustafa Kaya',
+      phone: '+90 532 111 22 33',
+      lat: 21.4225,
+      lng: 39.8262,
+      accuracy: 8,
+      locationNote: 'Kâbe-i Muazzama Safa Tepesi Girişi'
+    })
+  });
+  await new Promise((r) => setTimeout(r, 120));
+  const guideReceivedLiveSos = guideGenelMsgs.some((m) => m.type === 'sos-alert' && m.alert?.id === sosId);
+
+  const sosResolveRes = await fetch(`${baseUrl}/api/sos/${sosId}/resolve`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${authToken}`
+    },
+    body: JSON.stringify({ resolvedBy: 'Ömer Ali Gültekin' })
+  });
+  const sosResolveData = await sosResolveRes.json();
+
+  const relayPostRes = await fetch(`${baseUrl}/api/ws-relay`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      clientId: 'relay-e2e-pilgrim-1',
+      joinContext: {
+        type: 'join',
+        role: 'pilgrim',
+        tourCode: 'RY-KASIM',
+        roomId: 'genel',
+        name: 'Röle Hacı Misafir'
+      },
+      messages: [{ type: 'ping', ts: Date.now() }]
+    })
+  });
+  const relayPostData = await relayPostRes.json();
+  const relayJoined = Array.isArray(relayPostData.messages) && relayPostData.messages.some((m) => m.type === 'joined');
+
+  const qrSvgRes = await fetch(`${baseUrl}/api/qr?code=RY-KASIM`);
+  const qrPngRes = await fetch(`${baseUrl}/api/qr-img?url=${encodeURIComponent('https://ses.ridvanyilmazturizm.com/dinle?code=RY-KASIM')}`);
+
+  assertCondition(
+    'ADIM-3.6 (CANLI SOS İLETİMİ & ÇÖZÜMÜ + HTTP RÖLE + QR ÜRETİCİ E2E)',
+    'Acil SOS anında rehber ekranına düştü ve çözümlendi; /api/ws-relay yedek rölesi ve QR uç noktaları (SVG/PNG) doğrulandı',
+    sosPostRes.status === 200 &&
+      guideReceivedLiveSos &&
+      sosResolveRes.status === 200 &&
+      sosResolveData.alert?.status === 'resolved' &&
+      relayJoined &&
+      qrSvgRes.status === 200 &&
+      qrPngRes.status === 200,
+    `Rehber SOS Aldı: ${guideReceivedLiveSos}, SOS Çözüldü: ${sosResolveData.alert?.status === 'resolved'}, HTTP Röle Joined: ${relayJoined}, QR: ${qrSvgRes.status}/${qrPngRes.status}`
+  );
+
   guideGenelWs.close();
   pilgrimWs.close();
 }
@@ -590,7 +766,7 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
 
   // 4.5 Saf Stüdyo Kristal HD (Tek Seçenek + Boğukluk Giderici EQ + 24 kHz Resampler + Cümle Korumalı Ses Kilidi) Doğrulaması
   const rehberHtml = fs.readFileSync(path.join(ROOT_DIR, 'public', 'rehber.html'), 'utf8');
-  const dspStartIdx = rehberHtml.indexOf('const guideFilterHist = new Float32Array(6);');
+  const dspStartIdx = rehberHtml.indexOf('let guideGateEnv = 0;');
   const dspEndIdx = rehberHtml.indexOf('let lastGuideMicChunkAt = 0;');
   const dspCodeSlice = rehberHtml.slice(dspStartIdx, dspEndIdx);
 
@@ -711,6 +887,87 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
     'MediaSession pause/stop tuzağı kaldırıldı; AudioContext/AudioWorklet sıfırdan otomatik kurulum (rebuildPilgrimAudioEngine) ve yarı-açık WS onarımı doğrulandı',
     hasMediaSessionSafePause && hasHotSwapRebuild && hasFastWorkletHeartbeat,
     `MediaSession Koruması: ${hasMediaSessionSafePause}, HotSwap Rebuild: ${hasHotSwapRebuild}, 400ms Nabız: ${hasFastWorkletHeartbeat}`
+  );
+
+  // 4.7 Faz 1-4 İstemci & Mimari Denetim Onarımları Doğrulaması (KRİTİK-02, YÜKSEK-01, ORTA-01..05, DÜŞÜK-01..02)
+  const testSig = mockWsInstance._computeMqttFrameSig('ridvanses/v2/room/RYKASIM/GENEL', 'audio-chunk', 1700000000000, 'cid-1');
+  const hasMqttSigEngine = typeof testSig === 'string' && testSig.length === 16;
+  const hasAbortTimeoutInSos =
+    dinleHtml.includes('new AbortController()') &&
+    dinleHtml.includes('ctrl.abort()') &&
+    rehberHtml.includes('new AbortController()');
+  const hasSingleHeartbeatGuard =
+    dinleHtml.includes('pilgrimBgHeartbeatWorkerActive') &&
+    rehberHtml.includes('guideBgHeartbeatWorkerActive');
+  const hasChunkedBase64 =
+    dinleHtml.includes('bytes.subarray(i, i + 4096)') &&
+    rehberHtml.includes('bytes.subarray(i, i + 4096)');
+  const hasAllSettledSw = swCode.includes('Promise.allSettled');
+  const noUnusedFilterHist = !rehberHtml.includes('guideFilterHist');
+
+  assertCondition(
+    'ADIM-4.7 (KRİTİK-02, YÜKSEK-01, ORTA-01..05, DÜŞÜK-01..02)',
+    'MQTT paket imzalama (_rySig), SOS AbortController zaman aşımı (2.2sn), tekil Worker kalp atışı, 4KB bloklu Base64 ve SW Promise.allSettled doğrulandı',
+    hasMqttSigEngine &&
+      hasAbortTimeoutInSos &&
+      hasSingleHeartbeatGuard &&
+      hasChunkedBase64 &&
+      hasAllSettledSw &&
+      noUnusedFilterHist,
+    `MQTT İmza: ${testSig}, SOS Timeout: ${hasAbortTimeoutInSos}, Tekil Kalp Atışı: ${hasSingleHeartbeatGuard}, Chunked Base64: ${hasChunkedBase64}`
+  );
+
+  // 4.8 Hacı AudioWorklet (RysPcmPlayerProcessor) Dairesel Tampon, PLC Köprüsü ve Nabız E2E Simülasyonu
+  let RegisteredPlayerClass = null;
+  const workletPortMessages = [];
+  class MockAudioWorkletProcessor {
+    constructor() {
+      this.port = {
+        onmessage: null,
+        postMessage: (m) => workletPortMessages.push(m)
+      };
+    }
+  }
+  const playerSandbox = {
+    AudioWorkletProcessor: MockAudioWorkletProcessor,
+    registerProcessor: (name, cls) => {
+      if (name === 'rys-pcm-player') RegisteredPlayerClass = cls;
+    },
+    sampleRate: 24000,
+    Float32Array,
+    Math
+  };
+  vm.runInNewContext(workletCode, playerSandbox);
+  const playerProc = new RegisteredPlayerClass();
+
+  // 4 paket (4 x 1536 = 6144 örnek = 256ms @ 24kHz) ses verisi gönder -> ön tamponu (165ms = 3960 örnek) aşıp 'playing' durumuna geçmeli
+  const tonePacket = new Float32Array(1536);
+  for (let i = 0; i < tonePacket.length; i++) {
+    tonePacket[i] = 0.4 * Math.sin((2 * Math.PI * 440 * i) / 24000);
+  }
+  for (let p = 0; p < 4; p++) {
+    playerProc.port.onmessage({ data: { type: 'push', samples: tonePacket, phraseStart: p === 0, isSilent: false } });
+  }
+
+  let totalRenderedEnergy = 0;
+  for (let q = 0; q < 20; q++) {
+    const outCh = new Float32Array(128);
+    playerProc.process([], [[outCh]]);
+    for (let i = 0; i < 128; i++) {
+      totalRenderedEnergy += outCh[i] * outCh[i];
+    }
+  }
+  const renderedRms = Math.sqrt(totalRenderedEnergy / (20 * 128));
+  const emittedWorkletHeartbeat = workletPortMessages.some((m) => m && m.type === 'audio-heartbeat');
+
+  assertCondition(
+    'ADIM-4.8 (HACI AUDIOWORKLET DAİRESEL TAMPON & KESİNTİSİZ OYNATIM E2E)',
+    'RysPcmPlayerProcessor 24 kHz ses paketlerini ön tamponlayıp sıfır kesintiyle oynattı ve audio-heartbeat sinyali üretti',
+     Boolean(RegisteredPlayerClass) &&
+      playerProc._state === 'playing' &&
+      renderedRms > 0.2 &&
+      emittedWorkletHeartbeat,
+    `Durum: ${playerProc._state}, Çıkış RMS: ${renderedRms.toFixed(3)}, Nabız Sinyali: ${emittedWorkletHeartbeat}`
   );
 }
 

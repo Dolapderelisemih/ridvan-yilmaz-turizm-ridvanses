@@ -31,6 +31,10 @@ try {
 
 process.on('uncaughtException', (err) => {
   console.error('[CRITICAL] Uncaught Exception:', err.message, err.stack);
+  try {
+    isWritingRuntimeFile = false;
+    flushPendingSaveSync();
+  } catch {}
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -270,8 +274,11 @@ function getTourSteps(tourCode) {
   const code = String(tourCode || 'RY-KASIM').toUpperCase().trim();
   ensureJourneySteps();
   if (!Array.isArray(db.journeySteps[code])) {
-    const tour = db.tours.find((t) => t.code.toUpperCase() === code) || { code, guideName: 'Ömer Ali Gültekin' };
-    db.journeySteps[code] = buildDefaultStepsForTour(tour);
+    const existingTour = (db.tours || []).find((t) => String(t.code || '').toUpperCase() === code);
+    if (!existingTour) {
+      return buildDefaultStepsForTour({ code, guideName: 'Ömer Ali Gültekin' });
+    }
+    db.journeySteps[code] = buildDefaultStepsForTour(existingTour);
     saveState(db);
   }
   return db.journeySteps[code];
@@ -451,8 +458,80 @@ const ADMIN_PASSWORD_SHA256 = '5493a522fbec2df9e753e4befd4fca615a2d43f5a4c09350e
 const SELAMET_PASSWORD_SHA256 = '0b7eea0794148d756d8b8cbe7d97ac6153c2abe52fe3d20938f9c751b2b73b5a';
 const AUTH_COOKIE_NAME = 'ry_auth';
 const AUTH_TOKEN_VALUE = String(
-  process.env.AUTH_TOKEN_SECRET || Buffer.from('cnlfYXV0aF92MV85ODdhNmI1YzRk', 'base64').toString('utf8')
+  process.env.AUTH_TOKEN_SECRET || crypto.randomBytes(32).toString('hex')
 ).trim();
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 gün
+const activeAuthSessions = new Map(); // token -> { user, createdAt, expiresAt }
+const revokedAuthTokens = new Set();
+
+function createAuthSession(user) {
+  const sessionToken = `rys_${crypto.randomBytes(24).toString('hex')}`;
+  const now = Date.now();
+  activeAuthSessions.set(sessionToken, {
+    user,
+    createdAt: now,
+    expiresAt: now + SESSION_TTL_MS
+  });
+  return sessionToken;
+}
+
+function revokeAuthToken(token) {
+  const clean = String(token || '').trim();
+  if (!clean) return;
+  activeAuthSessions.delete(clean);
+  if (clean !== AUTH_TOKEN_VALUE) {
+    revokedAuthTokens.add(clean);
+  }
+}
+
+// IP Tabanlı Hafif Hız Sınırlayıcı (Sliding Window Rate Limiter)
+const rateLimitBuckets = new Map();
+function createRateLimiter({ windowMs = 60000, max = 30, message = 'Çok fazla istek gönderildi. Lütfen biraz bekleyiniz.' } = {}) {
+  return (req, res, next) => {
+    const now = Date.now();
+    const ip = String(req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'local').trim();
+    const key = `${req.baseUrl}${req.path}:${ip}`;
+    let entry = rateLimitBuckets.get(key);
+    if (!entry || now > entry.resetAt) {
+      entry = { count: 0, resetAt: now + windowMs };
+      rateLimitBuckets.set(key, entry);
+    }
+    entry.count += 1;
+    if (rateLimitBuckets.size > 5000) {
+      for (const [k, v] of rateLimitBuckets.entries()) {
+        if (now > v.resetAt) rateLimitBuckets.delete(k);
+      }
+    }
+    if (entry.count > max) {
+      return res.status(429).json({
+        success: false,
+        message
+      });
+    }
+    return next();
+  };
+}
+
+const loginRateLimiter = createRateLimiter({
+  windowMs: 60000,
+  max: 30,
+  message: 'Çok fazla giriş denemesi yapıldı. Lütfen 1 dakika sonra tekrar deneyiniz.'
+});
+const joinTourRateLimiter = createRateLimiter({
+  windowMs: 60000,
+  max: 60,
+  message: 'Çok fazla kafile doğrulama isteği gönderildi. Lütfen kısa süre bekleyiniz.'
+});
+const sosRateLimiter = createRateLimiter({
+  windowMs: 60000,
+  max: 20,
+  message: 'Acil SOS bildiriminiz zaten iletildi. Lütfen bekleyiniz.'
+});
+const demoRequestRateLimiter = createRateLimiter({
+  windowMs: 60000,
+  max: 15,
+  message: 'Çok fazla talep gönderildi. Lütfen daha sonra tekrar deneyiniz.'
+});
 
 function verifyPassword(candidate, envPass, fallbackSha256) {
   const clean = String(candidate || '').trim();
@@ -463,20 +542,64 @@ function verifyPassword(candidate, envPass, fallbackSha256) {
 }
 
 function isValidAuthToken(token) {
-  return Boolean(token && String(token).trim() === AUTH_TOKEN_VALUE);
+  const clean = String(token || '').trim();
+  if (!clean || revokedAuthTokens.has(clean)) return false;
+  if (clean === AUTH_TOKEN_VALUE) return true;
+  const sess = activeAuthSessions.get(clean);
+  if (!sess) return false;
+  if (Date.now() > sess.expiresAt) {
+    activeAuthSessions.delete(clean);
+    return false;
+  }
+  return true;
+}
+
+function extractAuthTokenFromReq(req) {
+  if (!req || !req.headers) return '';
+  const authHeader = String(req.headers.authorization || '').trim();
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
+    const bearerTok = authHeader.slice(7).trim();
+    if (isValidAuthToken(bearerTok)) return bearerTok;
+  }
+  const customHeader = String(req.headers['x-ry-auth'] || '').trim();
+  if (isValidAuthToken(customHeader)) return customHeader;
+  const cookieHeader = String(req.headers.cookie || '');
+  if (cookieHeader) {
+    const parts = cookieHeader.split(';');
+    for (const part of parts) {
+      const eq = part.indexOf('=');
+      if (eq > 0) {
+        const k = part.slice(0, eq).trim();
+        const v = decodeURIComponent(part.slice(eq + 1).trim());
+        if (k === AUTH_COOKIE_NAME && isValidAuthToken(v)) {
+          return v;
+        }
+      }
+    }
+  }
+  if (req.query && req.query.token && isValidAuthToken(req.query.token)) {
+    return String(req.query.token).trim();
+  }
+  return '';
+}
+
+function getAuthenticatedUser(req) {
+  const tok = extractAuthTokenFromReq(req);
+  if (!tok) return null;
+  const sess = activeAuthSessions.get(tok);
+  if (sess && sess.user) return sess.user;
+  return {
+    id: 'admin-1',
+    name: 'Rıdvan Yılmaz Turizm (Yetkili)',
+    email: ADMIN_USERNAME,
+    role: 'agency_admin',
+    agency: 'Rıdvan Yılmaz Turizm',
+    assignedTour: null
+  };
 }
 
 function isRequestAuthenticated(req) {
-  if (!req || !req.headers) return false;
-  const cookieHeader = String(req.headers.cookie || '');
-  if (cookieHeader.includes(`${AUTH_COOKIE_NAME}=${AUTH_TOKEN_VALUE}`) || cookieHeader.includes(`${AUTH_COOKIE_NAME}=${encodeURIComponent(AUTH_TOKEN_VALUE)}`)) {
-    return true;
-  }
-  const authHeader = String(req.headers.authorization || '');
-  if (authHeader === `Bearer ${AUTH_TOKEN_VALUE}`) return true;
-  const customHeader = String(req.headers['x-ry-auth'] || '');
-  if (customHeader === AUTH_TOKEN_VALUE) return true;
-  return false;
+  return Boolean(extractAuthTokenFromReq(req));
 }
 
 function sanitizeTourForPublic(tour) {
@@ -557,6 +680,12 @@ function removeClientFromRoom(room, clientId, graceMs = 2500) {
     const code = room.tourCode;
     if (guideDisconnectTimers.has(timerKey)) {
       clearTimeout(guideDisconnectTimers.get(timerKey));
+      guideDisconnectTimers.delete(timerKey);
+    }
+    if (graceMs <= 0) {
+      evaluateTourGuidePresence(code);
+      broadcastRoomState(room);
+      return;
     }
     const timer = setTimeout(() => {
       guideDisconnectTimers.delete(timerKey);
@@ -564,6 +693,15 @@ function removeClientFromRoom(room, clientId, graceMs = 2500) {
       broadcastRoomState(room);
     }, graceMs);
     guideDisconnectTimers.set(timerKey, timer);
+    return;
+  }
+
+  if (
+    room.clients.size === 0 &&
+    !room.isLive &&
+    !(db.tours || []).some((t) => String(t.code || '').toUpperCase() === String(room.tourCode || '').toUpperCase())
+  ) {
+    liveRooms.delete(room.key);
     return;
   }
 
@@ -714,10 +852,22 @@ function processClientJsonMessage(ctx, msg) {
     }
     const tourCode = String(msg.tourCode || 'RY-KASIM').toUpperCase().trim();
     const roomId = String(msg.roomId || 'genel').trim();
+    const role = msg.role === 'guide' ? 'guide' : 'pilgrim';
+    const matchedTour = (db.tours || []).find((t) => String(t.code || '').toUpperCase() === tourCode);
+    if (
+      role !== 'guide' &&
+      !isAuthedClient &&
+      matchedTour &&
+      matchedTour.pinProtected &&
+      matchedTour.pin &&
+      String(matchedTour.pin).trim() !== String(msg.pin || '').trim()
+    ) {
+      ws.send(JSON.stringify({ type: 'pin-error', message: 'Bu kafile odası PIN korumalıdır. Lütfen geçerli PIN kodunu giriniz.' }));
+      return;
+    }
     const prevRoom = ctx.currentRoom;
     const targetRoom = getOrCreateRoom(tourCode, roomId);
     ctx.currentRoom = targetRoom;
-    const role = msg.role === 'guide' ? 'guide' : 'pilgrim';
     const deviceId = msg.deviceId ? String(msg.deviceId).trim() : '';
     const clientObj = {
       ws,
@@ -747,7 +897,7 @@ function processClientJsonMessage(ctx, msg) {
     }
     targetRoom.clients.set(clientId, clientObj);
     if (prevRoom && prevRoom !== targetRoom) {
-      removeClientFromRoom(prevRoom, clientId, 80);
+      removeClientFromRoom(prevRoom, clientId, 0);
     }
     if (role === 'guide' && guideDisconnectTimers.has(targetRoom.key)) {
       clearTimeout(guideDisconnectTimers.get(targetRoom.key));
@@ -1126,7 +1276,7 @@ function requireAuth(req, res, next) {
   return next();
 }
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', loginRateLimiter, (req, res) => {
   const { email, password } = req.body || {};
   const cleanEmail = String(email || '').trim().toLowerCase();
   const cleanPass = String(password || '').trim();
@@ -1145,7 +1295,8 @@ app.post('/api/login', (req, res) => {
       name: 'Rıdvan Yılmaz Turizm (Yetkili)',
       email: ADMIN_USERNAME,
       role: 'agency_admin',
-      agency: db.agency.name
+      agency: db.agency.name,
+      assignedTour: null
     };
   } else if (
     (cleanEmail === 'info@selametturizm.com' || cleanEmail === 'selamet@selametturizm.com' || cleanEmail === 'selamet') &&
@@ -1155,7 +1306,7 @@ app.post('/api/login', (req, res) => {
       id: 'agency-selamet',
       name: 'Selamet Turizm (Yetkili)',
       email: 'info@selametturizm.com',
-      role: 'agency_admin',
+      role: 'agency',
       agency: 'Selamet Turizm',
       assignedTour: 'RY-KASIM'
     };
@@ -1166,19 +1317,23 @@ app.post('/api/login', (req, res) => {
     });
   }
 
+  const sessionToken = createAuthSession(user);
+  const isSecure = Boolean(req.secure || req.headers['x-forwarded-proto'] === 'https');
   res.setHeader(
     'Set-Cookie',
-    `${AUTH_COOKIE_NAME}=${AUTH_TOKEN_VALUE}; Path=/; Max-Age=2592000; SameSite=Lax`
+    `${AUTH_COOKIE_NAME}=${sessionToken}; Path=/; Max-Age=2592000; SameSite=Lax${isSecure ? '; Secure' : ''}`
   );
 
   return res.json({
     success: true,
-    token: AUTH_TOKEN_VALUE,
+    token: sessionToken,
     user
   });
 });
 
 app.post('/api/logout', (req, res) => {
+  const tok = extractAuthTokenFromReq(req);
+  if (tok) revokeAuthToken(tok);
   res.setHeader('Set-Cookie', `${AUTH_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax`);
   return res.json({ success: true });
 });
@@ -1192,7 +1347,7 @@ app.post('/api/forgot-password', (req, res) => {
   });
 });
 
-app.post('/api/demo-request', (req, res) => {
+app.post('/api/demo-request', demoRequestRateLimiter, (req, res) => {
   const { name, company_name, phone, email, message } = req.body || {};
   if (!db.requests) db.requests = [];
   const item = {
@@ -1215,6 +1370,10 @@ app.post('/api/demo-request', (req, res) => {
 });
 
 app.delete('/api/requests/:id', requireAuth, (req, res) => {
+  const authedUser = getAuthenticatedUser(req);
+  if (authedUser && authedUser.assignedTour) {
+    return res.status(403).json({ success: false, message: 'Bu işlem yalnızca ana acente yöneticisi tarafından yapılabilir.' });
+  }
   if (!db.requests) db.requests = [];
   const targetId = req.params.id;
   const prevLen = db.requests.length;
@@ -1230,29 +1389,49 @@ app.delete('/api/requests/:id', requireAuth, (req, res) => {
 // 2. Bootstrap & System Overview
 app.get('/api/bootstrap', (req, res) => {
   ensureJourneySteps();
-  const isAuthed = isRequestAuthenticated(req);
+  const authedUser = getAuthenticatedUser(req);
+  const isAuthed = Boolean(authedUser);
+  const assignedCode = authedUser && authedUser.assignedTour ? String(authedUser.assignedTour).toUpperCase() : null;
+
+  const rawTours = assignedCode
+    ? (db.tours || []).filter((t) => String(t.code || '').toUpperCase() === assignedCode)
+    : db.tours || [];
   const toursPayload = isAuthed
-    ? db.tours
-    : (db.tours || []).map((t) => sanitizeTourForPublic(t));
+    ? rawTours
+    : rawTours.map((t) => sanitizeTourForPublic(t));
+
   const guidesPayload = isAuthed
     ? db.guides
     : (db.guides || []).map((g) => sanitizeGuideForPublic(g));
+
+  const sosPayload = !isAuthed
+    ? []
+    : assignedCode
+      ? (db.sosAlerts || []).filter((s) => String(s.tourCode || '').toUpperCase() === assignedCode)
+      : db.sosAlerts;
+
+  const requestsPayload = !isAuthed || assignedCode ? [] : db.requests || [];
+
+  const liveRoomsList = Array.from(liveRooms.values())
+    .filter((r) => !assignedCode || String(r.tourCode || '').toUpperCase() === assignedCode)
+    .map((r) => serializeRoom(r, isAuthed));
+
   res.json({
     agency: db.agency,
     tours: toursPayload,
     guides: guidesPayload,
     hotels: db.hotels,
     announcements: db.announcements,
-    sosAlerts: isAuthed ? db.sosAlerts : [],
-    requests: isAuthed ? db.requests || [] : [],
+    sosAlerts: sosPayload,
+    requests: requestsPayload,
     siyerPoints: db.siyerPoints,
     journeySteps: db.journeySteps,
-    liveRooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, isAuthed))
+    liveRooms: liveRoomsList
   });
 });
 
 // 3. Pilgrim Join Validation
-app.post('/api/join-tour', (req, res) => {
+app.post('/api/join-tour', joinTourRateLimiter, (req, res) => {
   const { code, pin } = req.body || {};
   const cleanCode = String(code || '').toUpperCase().trim();
   const tour = db.tours.find((t) => t.code.toUpperCase() === cleanCode);
@@ -1284,6 +1463,10 @@ app.post('/api/join-tour', (req, res) => {
 
 // 4. Tour CRUD (Agency Panel)
 app.post('/api/tours', requireAuth, (req, res) => {
+  const authedUser = getAuthenticatedUser(req);
+  if (authedUser && authedUser.assignedTour) {
+    return res.status(403).json({ success: false, message: 'Alt acente hesabı yeni kafile oluşturamaz.' });
+  }
   const body = req.body || {};
   const code = String(body.code || `RY-${Math.floor(1000 + Math.random() * 9000)}`).toUpperCase().trim();
   if (db.tours.some((t) => String(t.code || '').toUpperCase() === code)) {
@@ -1346,6 +1529,10 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
   if (!tour) {
     return res.status(404).json({ success: false, message: 'Düzenlenecek kafile bulunamadı.' });
   }
+  const authedUser = getAuthenticatedUser(req);
+  if (authedUser && authedUser.assignedTour && String(tour.code || '').toUpperCase() !== String(authedUser.assignedTour).toUpperCase()) {
+    return res.status(403).json({ success: false, message: 'Yalnızca kendi acentenize atanmış kafileyi düzenleyebilirsiniz.' });
+  }
   const body = req.body || {};
   if (typeof body.name === 'string' && body.name.trim()) tour.name = body.name.trim();
   if (typeof body.dateText === 'string' && body.dateText.trim()) tour.dateText = body.dateText.trim();
@@ -1406,6 +1593,10 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
 });
 
 app.delete('/api/tours/:id', requireAuth, (req, res) => {
+  const authedUser = getAuthenticatedUser(req);
+  if (authedUser && authedUser.assignedTour) {
+    return res.status(403).json({ success: false, message: 'Alt acente hesabı kafile silemez.' });
+  }
   const targetId = req.params.id;
   const deletedTour = db.tours.find((t) => t.id === targetId || t.code === targetId);
   const deletedCode = deletedTour ? deletedTour.code : targetId;
@@ -1725,7 +1916,7 @@ function recordAndBroadcastSosAlert(raw) {
   return alertItem;
 }
 
-app.post('/api/sos', (req, res) => {
+app.post('/api/sos', sosRateLimiter, (req, res) => {
   const body = req.body || {};
   const alertItem = recordAndBroadcastSosAlert(body);
   res.json({ success: true, alert: alertItem });
