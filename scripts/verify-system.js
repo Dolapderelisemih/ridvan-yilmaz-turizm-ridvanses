@@ -614,9 +614,27 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
     guideOut = dspSandbox.processGuideFloatChunkDsp(guideChunk, 48000);
   }
 
+  // A-1) Cümle içinde rehber sesini alçalttığında (yumuşak hece / kelime sonu, Genlik = 0.052) Çift Eşikli Hysteresis sesi kesmeden %100 iletiyor mu?
+  const softSyllableChunk = new Float32Array(3072);
+  for (let i = 0; i < softSyllableChunk.length; i++) {
+    softSyllableChunk[i] = 0.052 * Math.sin((2 * Math.PI * 220 * i) / 48000);
+  }
+  const softSyllableOut = dspSandbox.processGuideFloatChunkDsp(softSyllableChunk, 48000);
+
   // A-2) Cümle ortası kısa nefes/hece boşluğunda Cümle Koruması kapıyı açık tutuyor mu?
   const silenceChunk = new Float32Array(3072);
   const midSentenceHoldOut = dspSandbox.processGuideFloatChunkDsp(silenceChunk, 48000);
+
+  // A-3) Çapraz Cihaz Akustik Yankı Bastırıcı (AES): Rehber duraksadıktan hemen sonra (128ms) yan telefondaki hoparlörden
+  // dönen yankı dalgası (Genlik = 0.032) cümle tutucuyu anında kapatıp bastırılıyor mu?
+  const echoReturnChunk = new Float32Array(3072);
+  for (let i = 0; i < echoReturnChunk.length; i++) {
+    echoReturnChunk[i] = 0.032 * Math.sin((2 * Math.PI * 220 * i) / 48000);
+  }
+  let echoOut;
+  for (let c = 0; c < 3; c++) {
+    echoOut = dspSandbox.processGuideFloatChunkDsp(echoReturnChunk, 48000);
+  }
 
   // B) Rehber cümlesini bitirip sustuktan sonra (8 chunk = 512ms) 1.2 metre yanındaki başka bir kişi konuşuyor (Genlik = 0.026)
   for (let c = 0; c < 8; c++) {
@@ -647,27 +665,32 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
     rehberHtml.includes('mudCut.frequency.value = 210') &&
     rehberHtml.includes('presence.frequency.value = 3200') &&
     rehberHtml.includes('lowPass.frequency.value = 10500');
-  const hasPureMicNoMuffling =
-    rehberHtml.includes('echoCancellation: false') &&
+  const hasEchoCancelNoMuffling =
+    rehberHtml.includes('echoCancellation: true') &&
     rehberHtml.includes('noiseSuppression: false') &&
     rehberHtml.includes('autoGainControl: false');
 
   const sideAttenuationRatio = sideOut.rms / (0.026 * 0.707);
+  const echoAttenuationRatio = echoOut.rms / (0.032 * 0.707);
   assertCondition(
-    'ADIM-4.5 (SAF STÜDYO KRİSTAL HD + TEK SES SEÇENEĞİ + BOĞUKLUK GİDERİCİ EQ)',
-    'Ses seçeneklerinde yalnızca 1 adet en kaliteli seçenek (Saf Stüdyo Kristal HD) bırakıldı; boğukluk giderici EQ (85Hz HP, 210Hz MudCut, 3.2kHz Presence, 10.5kHz LP), 24kHz örnekleme ve yan ses kilidi doğrulandı',
+    'ADIM-4.5 (SAF STÜDYO KRİSTAL HD + HYSTERESIS AKICI SES + AES YANKI KALKANI + KÂBE İZOLASYONU)',
+    'Tek seçenek (Saf Stüdyo Kristal HD), yumuşak hece sürekliliği, AES yankı bastırma ve Kâbe yan ses izolasyonu doğrulandı',
     hasSingleCrystalOption &&
       guideOut.gateOpen === true &&
       guideOut.rms > 0.15 &&
+      softSyllableOut.gateOpen === true &&
+      softSyllableOut.rms > 0.033 &&
       midSentenceHoldOut.gateOpen === true &&
+      echoOut.gateOpen === false &&
+      echoAttenuationRatio < 0.08 &&
       sideOut.gateOpen === false &&
       sideAttenuationRatio < 0.08 &&
       resampled44k.outSampleRate === 24000 &&
       mutedOut.rms === 0 &&
       hasGain100 &&
       hasClarityEq &&
-      hasPureMicNoMuffling,
-    `Tek Seçenek (studio_crystal_hd): ${hasSingleCrystalOption} (${optionCount} adet), Rehber RMS: ${guideOut.rms.toFixed(3)}, Yan Ses Bastırma: %${((1 - sideAttenuationRatio) * 100).toFixed(1)}, ClarityEQ: ${hasClarityEq}`
+      hasEchoCancelNoMuffling,
+    `Tek Seçenek: ${hasSingleCrystalOption}, Yumuşak Hece: ${softSyllableOut.gateOpen} (RMS:${softSyllableOut.rms.toFixed(3)}), Yankı Bastırma: %${((1 - echoAttenuationRatio) * 100).toFixed(1)}, Yan Ses Bastırma: %${((1 - sideAttenuationRatio) * 100).toFixed(1)}`
   );
 }
 

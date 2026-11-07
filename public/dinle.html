@@ -16,9 +16,9 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=45"></script>
+  <script src="/vercel-ws-shim.js?v=46"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=45"></script>
+  <script src="/js/umrah-steps-map.js?v=46"></script>
   <style>
     .app-shell {
       max-width: 540px;
@@ -1575,7 +1575,7 @@
       if (!audioCtx.audioWorklet || typeof window.AudioWorkletNode === 'undefined') return;
       rxPlayerWorkletLoading = true;
       audioCtx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=45')
+        .addModule('/pcm-player-worklet.js?v=46')
         .then(() => {
           if (!audioCtx || rxPlayerWorkletNode) return;
           let node;
@@ -1900,7 +1900,10 @@
             return;
           }
         }
-        const isSeqContiguous = !phraseStart && seq > 0 && lastReceivedAudioSeq > 0 && seq === lastReceivedAudioSeq + 1;
+        const isSeqContiguous =
+          !phraseStart &&
+          gapSinceLastChunk < 600 &&
+          (seq === 0 || lastReceivedAudioSeq === 0 || seq === lastReceivedAudioSeq + 1);
         if (seq > 0) lastReceivedAudioSeq = seq;
 
         let rawArr;
@@ -1920,6 +1923,18 @@
         }
         if (!rawArr.length) return;
 
+        // Aynı cihazda /rehber sekmesi açıksa hoparlörden çıkan sesin enerjisini bildir (Akustik Yankı Bastırıcı - AES için)
+        if (!isSilent && pilgrimAudioGuardChannel) {
+          let sq = 0;
+          for (let i = 0; i < rawArr.length; i += 4) {
+            sq += rawArr[i] * rawArr[i];
+          }
+          const spkRms = Math.sqrt(sq / Math.max(1, Math.ceil(rawArr.length / 4)));
+          try {
+            pilgrimAudioGuardChannel.postMessage({ type: 'pilgrim-speaker-rms', rms: spkRms, ts: nowMs });
+          } catch {}
+        }
+
         const hwRate = audioCtx.sampleRate || 48000;
 
         const hwSamples = resampleChunkToHwRate(
@@ -1930,13 +1945,13 @@
         );
         if (!hwSamples.length) return;
 
-        // BİRİNCİL YOL (v29): Gerçek Zamanlı Donanım İş Parçacığı Dairesel Tamponu (AudioWorklet Ring Buffer)
+        // BİRİNCİL YOL (v46): Gerçek Zamanlı Donanım İş Parçacığı Dairesel Tamponu (AudioWorklet Ring Buffer)
         // Ana iş parçacığı (DOM/Harita) gecikmelerinden %100 bağımsızdır ve paket sınırlarında 0 boşluk bırakır.
         if (rxPlayerWorkletNode && rxPlayerWorkletNode.port && rxPlayerWorkletAlive) {
           rxPlayerWorkletNode.port.postMessage({
             type: 'push',
             samples: hwSamples,
-            phraseStart: Boolean(phraseStart || !isSeqContiguous),
+            phraseStart: Boolean(phraseStart || gapSinceLastChunk > 900),
             isSilent: Boolean(isSilent)
           });
           return;
@@ -2403,7 +2418,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=45').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=46').catch(() => {});
       });
     }
 

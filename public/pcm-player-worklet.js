@@ -1,29 +1,36 @@
-// RıdvanSes v29 — Broadcast-Grade Continuous Ring-Buffer AudioWorklet Player
-// Donanım ses iş parçacığında (Audio Rendering Thread) sıfır kesinti, sıfır paket sınırı
-// boşluğu ve %100 sabit perde (1.0x) ile 48 kHz / 44.1 kHz saf stüdyo oynatımı sağlar.
+// RıdvanSes v46 — Broadcast-Grade Continuous Ring-Buffer AudioWorklet Player
+// Donanım ses iş parçacığında (Audio Rendering Thread) sıfır kelime kesintisi, sıfır paket sınırı
+// boşluğu ve %100 sabit perde (1.0x) ile 48 kHz / 44.1 kHz telefon görüşmesi akıcılığında oynatım sağlar.
 class RysPcmPlayerProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     const sr = typeof sampleRate !== 'undefined' && sampleRate > 0 ? sampleRate : 48000;
     this._sampleRate = sr;
-    this._capacity = Math.max(96000, Math.ceil(sr * 2.5)); // 2.5 saniyelik dairesel tampon
+    this._capacity = Math.max(144000, Math.ceil(sr * 3.0)); // 3.0 saniyelik dairesel tampon
     this._ring = new Float32Array(this._capacity);
     this._writePtr = 0;
     this._readPtr = 0;
     this._available = 0;
 
-    // Adaptif Jitter Ön Tamponu (165ms - 285ms Arası Kâbe Şebeke Yoğunluğuna Göre Otomatik Esneyen Yastık)
-    this._minPrebuffer = Math.round(sr * 0.165);
-    this._maxPrebuffer = Math.round(sr * 0.285);
-    this._prebufferTarget = Math.round(sr * 0.180);
-    this._optimalTarget = Math.round(sr * 0.210);
-    // 680ms maksimum gecikme sınırı (aşırı birikme / bayat paket olursa perdeyi değiştirmeden yumuşak crossfade yapar)
-    this._maxBufferTarget = Math.round(sr * 0.680);
+    // Adaptif Jitter Ön Tamponu (150ms - 260ms Arası Kâbe Şebeke Yoğunluğuna Göre Esneyen Yastık)
+    this._minPrebuffer = Math.round(sr * 0.150);
+    this._maxPrebuffer = Math.round(sr * 0.260);
+    this._prebufferTarget = Math.round(sr * 0.165);
+    this._optimalTarget = Math.round(sr * 0.200);
+    // 960ms maksimum gecikme sınırı (4G/Wi-Fi paket patlamalarını asla erken kesmez; yalnızca >1 sn bayat birikmede yumuşak hizalar)
+    this._maxBufferTarget = Math.round(sr * 0.960);
     this._stablePushCount = 0;
     this._lastPushHadAudio = false;
 
     this._state = 'buffering'; // 'buffering' | 'playing'
-    this._fadeInSamples = Math.round(sr * 0.008); // 8ms kosinüs yumuşak giriş
+    // PLC Hold: Konuşma sırasında 4G paket gecikmesi (10ms-320ms) olursa hemen 250ms'lik 'buffering' kilidine
+    // düşüp kelimeleri kesik kesik yapmaz; geciken paket gelir gelmez anında çalmaya devam eder!
+    this._plcHoldTicks = 0;
+    this._maxPlcHoldTicks = Math.ceil((sr * 0.340) / 128); // ~340ms mikro-kopma köprüsü
+    this._bufferingWaitTicks = 0;
+    this._maxShortWordWaitTicks = Math.ceil((sr * 0.095) / 128); // Kısa kelimelerin tamponda kalmaması için ~95ms drenaj
+
+    this._fadeInSamples = Math.round(sr * 0.005); // 5ms kosinüs yumuşak giriş
     this._fadeInPos = 0;
     this._lastSample = 0;
     this._heartbeatTicks = 749;
@@ -36,6 +43,8 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
         this._readPtr = 0;
         this._available = 0;
         this._state = 'buffering';
+        this._plcHoldTicks = 0;
+        this._bufferingWaitTicks = 0;
         this._fadeInPos = 0;
         this._lastSample = 0;
         return;
@@ -51,55 +60,31 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     if (!len) return;
 
     this._lastPushHadAudio = !isSilent;
+    this._bufferingWaitTicks = 0;
+
     if (!isSilent && this._state === 'playing') {
       this._stablePushCount++;
-      // 160 ardışık (~10 sn) kesintisiz ses çerçevesi geldiyse ön tamponu yumuşakça taban seviyeye (165ms) yaklaştır
-      if (this._stablePushCount >= 160 && this._prebufferTarget > this._minPrebuffer) {
-        this._prebufferTarget = Math.max(this._minPrebuffer, this._prebufferTarget - Math.round(this._sampleRate * 0.015));
+      if (this._stablePushCount >= 180 && this._prebufferTarget > this._minPrebuffer) {
+        this._prebufferTarget = Math.max(this._minPrebuffer, this._prebufferTarget - Math.round(this._sampleRate * 0.012));
         this._optimalTarget = this._prebufferTarget + Math.round(this._sampleRate * 0.030);
         this._stablePushCount = 0;
       }
     }
 
-    // Eğer yeni bir cümle başlangıcıysa ve tampon zaten boşsa yumuşak giriş hazırla
-    if (phraseStart && this._available === 0) {
+    // Yalnızca tampon tamamen boşken ve yeni cümle başlangıcıysa ön tamponlamaya gir
+    if (phraseStart && this._available === 0 && this._state !== 'playing') {
       this._state = 'buffering';
       this._fadeInPos = 0;
     }
 
-    // 30+ Dakikalık Kesintisiz Sohbet Saat Sapması (Quartz Crystal Drift) Dengeleyicisi:
-    // Hoca nefes aldığında gelen sessiz çerçevelerde (isSilent === true) tampon 160ms ideal hedefinden
-    // aşağı düşmüşse sessizlikle 160ms'ye tamamla, yukarı çıkmışsa (>240ms) sessiz kısımdan kırp.
-    // Böylece konuşma sırasında perde/hız değiştirmeden saatlerce %0 underrun ile çalışır.
-    if (isSilent && this._state === 'playing') {
-      const highSilentThreshold = this._optimalTarget + Math.round(this._sampleRate * 0.08);
-      if (this._available + len > highSilentThreshold) {
-        const trim = (this._available + len) - this._optimalTarget;
-        if (trim > 0 && trim < this._available) {
-          this._readPtr = (this._readPtr + trim) % this._capacity;
-          this._available -= trim;
-        }
-      } else if (this._available + len < this._optimalTarget) {
-        const pad = Math.min(Math.round(this._sampleRate * 0.04), this._optimalTarget - (this._available + len));
-        for (let p = 0; p < pad; p++) {
-          if (this._available < this._capacity) {
-            this._ring[this._writePtr] = 0;
-            this._writePtr = (this._writePtr + 1) % this._capacity;
-            this._available++;
-          }
-        }
-      }
-    }
-
-    // Tampon aşırı dolmuşsa (>520ms) en güncel 160ms'ye yumuşak çapraz geçiş (crossfade) yap
+    // Tampon 960ms sınırını aşmışsa (uzun ağ takılması sonrası toplu paket hücumu) en güncel 200ms'ye yumuşak crossfade yap
     if (this._available + len > this._maxBufferTarget) {
       const dropCount = (this._available + len) - this._optimalTarget;
       if (dropCount > 0 && dropCount < this._available) {
         const oldSample = this._ring[this._readPtr];
         this._readPtr = (this._readPtr + dropCount) % this._capacity;
         this._available -= dropCount;
-        // İlk 64 örnekte eski örnekten yeni konuma yumuşak geçiş uygula
-        const blendLen = Math.min(64, this._available);
+        const blendLen = Math.min(128, this._available);
         for (let k = 0; k < blendLen; k++) {
           const idx = (this._readPtr + k) % this._capacity;
           const alpha = (k + 1) / (blendLen + 1);
@@ -132,25 +117,37 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     const frames = outCh.length;
 
     if (this._state === 'buffering') {
-      if (this._available >= this._prebufferTarget) {
+      if (this._available > 0) {
+        this._bufferingWaitTicks++;
+      } else {
+        this._bufferingWaitTicks = 0;
+      }
+      // Ön tampon dolduğunda VEYA kısa bir kelime gelip 95ms boyunca başka paket gelmediğinde hemen çal!
+      if (
+        this._available >= this._prebufferTarget ||
+        (this._available >= frames && this._bufferingWaitTicks >= this._maxShortWordWaitTicks)
+      ) {
         this._state = 'playing';
+        this._plcHoldTicks = 0;
+        this._bufferingWaitTicks = 0;
         this._fadeInPos = 0;
       } else {
-        // Tampon dolana kadar sıfır (veya önceki son örneğin yumuşak sönümlenmesi)
         for (let i = 0; i < frames; i++) {
           if (Math.abs(this._lastSample) > 1e-5) {
-            this._lastSample *= 0.90;
+            this._lastSample *= 0.92;
             outCh[i] = this._lastSample;
           } else {
             this._lastSample = 0;
             outCh[i] = 0;
           }
         }
+        if (output.length > 1 && output[1]) output[1].set(outCh);
         return true;
       }
     }
 
     if (this._available >= frames) {
+      this._plcHoldTicks = 0;
       for (let i = 0; i < frames; i++) {
         let s = this._ring[this._readPtr];
         this._readPtr = (this._readPtr + 1) % this._capacity;
@@ -166,29 +163,32 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
         outCh[i] = s;
       }
     } else {
-      // Konuşma durduğunda veya ağda uzun boşluk olduğunda son örnekleri sıfıra yumuşakça indir
-      // ve bir sonraki cümle için tekrar 135ms güvenli tampon (buffering) moduna geç!
+      // Konuşma ortasında anlık 4G/Wi-Fi gecikmesi olduğunda hemen 'buffering' kilidine girip sesi 250ms kesme!
+      // 340ms boyunca 'playing' (PLC Hold) durumunda kalarak geciken paket gelir gelmez kesintisiz çal:
       for (let i = 0; i < frames; i++) {
         if (this._available > 0) {
           this._lastSample = this._ring[this._readPtr];
           this._readPtr = (this._readPtr + 1) % this._capacity;
           this._available--;
         } else {
-          this._lastSample *= 0.92;
+          this._lastSample *= 0.94;
         }
         outCh[i] = this._lastSample;
       }
-      // Konuşma ortasında ağ dalgalanması (jitter) kaynaklı boşalma olduysa adaptif ön tamponu otomatik genişlet (285ms'ye kadar)
-      if (this._lastPushHadAudio) {
-        this._stablePushCount = 0;
-        this._prebufferTarget = Math.min(this._maxPrebuffer, this._prebufferTarget + Math.round(this._sampleRate * 0.035));
-        this._optimalTarget = this._prebufferTarget + Math.round(this._sampleRate * 0.030);
-      }
-      this._state = 'buffering';
       this._fadeInPos = 0;
+      this._plcHoldTicks++;
+
+      if (this._plcHoldTicks >= this._maxPlcHoldTicks) {
+        if (this._lastPushHadAudio) {
+          this._stablePushCount = 0;
+          this._prebufferTarget = Math.min(this._maxPrebuffer, this._prebufferTarget + Math.round(this._sampleRate * 0.025));
+          this._optimalTarget = this._prebufferTarget + Math.round(this._sampleRate * 0.030);
+        }
+        this._state = 'buffering';
+        this._plcHoldTicks = 0;
+      }
     }
 
-    // İkinci kanal (stereo) varsa kopyala
     if (output.length > 1 && output[1]) {
       output[1].set(outCh);
     }
