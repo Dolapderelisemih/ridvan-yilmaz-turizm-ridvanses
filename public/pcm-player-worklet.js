@@ -1,197 +1,268 @@
-// RıdvanSes v46 — Broadcast-Grade Continuous Ring-Buffer AudioWorklet Player
-// Donanım ses iş parçacığında (Audio Rendering Thread) sıfır kelime kesintisi, sıfır paket sınırı
-// boşluğu ve %100 sabit perde (1.0x) ile 48 kHz / 44.1 kHz telefon görüşmesi akıcılığında oynatım sağlar.
+// RıdvanSes v49 — Sıra Numarası (Seq) Tabanlı Jitter Tamponu, Dalga-Tabanlı PLC ve ±1000 ppm Hermite ASRC Oynatıcı
+const RYS_MOD = 0x80000000;
+function rysDiff(a, b) {
+  return ((a - b + 0x40000000) & 0x7fffffff) - 0x40000000;
+}
+
 class RysPcmPlayerProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    const sr = typeof sampleRate !== 'undefined' && sampleRate > 0 ? sampleRate : 48000;
-    this._sampleRate = sr;
-    this._capacity = Math.max(144000, Math.ceil(sr * 3.0)); // 3.0 saniyelik dairesel tampon
-    this._ring = new Float32Array(this._capacity);
-    this._writePtr = 0;
-    this._readPtr = 0;
-    this._available = 0;
-
-    // Adaptif Jitter Ön Tamponu (150ms - 260ms Arası Kâbe Şebeke Yoğunluğuna Göre Esneyen Yastık)
-    this._minPrebuffer = Math.round(sr * 0.150);
-    this._maxPrebuffer = Math.round(sr * 0.260);
-    this._prebufferTarget = Math.round(sr * 0.165);
-    this._optimalTarget = Math.round(sr * 0.200);
-    // 960ms maksimum gecikme sınırı (4G/Wi-Fi paket patlamalarını asla erken kesmez; yalnızca >1 sn bayat birikmede yumuşak hizalar)
-    this._maxBufferTarget = Math.round(sr * 0.960);
-    this._stablePushCount = 0;
-    this._lastPushHadAudio = false;
-
-    this._state = 'buffering'; // 'buffering' | 'playing'
-    // PLC Hold: Konuşma sırasında 4G paket gecikmesi (10ms-320ms) olursa hemen 250ms'lik 'buffering' kilidine
-    // düşüp kelimeleri kesik kesik yapmaz; geciken paket gelir gelmez anında çalmaya devam eder!
-    this._plcHoldTicks = 0;
-    this._maxPlcHoldTicks = Math.ceil((sr * 0.340) / 128); // ~340ms mikro-kopma köprüsü
-    this._bufferingWaitTicks = 0;
-    this._maxShortWordWaitTicks = Math.ceil((sr * 0.095) / 128); // Kısa kelimelerin tamponda kalmaması için ~95ms drenaj
-
-    this._fadeInSamples = Math.round(sr * 0.005); // 5ms kosinüs yumuşak giriş
-    this._fadeInPos = 0;
-    this._lastSample = 0;
-    this._heartbeatTicks = 149;
-
-    this.port.onmessage = (ev) => {
-      const msg = ev.data;
-      if (!msg) return;
-      if (msg.type === 'reset') {
-        this._writePtr = 0;
-        this._readPtr = 0;
-        this._available = 0;
-        this._state = 'buffering';
-        this._plcHoldTicks = 0;
-        this._bufferingWaitTicks = 0;
-        this._fadeInPos = 0;
-        this._lastSample = 0;
+    this.rate = typeof sampleRate === 'number' && sampleRate > 0 ? sampleRate : 48000;
+    this.hb = 0;
+    this.target = 0.120;
+    this.jitter = 0;
+    this.lastArrival = null;
+    this.lastSeq = null;
+    this.stats = { late: 0, duplicate: 0, concealed: 0, resync: 0 };
+    this.phraseSeen = new Set();
+    this.tail = new Float32Array(Math.max(2, Math.round(this.rate * 0.005)));
+    this.blend = new Float32Array(this.tail.length);
+    this.tailPos = 0;
+    this._reset();
+    this.port.onmessage = (e) => {
+      const m = (e && e.data) || {};
+      if (m.type === 'reset') {
+        this._reset();
         return;
       }
-      if (msg.type === 'push' && msg.samples) {
-        this._pushSamples(msg.samples, Boolean(msg.phraseStart), Boolean(msg.isSilent));
-      }
+      if (m.type === 'push') this._push(m);
     };
   }
 
-  _pushSamples(samples, phraseStart, isSilent = false) {
-    const len = samples.length;
-    if (!len) return;
+  _reset() {
+    this.q = new Map();
+    this.expected = null;
+    this.playing = false;
+    this.frame = new Float32Array(480);
+    this.fi = 480;
+    this.history = new Float32Array(480);
+    this.haveHistory = false;
+    this.missing = 0;
+    this.wait = 0;
+    this.phase = 0;
+    this.ratio = 1;
+    this.y0 = 0;
+    this.y1 = 0;
+    this.y2 = 0;
+    this.y3 = 0;
+    this.primed = false;
+    this.resetFrom = this.lastOut || 0;
+    this.resetFade = 0;
+    this.lastOut = this.resetFrom;
+    this.fade = 0;
+    this.blend.fill(0);
+    this.tail.fill(0);
+    this.tailPos = 0;
+    this.fadeN = Math.max(2, Math.round(this.rate * 0.005));
+    this.lastArrival = null;
+    this.lastSeq = null;
+  }
 
-    this._lastPushHadAudio = !isSilent;
-    this._bufferingWaitTicks = 0;
-
-    if (!isSilent && this._state === 'playing') {
-      this._stablePushCount++;
-      if (this._stablePushCount >= 180 && this._prebufferTarget > this._minPrebuffer) {
-        this._prebufferTarget = Math.max(this._minPrebuffer, this._prebufferTarget - Math.round(this._sampleRate * 0.012));
-        this._optimalTarget = this._prebufferTarget + Math.round(this._sampleRate * 0.030);
-        this._stablePushCount = 0;
+  _push(m) {
+    if (
+      !(m.samples instanceof Float32Array) ||
+      m.samples.length !== 480 ||
+      !Number.isInteger(m.seq) ||
+      m.seq < 0 ||
+      m.seq >= RYS_MOD ||
+      !Number.isFinite(m.arrival)
+    ) {
+      return;
+    }
+    for (const x of m.samples) {
+      if (!Number.isFinite(x)) return;
+    }
+    // phraseStart reconnect/resync işaretidir; yinelenen ilk paket reset yapmamalı.
+    if (m.phraseStart && !this.phraseSeen.has(m.seq)) {
+      this.phraseSeen.add(m.seq);
+      if (this.phraseSeen.size > 64) {
+        this.phraseSeen.delete(this.phraseSeen.values().next().value);
+      }
+      this._reset();
+    }
+    if (this.expected === null) this.expected = m.seq;
+    let d = rysDiff(m.seq, this.expected);
+    if (d < 0 && !this.playing && d >= -12) {
+      this.expected = m.seq;
+      d = 0;
+    }
+    if (d < 0) {
+      this.stats.late++;
+      return;
+    }
+    if (this.q.has(m.seq)) {
+      this.stats.duplicate++;
+      return;
+    }
+    // Uzun kopma/yeniden bağlanmada eski zamanı sonsuza dek takip etmeyin.
+    if (d > 32) {
+      this.stats.resync++;
+      this._reset();
+      this.expected = m.seq;
+    }
+    if (this.lastArrival !== null && this.lastSeq !== null) {
+      const ds = rysDiff(m.seq, this.lastSeq);
+      if (ds > 0 && ds < 32) {
+        const delta = Math.abs((m.arrival - this.lastArrival) / 1000 - ds * 0.020);
+        this.jitter += (Math.min(0.5, delta) - this.jitter) / 16;
+        const wanted = Math.max(0.080, Math.min(0.260, 0.060 + 4 * this.jitter));
+        // Büyüme hızlı, küçülme yavaş. Aktif akışta hedef değişimi ASRC'ye yansır.
+        this.target += (wanted - this.target) * (wanted > this.target ? 0.25 : 0.002);
       }
     }
-
-    // Yalnızca tampon tamamen boşken ve yeni cümle başlangıcıysa ön tamponlamaya gir
-    if (phraseStart && this._available === 0 && this._state !== 'playing') {
-      this._state = 'buffering';
-      this._fadeInPos = 0;
+    this.lastArrival = m.arrival;
+    this.lastSeq = m.seq;
+    if (this.q.size >= 32) {
+      this.stats.resync++;
+      this._reset();
+      this.expected = m.seq;
     }
+    this.q.set(m.seq, m.samples);
+  }
 
-    // Tampon 960ms sınırını aşmışsa (uzun ağ takılması sonrası toplu paket hücumu) en güncel 200ms'ye yumuşak crossfade yap
-    if (this._available + len > this._maxBufferTarget) {
-      const dropCount = (this._available + len) - this._optimalTarget;
-      if (dropCount > 0 && dropCount < this._available) {
-        const oldSample = this._ring[this._readPtr];
-        this._readPtr = (this._readPtr + dropCount) % this._capacity;
-        this._available -= dropCount;
-        const blendLen = Math.min(128, this._available);
-        for (let k = 0; k < blendLen; k++) {
-          const idx = (this._readPtr + k) % this._capacity;
-          const alpha = (k + 1) / (blendLen + 1);
-          this._ring[idx] = oldSample * (1 - alpha) + this._ring[idx] * alpha;
-        }
-      }
+  _startBlend() {
+    const correction = this.lastOut - this.tail[this.tailPos];
+    for (let i = 0; i < this.tail.length; i++) {
+      const w = 0.5 + 0.5 * Math.cos((Math.PI * i) / (this.tail.length - 1));
+      this.blend[i] = this.tail[(this.tailPos + i) % this.tail.length] + correction * w;
     }
+    this.fade = 0;
+  }
 
-    for (let i = 0; i < len; i++) {
-      if (this._available < this._capacity) {
-        this._ring[this._writePtr] = samples[i];
-        this._writePtr = (this._writePtr + 1) % this._capacity;
-        this._available++;
+  _nextFrame() {
+    const packet = this.q.get(this.expected);
+    this.q.delete(this.expected);
+    this.expected = (this.expected + 1) % RYS_MOD;
+    this.fi = 0;
+    if (packet) {
+      // PLC ve gerçek waveform arasında 5 ms raised-cosine geçiş.
+      const recovery = this.missing > 0;
+      if (recovery) this._startBlend();
+      this.missing = 0;
+      this.frame = packet;
+      this.history.set(packet);
+      this.haveHistory = true;
+    } else {
+      this.missing++;
+      this.stats.concealed += 480;
+      // Tekrarlar ilk 60 ms içinde söner; sonsuz buzz üretmez.
+      const lost = (this.missing - 1) * 480;
+      const plc = new Float32Array(480);
+      for (let i = 0; i < 480; i++) {
+        const age = lost + i;
+        const g = age < 1440 ? 0.5 * (1 + Math.cos((Math.PI * age) / 1440)) : 0;
+        plc[i] = this.haveHistory ? this.history[i] * g : 0;
       }
+      // Frame sınırında history sonundan başına geçişi yumuşat.
+      const from = this.frame[479] || 0;
+      const n = 120;
+      for (let i = 0; i < n; i++) {
+        const w = 0.5 - 0.5 * Math.cos((Math.PI * i) / (n - 1));
+        plc[i] = from * (1 - w) + plc[i] * w;
+      }
+      this.frame = plc;
     }
   }
 
+  _pull() {
+    if (this.fi >= 480) this._nextFrame();
+    return this.frame[this.fi++];
+  }
+
   process(inputs, outputs) {
-    this._heartbeatTicks = (this._heartbeatTicks + 1) | 0;
-    if (this._heartbeatTicks >= 150) {
-      this._heartbeatTicks = 0;
-      try {
-        this.port.postMessage({ type: 'audio-heartbeat' });
-      } catch {}
+    const out = outputs[0];
+    if (!out?.[0]) return true;
+    const ch = out[0];
+    const n = ch.length;
+    this.hb += n;
+    if (this.hb >= this.rate * 0.5) {
+      this.hb = 0;
+      this.port.postMessage({ type: 'audio-heartbeat' });
+      this.port.postMessage({
+        type: 'stats',
+        ...this.stats,
+        bufferedMs: this.q.size * 20,
+        targetMs: this.target * 1000,
+        jitterMs: this.jitter * 1000
+      });
     }
-
-    const output = outputs[0];
-    if (!output || !output[0]) return true;
-    const outCh = output[0];
-    const frames = outCh.length;
-
-    if (this._state === 'buffering') {
-      if (this._available > 0) {
-        this._bufferingWaitTicks++;
-      } else {
-        this._bufferingWaitTicks = 0;
-      }
-      // Ön tampon dolduğunda VEYA kısa bir kelime gelip 95ms boyunca başka paket gelmediğinde hemen çal!
+    if (!this.playing) {
+      if (this.expected !== null && this.q.size > 0) this.wait += n / this.rate;
+      else this.wait = 0;
+      const need = Math.ceil(this.target / 0.020);
       if (
-        this._available >= this._prebufferTarget ||
-        (this._available >= frames && this._bufferingWaitTicks >= this._maxShortWordWaitTicks)
+        this.expected !== null &&
+        (this.q.size >= need || (this.wait > 0.300 && this.q.size > 0))
       ) {
-        this._state = 'playing';
-        this._plcHoldTicks = 0;
-        this._bufferingWaitTicks = 0;
-        this._fadeInPos = 0;
+        this.playing = true;
+        this._startBlend();
       } else {
-        for (let i = 0; i < frames; i++) {
-          if (Math.abs(this._lastSample) > 1e-5) {
-            this._lastSample *= 0.92;
-            outCh[i] = this._lastSample;
-          } else {
-            this._lastSample = 0;
-            outCh[i] = 0;
-          }
+        for (let i = 0; i < n; i++) {
+          const w =
+            this.resetFade < this.fadeN
+              ? 0.5 + 0.5 * Math.cos((Math.PI * this.resetFade) / (this.fadeN - 1))
+              : 0;
+          ch[i] = this.resetFrom * w;
+          this.resetFade++;
         }
-        if (output.length > 1 && output[1]) output[1].set(outCh);
+        for (let c = 1; c < out.length; c++) out[c].set(ch);
         return true;
       }
     }
-
-    if (this._available >= frames) {
-      this._plcHoldTicks = 0;
-      for (let i = 0; i < frames; i++) {
-        let s = this._ring[this._readPtr];
-        this._readPtr = (this._readPtr + 1) % this._capacity;
-        this._available--;
-
-        if (this._fadeInPos < this._fadeInSamples) {
-          const w = 0.5 * (1 - Math.cos((Math.PI * this._fadeInPos) / this._fadeInSamples));
-          s = this._lastSample * (1 - w) + s * w;
-          this._fadeInPos++;
-        }
-
-        this._lastSample = s;
-        outCh[i] = s;
+    const queued = this.q.size * 480 + (480 - this.fi);
+    const error = queued / 24000 - this.target;
+    const wanted = 1 + Math.max(-0.001, Math.min(0.001, error * 0.01));
+    this.ratio += (wanted - this.ratio) * Math.min(1, n / (this.rate * 2));
+    const step = (24000 / this.rate) * this.ratio;
+    if (!this.primed) {
+      this.y0 = 0;
+      this.y1 = this._pull();
+      this.y2 = this._pull();
+      this.y3 = this._pull();
+      this.phase = 0;
+      this.primed = true;
+    }
+    for (let i = 0; i < n; i++) {
+      const t = this.phase;
+      const a = this.y0;
+      const b = this.y1;
+      const c = this.y2;
+      const d = this.y3;
+      const c1 = 0.5 * (c - a);
+      const c2 = a - 2.5 * b + 2 * c - 0.5 * d;
+      const c3 = 0.5 * (d - a) + 1.5 * (b - c);
+      let y = ((c3 * t + c2) * t + c1) * t + b;
+      if (this.fade < this.fadeN) {
+        const w = 0.5 - 0.5 * Math.cos((Math.PI * this.fade) / (this.fadeN - 1));
+        y = this.blend[this.fade] * (1 - w) + y * w;
+        this.fade++;
       }
-    } else {
-      // Konuşma ortasında anlık 4G/Wi-Fi gecikmesi olduğunda hemen 'buffering' kilidine girip sesi 250ms kesme!
-      // 340ms boyunca 'playing' (PLC Hold) durumunda kalarak geciken paket gelir gelmez kesintisiz çal:
-      for (let i = 0; i < frames; i++) {
-        if (this._available > 0) {
-          this._lastSample = this._ring[this._readPtr];
-          this._readPtr = (this._readPtr + 1) % this._capacity;
-          this._available--;
-        } else {
-          this._lastSample *= 0.94;
-        }
-        outCh[i] = this._lastSample;
-      }
-      this._fadeInPos = 0;
-      this._plcHoldTicks++;
-
-      if (this._plcHoldTicks >= this._maxPlcHoldTicks) {
-        if (this._lastPushHadAudio) {
-          this._stablePushCount = 0;
-          this._prebufferTarget = Math.min(this._maxPrebuffer, this._prebufferTarget + Math.round(this._sampleRate * 0.025));
-          this._optimalTarget = this._prebufferTarget + Math.round(this._sampleRate * 0.030);
-        }
-        this._state = 'buffering';
-        this._plcHoldTicks = 0;
+      y = Math.max(-0.99, Math.min(0.99, y));
+      ch[i] = y;
+      this.lastOut = y;
+      this.tail[this.tailPos] = y;
+      this.tailPos = (this.tailPos + 1) % this.tail.length;
+      this.phase += step;
+      while (this.phase >= 1) {
+        this.phase -= 1;
+        this.y0 = this.y1;
+        this.y1 = this.y2;
+        this.y2 = this.y3;
+        this.y3 = this._pull();
       }
     }
-
-    if (output.length > 1 && output[1]) {
-      output[1].set(outCh);
+    // 300 ms'den uzun eksik ses: ileride gerçek ses gelince yeniden ön tamponla.
+    if (this.missing >= 15 && this.q.size === 0) {
+      this.playing = false;
+      this.expected = null;
+      this.wait = 0;
+      this.primed = false;
+      this.fi = 480;
+      this.haveHistory = false;
+      this.resetFrom = this.lastOut;
+      this.resetFade = 0;
     }
+    for (let c = 1; c < out.length; c++) out[c].set(ch);
     return true;
   }
 }

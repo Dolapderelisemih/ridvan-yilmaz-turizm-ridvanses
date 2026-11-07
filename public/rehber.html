@@ -1251,6 +1251,11 @@
         else if (num <= 30) tag = 'Hafif';
         lbl.textContent = `%${num} (${tag})`;
       }
+      if (scriptProcessor && scriptProcessor.port) {
+        try {
+          scriptProcessor.port.postMessage({ type: 'set-profile', reject: guideSideVoiceRejectLevel });
+        } catch {}
+      }
     }
 
     function resetGuideVoiceLock() {
@@ -1259,6 +1264,15 @@
       guideSpeechHoldSamples = 0;
       guideDirectPauseSeen = false;
       guideTxRmsRing.fill(0);
+      if (scriptProcessor && scriptProcessor.port) {
+        try {
+          scriptProcessor.port.postMessage({
+            type: 'set-profile',
+            reject: guideSideVoiceRejectLevel,
+            resetLock: true
+          });
+        } catch {}
+      }
       const statusBox = document.getElementById('voiceTestStatusBox');
       if (statusBox) {
         statusBox.style.display = 'block';
@@ -1273,6 +1287,11 @@
 
     function toggleGuideMicMute(forceState) {
       isGuideMicMuted = typeof forceState === 'boolean' ? forceState : !isGuideMicMuted;
+      if (scriptProcessor && scriptProcessor.port) {
+        try {
+          scriptProcessor.port.postMessage({ type: 'set-mute', muted: isGuideMicMuted });
+        } catch {}
+      }
       const muteBtn = document.getElementById('muteGuideMicBtn');
       const dbEl = document.getElementById('dbMeterText');
       if (muteBtn) {
@@ -1715,10 +1734,22 @@
         audioCtx.resume().catch(() => {});
       }
 
-      const { downsampled, rms, outSampleRate, gateOpen } = processGuideFloatChunkDsp(
-        input,
-        audioCtx.sampleRate || 48000
-      );
+      let downsampled, rms, outSampleRate, gateOpen;
+      if (input && input.type === 'frame' && input.samples instanceof Float32Array) {
+        downsampled = input.samples;
+        rms = Number.isFinite(input.rms) ? input.rms : 0;
+        outSampleRate = 24000;
+        gateOpen = Boolean(input.gateOpen) && !isGuideMicMuted;
+      } else {
+        const res = processGuideFloatChunkDsp(
+          input,
+          audioCtx.sampleRate || 48000
+        );
+        downsampled = res.downsampled;
+        rms = res.rms;
+        outSampleRate = res.outSampleRate;
+        gateOpen = res.gateOpen;
+      }
 
       const level = Math.min(1, rms * 6.0);
       animateGuideSpectrum(level);
@@ -1742,7 +1773,7 @@
       }
 
       // Arka planda (WhatsApp veya başka bir uygulamadayken) tarayıcı setTimeout/setInterval zamanlayıcılarını
-      // yavaşlatsa bile AudioWorklet her 64ms'de bir çalıştığı için WS bağlantısını buradan denetle ve canlı tut!
+      // yavaşlatsa bile AudioWorklet her 20ms'de bir çalıştığı için WS bağlantısını buradan denetle ve canlı tut!
       const nowMs = Date.now();
       if (guideAudioGuardChannel) {
         try {
@@ -1754,12 +1785,12 @@
         connectGuideWs();
       }
 
-      // Her 64ms çerçevede sıra numarasını (seq) kesintisiz artır.
-      // Rehber tamamen sustuktan ~2.9 saniye sonra (45 çerçeve) sessizlik paketlerini durdur ki cümle ortasında tampon sıfırlanmasın!
-      const currentSeq = ++guideAudioSeq;
+      // Her 20ms (480 örnek) çerçevede sıra numarasını (seq) modüler 31-bit olarak kesintisiz artır.
+      // Rehber tamamen sustuktan ~3.0 saniye sonra (20ms'de 150 çerçeve) sessizlik paketlerini durdur ki cümle ortasında tampon sıfırlanmasın!
+      const maxSilentFrames = downsampled.length <= 480 ? 150 : 45;
       if (isGuideMicMuted || rms < 0.00025) {
         guideSilentChunksCount++;
-        if (guideSilentChunksCount > 45) {
+        if (guideSilentChunksCount > maxSilentFrames) {
           guideWasIdlePaused = true;
           if (guideSilentChunksCount % 150 === 0 && ws && ws.readyState === WebSocket.OPEN) {
             try {
@@ -1772,6 +1803,8 @@
         guideSilentChunksCount = 0;
       }
 
+      const currentSeq = (guideAudioSeq + 1) % 0x80000000;
+      guideAudioSeq = currentSeq;
       const isPhraseStart = guideWasIdlePaused;
       guideWasIdlePaused = false;
 
@@ -1849,11 +1882,11 @@
       const source = audioCtx.createMediaStreamSource(micStream);
       guideSourceNode = source;
 
-      // 1. Rüzgar ve Mekanik Dip Uğultu Kesici (85 Hz Butterworth High-Pass — İnsan sesinin doğal gövdesini korur)
+      // 1. Rüzgar ve Mekanik Dip Uğultu Kesici (85 Hz Butterworth High-Pass — Web Audio Q birimi dB: -3.0103)
       const highPass = audioCtx.createBiquadFilter();
       highPass.type = 'highpass';
       highPass.frequency.value = 85;
-      highPass.Q.value = 0.707;
+      highPass.Q.value = -3.0103;
       guideHighPassNode = highPass;
 
       // 2. Yakın Mikrofon Boğukluk / Kutu Sesi Giderici (210 Hz -2.5 dB Mud Cut — Sesteki boğukluğu temizler)
@@ -1864,19 +1897,19 @@
       mudCut.gain.value = -2.5;
       guideMudCutNode = mudCut;
 
-      // 3. Stüdyo Konuşma ve Ünsüz Harf Netleştirici (3200 Hz +3.2 dB Presence — s, ş, ç, t, k harflerini parlatır)
+      // 3. Stüdyo Konuşma ve Ünsüz Harf Netleştirici (3200 Hz +2.0 dB Presence — Yankı döngü kazancını şişirmeden harfleri netleştirir)
       const presence = audioCtx.createBiquadFilter();
       presence.type = 'peaking';
       presence.frequency.value = 3200;
       presence.Q.value = 0.85;
-      presence.gain.value = 3.2;
+      presence.gain.value = 2.0;
       guidePresenceNode = presence;
 
-      // 4. Geniş-Bant Kristal HD Tiz Sınırı (10500 Hz Low-Pass — Tizleri kesmeden doğal anti-aliasing sağlar)
+      // 4. Geniş-Bant Kristal HD Tiz Sınırı (10500 Hz Butterworth Low-Pass — Web Audio Q birimi dB: -3.0103)
       const lowPass = audioCtx.createBiquadFilter();
       lowPass.type = 'lowpass';
       lowPass.frequency.value = 10500;
-      lowPass.Q.value = 0.707;
+      lowPass.Q.value = -3.0103;
       guideLowPassNode = lowPass;
 
       // 5. Rehber Mikrofon Kazancı (Gain — Varsayılan %100 / 1.0 Doğal Gür Ses)
@@ -1907,11 +1940,18 @@
       if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
         try {
           if (!workletModuleLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=47');
+            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=49');
             workletModuleLoaded = true;
           }
-          scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture');
-          const setupStartedAt = Date.now();
+          scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture', {
+            numberOfInputs: 1,
+            numberOfOutputs: 1,
+            outputChannelCount: [1],
+            processorOptions: {
+              muted: isGuideMicMuted,
+              reject: guideSideVoiceRejectLevel
+            }
+          });
           let gotFirstWorkletChunk = false;
           scriptProcessor.port.onmessage = (ev) => {
             gotFirstWorkletChunk = true;

@@ -1266,16 +1266,19 @@
         }
 
         if (msg.type === 'stream-state') {
-          lastReceivedAudioSeq = 0;
           if (msg.currentTopic) {
             document.getElementById('liveTopicText').textContent = msg.currentTopic;
           }
-          if (msg.guidePeerId) {
+          if (msg.guidePeerId && msg.guidePeerId !== window.__ryActiveListenerChannelId) {
             window.__ryActiveListenerChannelId = msg.guidePeerId;
+            lastReceivedAudioSeq = 0;
+            stopAllActiveSources();
           }
           if (msg.broadcastMode === 'mic' && msg.isLive !== false) {
             updateGuideSpeakingIndicator(true);
           } else {
+            lastReceivedAudioSeq = 0;
+            stopAllActiveSources();
             updateGuideSpeakingIndicator(false);
           }
         }
@@ -1549,20 +1552,17 @@
     } catch {}
 
     function createTransparentSoftClipperCurve() {
-      const n = 8193;
-      const curve = new Float32Array(n);
+      const curve = new Float32Array(8193);
       const knee = 0.84;
       const headroom = 0.145;
-      for (let i = 0; i < n; i++) {
-        // [-2.0, +2.0] aralığı (%200 ses açıldığında gelen tepe noktaları)
-        const x = ((i / (n - 1)) * 4.0) - 2.0;
-        const absX = Math.abs(x);
-        if (absX <= knee) {
-          curve[i] = x;
-        } else {
-          const sign = x < 0 ? -1 : 1;
-          curve[i] = sign * (knee + headroom * Math.tanh((absX - knee) / headroom));
-        }
+      for (let i = 0; i < curve.length; i++) {
+        // Web Audio WaveShaperNode [-1, +1] girdi alanını doğrusal indeksler (1.0x birim kazanç)
+        const x = (2 * i) / (curve.length - 1) - 1;
+        const ax = Math.abs(x);
+        curve[i] =
+          ax <= knee
+            ? x
+            : Math.sign(x) * (knee + headroom * Math.tanh((ax - knee) / headroom));
       }
       return curve;
     }
@@ -1577,6 +1577,18 @@
     let wasSystemAudioInterrupted = false;
     let systemInterruptionStartedAt = 0;
     let interruptionRecoveryTimer = null;
+    let rxLoadToken = 0;
+    const pendingRxFrames = [];
+
+    function flushPendingRxFrames() {
+      if (!rxPlayerWorkletNode?.port || !audioCtx || audioCtx.state !== 'running') return;
+      while (pendingRxFrames.length) {
+        const m = pendingRxFrames.shift();
+        try {
+          rxPlayerWorkletNode.port.postMessage(m, [m.samples.buffer]);
+        } catch {}
+      }
+    }
 
     function initRxPlayerWorklet() {
       if (rxPlayerWorkletNode && rxPlayerWorkletNode.context !== audioCtx) {
@@ -1585,28 +1597,32 @@
       }
       if (!audioCtx || rxPlayerWorkletNode || rxPlayerWorkletLoading) return;
       if (!audioCtx.audioWorklet || typeof window.AudioWorkletNode === 'undefined') return;
+      const ctx = audioCtx;
+      const token = ++rxLoadToken;
       rxPlayerWorkletLoading = true;
-      audioCtx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=47')
+      ctx.audioWorklet
+        .addModule('/pcm-player-worklet.js?v=49')
         .then(() => {
-          if (!audioCtx || rxPlayerWorkletNode) return;
-          let node;
-          try {
-            node = new AudioWorkletNode(audioCtx, 'rys-pcm-player', {
-              numberOfInputs: 0,
-              numberOfOutputs: 1,
-              outputChannelCount: [1]
-            });
-          } catch {
-            node = new AudioWorkletNode(audioCtx, 'rys-pcm-player');
-          }
+          if (token !== rxLoadToken || audioCtx !== ctx || rxPlayerWorkletNode) return;
+          const node = new AudioWorkletNode(ctx, 'rys-pcm-player', {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [1]
+          });
+          node.onprocessorerror = () => {
+            rxPlayerWorkletAlive = false;
+            lastRxWorkletHeartbeatAt = 1;
+          };
           node.port.onmessage = (ev) => {
-            if (ev && ev.data && ev.data.type === 'audio-heartbeat') {
+            const d = (ev && ev.data) || {};
+            if (d.type === 'audio-heartbeat') {
               rxPlayerWorkletAlive = true;
               lastRxWorkletHeartbeatAt = Date.now();
               if (typeof pilgrimBackgroundHeartbeatTick === 'function') {
                 pilgrimBackgroundHeartbeatTick();
               }
+            } else if (d.type === 'stats') {
+              window.__ryRxAudioStats = d;
             }
           };
           node.connect(rxInputNode || gainNode);
@@ -1622,10 +1638,13 @@
               src.buffer = null;
             } catch {}
           }
+          flushPendingRxFrames();
         })
-        .catch(() => {})
+        .catch((e) => {
+          console.warn('Player worklet yüklenemedi', e);
+        })
         .finally(() => {
-          rxPlayerWorkletLoading = false;
+          if (token === rxLoadToken) rxPlayerWorkletLoading = false;
         });
     }
 
@@ -1636,6 +1655,8 @@
       isRebuildingAudioEngine = true;
       lastAudioEngineRebuildAt = now;
       try {
+        ++rxLoadToken;
+        rxPlayerWorkletLoading = false;
         stopAllActiveSources();
         if (rxPlayerWorkletNode) {
           try {
@@ -1645,7 +1666,6 @@
           rxPlayerWorkletNode = null;
         }
         rxPlayerWorkletAlive = false;
-        rxPlayerWorkletLoading = false;
         if (window.__ryInternalKeepAliveOsc) {
           try {
             window.__ryInternalKeepAliveOsc.stop();
@@ -1678,16 +1698,20 @@
       }
     }
 
+    let rxRecoveryBusy = false;
+    let rxLastRecovery = 0;
+
     function handleSystemAudioInterruption(source = 'os-interruption') {
       if (!isAudioListening || intentionalLeave) return;
+      if (audioCtx?.state === 'running' && !String(source).startsWith('mediasession')) return;
       if (!wasSystemAudioInterrupted) {
         wasSystemAudioInterrupted = true;
         systemInterruptionStartedAt = Date.now();
+        stopAllActiveSources();
+        lastReceivedAudioSeq = 0;
       }
-      // Alarm veya arama başladığında eski tampondaki yarım paketleri temizle ki bittiğinde bayat kuyruk oluşmasın
-      stopAllActiveSources();
-      lastReceivedAudioSeq = 0;
       startSystemInterruptionRecoveryLoop();
+      syncAudioUnlockButtonUi();
     }
 
     function startSystemInterruptionRecoveryLoop() {
@@ -1700,108 +1724,94 @@
           return;
         }
         forceResurrectPilgrimAudio('interruption-poll');
-      }, 450);
+      }, 900);
     }
 
+    let rxProbePending = false;
     function verifyPilgrimWebSocketAfterInterruption() {
-      if (!currentTour || intentionalLeave) return;
+      if (!currentTour || intentionalLeave || rxProbePending) return;
       const roomId = document.getElementById('roomSelect')?.value || 'genel';
       const name = document.getElementById('pilgrimNameInput')?.value?.trim() || 'Hacı Misafir';
       const phone = document.getElementById('pilgrimPhoneInput')?.value?.trim() || '+90 538 000 00 00';
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        connectWebSocket(currentTour.code, roomId, name, phone);
+      const reconnect = () => connectWebSocket(currentTour.code, roomId, name, phone);
+      const socket = ws;
+      if (!socket || socket.readyState === WebSocket.CLOSED) {
+        reconnect();
         return;
       }
-      // Arama sırasında soket yarı-açık (zombie) kaldıysa ping gönder ve 1.8 sn içinde yanıt gelmezse soketi yenile
-      const pingSentAt = Date.now();
+      if (socket.readyState !== WebSocket.OPEN || socket.isRelay || socket._isRelay) return;
+      const sent = Date.now();
+      rxProbePending = true;
       try {
-        ws.send(JSON.stringify({ type: 'ping', ts: pingSentAt }));
+        socket.send(JSON.stringify({ type: 'ping', ts: sent }));
       } catch {
-        connectWebSocket(currentTour.code, roomId, name, phone);
+        rxProbePending = false;
+        if (ws === socket) reconnect();
         return;
       }
       setTimeout(() => {
-        if (intentionalLeave || !currentTour) return;
-        const lastMsg = window.__ryLastServerMsgAt || 0;
-        if (!ws || ws.readyState !== WebSocket.OPEN || lastMsg < pingSentAt) {
-          connectWebSocket(currentTour.code, roomId, name, phone);
+        rxProbePending = false;
+        if (ws !== socket || intentionalLeave || !currentTour) return;
+        if ((window.__ryLastServerMsgAt || 0) < sent) {
+          reconnect();
         }
-      }, 1800);
+      }, 3500);
     }
 
-    function forceResurrectPilgrimAudio(trigger = 'manual') {
-      if (!isAudioListening || intentionalLeave) return;
-      const now = Date.now();
-
-      // 1. Arka plan medya kanalını uyandır
-      startBackgroundKeepAliveAudio();
-
-      // 2. AudioContext yoksa oluştur, askıdaysa (suspended / interrupted) uyandır
-      if (!audioCtx || audioCtx.state === 'closed') {
-        rebuildPilgrimAudioEngine('closed-ctx-' + trigger);
-        verifyPilgrimWebSocketAfterInterruption();
-        return;
-      }
-
-      if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
-        audioCtx
-          .resume()
-          .then(() => {
-            // iOS/Android alarm veya arama sonrasında resume() başarılı görünse bile donanım saati veya worklet ölmüş olabilir:
-            setTimeout(() => {
-              if (!isAudioListening || !audioCtx) return;
-              const workletDead = rxPlayerWorkletNode && (Date.now() - lastRxWorkletHeartbeatAt > 1500);
-              if (audioCtx.state !== 'running' || workletDead || wasSystemAudioInterrupted) {
-                wasSystemAudioInterrupted = false;
-                rebuildPilgrimAudioEngine('post-interruption-' + trigger);
-              }
-              syncAudioUnlockButtonUi();
-            }, 160);
-          })
-          .catch(() => {
-            // Kullanıcı dokunuşu sırasında resume() reddedildiyse doğrudan yeni AudioContext kur
-            if (trigger === 'user-gesture') {
-              rebuildPilgrimAudioEngine('gesture-rebuild');
-            }
-          });
-        verifyPilgrimWebSocketAfterInterruption();
-        return;
-      }
-
-      // 3. AudioContext 'running' görünüyor ama saati (currentTime) donmuş mu veya Worklet kalp atışı durmuş mu?
-      if (now - lastAudioCtxTimeCheckedAt >= 400) {
-        const curT = audioCtx.currentTime;
-        if (lastAudioCtxTimeVal >= 0 && Math.abs(curT - lastAudioCtxTimeVal) < 0.005) {
-          audioCtxStuckCount++;
-        } else {
-          audioCtxStuckCount = 0;
+    async function forceResurrectPilgrimAudio(trigger = 'manual') {
+      if (!isAudioListening || intentionalLeave || rxRecoveryBusy) return;
+      if (trigger !== 'user-gesture' && Date.now() - rxLastRecovery < 850) return;
+      rxLastRecovery = Date.now();
+      rxRecoveryBusy = true;
+      try {
+        startBackgroundKeepAliveAudio();
+        ensureAudioContext();
+        const ctx = audioCtx;
+        if (!ctx || ctx.state === 'closed') {
+          rebuildPilgrimAudioEngine('closed-ctx-' + trigger);
+          verifyPilgrimWebSocketAfterInterruption();
+          return;
         }
-        lastAudioCtxTimeVal = curT;
-        lastAudioCtxTimeCheckedAt = now;
-      }
-
-      const workletSilentMs = lastRxWorkletHeartbeatAt > 0 ? now - lastRxWorkletHeartbeatAt : 0;
-      if (workletSilentMs > 1500) {
-        rxPlayerWorkletAlive = false;
-      }
-
-      if (audioCtxStuckCount >= 2 || workletSilentMs > 2200 || wasSystemAudioInterrupted) {
-        wasSystemAudioInterrupted = false;
-        if (interruptionRecoveryTimer) {
-          clearInterval(interruptionRecoveryTimer);
-          interruptionRecoveryTimer = null;
+        if (ctx.state !== 'running') {
+          await Promise.race([
+            ctx.resume().catch(() => {}),
+            new Promise((r) => setTimeout(r, 800))
+          ]);
         }
-        rebuildPilgrimAudioEngine('watchdog-' + trigger);
-        verifyPilgrimWebSocketAfterInterruption();
-        return;
+        if (audioCtx !== ctx || !isAudioListening || intentionalLeave) return;
+        if (ctx.state !== 'running') {
+          if (trigger === 'user-gesture') {
+            rebuildPilgrimAudioEngine('gesture-rebuild');
+          }
+          syncAudioUnlockButtonUi();
+          return;
+        }
+        const before = ctx.currentTime;
+        await new Promise((r) => setTimeout(r, 160));
+        if (audioCtx !== ctx || !isAudioListening || intentionalLeave) return;
+        if (ctx.state === 'running' && ctx.currentTime > before + 0.01) {
+          wasSystemAudioInterrupted = false;
+          flushPendingRxFrames();
+          if (interruptionRecoveryTimer) {
+            clearInterval(interruptionRecoveryTimer);
+            interruptionRecoveryTimer = null;
+          }
+          if (rxPlayerWorkletNode && !rxPlayerWorkletAlive && lastRxWorkletHeartbeatAt === 1) {
+            rebuildPilgrimAudioEngine('processor-error');
+          }
+        } else if (
+          Date.now() - lastAudioEngineRebuildAt > 4500 &&
+          (trigger === 'user-gesture' || document.visibilityState === 'visible')
+        ) {
+          rebuildPilgrimAudioEngine('clock-stalled-' + trigger);
+          verifyPilgrimWebSocketAfterInterruption();
+        }
+        syncAudioUnlockButtonUi();
+      } catch {
+        syncAudioUnlockButtonUi();
+      } finally {
+        rxRecoveryBusy = false;
       }
-
-      if (interruptionRecoveryTimer && audioCtx.state === 'running' && audioCtxStuckCount === 0) {
-        clearInterval(interruptionRecoveryTimer);
-        interruptionRecoveryTimer = null;
-        wasSystemAudioInterrupted = false;
-      }
-      syncAudioUnlockButtonUi();
     }
 
     function syncAudioUnlockButtonUi() {
@@ -1828,31 +1838,35 @@
     function ensureAudioContext() {
       if (!audioCtx) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
+        try {
+          audioCtx = new AudioContextClass({ latencyHint: 'interactive', sampleRate: 48000 });
+        } catch {
+          audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
+        }
 
-        // 1. Telefon Hoparlörü Zırıltı / DC Kesici (65 Hz Butterworth High-Pass — %100 Doğal Faz)
+        // 1. Telefon Hoparlörü Zırıltı / DC Kesici (65 Hz Butterworth High-Pass — Web Audio Q birimi dB: -3.0103)
         const rxHighPass = audioCtx.createBiquadFilter();
         rxHighPass.type = 'highpass';
         rxHighPass.frequency.value = 65;
-        rxHighPass.Q.value = 0.707;
+        rxHighPass.Q.value = -3.0103;
 
-        // 1-B. Kulaklık & Hoparlör Konuşma Netleştirici (3000 Hz +2.0 dB Presence — Boğukluğu önler, kelimeleri tane tane duyurur)
+        // 1-B. Kulaklık & Hoparlör Konuşma Netleştirici (3000 Hz +1.5 dB Presence — Doğal telefon çağrısı netliği)
         const rxClarity = audioCtx.createBiquadFilter();
         rxClarity.type = 'peaking';
         rxClarity.frequency.value = 3000;
         rxClarity.Q.value = 0.85;
-        rxClarity.gain.value = 2.0;
+        rxClarity.gain.value = 1.5;
 
         // 2. Kullanıcı Ses Güçlendirici (%0 - %200 Doğrusal Kazanç)
         gainNode = audioCtx.createGain();
         gainNode.gain.value = volumeMultiplier;
 
-        // 3. Sıfır-Gecikmeli Doğrusal Soft-Clipper (%200 Seste Hoparlör Çatlamasını Önler, Sessizliği Asla Pompalamaz)
+        // 3. Sıfır-Gecikmeli Doğrusal Soft-Clipper ([-1, +1] Birim Kazançlı Tavan Koruyucu)
         let softClipper = null;
         if (typeof audioCtx.createWaveShaper === 'function') {
           softClipper = audioCtx.createWaveShaper();
           softClipper.curve = createTransparentSoftClipperCurve();
-          softClipper.oversample = '2x';
+          softClipper.oversample = 'none';
         }
 
         rxHighPass.connect(rxClarity);
@@ -1864,20 +1878,6 @@
           gainNode.connect(audioCtx.destination);
         }
         rxInputNode = rxHighPass;
-
-        // 4. iOS Safari & Android Chrome Kilit Ekranı Donanım Uyanıklık Osilatörü (Duyulmaz 0.00001 Kazanç)
-        // Rehber nefes aldığında veya birkaç saniye sustuğunda WebKit'in AudioContext'i "suspended" durumuna düşürmesini engeller.
-        try {
-          const keepAliveOsc = audioCtx.createOscillator();
-          const keepAliveGain = audioCtx.createGain();
-          keepAliveOsc.type = 'sine';
-          keepAliveOsc.frequency.value = 1;
-          keepAliveGain.gain.value = 0.00001;
-          keepAliveOsc.connect(keepAliveGain);
-          keepAliveGain.connect(audioCtx.destination);
-          keepAliveOsc.start();
-          window.__ryInternalKeepAliveOsc = keepAliveOsc;
-        } catch {}
 
         initRxPlayerWorklet();
 
@@ -1922,7 +1922,6 @@
       const wasSuspendedWhileListening = isAudioListening && audioCtx && audioCtx.state !== 'running';
       ensureAudioContext();
       if (wasSuspendedWhileListening) {
-        // QR kodla otomatik giriş sonrası ses kilidi askıdaysa ilk dokunuşta sesi kapatma, kilidi aç!
         isAudioListening = true;
       } else {
         isAudioListening = !isAudioListening;
@@ -1962,11 +1961,13 @@
     let lastPacketReceivedAt = 0;
     let lastRawChunkAt = 0;
     let lastReceivedAudioSeq = 0;
+    let rxFallbackSubSeq = 0;
     let rxHermiteHist = null;
     let rxHermitePos = 0;
     const activeScheduledSources = [];
 
     function stopAllActiveSources() {
+      pendingRxFrames.length = 0;
       if (rxPlayerWorkletNode && rxPlayerWorkletNode.port) {
         try {
           rxPlayerWorkletNode.port.postMessage({ type: 'reset' });
@@ -1987,9 +1988,6 @@
       rxHermitePos = 0;
     }
 
-    // Durum Korumalı 4-Noktalı Kübik Hermite Donanım Örnekleme Hızı Dönüştürücüsü (24 kHz -> 48 kHz / 44.1 kHz):
-    // Paket sınırlarında sıfır faz kırılması (C1 sürekliliği) sağlar ve tarayıcının blok-resampler
-    // kaynaklı 15.6 Hz "Transformers / metalik" kenar bozulmasını %100 ortadan kaldırır.
     function resampleChunkToHwRate(srcArr, srcRate, dstRate, isContiguous) {
       if (!srcArr || !srcArr.length) return srcArr;
       if (srcRate === dstRate) {
@@ -2054,8 +2052,9 @@
       const phraseStart = Boolean(rawSeq & 0x80000000);
       const seq = rawSeq & 0x7fffffff;
       const sentAt = view.getFloat64(4, true);
+      if (!Number.isFinite(sentAt) || sentAt <= 0) return;
       const sampleCount = (buffer.byteLength - 12) >> 1;
-      if (sampleCount <= 0) return;
+      if (sampleCount !== 480 && sampleCount !== 1536) return;
 
       const floatSamples = new Float32Array(sampleCount);
       let sumSq = 0;
@@ -2080,45 +2079,14 @@
     }
 
     function playPcmSamples(samplesOrB64, sampleRate = 24000, isBase64 = false, seq = 0, phraseStart = false, isSilent = false) {
-      ensureAudioContext();
-      if (!audioCtx || !gainNode) return;
+      if (!isAudioListening) return;
+      if (sampleRate !== 24000 || !Number.isInteger(seq) || seq < 0 || seq > 0x7fffffff) return;
       try {
-        const nowMs = Date.now();
-        // Alarm, telefon araması veya bildirim sonrası AudioContext askıda kaldıysa veya Worklet kalp atışı durduysa anında dirilt!
-        if (lastRxWorkletHeartbeatAt > 0 && nowMs - lastRxWorkletHeartbeatAt > 1500) {
-          rxPlayerWorkletAlive = false;
-        }
-        if (audioCtx.state !== 'running' || wasSystemAudioInterrupted) {
-          forceResurrectPilgrimAudio('incoming-audio-packet');
-          if (!audioCtx || audioCtx.state !== 'running') {
-            return;
-          }
-        }
-        const gapSinceLastChunk = nowMs - lastRawChunkAt;
-        lastRawChunkAt = nowMs;
-
-        // Hoca yayını kapatıp açtığında veya 1.2 saniyeden uzun boşluk sonrası sıra sayacını sıfırla
-        if (phraseStart || gapSinceLastChunk > 1200) {
-          lastReceivedAudioSeq = 0;
-        }
-
-        // Yalnızca aktif akış içinde (<600ms) gelen gerçek mükerrer paketleri ele
-        if (!phraseStart && seq > 0 && lastReceivedAudioSeq > 0 && gapSinceLastChunk < 600) {
-          const diff = seq - lastReceivedAudioSeq;
-          if (diff <= 0 && diff > -16) {
-            return;
-          }
-        }
-        const isSeqContiguous =
-          !phraseStart &&
-          gapSinceLastChunk < 600 &&
-          (seq === 0 || lastReceivedAudioSeq === 0 || seq === lastReceivedAudioSeq + 1);
-        if (seq > 0) lastReceivedAudioSeq = seq;
-
         let rawArr;
         if (isBase64 && typeof samplesOrB64 === 'string') {
           const bin = atob(samplesOrB64);
           const len = bin.length >> 1;
+          if (!len) return;
           rawArr = new Float32Array(len);
           for (let i = 0; i < len; i++) {
             const lo = bin.charCodeAt(i * 2);
@@ -2127,12 +2095,30 @@
             if (val >= 0x8000) val -= 0x10000;
             rawArr[i] = val / 32768;
           }
+        } else if (samplesOrB64 instanceof Float32Array) {
+          rawArr = new Float32Array(samplesOrB64.length);
+          for (let i = 0; i < samplesOrB64.length; i++) {
+            const x = samplesOrB64[i];
+            rawArr[i] = Number.isFinite(x) ? Math.max(-1, Math.min(1, x)) : 0;
+          }
+        } else if (Array.isArray(samplesOrB64)) {
+          rawArr = Float32Array.from(samplesOrB64, (x) => (Number.isFinite(x) ? Math.max(-1, Math.min(1, x)) : 0));
         } else {
-          rawArr = samplesOrB64 instanceof Float32Array ? samplesOrB64 : new Float32Array(samplesOrB64);
+          return;
         }
         if (!rawArr.length) return;
 
-        // Aynı cihazda /rehber sekmesi açıksa hoparlörden çıkan sesin enerjisini bildir (Akustik Yankı Bastırıcı - AES için)
+        ensureAudioContext();
+        if (!audioCtx || audioCtx.state !== 'running') {
+          // Kesinti sırasında bayat paket biriktirme, kurtarmayı tetikle
+          forceResurrectPilgrimAudio('incoming-audio-packet');
+          return;
+        }
+
+        const nowMs = Date.now();
+        const gapSinceLastChunk = nowMs - lastRawChunkAt;
+        lastRawChunkAt = nowMs;
+
         if (!isSilent && pilgrimAudioGuardChannel) {
           let sq = 0;
           for (let i = 0; i < rawArr.length; i += 4) {
@@ -2144,74 +2130,62 @@
           } catch {}
         }
 
-        const hwRate = audioCtx.sampleRate || 48000;
-
-        const hwSamples = resampleChunkToHwRate(
-          rawArr,
-          sampleRate,
-          hwRate,
-          isSeqContiguous
-        );
-        if (!hwSamples.length) return;
-
-        // BİRİNCİL YOL (v46): Gerçek Zamanlı Donanım İş Parçacığı Dairesel Tamponu (AudioWorklet Ring Buffer)
-        // Ana iş parçacığı (DOM/Harita) gecikmelerinden %100 bağımsızdır ve paket sınırlarında 0 boşluk bırakır.
-        if (rxPlayerWorkletNode && rxPlayerWorkletNode.port && rxPlayerWorkletAlive) {
-          rxPlayerWorkletNode.port.postMessage({
-            type: 'push',
-            samples: hwSamples,
-            phraseStart: Boolean(phraseStart || gapSinceLastChunk > 900),
-            isSilent: Boolean(isSilent)
-          });
+        // BİRİNCİL YOL (v49): RysPcmPlayerProcessor (480 örnek = 20 ms @ 24 kHz, Seq Jitter Buffer + PLC + Hermite ASRC)
+        if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
+          const arrivalNow = typeof performance !== 'undefined' ? performance.now() : nowMs;
+          if (rawArr.length === 480) {
+            const m = {
+              type: 'push',
+              samples: rawArr,
+              seq,
+              phraseStart: Boolean(phraseStart),
+              isSilent: Boolean(isSilent),
+              arrival: arrivalNow
+            };
+            if (pendingRxFrames.length >= 13) pendingRxFrames.shift();
+            pendingRxFrames.push(m);
+            flushPendingRxFrames();
+            return;
+          }
+          // Geriye dönük (1536 örnekli) çerçeve gelirse 480 örnekli alt çerçevelere bölerek Worklet'e ilet
+          for (let offset = 0; offset + 480 <= rawArr.length; offset += 480) {
+            const sub = rawArr.slice(offset, offset + 480);
+            rxFallbackSubSeq = (rxFallbackSubSeq + 1) & 0x7fffffff;
+            const m = {
+              type: 'push',
+              samples: sub,
+              seq: rxFallbackSubSeq,
+              phraseStart: Boolean(phraseStart && offset === 0),
+              isSilent: Boolean(isSilent),
+              arrival: arrivalNow + (offset / 480) * 20
+            };
+            if (pendingRxFrames.length >= 13) pendingRxFrames.shift();
+            pendingRxFrames.push(m);
+          }
+          flushPendingRxFrames();
           return;
         }
 
-        // YEDEK YOL (Eski Tarayıcılar İçin): 240ms Ön Tamponlu (Pre-Buffer) ve Bayat Paket Korumalı Zamanlayıcı
+        // YEDEK YOL (AudioWorklet desteklemeyen çok eski tarayıcılar için)
+        const isSeqContiguous =
+          !phraseStart &&
+          gapSinceLastChunk < 600 &&
+          (seq === 0 || lastReceivedAudioSeq === 0 || seq === lastReceivedAudioSeq + 1);
+        if (seq > 0) lastReceivedAudioSeq = seq;
+        const hwRate = audioCtx.sampleRate || 48000;
+        const hwSamples = resampleChunkToHwRate(rawArr, sampleRate, hwRate, isSeqContiguous);
+        if (!hwSamples.length) return;
         const now = audioCtx.currentTime;
         const lead = nextAudioTime - now;
-        let isFreshPhrase = false;
-
-        if (lead > 1.2) {
-          // 1.2 saniyeden eski birikmiş bayat paketleri kuyruğu tıkamaması için kontrollü atla
+        if (lead > 1.2 || lead < 0) {
           stopAllActiveSources();
-          nextAudioTime = now + 0.24;
-          isFreshPhrase = true;
-        } else if (lead < 0) {
-          nextAudioTime = now + 0.24;
-          isFreshPhrase = true;
+          nextAudioTime = now + 0.20;
         }
-
-        if (isFreshPhrase) {
-          const fadeLen = Math.min(256, hwSamples.length);
-          for (let i = 0; i < fadeLen; i++) {
-            const w = 0.5 * (1 - Math.cos((Math.PI * i) / fadeLen));
-            hwSamples[i] *= w;
-          }
-        } else if (!isSeqContiguous) {
-          const blendLen = Math.min(48, hwSamples.length);
-          for (let k = 0; k < blendLen; k++) {
-            const alpha = (k + 1) / (blendLen + 1);
-            hwSamples[k] = lastHwEndSample * (1 - alpha) + hwSamples[k] * alpha;
-          }
-        }
-        lastHwEndSample = hwSamples[hwSamples.length - 1];
-
         const buffer = audioCtx.createBuffer(1, hwSamples.length, hwRate);
         buffer.copyToChannel(hwSamples, 0);
         const source = audioCtx.createBufferSource();
         source.buffer = buffer;
-        source.playbackRate.value = 1.0;
         source.connect(rxInputNode || gainNode);
-
-        if (activeScheduledSources.length >= 64) {
-          const oldest = activeScheduledSources.shift();
-          try {
-            oldest.onended = null;
-            oldest.stop();
-            oldest.disconnect();
-            oldest.buffer = null;
-          } catch {}
-        }
         activeScheduledSources.push(source);
         source.onended = () => {
           const idx = activeScheduledSources.indexOf(source);
@@ -2221,7 +2195,6 @@
             source.buffer = null;
           } catch {}
         };
-
         source.start(nextAudioTime);
         nextAudioTime += hwSamples.length / hwRate;
       } catch (e) {}
@@ -2646,7 +2619,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=47').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=49').catch(() => {});
       });
     }
 
@@ -2961,8 +2934,8 @@
       if (!audioEl || bgAudioListenersAttached) return;
       bgAudioListenersAttached = true;
       // Telefon alarmı, gelen arama veya sesli bildirim (WhatsApp/SMS) işletim sistemi düzeyinde
-      // <audio> kanalını duraklattığında anında kesinti kurtarma döngüsünü başlat!
-      ['pause', 'ended', 'stalled', 'suspend'].forEach((evt) => {
+      // <audio> kanalını duraklattığında ve AudioContext gerçekten kesildiğinde kurtarma döngüsünü başlat!
+      ['pause', 'ended', 'stalled'].forEach((evt) => {
         audioEl.addEventListener(evt, () => {
           if (isAudioListening && !intentionalLeave) {
             handleSystemAudioInterruption('bg-audio-' + evt);

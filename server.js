@@ -43,7 +43,12 @@ process.on('unhandledRejection', (reason, promise) => {
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+  server,
+  path: '/ws',
+  maxPayload: 65536,
+  perMessageDeflate: false
+});
 
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '5mb' }));
@@ -674,6 +679,9 @@ function removeClientFromRoom(room, clientId, graceMs = 2500) {
   if (!room) return;
   const prevClient = room.clients.get(clientId);
   room.clients.delete(clientId);
+  if (room.activePublisherClientId === clientId) {
+    room.activePublisherClientId = null;
+  }
 
   if (prevClient && prevClient.role === 'guide') {
     const timerKey = room.key;
@@ -887,6 +895,9 @@ function processClientJsonMessage(ctx, msg) {
         const sameGuide = Boolean(role === 'guide' && existingClient.role === 'guide' && r.roomId === roomId && existingClient.name === clientObj.name);
         if (sameDevice || sameGuide) {
           r.clients.delete(existingId);
+          if (r.activePublisherClientId === existingId) {
+            r.activePublisherClientId = clientId;
+          }
           try {
             if (existingClient.ws && !existingClient.ws.isHttpRelay && typeof existingClient.ws.terminate === 'function') {
               existingClient.ws.terminate();
@@ -941,6 +952,9 @@ function processClientJsonMessage(ctx, msg) {
         if (msg.guidePeerId) r.guidePeerId = msg.guidePeerId;
         if (r.isLive) {
           r.startedAt = Date.now();
+          r.activePublisherClientId = clientId;
+        } else if (!r.activePublisherClientId || r.activePublisherClientId === clientId) {
+          r.activePublisherClientId = null;
         }
         broadcastToRoom(r, {
           type: 'stream-state',
@@ -1032,6 +1046,14 @@ function processClientJsonMessage(ctx, msg) {
 
     case 'audio-chunk': {
       if (sender.role !== 'guide' || !isAuthedClient) break;
+      if (
+        currentRoom.activePublisherClientId &&
+        currentRoom.activePublisherClientId !== clientId &&
+        currentRoom.clients.has(currentRoom.activePublisherClientId)
+      ) {
+        break;
+      }
+      currentRoom.activePublisherClientId = clientId;
       const serializedAudio = JSON.stringify({
         type: 'audio-chunk',
         seq: msg.seq || null,
@@ -1090,12 +1112,18 @@ function processClientJsonMessage(ctx, msg) {
     case 'ping': {
       if (ws && ws.readyState === WebSocket.OPEN && !ws.isHttpRelay) {
         try {
-          ws.send(JSON.stringify({ type: 'pong', ts: Date.now() }));
+          ws.send(JSON.stringify({ type: 'pong', ts: Date.now(), echoTs: msg.ts || null }));
         } catch {}
       }
       break;
     }
   }
+}
+
+function validBinaryPcmFrame(buf) {
+  if (!Buffer.isBuffer(buf) || (buf.length !== 972 && buf.length !== 3084)) return false;
+  const sentAt = buf.readDoubleLE(4);
+  return Number.isFinite(sentAt) && sentAt > 0;
 }
 
 // WebSocket Connection Handler
@@ -1119,15 +1147,25 @@ wss.on('connection', (ws, req) => {
       if (!ctx.currentRoom || !(ws.isAuthenticated || ctx.isAuthenticated)) return;
       const sender = ctx.currentRoom.clients.get(ctx.clientId);
       if (!sender || sender.role !== 'guide') return;
+      if (
+        ctx.currentRoom.activePublisherClientId &&
+        ctx.currentRoom.activePublisherClientId !== ctx.clientId &&
+        ctx.currentRoom.clients.has(ctx.currentRoom.activePublisherClientId)
+      ) {
+        return;
+      }
+      ctx.currentRoom.activePublisherClientId = ctx.clientId;
 
       const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+      if (!validBinaryPcmFrame(buf)) return;
       let fallbackJsonStr = null;
 
       for (const r of getTargetBroadcastRooms(ctx.currentRoom)) {
         for (const peer of r.clients.values()) {
           if (peer.ws === ws || peer.ws.readyState !== WebSocket.OPEN) continue;
           if (!peer.ws.isHttpRelay) {
-            if (peer.ws.bufferedAmount && peer.ws.bufferedAmount > 98304) {
+            // Dinleyici soket kuyruğu ~400ms (19200 byte) üstüne birikirse bayat ses oluşturmamak için atla
+            if (peer.ws.bufferedAmount && peer.ws.bufferedAmount > 19200) {
               continue;
             }
             peer.ws.send(buf, { binary: true });

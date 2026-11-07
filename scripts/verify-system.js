@@ -296,8 +296,8 @@ async function runStep2And3LiveServerAndWsTests() {
     `İlk Oda: ${firstRoom?.key}, Bağlı Hacı Sayısı: ${firstRoom?.connectedPilgrims?.length}`
   );
 
-  // Rehberden 12-bayt başlıklı Binary PCM16 ses çerçevesi gönder (ORTA-01)
-  const sampleCount = 1536;
+  // Rehberden 12-bayt başlıklı 20ms (480 örnek = 972 bayt) Binary PCM16 ses çerçevesi gönder (v49)
+  const sampleCount = 480;
   const binaryFrame = Buffer.alloc(12 + sampleCount * 2);
   const testSeq = 888;
   const testSentAt = Date.now();
@@ -880,13 +880,14 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
     dinleHtml.includes('function forceResurrectPilgrimAudio(') &&
     dinleHtml.includes('function verifyPilgrimWebSocketAfterInterruption(') &&
     dinleHtml.includes('attachBgKeepAliveAudioListeners(');
-  const hasFastWorkletHeartbeat = workletCode.includes('this._heartbeatTicks >= 150');
+  const hasFastWorkletHeartbeat =
+    workletCode.includes("type: 'audio-heartbeat'") && workletCode.includes('this.hb >= this.rate * 0.5');
 
   assertCondition(
     'ADIM-4.6 (ALARM / ARAMA / BİLDİRİM SONRASI OTOMATİK SES VE YAYIN DİRİLTME)',
     'MediaSession pause/stop tuzağı kaldırıldı; AudioContext/AudioWorklet sıfırdan otomatik kurulum (rebuildPilgrimAudioEngine) ve yarı-açık WS onarımı doğrulandı',
     hasMediaSessionSafePause && hasHotSwapRebuild && hasFastWorkletHeartbeat,
-    `MediaSession Koruması: ${hasMediaSessionSafePause}, HotSwap Rebuild: ${hasHotSwapRebuild}, 400ms Nabız: ${hasFastWorkletHeartbeat}`
+    `MediaSession Koruması: ${hasMediaSessionSafePause}, HotSwap Rebuild: ${hasHotSwapRebuild}, 500ms Nabız: ${hasFastWorkletHeartbeat}`
   );
 
   // 4.7 Faz 1-4 İstemci & Mimari Denetim Onarımları Doğrulaması (KRİTİK-02, YÜKSEK-01, ORTA-01..05, DÜŞÜK-01..02)
@@ -917,7 +918,7 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
     `MQTT İmza: ${testSig}, SOS Timeout: ${hasAbortTimeoutInSos}, Tekil Kalp Atışı: ${hasSingleHeartbeatGuard}, Chunked Base64: ${hasChunkedBase64}`
   );
 
-  // 4.8 Hacı AudioWorklet (RysPcmPlayerProcessor) Dairesel Tampon, PLC Köprüsü ve Nabız E2E Simülasyonu
+  // 4.8 Hacı AudioWorklet (RysPcmPlayerProcessor v49) Seq Reorder, PLC, Hermite ASRC ve Nabız E2E Simülasyonu
   let RegisteredPlayerClass = null;
   const workletPortMessages = [];
   class MockAudioWorkletProcessor {
@@ -933,41 +934,156 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
     registerProcessor: (name, cls) => {
       if (name === 'rys-pcm-player') RegisteredPlayerClass = cls;
     },
-    sampleRate: 24000,
+    sampleRate: 48000,
     Float32Array,
-    Math
+    Math,
+    Set,
+    Map
   };
-  vm.runInNewContext(workletCode, playerSandbox);
+  vm.createContext(playerSandbox);
+  vm.runInContext(workletCode, playerSandbox);
   const playerProc = new RegisteredPlayerClass();
 
-  // 4 paket (4 x 1536 = 6144 örnek = 256ms @ 24kHz) ses verisi gönder -> ön tamponu (165ms = 3960 örnek) aşıp 'playing' durumuna geçmeli
-  const tonePacket = new Float32Array(1536);
-  for (let i = 0; i < tonePacket.length; i++) {
-    tonePacket[i] = 0.4 * Math.sin((2 * Math.PI * 440 * i) / 24000);
+  // Sıra dışı (0, 2, 1, 3), kayıp paket (4 eksik -> PLC devreye girmeli) ve mükerrer paket (9 iki kez) gönder
+  const tonePacket = new Float32Array(480);
+  for (let i = 0; i < 480; i++) {
+    tonePacket[i] = 0.35 * Math.sin((2 * Math.PI * 440 * i) / 24000);
   }
-  for (let p = 0; p < 4; p++) {
-    playerProc.port.onmessage({ data: { type: 'push', samples: tonePacket, phraseStart: p === 0, isSilent: false } });
+  for (const seq of [0, 2, 1, 3, 5, 6, 7, 8, 9]) {
+    playerProc.port.onmessage({
+      data: {
+        type: 'push',
+        seq,
+        arrival: seq * 20,
+        phraseStart: seq === 0,
+        samples: new Float32Array(tonePacket)
+      }
+    });
   }
+  // Mükerrer paket (seq=9)
+  playerProc.port.onmessage({
+    data: {
+      type: 'push',
+      seq: 9,
+      arrival: 200,
+      phraseStart: false,
+      samples: new Float32Array(tonePacket)
+    }
+  });
 
   let totalRenderedEnergy = 0;
-  for (let q = 0; q < 20; q++) {
+  for (let q = 0; q < 90; q++) {
     const outCh = new Float32Array(128);
     playerProc.process([], [[outCh]]);
     for (let i = 0; i < 128; i++) {
       totalRenderedEnergy += outCh[i] * outCh[i];
     }
   }
-  const renderedRms = Math.sqrt(totalRenderedEnergy / (20 * 128));
+  // Aktif oynatım sürerken geç gelen paket (seq=4) -> late sayacı artmalı
+  playerProc.port.onmessage({
+    data: {
+      type: 'push',
+      seq: 4,
+      arrival: 999,
+      phraseStart: false,
+      samples: new Float32Array(tonePacket)
+    }
+  });
+  for (let q = 0; q < 110; q++) {
+    const outCh = new Float32Array(128);
+    playerProc.process([], [[outCh]]);
+  }
+  const renderedRms = Math.sqrt(totalRenderedEnergy / (90 * 128));
   const emittedWorkletHeartbeat = workletPortMessages.some((m) => m && m.type === 'audio-heartbeat');
+  const wrapDiffPlus = vm.runInContext('rysDiff(0, 0x7fffffff)', playerSandbox);
+  const wrapDiffMinus = vm.runInContext('rysDiff(0x7fffffff, 0)', playerSandbox);
 
   assertCondition(
-    'ADIM-4.8 (HACI AUDIOWORKLET DAİRESEL TAMPON & KESİNTİSİZ OYNATIM E2E)',
-    'RysPcmPlayerProcessor 24 kHz ses paketlerini ön tamponlayıp sıfır kesintiyle oynattı ve audio-heartbeat sinyali üretti',
-     Boolean(RegisteredPlayerClass) &&
-      playerProc._state === 'playing' &&
-      renderedRms > 0.2 &&
+    'ADIM-4.8 (HACI AUDIOWORKLET SEQ JITTER TAMPONU, PLC, HERMITE ASRC & NABIZ E2E)',
+    'RysPcmPlayerProcessor 20ms (480 örnek) paketleri sıraladı, kayıp paketi PLC ile gizledi, mükerrer/geç paketi ayıkladı ve nabız üretti',
+    Boolean(RegisteredPlayerClass) &&
+      playerProc.stats.duplicate === 1 &&
+      playerProc.stats.concealed >= 480 &&
+      playerProc.stats.late === 1 &&
+      wrapDiffPlus === 1 &&
+      wrapDiffMinus === -1 &&
+      renderedRms > 0.05 &&
       emittedWorkletHeartbeat,
-    `Durum: ${playerProc._state}, Çıkış RMS: ${renderedRms.toFixed(3)}, Nabız Sinyali: ${emittedWorkletHeartbeat}`
+    `Duplicate: ${playerProc.stats.duplicate}, Concealed: ${playerProc.stats.concealed}, Late: ${playerProc.stats.late}, RMS: ${renderedRms.toFixed(3)}, Nabız: ${emittedWorkletHeartbeat}`
+  );
+
+  // 4.9 Rehber AudioWorklet (RysFir24 193-Tap Polyphase Blackman FIR + RysNearExpander 10ms Lookahead) ve WaveShaper [-1,+1] Birim Kazanç E2E
+  const captureWorkletCode = fs.readFileSync(path.join(PUBLIC_DIR, 'pcm-capture-worklet.js'), 'utf8');
+  let fir44kFrames = 0;
+  let fir48kFrames = 0;
+  let firContinuityOk = true;
+
+  for (const sr of [44100, 48000]) {
+    let CaptureCls = null;
+    const capMsgs = [];
+    const capBox = {
+      Float32Array,
+      Float64Array,
+      Math,
+      Number,
+      Boolean,
+      sampleRate: sr,
+      currentTime: 0,
+      AudioWorkletProcessor: class {
+        constructor() {
+          this.port = { postMessage: (m) => capMsgs.push(m) };
+        }
+      },
+      registerProcessor: (name, K) => {
+        if (name === 'rys-pcm-capture') CaptureCls = K;
+      }
+    };
+    vm.createContext(capBox);
+    vm.runInContext(captureWorkletCode + '\nglobalThis.Fir = RysFir24;', capBox);
+    const proc = new CaptureCls({ processorOptions: { muted: false, reject: 0.5 } });
+    for (let i = 0; i < sr; i += 128) {
+      const n = Math.min(128, sr - i);
+      const ch = Float32Array.from({ length: n }, (_, k) => 0.15 * Math.sin((2 * Math.PI * 1000 * (i + k)) / sr));
+      capBox.currentTime = i / sr;
+      proc.process([[ch]], [[new Float32Array(n)]]);
+    }
+    if (sr === 44100) fir44kFrames = capMsgs.length;
+    if (sr === 48000) fir48kFrames = capMsgs.length;
+
+    // Paket sınırlarından bağımsız sürekli FIR faz doğrulaması
+    const firA = new capBox.Fir(sr);
+    const firB = new capBox.Fir(sr);
+    const outA = [];
+    const outB = [];
+    const testSigIn = Float32Array.from({ length: 12288 }, (_, i) => Math.sin(i * 0.137));
+    for (const x of testSigIn) firA.push(x, (v) => outA.push(v));
+    for (let s = 0; s < testSigIn.length; s += 3072) {
+      for (const x of testSigIn.subarray(s, s + 3072)) firB.push(x, (v) => outB.push(v));
+    }
+    if (outA.length !== outB.length || outA.some((v, idx) => v !== outB[idx])) {
+      firContinuityOk = false;
+    }
+  }
+
+  // WaveShaper [-1, +1] birim kazanç doğrulaması (+6 dB hatasının giderildiğinin kanıtı)
+  const curveStart = dinleHtml.indexOf('function createTransparentSoftClipperCurve()');
+  const curveEnd = dinleHtml.indexOf('let rxPlayerWorkletAlive = false;');
+  const curveBox = { Float32Array, Math };
+  vm.createContext(curveBox);
+  vm.runInContext(dinleHtml.slice(curveStart, curveEnd), curveBox);
+  const wsCurve = curveBox.createTransparentSoftClipperCurve();
+  const valAt025 = wsCurve[Math.round((1.25 / 2) * (wsCurve.length - 1))];
+  const unityCurveOk = Math.abs(valAt025 - 0.25) < 0.001;
+  const butterworthQOk =
+    rehberHtml.includes('highPass.Q.value = -3.0103') &&
+    rehberHtml.includes('lowPass.Q.value = -3.0103') &&
+    dinleHtml.includes('rxHighPass.Q.value = -3.0103');
+
+  assertCondition(
+    'ADIM-4.9 (v49 AUDIO EXCELLENCE: 193-TAP FIR RESAMPLER, 10ms LOOKAHEAD EXPANDER & WAVESHAPER BİRİM KAZANÇ)',
+    '44.1/48 kHz -> 24 kHz 193-tap Blackman FIR tam 50x480 örnek üretti, paket sınırı faz sürekliliği, Butterworth Q (-3.0103 dB) ve WaveShaper 1.0x birim kazanç doğrulandı',
+    fir44kFrames === 50 && fir48kFrames === 50 && firContinuityOk && unityCurveOk && butterworthQOk,
+    `44.1k->24k: ${fir44kFrames} frame, 48k->24k: ${fir48kFrames} frame, FIR Süreklilik: ${firContinuityOk}, WaveShaper(0.25)=${valAt025.toFixed(4)}, Butterworth Q: ${butterworthQOk}`
   );
 }
 
