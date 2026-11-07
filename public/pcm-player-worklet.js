@@ -12,11 +12,15 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     this._readPtr = 0;
     this._available = 0;
 
-    // 135ms güvenli başlangıç yastığı (mobil Wi-Fi/4G paket dalgalanmalarını tamamen emer)
-    this._prebufferTarget = Math.round(sr * 0.135);
-    // 520ms maksimum gecikme sınırı (aşırı birikme olursa perdeyi değiştirmeden yumuşak geçiş yapar)
-    this._maxBufferTarget = Math.round(sr * 0.520);
-    this._optimalTarget = Math.round(sr * 0.160);
+    // Adaptif Jitter Ön Tamponu (165ms - 285ms Arası Kâbe Şebeke Yoğunluğuna Göre Otomatik Esneyen Yastık)
+    this._minPrebuffer = Math.round(sr * 0.165);
+    this._maxPrebuffer = Math.round(sr * 0.285);
+    this._prebufferTarget = Math.round(sr * 0.180);
+    this._optimalTarget = Math.round(sr * 0.210);
+    // 680ms maksimum gecikme sınırı (aşırı birikme / bayat paket olursa perdeyi değiştirmeden yumuşak crossfade yapar)
+    this._maxBufferTarget = Math.round(sr * 0.680);
+    this._stablePushCount = 0;
+    this._lastPushHadAudio = false;
 
     this._state = 'buffering'; // 'buffering' | 'playing'
     this._fadeInSamples = Math.round(sr * 0.008); // 8ms kosinüs yumuşak giriş
@@ -45,6 +49,17 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
   _pushSamples(samples, phraseStart, isSilent = false) {
     const len = samples.length;
     if (!len) return;
+
+    this._lastPushHadAudio = !isSilent;
+    if (!isSilent && this._state === 'playing') {
+      this._stablePushCount++;
+      // 160 ardışık (~10 sn) kesintisiz ses çerçevesi geldiyse ön tamponu yumuşakça taban seviyeye (165ms) yaklaştır
+      if (this._stablePushCount >= 160 && this._prebufferTarget > this._minPrebuffer) {
+        this._prebufferTarget = Math.max(this._minPrebuffer, this._prebufferTarget - Math.round(this._sampleRate * 0.015));
+        this._optimalTarget = this._prebufferTarget + Math.round(this._sampleRate * 0.030);
+        this._stablePushCount = 0;
+      }
+    }
 
     // Eğer yeni bir cümle başlangıcıysa ve tampon zaten boşsa yumuşak giriş hazırla
     if (phraseStart && this._available === 0) {
@@ -162,6 +177,12 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
           this._lastSample *= 0.92;
         }
         outCh[i] = this._lastSample;
+      }
+      // Konuşma ortasında ağ dalgalanması (jitter) kaynaklı boşalma olduysa adaptif ön tamponu otomatik genişlet (285ms'ye kadar)
+      if (this._lastPushHadAudio) {
+        this._stablePushCount = 0;
+        this._prebufferTarget = Math.min(this._maxPrebuffer, this._prebufferTarget + Math.round(this._sampleRate * 0.035));
+        this._optimalTarget = this._prebufferTarget + Math.round(this._sampleRate * 0.030);
       }
       this._state = 'buffering';
       this._fadeInPos = 0;

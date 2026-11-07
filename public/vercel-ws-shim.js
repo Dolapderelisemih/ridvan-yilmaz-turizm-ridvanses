@@ -111,9 +111,9 @@
         return;
       }
 
-      // VDS / Özel Domain Ortamında Mobil Şebeke (Asansör/Tünel) El Sıkışma Zaman Aşımı:
+      // VDS / Özel Domain Ortamında Mobil Şebeke (Asansör/Tünel) El Sıkışma Zaman Aşımı (3.5 sn):
       // İlk hatada doğrudan VDS'i yeniden dene; VDS üst üste erişilemezse (bakım/ağ engeli) otomatik MQTT Bulut Rölesine geç!
-      const handshakeLimit = 6000;
+      const handshakeLimit = 3500;
       const fallbackTimeout = setTimeout(() => {
         if (!this._opened && !this._isRelay) {
           window.__ryConsecutiveVdsFailures = (window.__ryConsecutiveVdsFailures || 0) + 1;
@@ -225,6 +225,73 @@
       }
 
       this._pollTimer = setInterval(() => this._flushAndPoll(), 450);
+
+      // Birincil VDS sunucusu tekrar ayağa kalktığında MQTT yedek rölesinden kayıpsız geri dönüş (Zero-Drop Failback)
+      const isServerlessHost = typeof this.url === 'string' && this.url.includes('.vercel.app/ws');
+      if (!isServerlessHost && !this._vdsFailbackTimer) {
+        this._vdsFailbackTimer = setInterval(() => {
+          if (!this._isRelay || this.readyState !== 1) {
+            clearInterval(this._vdsFailbackTimer);
+            this._vdsFailbackTimer = null;
+            return;
+          }
+          let probe;
+          try {
+            probe = new NativeWebSocket(this.url);
+            probe.binaryType = 'arraybuffer';
+          } catch {
+            return;
+          }
+          const probeTimeout = setTimeout(() => {
+            try {
+              probe.onopen = null;
+              probe.close();
+            } catch {}
+          }, 3000);
+          probe.onopen = () => {
+            clearTimeout(probeTimeout);
+            if (!this._isRelay || this.readyState !== 1) {
+              try { probe.close(); } catch {}
+              return;
+            }
+            if (this._vdsFailbackTimer) {
+              clearInterval(this._vdsFailbackTimer);
+              this._vdsFailbackTimer = null;
+            }
+            if (this._pollTimer) {
+              clearInterval(this._pollTimer);
+              this._pollTimer = null;
+            }
+            this._closeMqttClients();
+            window.__ryConsecutiveVdsFailures = 0;
+            this._isRelay = false;
+            this._opened = true;
+            this._native = probe;
+            probe.onmessage = (ev) => {
+              if (this._isRelay) return;
+              if (typeof this.onmessage === 'function') this.onmessage(ev);
+            };
+            probe.onerror = (err) => {
+              if (typeof this.onerror === 'function') this.onerror(err);
+            };
+            probe.onclose = (ev) => {
+              if (!this._isRelay) {
+                this.readyState = 3;
+                if (typeof this.onclose === 'function') this.onclose(ev);
+              }
+            };
+            if (this._joinContext) {
+              try {
+                probe.send(JSON.stringify(this._joinContext));
+              } catch {}
+            }
+            console.log('⚡ [RıdvanSes] Birincil VDS WebSocket normale döndü — MQTT Rölesinden kayıpsız geçiş yapıldı.');
+          };
+          probe.onerror = () => {
+            clearTimeout(probeTimeout);
+          };
+        }, 12000);
+      }
     }
 
     _sanitizeCode(str) {
@@ -703,6 +770,10 @@
 
     close() {
       this.readyState = 3;
+      if (this._vdsFailbackTimer) {
+        clearInterval(this._vdsFailbackTimer);
+        this._vdsFailbackTimer = null;
+      }
       if (this._pollTimer) {
         clearInterval(this._pollTimer);
         this._pollTimer = null;

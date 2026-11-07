@@ -16,9 +16,9 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=44"></script>
+  <script src="/vercel-ws-shim.js?v=45"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=44"></script>
+  <script src="/js/umrah-steps-map.js?v=45"></script>
   <style>
     .app-shell {
       max-width: 540px;
@@ -1203,6 +1203,7 @@
           : `ridvanses-${String(tourCode || 'RY-KASIM').toLowerCase()}-${String(roomId || 'genel').toLowerCase()}-guide-v26`;
 
       ws.onopen = () => {
+        window.__ryPilgrimReconnectAttempts = 0;
         updatePilgrimConnectionUi('connected');
         ws.send(JSON.stringify({
           type: 'join',
@@ -1306,6 +1307,10 @@
         }
 
         if (msg.type === 'audio-chunk') {
+          window.__ryPilgrimReconnectAttempts = 0;
+          if (window.__ryPilgrimConnState === 'reconnecting') {
+            updatePilgrimConnectionUi('connected');
+          }
           const pktLevel = typeof msg.level === 'number' ? msg.level : (msg.synthNote ? 0.5 : 0);
           const isSilentFrame = pktLevel <= 0.008 && !msg.synthNote;
           if (pktLevel > 0.015 || msg.synthNote) {
@@ -1342,11 +1347,14 @@
         if (intentionalLeave) return;
         updatePilgrimConnectionUi('reconnecting');
         if (window._ryWsReconnectTimeout) clearTimeout(window._ryWsReconnectTimeout);
+        const attempts = window.__ryPilgrimReconnectAttempts || 0;
+        window.__ryPilgrimReconnectAttempts = attempts + 1;
+        const retryDelay = Math.min(2500, Math.round(500 * Math.pow(1.5, attempts)));
         window._ryWsReconnectTimeout = setTimeout(() => {
           if (!intentionalLeave) {
             connectWebSocket(tourCode, roomId, name, phone);
           }
-        }, 2000);
+        }, retryDelay);
       };
 
       ws.onerror = (err) => {
@@ -1355,10 +1363,11 @@
     }
 
     function updatePilgrimConnectionUi(state) {
+      window.__ryPilgrimConnState = state;
       const badge = document.getElementById('pilgrimNetQualityBadge');
       if (!badge) return;
       if (state === 'reconnecting') {
-        badge.textContent = '🔄 Yeniden Bağlanıyor...';
+        badge.textContent = '📶 Bağlantı güçlendiriliyor...';
         badge.style.background = 'rgba(245, 158, 11, 0.25)';
         badge.style.color = '#fde68a';
         badge.style.borderColor = 'rgba(251, 191, 36, 0.5)';
@@ -1566,7 +1575,7 @@
       if (!audioCtx.audioWorklet || typeof window.AudioWorkletNode === 'undefined') return;
       rxPlayerWorkletLoading = true;
       audioCtx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=44')
+        .addModule('/pcm-player-worklet.js?v=45')
         .then(() => {
           if (!audioCtx || rxPlayerWorkletNode) return;
           let node;
@@ -1665,6 +1674,20 @@
         }
         rxInputNode = rxHighPass;
 
+        // 4. iOS Safari & Android Chrome Kilit Ekranı Donanım Uyanıklık Osilatörü (Duyulmaz 0.00001 Kazanç)
+        // Rehber nefes aldığında veya birkaç saniye sustuğunda WebKit'in AudioContext'i "suspended" durumuna düşürmesini engeller.
+        try {
+          const keepAliveOsc = audioCtx.createOscillator();
+          const keepAliveGain = audioCtx.createGain();
+          keepAliveOsc.type = 'sine';
+          keepAliveOsc.frequency.value = 1;
+          keepAliveGain.gain.value = 0.00001;
+          keepAliveOsc.connect(keepAliveGain);
+          keepAliveGain.connect(audioCtx.destination);
+          keepAliveOsc.start();
+          window.__ryInternalKeepAliveOsc = keepAliveOsc;
+        } catch {}
+
         initRxPlayerWorklet();
 
         audioCtx.onstatechange = () => {
@@ -1753,8 +1776,10 @@
       while (activeScheduledSources.length > 0) {
         const src = activeScheduledSources.shift();
         try {
+          src.onended = null;
           src.stop();
           src.disconnect();
+          src.buffer = null;
         } catch {}
       }
       nextAudioTime = 0;
@@ -1821,6 +1846,10 @@
 
     function handleBinaryAudioFrame(buffer) {
       if (!buffer || buffer.byteLength <= 12) return;
+      window.__ryPilgrimReconnectAttempts = 0;
+      if (window.__ryPilgrimConnState === 'reconnecting') {
+        updatePilgrimConnectionUi('connected');
+      }
       const view = new DataView(buffer);
       const rawSeq = view.getUint32(0, true);
       const phraseStart = Boolean(rawSeq & 0x80000000);
@@ -1913,18 +1942,18 @@
           return;
         }
 
-        // YEDEK YOL (Eski Tarayıcılar İçin): Sabit 135ms Yastıklı AudioBufferSourceNode Zamanlayıcı
-        // (8ms tampon çökmesi tamamen kaldırıldı — her zaman tam 135ms jitter yastığı korunur!)
+        // YEDEK YOL (Eski Tarayıcılar İçin): 240ms Ön Tamponlu (Pre-Buffer) ve Bayat Paket Korumalı Zamanlayıcı
         const now = audioCtx.currentTime;
         const lead = nextAudioTime - now;
         let isFreshPhrase = false;
 
-        if (lead > 0.65) {
+        if (lead > 1.2) {
+          // 1.2 saniyeden eski birikmiş bayat paketleri kuyruğu tıkamaması için kontrollü atla
           stopAllActiveSources();
-          nextAudioTime = now + 0.135;
+          nextAudioTime = now + 0.24;
           isFreshPhrase = true;
         } else if (lead < 0) {
-          nextAudioTime = now + 0.135;
+          nextAudioTime = now + 0.24;
           isFreshPhrase = true;
         }
 
@@ -1950,11 +1979,23 @@
         source.playbackRate.value = 1.0;
         source.connect(rxInputNode || gainNode);
 
+        if (activeScheduledSources.length >= 64) {
+          const oldest = activeScheduledSources.shift();
+          try {
+            oldest.onended = null;
+            oldest.stop();
+            oldest.disconnect();
+            oldest.buffer = null;
+          } catch {}
+        }
         activeScheduledSources.push(source);
         source.onended = () => {
           const idx = activeScheduledSources.indexOf(source);
           if (idx !== -1) activeScheduledSources.splice(idx, 1);
-          try { source.disconnect(); } catch {}
+          try {
+            source.disconnect();
+            source.buffer = null;
+          } catch {}
         };
 
         source.start(nextAudioTime);
@@ -2362,7 +2403,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=44').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=45').catch(() => {});
       });
     }
 
