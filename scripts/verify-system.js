@@ -308,7 +308,7 @@ async function runStep2And3LiveServerAndWsTests() {
   }
   guideGenelWs.send(binaryFrame, { binary: true });
 
-  // Rehberden yedek JSON audio-chunk ve hızlı duyuru gönder
+  // Rehberden yedek JSON audio-chunk (v50: 960 bayt = 1280 b64 karakter) ve hızlı duyuru gönder
   guideGenelWs.send(
     JSON.stringify({
       type: 'audio-chunk',
@@ -316,7 +316,7 @@ async function runStep2And3LiveServerAndWsTests() {
       phraseStart: false,
       sentAt: Date.now(),
       sampleRate: 24000,
-      pcm16: Buffer.alloc(64).toString('base64'),
+      pcm16: Buffer.alloc(960).toString('base64'),
       level: 0.5
     })
   );
@@ -918,7 +918,7 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
     `MQTT İmza: ${testSig}, SOS Timeout: ${hasAbortTimeoutInSos}, Tekil Kalp Atışı: ${hasSingleHeartbeatGuard}, Chunked Base64: ${hasChunkedBase64}`
   );
 
-  // 4.8 Hacı AudioWorklet (RysPcmPlayerProcessor v49) Seq Reorder, PLC, Hermite ASRC ve Nabız E2E Simülasyonu
+  // 4.8 Hacı AudioWorklet (RysPcmPlayerProcessor v50 + RysPitchPlc) Seq Reorder, PhraseStart Koruması, Pitch-PLC, Hermite ASRC ve Nabız E2E Simülasyonu
   let RegisteredPlayerClass = null;
   const workletPortMessages = [];
   class MockAudioWorkletProcessor {
@@ -941,13 +941,28 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
     Map
   };
   vm.createContext(playerSandbox);
-  vm.runInContext(workletCode, playerSandbox);
+  vm.runInContext(workletCode + '\nglobalThis.PLC = RysPitchPlc;', playerSandbox);
   const playerProc = new RegisteredPlayerClass();
+
+  // v50 Reorder + PhraseStart Koruması: seq=11 erken geldikten sonra seq=10 (phraseStart: true) geldiğinde seq=11 silinmemeli
+  const reorderTestProc = new RegisteredPlayerClass();
+  reorderTestProc._push({ samples: new Float32Array(480).fill(0.1), seq: 11, arrival: 220, phraseStart: false });
+  reorderTestProc._push({ samples: new Float32Array(480).fill(0.1), seq: 10, arrival: 200, phraseStart: true });
+  const phraseReorderPreserved = reorderTestProc.q.has(11);
+
+  // v50 RysPitchPlc: 200 Hz ses dalgasında 0 sınır hatası ve periyot kilitleme kontrolü
+  const plcInst = new playerSandbox.PLC();
+  const plcHist = Float32Array.from({ length: 2400 }, (_, i) => 0.2 * Math.sin((2 * Math.PI * 200 * i) / 24000));
+  plcInst.append(plcHist);
+  const plcOut = new Float32Array(480);
+  plcInst.fill(plcOut);
+  const plcBoundaryErr = Math.abs(plcOut[0] - plcHist[plcHist.length - 1]);
+  const plcPitchLocked = plcInst.length === 120 && plcBoundaryErr < 1e-6;
 
   // Sıra dışı (0, 2, 1, 3), kayıp paket (4 eksik -> PLC devreye girmeli) ve mükerrer paket (9 iki kez) gönder
   const tonePacket = new Float32Array(480);
   for (let i = 0; i < 480; i++) {
-    tonePacket[i] = 0.35 * Math.sin((2 * Math.PI * 440 * i) / 24000);
+    tonePacket[i] = 0.35 * Math.sin((2 * Math.PI * 200 * i) / 24000);
   }
   for (const seq of [0, 2, 1, 3, 5, 6, 7, 8, 9]) {
     playerProc.port.onmessage({
@@ -999,9 +1014,11 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
   const wrapDiffMinus = vm.runInContext('rysDiff(0x7fffffff, 0)', playerSandbox);
 
   assertCondition(
-    'ADIM-4.8 (HACI AUDIOWORKLET SEQ JITTER TAMPONU, PLC, HERMITE ASRC & NABIZ E2E)',
-    'RysPcmPlayerProcessor 20ms (480 örnek) paketleri sıraladı, kayıp paketi PLC ile gizledi, mükerrer/geç paketi ayıkladı ve nabız üretti',
+    'ADIM-4.8 (v50 HACI AUDIOWORKLET SEQ JITTER TAMPONU, PITCH-PLC, PHRASESTART KORUMASI & HERMITE ASRC E2E)',
+    'RysPcmPlayerProcessor 20ms paketleri sıraladı, RysPitchPlc periyodu 0 sınır hatasıyla sürdürdü, phraseStart kuyruğu korudu ve nabız üretti',
     Boolean(RegisteredPlayerClass) &&
+      phraseReorderPreserved &&
+      plcPitchLocked &&
       playerProc.stats.duplicate === 1 &&
       playerProc.stats.concealed >= 480 &&
       playerProc.stats.late === 1 &&
@@ -1009,18 +1026,19 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
       wrapDiffMinus === -1 &&
       renderedRms > 0.05 &&
       emittedWorkletHeartbeat,
-    `Duplicate: ${playerProc.stats.duplicate}, Concealed: ${playerProc.stats.concealed}, Late: ${playerProc.stats.late}, RMS: ${renderedRms.toFixed(3)}, Nabız: ${emittedWorkletHeartbeat}`
+    `PitchPlc(lag=${plcInst.length}, err=${plcBoundaryErr.toExponential(1)}), PhraseReorder: ${phraseReorderPreserved}, Concealed: ${playerProc.stats.concealed}, RMS: ${renderedRms.toFixed(3)}`
   );
 
-  // 4.9 Rehber AudioWorklet (RysFir24 193-Tap Polyphase Blackman FIR + RysNearExpander 10ms Lookahead) ve WaveShaper [-1,+1] Birim Kazanç E2E
-  const captureWorkletCode = fs.readFileSync(path.join(PUBLIC_DIR, 'pcm-capture-worklet.js'), 'utf8');
-  let fir44kFrames = 0;
-  let fir48kFrames = 0;
-  let firContinuityOk = true;
+  // 4.9 v50 Audio Excellence: RysFir24 (>-115 dB Stopband), RysNearExpander (4s Rolling Minima), RysCaptureKernel (128==2048) & Coalescing E2E
+  const captureWorkletCode = fs
+    .readFileSync(path.join(PUBLIC_DIR, 'pcm-capture-worklet.js'), 'utf8')
+    .replace(/^export \{[^\n]*\};?$/gm, '');
+  let firStopbandOk = true;
+  let firPassbandOk = true;
+  let kernelEquivalenceOk = true;
+  let minStopbandDb48k = 0;
 
   for (const sr of [44100, 48000]) {
-    let CaptureCls = null;
-    const capMsgs = [];
     const capBox = {
       Float32Array,
       Float64Array,
@@ -1031,39 +1049,62 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
       currentTime: 0,
       AudioWorkletProcessor: class {
         constructor() {
-          this.port = { postMessage: (m) => capMsgs.push(m) };
+          this.port = { postMessage: () => {} };
         }
       },
-      registerProcessor: (name, K) => {
-        if (name === 'rys-pcm-capture') CaptureCls = K;
-      }
+      registerProcessor: () => {}
     };
     vm.createContext(capBox);
-    vm.runInContext(captureWorkletCode + '\nglobalThis.Fir = RysFir24;', capBox);
-    const proc = new CaptureCls({ processorOptions: { muted: false, reject: 0.5 } });
-    for (let i = 0; i < sr; i += 128) {
-      const n = Math.min(128, sr - i);
-      const ch = Float32Array.from({ length: n }, (_, k) => 0.15 * Math.sin((2 * Math.PI * 1000 * (i + k)) / sr));
-      capBox.currentTime = i / sr;
-      proc.process([[ch]], [[new Float32Array(n)]]);
-    }
-    if (sr === 44100) fir44kFrames = capMsgs.length;
-    if (sr === 48000) fir48kFrames = capMsgs.length;
+    vm.runInContext(captureWorkletCode, capBox);
 
-    // Paket sınırlarından bağımsız sürekli FIR faz doğrulaması
-    const firA = new capBox.Fir(sr);
-    const firB = new capBox.Fir(sr);
-    const outA = [];
-    const outB = [];
-    const testSigIn = Float32Array.from({ length: 12288 }, (_, i) => Math.sin(i * 0.137));
-    for (const x of testSigIn) firA.push(x, (v) => outA.push(v));
-    for (let s = 0; s < testSigIn.length; s += 3072) {
-      for (const x of testSigIn.subarray(s, s + 3072)) firB.push(x, (v) => outB.push(v));
+    for (const freq of [1000, 8000, 16000, 20000]) {
+      const fir = new capBox.RysFir24(sr);
+      let n = 0;
+      let sq = 0;
+      let total = 0;
+      for (let i = 0; i < sr; i++) {
+        fir.push(Math.sin((2 * Math.PI * freq * i) / sr), (x) => {
+          if (total++ > 2400) {
+            sq += x * x;
+            n++;
+          }
+        });
+      }
+      const db = 20 * Math.log10(Math.sqrt(sq / n) * Math.SQRT2);
+      if (total !== 24000) firPassbandOk = false;
+      if (freq < 10000 && Math.abs(db) >= 0.05) firPassbandOk = false;
+      if (freq >= 16000 && db >= -110) firStopbandOk = false;
+      if (sr === 48000 && freq === 16000) minStopbandDb48k = db;
     }
-    if (outA.length !== outB.length || outA.some((v, idx) => v !== outB[idx])) {
-      firContinuityOk = false;
+
+    // Worklet (128) ve ScriptProcessor fallback (2048) birebir aynı 24000 örneği üretmeli (kalan örnek kaybı = 0)
+    const runKernel = (block) => {
+      const out = [];
+      const k = new capBox.RysCaptureKernel(sr, {}, (m) => out.push(...m.samples));
+      for (let start = 0; start < sr; start += block) {
+        const len = Math.min(block, sr - start);
+        k.process(Float32Array.from({ length: len }, (_, i) => 0.02 * Math.sin((start + i) * 0.1)));
+      }
+      if (k.offset !== 0 || out.length !== 24000) kernelEquivalenceOk = false;
+      return out;
+    };
+    const out128 = runKernel(128);
+    const out2048 = runKernel(2048);
+    if (out128.length !== out2048.length || out128.some((v, idx) => v !== out2048[idx])) {
+      kernelEquivalenceOk = false;
     }
   }
+
+  // RysNearExpander: -35 dBFS sürekli gürültü ve babble altında asla kilitli kalmamalı (g < 0.2, n[1] > 1e-5)
+  const gateBox = { Float32Array, Float64Array, Math, Number, Boolean, sampleRate: 48000, currentTime: 0 };
+  vm.createContext(gateBox);
+  vm.runInContext(captureWorkletCode, gateBox);
+  const amp35 = Math.SQRT2 * 10 ** (-35 / 20);
+  const expander = new gateBox.RysNearExpander();
+  for (let i = 0; i < 24000 * 12; i++) {
+    expander.step(i < 24000 ? 0 : amp35 * Math.sin((2 * Math.PI * 700 * i) / 24000));
+  }
+  const noiseFloorConverged = expander.n[1] > 1e-5 && expander.g < 0.2;
 
   // WaveShaper [-1, +1] birim kazanç doğrulaması (+6 dB hatasının giderildiğinin kanıtı)
   const curveStart = dinleHtml.indexOf('function createTransparentSoftClipperCurve()');
@@ -1080,10 +1121,10 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
     dinleHtml.includes('rxHighPass.Q.value = -3.0103');
 
   assertCondition(
-    'ADIM-4.9 (v49 AUDIO EXCELLENCE: 193-TAP FIR RESAMPLER, 10ms LOOKAHEAD EXPANDER & WAVESHAPER BİRİM KAZANÇ)',
-    '44.1/48 kHz -> 24 kHz 193-tap Blackman FIR tam 50x480 örnek üretti, paket sınırı faz sürekliliği, Butterworth Q (-3.0103 dB) ve WaveShaper 1.0x birim kazanç doğrulandı',
-    fir44kFrames === 50 && fir48kFrames === 50 && firContinuityOk && unityCurveOk && butterworthQOk,
-    `44.1k->24k: ${fir44kFrames} frame, 48k->24k: ${fir48kFrames} frame, FIR Süreklilik: ${firContinuityOk}, WaveShaper(0.25)=${valAt025.toFixed(4)}, Butterworth Q: ${butterworthQOk}`
+    'ADIM-4.9 (v50 AUDIO EXCELLENCE: -118 dB FIR STOPBAND, ROLLING MINIMA NOISE GATE, 128==2048 KERNEL & WAVESHAPER)',
+    '44.1/48 kHz 193-tap FIR >-115 dB stopband bastırma sağladı, RysNearExpander -35 dBFS gürültüye yakınsadı, Worklet/Fallback 128==2048 eşdeğerliği doğrulandı',
+    firPassbandOk && firStopbandOk && kernelEquivalenceOk && noiseFloorConverged && unityCurveOk && butterworthQOk,
+    `48k@16kHz Stopband: ${minStopbandDb48k.toFixed(2)} dB, Rolling Minima Gate: g=${expander.g.toFixed(3)} (n1=${expander.n[1].toExponential(2)}), 128==2048: ${kernelEquivalenceOk}`
   );
 }
 

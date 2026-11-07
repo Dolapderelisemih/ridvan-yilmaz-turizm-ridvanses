@@ -16,7 +16,7 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=47"></script>
+  <script src="/vercel-ws-shim.js?v=50"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
@@ -1581,12 +1581,16 @@
     const pendingRxFrames = [];
 
     function flushPendingRxFrames() {
-      if (!rxPlayerWorkletNode?.port || !audioCtx || audioCtx.state !== 'running') return;
+      if (!rxPlayerWorkletNode?.port || audioCtx?.state !== 'running') return;
+      const now = performance.now();
       while (pendingRxFrames.length) {
         const m = pendingRxFrames.shift();
+        if (now - m.arrival > 260) continue;
         try {
           rxPlayerWorkletNode.port.postMessage(m, [m.samples.buffer]);
-        } catch {}
+        } catch (e) {
+          console.warn('PCM transfer', e);
+        }
       }
     }
 
@@ -1601,7 +1605,7 @@
       const token = ++rxLoadToken;
       rxPlayerWorkletLoading = true;
       ctx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=49')
+        .addModule('/pcm-player-worklet.js?v=50-audio')
         .then(() => {
           if (token !== rxLoadToken || audioCtx !== ctx || rxPlayerWorkletNode) return;
           const node = new AudioWorkletNode(ctx, 'rys-pcm-player', {
@@ -1758,8 +1762,15 @@
       }, 3500);
     }
 
+    // PATCH: recovery-v50
     async function forceResurrectPilgrimAudio(trigger = 'manual') {
-      if (!isAudioListening || intentionalLeave || rxRecoveryBusy) return;
+      if (!isAudioListening || intentionalLeave) return;
+      if (trigger === 'user-gesture') {
+        ensureAudioContext();
+        audioCtx?.resume().catch(() => {});
+        if (rxRecoveryBusy) return;
+      }
+      if (rxRecoveryBusy) return;
       if (trigger !== 'user-gesture' && Date.now() - rxLastRecovery < 850) return;
       rxLastRecovery = Date.now();
       rxRecoveryBusy = true;
@@ -2042,7 +2053,7 @@
     }
 
     function handleBinaryAudioFrame(buffer) {
-      if (!buffer || buffer.byteLength <= 12) return;
+      if (!buffer || buffer.byteLength !== 972) return;
       window.__ryPilgrimReconnectAttempts = 0;
       if (window.__ryPilgrimConnState === 'reconnecting') {
         updatePilgrimConnectionUi('connected');
@@ -2053,8 +2064,7 @@
       const seq = rawSeq & 0x7fffffff;
       const sentAt = view.getFloat64(4, true);
       if (!Number.isFinite(sentAt) || sentAt <= 0) return;
-      const sampleCount = (buffer.byteLength - 12) >> 1;
-      if (sampleCount !== 480 && sampleCount !== 1536) return;
+      const sampleCount = 480;
 
       const floatSamples = new Float32Array(sampleCount);
       let sumSq = 0;
@@ -2078,126 +2088,52 @@
       }
     }
 
-    function playPcmSamples(samplesOrB64, sampleRate = 24000, isBase64 = false, seq = 0, phraseStart = false, isSilent = false) {
-      if (!isAudioListening) return;
-      if (sampleRate !== 24000 || !Number.isInteger(seq) || seq < 0 || seq > 0x7fffffff) return;
+    // PATCH: receiver-v50
+    function playPcmSamples(payload, rate = 24000, isBase64 = false, seq = 0, phraseStart = false, isSilent = false) {
+      if (!isAudioListening || rate !== 24000 || !Number.isInteger(seq) || seq < 0 || seq > 0x7fffffff) return;
+      let a;
       try {
-        let rawArr;
-        if (isBase64 && typeof samplesOrB64 === 'string') {
-          const bin = atob(samplesOrB64);
-          const len = bin.length >> 1;
-          if (!len) return;
-          rawArr = new Float32Array(len);
-          for (let i = 0; i < len; i++) {
-            const lo = bin.charCodeAt(i * 2);
-            const hi = bin.charCodeAt(i * 2 + 1);
-            let val = (hi << 8) | lo;
-            if (val >= 0x8000) val -= 0x10000;
-            rawArr[i] = val / 32768;
+        if (isBase64) {
+          if (typeof payload !== 'string' || payload.length !== 1280) return;
+          const b = atob(payload);
+          if (b.length !== 960) return;
+          a = new Float32Array(480);
+          for (let i = 0; i < 480; i++) {
+            const v = b.charCodeAt(i * 2) | (b.charCodeAt(i * 2 + 1) << 8);
+            a[i] = (v >= 32768 ? v - 65536 : v) / 32768;
           }
-        } else if (samplesOrB64 instanceof Float32Array) {
-          rawArr = new Float32Array(samplesOrB64.length);
-          for (let i = 0; i < samplesOrB64.length; i++) {
-            const x = samplesOrB64[i];
-            rawArr[i] = Number.isFinite(x) ? Math.max(-1, Math.min(1, x)) : 0;
-          }
-        } else if (Array.isArray(samplesOrB64)) {
-          rawArr = Float32Array.from(samplesOrB64, (x) => (Number.isFinite(x) ? Math.max(-1, Math.min(1, x)) : 0));
         } else {
-          return;
+          if (!payload || payload.length !== 480) return;
+          a = Float32Array.from(payload, (x) => (Number.isFinite(x) ? Math.max(-1, Math.min(1, x)) : 0));
         }
-        if (!rawArr.length) return;
-
         ensureAudioContext();
-        if (!audioCtx || audioCtx.state !== 'running') {
-          // Kesinti sırasında bayat paket biriktirme, kurtarmayı tetikle
+        if (audioCtx?.state !== 'running') {
           forceResurrectPilgrimAudio('incoming-audio-packet');
           return;
         }
-
-        const nowMs = Date.now();
-        const gapSinceLastChunk = nowMs - lastRawChunkAt;
-        lastRawChunkAt = nowMs;
-
         if (!isSilent && pilgrimAudioGuardChannel) {
           let sq = 0;
-          for (let i = 0; i < rawArr.length; i += 4) {
-            sq += rawArr[i] * rawArr[i];
+          for (let i = 0; i < a.length; i += 4) {
+            sq += a[i] * a[i];
           }
-          const spkRms = Math.sqrt(sq / Math.max(1, Math.ceil(rawArr.length / 4)));
+          const spkRms = Math.sqrt(sq / Math.max(1, Math.ceil(a.length / 4)));
           try {
-            pilgrimAudioGuardChannel.postMessage({ type: 'pilgrim-speaker-rms', rms: spkRms, ts: nowMs });
+            pilgrimAudioGuardChannel.postMessage({ type: 'pilgrim-speaker-rms', rms: spkRms, ts: Date.now() });
           } catch {}
         }
-
-        // BİRİNCİL YOL (v49): RysPcmPlayerProcessor (480 örnek = 20 ms @ 24 kHz, Seq Jitter Buffer + PLC + Hermite ASRC)
-        if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
-          const arrivalNow = typeof performance !== 'undefined' ? performance.now() : nowMs;
-          if (rawArr.length === 480) {
-            const m = {
-              type: 'push',
-              samples: rawArr,
-              seq,
-              phraseStart: Boolean(phraseStart),
-              isSilent: Boolean(isSilent),
-              arrival: arrivalNow
-            };
-            if (pendingRxFrames.length >= 13) pendingRxFrames.shift();
-            pendingRxFrames.push(m);
-            flushPendingRxFrames();
-            return;
-          }
-          // Geriye dönük (1536 örnekli) çerçeve gelirse 480 örnekli alt çerçevelere bölerek Worklet'e ilet
-          for (let offset = 0; offset + 480 <= rawArr.length; offset += 480) {
-            const sub = rawArr.slice(offset, offset + 480);
-            rxFallbackSubSeq = (rxFallbackSubSeq + 1) & 0x7fffffff;
-            const m = {
-              type: 'push',
-              samples: sub,
-              seq: rxFallbackSubSeq,
-              phraseStart: Boolean(phraseStart && offset === 0),
-              isSilent: Boolean(isSilent),
-              arrival: arrivalNow + (offset / 480) * 20
-            };
-            if (pendingRxFrames.length >= 13) pendingRxFrames.shift();
-            pendingRxFrames.push(m);
-          }
-          flushPendingRxFrames();
-          return;
-        }
-
-        // YEDEK YOL (AudioWorklet desteklemeyen çok eski tarayıcılar için)
-        const isSeqContiguous =
-          !phraseStart &&
-          gapSinceLastChunk < 600 &&
-          (seq === 0 || lastReceivedAudioSeq === 0 || seq === lastReceivedAudioSeq + 1);
-        if (seq > 0) lastReceivedAudioSeq = seq;
-        const hwRate = audioCtx.sampleRate || 48000;
-        const hwSamples = resampleChunkToHwRate(rawArr, sampleRate, hwRate, isSeqContiguous);
-        if (!hwSamples.length) return;
-        const now = audioCtx.currentTime;
-        const lead = nextAudioTime - now;
-        if (lead > 1.2 || lead < 0) {
-          stopAllActiveSources();
-          nextAudioTime = now + 0.20;
-        }
-        const buffer = audioCtx.createBuffer(1, hwSamples.length, hwRate);
-        buffer.copyToChannel(hwSamples, 0);
-        const source = audioCtx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(rxInputNode || gainNode);
-        activeScheduledSources.push(source);
-        source.onended = () => {
-          const idx = activeScheduledSources.indexOf(source);
-          if (idx !== -1) activeScheduledSources.splice(idx, 1);
-          try {
-            source.disconnect();
-            source.buffer = null;
-          } catch {}
-        };
-        source.start(nextAudioTime);
-        nextAudioTime += hwSamples.length / hwRate;
-      } catch (e) {}
+        if (pendingRxFrames.length >= 13) pendingRxFrames.shift();
+        pendingRxFrames.push({
+          type: 'push',
+          samples: a,
+          seq,
+          phraseStart: Boolean(phraseStart),
+          isSilent: Boolean(isSilent),
+          arrival: performance.now()
+        });
+        flushPendingRxFrames();
+      } catch (e) {
+        console.warn('PCM decode', e);
+      }
     }
 
     function playGentleHarmonyNote(freq = 440) {
@@ -2619,7 +2555,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=49').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=50').catch(() => {});
       });
     }
 

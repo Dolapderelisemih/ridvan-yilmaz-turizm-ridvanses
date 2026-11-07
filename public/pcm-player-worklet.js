@@ -1,7 +1,76 @@
-// RıdvanSes v49 — Sıra Numarası (Seq) Tabanlı Jitter Tamponu, Dalga-Tabanlı PLC ve ±1000 ppm Hermite ASRC Oynatıcı
+// PATCH: player-v50
+// RıdvanSes v50 — Sıra Numarası (Seq) Tabanlı Jitter Tamponu, 48..400 Lag Pitch-PLC ve ±1000 ppm Hermite ASRC Oynatıcı
 const RYS_MOD = 0x80000000;
 function rysDiff(a, b) {
   return ((a - b + 0x40000000) & 0x7fffffff) - 0x40000000;
+}
+
+class RysPitchPlc {
+  constructor() {
+    this.r = new Float32Array(2048);
+    this.w = 0;
+    this.used = 0;
+    this.p = new Float32Array(400);
+    this.length = 0;
+    this.pos = 0;
+    this.lost = 0;
+    this.last = 0;
+  }
+
+  append(a) {
+    for (const x of a) {
+      this.r[this.w] = x;
+      this.w = (this.w + 1) & 2047;
+      this.used = Math.min(2048, this.used + 1);
+      this.last = x;
+    }
+    this.lost = 0;
+  }
+
+  at(back) {
+    return this.r[(this.w - back + 2048) & 2047];
+  }
+
+  begin() {
+    let best = -1;
+    let lagBest = 0;
+    if (this.used >= 880) {
+      for (let lag = 48; lag <= 400; lag += 2) {
+        let xy = 0;
+        let xx = 0;
+        let yy = 0;
+        for (let k = 1; k <= 240; k += 4) {
+          const a = this.at(k);
+          const b = this.at(k + lag);
+          xy += a * b;
+          xx += a * a;
+          yy += b * b;
+        }
+        const c = xy / Math.sqrt(xx * yy + 1e-20);
+        if (c > best) {
+          best = c;
+          lagBest = lag;
+        }
+      }
+    }
+    this.length = best > 0.65 ? lagBest : 0;
+    this.pos = 0;
+    for (let i = 0; i < this.length; i++) {
+      this.p[i] = this.at(this.length - i);
+    }
+  }
+
+  fill(out) {
+    if (!this.lost) this.begin();
+    const correction = this.last - (this.length ? this.p[0] : 0);
+    for (let i = 0; i < out.length; i++) {
+      const age = this.lost + i;
+      const g = age < 1440 ? 0.5 + 0.5 * Math.cos((Math.PI * age) / 1440) : 0;
+      const b = age < 120 ? 0.5 + 0.5 * Math.cos((Math.PI * age) / 119) : 0;
+      out[i] = ((this.length ? this.p[this.pos++ % this.length] : 0) + correction * b) * g;
+    }
+    this.lost += out.length;
+  }
 }
 
 class RysPcmPlayerProcessor extends AudioWorkletProcessor {
@@ -30,6 +99,8 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
   }
 
   _reset() {
+    this.plc = new RysPitchPlc();
+    this.plcFrame = new Float32Array(480);
     this.q = new Map();
     this.expected = null;
     this.playing = false;
@@ -72,14 +143,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     for (const x of m.samples) {
       if (!Number.isFinite(x)) return;
     }
-    // phraseStart reconnect/resync işaretidir; yinelenen ilk paket reset yapmamalı.
-    if (m.phraseStart && !this.phraseSeen.has(m.seq)) {
-      this.phraseSeen.add(m.seq);
-      if (this.phraseSeen.size > 64) {
-        this.phraseSeen.delete(this.phraseSeen.values().next().value);
-      }
-      this._reset();
-    }
+    // phraseStart is a hint, not a new media epoch.
     if (this.expected === null) this.expected = m.seq;
     let d = rysDiff(m.seq, this.expected);
     if (d < 0 && !this.playing && d >= -12) {
@@ -142,25 +206,12 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
       this.frame = packet;
       this.history.set(packet);
       this.haveHistory = true;
+      this.plc.append(packet);
     } else {
       this.missing++;
       this.stats.concealed += 480;
-      // Tekrarlar ilk 60 ms içinde söner; sonsuz buzz üretmez.
-      const lost = (this.missing - 1) * 480;
-      const plc = new Float32Array(480);
-      for (let i = 0; i < 480; i++) {
-        const age = lost + i;
-        const g = age < 1440 ? 0.5 * (1 + Math.cos((Math.PI * age) / 1440)) : 0;
-        plc[i] = this.haveHistory ? this.history[i] * g : 0;
-      }
-      // Frame sınırında history sonundan başına geçişi yumuşat.
-      const from = this.frame[479] || 0;
-      const n = 120;
-      for (let i = 0; i < n; i++) {
-        const w = 0.5 - 0.5 * Math.cos((Math.PI * i) / (n - 1));
-        plc[i] = from * (1 - w) + plc[i] * w;
-      }
-      this.frame = plc;
+      this.plc.fill(this.plcFrame);
+      this.frame = this.plcFrame;
     }
   }
 

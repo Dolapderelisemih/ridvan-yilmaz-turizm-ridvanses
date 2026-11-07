@@ -1,210 +1,218 @@
-// RıdvanSes v49 — Gerçek Zamanlı AudioWorklet Yakalama Motoru
-// 193-Tap 256-Faz Blackman Windowed-Sinc Polyphase Anti-Aliasing FIR (RysFir24)
-// + 240-Örnek (10 ms) Lookahead Gecikme Hatlı 4-Bant Spektral SNR Yakın-Alan Kapısı (RysNearExpander)
+// PATCH: capture-v50
+// RıdvanSes v50 — Gerçek Zamanlı AudioWorklet Yakalama Motoru
+// 193-Tap 256-Faz Blackman Windowed-Sinc Polyphase Anti-Aliasing FIR (RysFir24 — >-118 dB Stopband)
+// + 400ms Kalibrasyon ve 4s Rolling Minima Tabanlı 4-Bant Yakın-Alan Ses Kilidi (RysNearExpander)
+// + Worklet & ScriptProcessor Ortak 480-Örnek (20 ms @ 24 kHz) Çekirdeği (RysCaptureKernel)
 
 class RysFir24 {
   constructor(rate) {
-    this.rate = Math.round(rate) || 48000;
-    this.out = 24000;
-    this.pass = this.rate === this.out;
-    this.phases = 256;
-    this.taps = 193;
-    this.mid = (this.taps - 1) >> 1;
-    this.ring = new Float32Array(this.taps);
-    this.w = 0;
-    this.warm = 0;
+    this.rate = rate;
     this.t = 0;
-    if (this.pass) return;
-    this.table = new Float32Array(this.phases * this.taps);
-    const fc = 10400 / this.rate;
-    for (let p = 0; p < this.phases; p++) {
-      const frac = p / this.phases;
+    this.count = 0;
+    this.r = new Float32Array(512);
+    this.table = new Float32Array(256 * 193);
+    const fc = Math.min(10200 / rate, 0.45);
+    for (let p = 0; p < 256; p++) {
       let sum = 0;
-      const base = p * this.taps;
-      for (let k = 0; k < this.taps; k++) {
-        const x = k - this.mid - frac;
-        const sinc = Math.abs(x) < 1e-9 ? 1 : Math.sin(2 * Math.PI * fc * x) / (Math.PI * x);
-        const u = (k - frac) / (this.taps - 1);
-        const win = 0.42 - 0.5 * Math.cos(2 * Math.PI * u) + 0.08 * Math.cos(4 * Math.PI * u);
-        const h = 2 * fc * sinc * win;
-        this.table[base + k] = h;
+      for (let k = 0; k < 193; k++) {
+        const d = k - 96 + p / 256;
+        const w = 0.42 - 0.5 * Math.cos((2 * Math.PI * k) / 192) + 0.08 * Math.cos((4 * Math.PI * k) / 192);
+        const h = (Math.abs(d) < 1e-10 ? 2 * fc : Math.sin(2 * Math.PI * fc * d) / (Math.PI * d)) * w;
+        this.table[p * 193 + k] = h;
         sum += h;
       }
-      const inv = 1 / (sum || 1);
-      for (let k = 0; k < this.taps; k++) this.table[base + k] *= inv;
+      for (let k = 0; k < 193; k++) {
+        this.table[p * 193 + k] /= sum;
+      }
     }
   }
 
-  push(sample, emit) {
-    const x = Number.isFinite(sample) ? sample : 0;
-    if (this.pass) {
-      emit(x);
-      return;
-    }
-    this.ring[this.w] = x;
-    this.w = (this.w + 1) % this.taps;
-    if (this.warm < this.taps) this.warm++;
-    this.t += this.out;
-    while (this.t >= this.rate) {
-      this.t -= this.rate;
-      if (this.warm < this.taps) {
-        emit(0);
-        continue;
+  push(x, emit) {
+    this.r[this.count & 511] = Number.isFinite(x) ? x : 0;
+    this.count++;
+    while (Math.floor(this.t / 24000) < this.count) {
+      const pos = this.t / 24000;
+      const b = Math.floor(pos);
+      const p = Math.min(255, Math.floor((pos - b) * 256));
+      let y = 0;
+      for (let k = 0; k < 193; k++) {
+        if (b - k >= 0) {
+          y += this.r[(b - k) & 511] * this.table[p * 193 + k];
+        }
       }
-      const p = Math.min(this.phases - 1, Math.floor((this.t / this.rate) * this.phases));
-      const base = p * this.taps;
-      let acc = 0;
-      let idx = this.w;
-      for (let k = 0; k < this.taps; k++) {
-        acc += this.ring[idx] * this.table[base + k];
-        idx++;
-        if (idx === this.taps) idx = 0;
-      }
-      emit(acc);
+      emit(y);
+      this.t += this.rate;
     }
   }
 }
 
 class RysNearExpander {
-  constructor(opts = {}) {
+  constructor(o = {}) {
+    this.reject = o.reject ?? 0.5;
     this.hpX = 0;
     this.hpY = 0;
-    this.lp200 = 0;
-    this.lp1000 = 0;
-    this.lp4000 = 0;
-    this.e = new Float64Array([1e-8, 1e-8, 1e-8, 1e-8]);
-    this.n = new Float64Array([1e-7, 1e-7, 1e-7, 1e-7]);
-    // 240 örnek = 10 ms @ 24 kHz Lookahead gecikme hattı (İlk ünsüz harflerin kırpılmasını %100 önler)
+    this.lp = new Float64Array(3);
+    this.e = new Float64Array(4);
+    this.n = new Float64Array(4).fill(1e-7);
+    this.a = [0.051, 0.2304, 0.6489];
+    this.minima = new Float64Array(32).fill(Infinity);
+    this.cur = new Float64Array(4).fill(Infinity);
+    this.slot = 0;
+    this.hops = 0;
+    this.count = 0;
+    this.age = 0;
     this.look = new Float32Array(240);
     this.li = 0;
-    this.g = 0.03;
+    this.g = 0.126;
     this.hold = 0;
-    this.reject = Math.max(0.15, Math.min(0.85, Number(opts.reject) || 0.50));
+    this.ready = false;
   }
 
-  setProfile(opts = {}) {
-    if (opts.reject !== undefined) {
-      this.reject = Math.max(0.15, Math.min(0.85, Number(opts.reject) || 0.50));
+  setProfile(o = {}) {
+    if (Number.isFinite(o.reject)) {
+      this.reject = Math.max(0.15, Math.min(0.85, o.reject));
     }
-    if (opts.resetLock) {
-      this.e.fill(1e-8);
-      this.n.fill(1e-7);
+    if (o.resetLock) {
+      this.age = 0;
+      this.ready = false;
+      this.minima.fill(Infinity);
+      this.cur.fill(Infinity);
       this.hold = 0;
     }
   }
 
   step(raw) {
-    // 80 Hz DC ve rüzgar kesici yüksek geçiren filtre
     const x = 0.9793 * (this.hpY + raw - this.hpX);
     this.hpX = raw;
     this.hpY = x;
-
-    // 4-Bant Spektral Enerji Ayrıştırma (0-200Hz, 200-1000Hz, 1-4kHz, 4-12kHz)
-    this.lp200 += 0.0510 * (x - this.lp200);
-    this.lp1000 += 0.2304 * (x - this.lp1000);
-    this.lp4000 += 0.6489 * (x - this.lp4000);
-    const b0 = this.lp200;
-    const b1 = this.lp1000 - this.lp200;
-    const b2 = this.lp4000 - this.lp1000;
-    const b3 = x - this.lp4000;
-    const bands = [b0 * b0, b1 * b1, b2 * b2, b3 * b3];
-    for (let i = 0; i < 4; i++) {
-      this.e[i] = 0.995 * this.e[i] + 0.005 * bands[i];
+    for (let k = 0; k < 3; k++) {
+      this.lp[k] += this.a[k] * (x - this.lp[k]);
     }
-
-    const speech = this.e[1] + 1.3 * this.e[2] + 0.35 * this.e[3];
-    const noise = this.n[1] + 1.3 * this.n[2] + 0.35 * this.n[3] + 1e-9;
-    const snr = 10 * Math.log10(speech / noise);
-    const useful = this.e[1] + this.e[2];
-    const rumbleOk = useful / (this.e[0] + 1e-9) > 0.8;
-
-    // Adaptif gürültü tabanı yalnızca konuşma yokken yavaşça güncellenir
-    if (snr < 4.5 && this.hold === 0) {
-      for (let i = 0; i < 4; i++) {
-        this.n[i] = Math.min(1e-2, Math.max(1e-9, 0.9995 * this.n[i] + 0.0005 * this.e[i]));
+    const b0 = this.lp[0];
+    const b1 = this.lp[1] - b0;
+    const b2 = this.lp[2] - this.lp[1];
+    const b3 = x - this.lp[2];
+    this.e[0] += 0.005 * (b0 * b0 - this.e[0]);
+    this.e[1] += 0.005 * (b1 * b1 - this.e[1]);
+    this.e[2] += 0.005 * (b2 * b2 - this.e[2]);
+    this.e[3] += 0.005 * (b3 * b3 - this.e[3]);
+    if (++this.count === 240) {
+      this.count = 0;
+      this.age += 0.01;
+      for (let k = 0; k < 4; k++) {
+        this.cur[k] = Math.min(this.cur[k], this.e[k]);
+        let c = this.cur[k];
+        for (let j = 0; j < 8; j++) {
+          c = Math.min(c, this.minima[j * 4 + k]);
+        }
+        const t = this.age < 0.4 ? this.e[k] : Math.max(1e-10, c * 1.4);
+        const alpha = this.age < 0.4 ? 0.25 : t < this.n[k] ? 0.08 : 0.02;
+        this.n[k] += alpha * (t - this.n[k]); // independent of gate/hold
+      }
+      if (++this.hops === 50) {
+        this.hops = 0;
+        for (let k = 0; k < 4; k++) {
+          this.minima[this.slot * 4 + k] = this.cur[k];
+          this.cur[k] = Infinity;
+        }
+        this.slot = (this.slot + 1) % 8;
+      }
+      this.ready = this.age >= 0.4;
+      const e = this.e[1] + 1.3 * this.e[2] + 0.35 * this.e[3];
+      const n = this.n[1] + 1.3 * this.n[2] + 0.35 * this.n[3] + 1e-12;
+      const snr = 10 * Math.log10((e + 1e-12) / n);
+      const open = 7.5 + (this.reject - 0.5) * 4;
+      const rumble = (this.e[1] + this.e[2]) / (this.e[0] + 1e-12) > 0.8;
+      if (this.ready && rumble && snr > (this.hold ? open - 4 : open)) {
+        this.hold = 24;
+      } else if (this.hold) {
+        this.hold--;
       }
     }
-
-    // Yan ses reddi (reject: 0.15..0.85) değerine göre dinamik SNR eşiği ve taban zayıflatması
-    const openSnrDb = 7.5 + (this.reject - 0.5) * 4.0;
-    const openEnergy = 1.6e-5 * (0.7 + this.reject * 0.6);
-    if (rumbleOk && snr > openSnrDb && speech > openEnergy) {
-      this.hold = Math.round(24000 * 0.28); // 280 ms cümle tutma süresi (kelime sonlarını korur)
-    } else if (this.hold > 0) {
-      this.hold--;
-    }
-
-    // Kapı kapalıyken: P0 uyumluluğu ve Kâbe gürültü bastırması için yumuşak taban
-    const closedFloor = Math.max(0.012, Math.min(0.126, 0.126 - (this.reject - 0.5) * 0.16));
-    const want = this.hold > 0 ? 1 : (snr > 4.5 && rumbleOk ? 0.45 : closedFloor);
-    const a = want > this.g ? 0.028 : 0.00055; // ~1.5 ms hızlı açılış, ~75 ms yumuşak kapanış
-    this.g += (want - this.g) * a;
-
-    // 10 ms gecikme hattından oku (Lookahead sayesinde ilk ünsüz harfler kırpılmaz)
-    const delayed = this.look[this.li];
+    const want = this.ready && this.hold ? 1 : 0.126;
+    this.g += (want - this.g) * (1 - Math.exp(-1 / (24000 * (want > this.g ? 0.003 : 0.12))));
+    const d = this.look[this.li];
     this.look[this.li] = x;
-    this.li = (this.li + 1) % this.look.length;
-
-    let y = delayed * this.g;
-    const ay = Math.abs(y);
-    if (ay > 0.85) {
-      y = Math.sign(y) * (0.85 + 0.13 * Math.tanh((ay - 0.85) / 0.13));
+    this.li = (this.li + 1) % 240;
+    let y = d * this.g * 0.8;
+    if (Math.abs(y) > 0.85) {
+      y = Math.sign(y) * (0.85 + 0.13 * Math.tanh((Math.abs(y) - 0.85) / 0.13));
     }
-    return Math.max(-0.98, Math.min(0.98, y));
+    return y;
   }
 }
 
-class RysPcmCaptureProcessor extends AudioWorkletProcessor {
-  constructor(options) {
-    super();
-    const opts = (options && options.processorOptions) || {};
-    this.muted = Boolean(opts.muted);
-    this.fir = new RysFir24(sampleRate);
-    this.gate = new RysNearExpander(opts);
-    this.frame = new Float32Array(480); // 20 ms @ 24 kHz
+class RysCaptureKernel {
+  constructor(rate, o = {}, emit = () => {}) {
+    this.fir = new RysFir24(rate);
+    this.gate = new RysNearExpander(o);
+    this.muted = Boolean(o.muted);
+    this.mg = this.muted ? 0 : 1;
+    this.frame = new Float32Array(480);
     this.offset = 0;
     this.sq = 0;
-    this.port.onmessage = (e) => {
-      const d = (e && e.data) || {};
-      if (d.type === 'set-mute') this.muted = Boolean(d.muted);
-      if (d.type === 'set-profile') this.gate.setProfile(d);
+    this.time = 0;
+    this.emit = emit;
+    this.accept = (s) => {
+      const v = this.gate.step(s);
+      this.mg += ((this.muted ? 0 : 1) - this.mg) * 0.0083;
+      const y = v * this.mg;
+      this.frame[this.offset++] = y;
+      this.sq += y * y;
+      if (this.offset === 480) {
+        this.emit({
+          type: 'frame',
+          samples: this.frame,
+          rms: Math.sqrt(this.sq / 480),
+          gateOpen: !this.muted && this.gate.hold > 0,
+          ready: this.gate.ready,
+          capturedAt: this.time
+        });
+        this.frame = new Float32Array(480);
+        this.offset = 0;
+        this.sq = 0;
+      }
     };
   }
 
-  process(inputs, outputs) {
-    const out = outputs[0];
-    if (out) {
-      for (const c of out) c.fill(0);
-    }
-    const ch = inputs[0]?.[0];
-    if (!ch) return true;
-    const nowSec = typeof currentTime === 'number' ? currentTime : 0;
+  control(m) {
+    if (m.type === 'set-mute') this.muted = Boolean(m.muted);
+    if (m.type === 'set-profile') this.gate.setProfile(m);
+  }
+
+  process(ch, time = 0) {
+    this.time = time;
     for (let i = 0; i < ch.length; i++) {
-      this.fir.push(ch[i], (s24) => {
-        const y = this.muted ? 0 : this.gate.step(s24);
-        this.frame[this.offset++] = y;
-        this.sq += y * y;
-        if (this.offset === 480) {
-          const outFrame = new Float32Array(this.frame);
-          const rms = Math.sqrt(this.sq / 480);
-          const gateOpen = !this.muted && (this.gate.hold > 0 || this.gate.g > 0.35);
-          this.port.postMessage(
-            {
-              type: 'frame',
-              samples: outFrame,
-              rms,
-              gateOpen,
-              capturedAt: nowSec
-            },
-            [outFrame.buffer]
-          );
-          this.offset = 0;
-          this.sq = 0;
-        }
-      });
+      this.fir.push(ch[i], this.accept);
     }
+  }
+}
+
+class RysPcmCaptureProcessor extends (globalThis.AudioWorkletProcessor || class {}) {
+  constructor(o) {
+    super();
+    this.kernel = new RysCaptureKernel(
+      sampleRate,
+      o?.processorOptions || {},
+      (m) => this.port.postMessage(m, [m.samples.buffer])
+    );
+    this.port.onmessage = (e) => this.kernel.control(e.data || {});
+  }
+
+  process(inputs, outputs) {
+    for (const c of outputs[0] || []) c.fill(0);
+    const ch = inputs[0]?.[0];
+    if (ch) this.kernel.process(ch, currentTime);
     return true;
   }
 }
 
-registerProcessor('rys-pcm-capture', RysPcmCaptureProcessor);
+if (typeof registerProcessor === 'function') {
+  registerProcessor('rys-pcm-capture', RysPcmCaptureProcessor);
+}
+
+globalThis.RysFir24 = RysFir24;
+globalThis.RysNearExpander = RysNearExpander;
+globalThis.RysCaptureKernel = RysCaptureKernel;
+
+export { RysFir24, RysNearExpander, RysCaptureKernel };

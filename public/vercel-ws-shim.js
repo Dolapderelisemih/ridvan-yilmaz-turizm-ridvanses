@@ -55,6 +55,107 @@
   // Birincil: test.mosquitto.org (ölçüm: %0 kayıp, p50 47ms) • Yedek: broker.emqx.io
   const CLOUD_BROKERS = ['wss://test.mosquitto.org:8081', 'wss://broker.emqx.io:8084/mqtt'];
 
+  // PATCH: framing-v50
+  function validRysAudio(m) {
+    return (
+      Boolean(m) &&
+      m.type === 'audio-chunk' &&
+      m.sampleRate === 24000 &&
+      Number.isInteger(m.seq) &&
+      m.seq >= 0 &&
+      m.seq <= 0x7fffffff &&
+      Number.isFinite(m.sentAt) &&
+      m.sentAt > 0 &&
+      typeof m.pcm16 === 'string' &&
+      m.pcm16.length === 1280 &&
+      /^[A-Za-z0-9+/]+$/.test(m.pcm16)
+    );
+  }
+
+  function unpackRysAudio(m) {
+    if (m?.type !== 'audio-chunk') return null;
+    const list = m.frames === undefined ? [m] : m.frames;
+    if (!Array.isArray(list) || list.length < 1 || list.length > 3 || !list.every(validRysAudio)) return [];
+    // Independent units, no fictitious arrival timestamps, no sample slicing.
+    return list.map((f) => ({ ...f, _msgId: m._msgId ? m._msgId + ':' + f.seq : f._msgId }));
+  }
+
+  // PATCH: coalescing-v50
+  class RysAudioCoalescer {
+    constructor(
+      send,
+      clock = () => Date.now(),
+      schedule = (f, ms) => setTimeout(f, ms),
+      cancel = (id) => clearTimeout(id)
+    ) {
+      this.send = send;
+      this.clock = clock;
+      this.schedule = schedule;
+      this.cancel = cancel;
+      this.frames = [];
+      this.timer = null;
+      this.oldest = 0;
+    }
+
+    push(m) {
+      if (!validRysAudio(m)) return;
+      if (!this.frames.length) this.oldest = this.clock();
+      if (this.clock() - this.oldest > 120) {
+        this.clear();
+        this.oldest = this.clock();
+      }
+      this.frames.push({ ...m });
+      if (this.frames.length === 3) {
+        this.flush();
+      } else if (this.timer === null) {
+        this.timer = this.schedule(() => {
+          this.timer = null;
+          this.flush();
+        }, 40);
+      }
+    }
+
+    flush() {
+      if (this.timer !== null) {
+        this.cancel(this.timer);
+        this.timer = null;
+      }
+      const frames = this.frames;
+      this.frames = [];
+      if (frames.length && this.clock() - this.oldest <= 120) {
+        this.send({ type: 'audio-chunk', frames });
+      }
+    }
+
+    clear() {
+      if (this.timer !== null) this.cancel(this.timer);
+      this.timer = null;
+      this.frames = [];
+    }
+  }
+
+  function installRysCoalescing(sock) {
+    const send = sock.send.bind(sock);
+    const close = sock.close.bind(sock);
+    const c = new RysAudioCoalescer((m) => send(JSON.stringify({ ...m, _queuedAt: Date.now() })));
+    sock._audioCoalescer = c;
+    sock.send = (data) => {
+      let m;
+      try {
+        m = typeof data === 'string' ? JSON.parse(data) : null;
+      } catch (e) {}
+      if (sock._isRelay && validRysAudio(m)) {
+        c.push(m);
+        return;
+      }
+      send(data);
+    };
+    sock.close = (...a) => {
+      c.clear();
+      return close(...a);
+    };
+  }
+
   class SmartWebSocket {
     constructor(url, protocols) {
       const isAppWs =
@@ -86,6 +187,7 @@
       this._joinContext = null;
       this._isAdmin = false;
       this._sendQueue = [];
+      installRysCoalescing(this);
       this._seenIds = new Set();
       this._pollTimer = null;
 
@@ -544,15 +646,23 @@
       }, 180);
     }
 
+    // PATCH: shim-delivery-v50
     _deliverIncomingMessage(msg) {
       if (!msg || typeof msg !== 'object') return;
       if (msg._msgId) {
         if (this._seenIds.has(msg._msgId)) return;
         this._seenIds.add(msg._msgId);
         if (this._seenIds.size > 400) {
-          const first = this._seenIds.values().next().value;
-          this._seenIds.delete(first);
+          this._seenIds.delete(this._seenIds.values().next().value);
         }
+      }
+      if (msg.type === 'audio-chunk' && !msg.synthNote) {
+        const list = unpackRysAudio(msg);
+        if (!list?.length) return;
+        if (typeof this.onmessage === 'function') {
+          for (const f of list) this.onmessage({ data: JSON.stringify(f) });
+        }
+        return;
       }
       if (typeof this.onmessage === 'function') {
         this.onmessage({ data: JSON.stringify(msg) });
@@ -741,49 +851,54 @@
       }
     }
 
+    // PATCH: shim-http-v50
     async _flushAndPoll() {
       if (this.readyState !== 1 || this._inFlight) return;
-      const batch = this._sendQueue.splice(0, this._sendQueue.length);
-      // MQTT WSS bağlıyken ve gönderilecek kuyruk mesajı yokken gereksiz HTTP GET sorgusu atma (yüzlerce hacı bağlandığında Vercel Serverless kotasını korur)
-      if (batch.length === 0 && this._busConnected()) {
-        return;
-      }
+      const batch = this._sendQueue
+        .splice(0)
+        .filter((m) => m.type !== 'audio-chunk' || (Number.isFinite(m._queuedAt) && Date.now() - m._queuedAt <= 200));
+      if (!batch.length && this._busConnected()) return;
       this._inFlight = true;
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 3000);
       try {
-        const authToken = (localStorage.getItem('ry_auth_token') || '').trim();
+        const token = (localStorage.getItem('ry_auth_token') || '').trim();
         let res;
-        if (batch.length > 0) {
+        if (batch.length) {
           res = await fetch('/api/ws-relay', {
             method: 'POST',
+            signal: ac.signal,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               clientId: this._clientId,
-              token: authToken,
+              token,
               joinContext: this._joinContext,
               messages: batch
             })
           });
         } else {
           const jc = this._joinContext || {};
-          const qs = new URLSearchParams({
+          const q = new URLSearchParams({
             clientId: this._clientId,
             tourCode: jc.tourCode || '',
             roomId: jc.roomId || 'genel',
             role: jc.role || 'pilgrim',
             name: jc.name || ''
           });
-          if (authToken) qs.set('token', authToken);
-          res = await fetch('/api/ws-relay?' + qs.toString());
+          if (token) q.set('token', token);
+          res = await fetch('/api/ws-relay?' + q, { signal: ac.signal });
         }
-        if (res && res.ok) {
-          const payload = await res.json();
-          if (Array.isArray(payload.messages)) {
-            for (const msg of payload.messages) {
-              this._deliverIncomingMessage(msg);
-            }
-          }
+        if (!res.ok) throw Error('Relay HTTP ' + res.status);
+        const p = await res.json();
+        if (Array.isArray(p.messages)) {
+          for (const m of p.messages) this._deliverIncomingMessage(m);
         }
-      } catch {} finally {
+      } catch (e) {
+        const controls = batch.filter((m) => m.type !== 'audio-chunk');
+        this._sendQueue.unshift(...controls);
+        if (this._sendQueue.length > 64) this._sendQueue.length = 64;
+      } finally {
+        clearTimeout(timer);
         this._inFlight = false;
       }
     }

@@ -810,7 +810,49 @@ function broadcastRoomState(room) {
 
 let clientSeq = 1;
 
+// PATCH: framing-v50
+function validRysAudio(m) {
+  return (
+    Boolean(m) &&
+    m.type === 'audio-chunk' &&
+    m.sampleRate === 24000 &&
+    Number.isInteger(m.seq) &&
+    m.seq >= 0 &&
+    m.seq <= 0x7fffffff &&
+    Number.isFinite(m.sentAt) &&
+    m.sentAt > 0 &&
+    typeof m.pcm16 === 'string' &&
+    m.pcm16.length === 1280 &&
+    /^[A-Za-z0-9+/]+$/.test(m.pcm16)
+  );
+}
+
+function unpackRysAudio(m) {
+  if (m?.type !== 'audio-chunk') return null;
+  const list = m.frames === undefined ? [m] : m.frames;
+  if (!Array.isArray(list) || list.length < 1 || list.length > 3 || !list.every(validRysAudio)) return [];
+  // Independent units, no fictitious arrival timestamps, no sample slicing.
+  return list.map((f) => ({ ...f, _msgId: m._msgId ? m._msgId + ':' + f.seq : f._msgId }));
+}
+
+// PATCH: server-wrapper-v50
 function processClientJsonMessage(ctx, msg) {
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.type === 'guide-stream-state') {
+    const r = ctx.currentRoom;
+    const owner = r?.activePublisherClientId;
+    if (owner && owner !== ctx.clientId && r.clients.has(owner)) return;
+  }
+  if (msg.type === 'audio-chunk' && !msg.synthNote) {
+    const list = unpackRysAudio(msg);
+    if (!list?.length) return;
+    for (const f of list) processClientJsonMessageV49(ctx, f);
+    return;
+  }
+  processClientJsonMessageV49(ctx, msg);
+}
+
+function processClientJsonMessageV49(ctx, msg) {
   const { clientId, ws } = ctx;
   if (msg && msg.token && isValidAuthToken(msg.token)) {
     ws.isAuthenticated = true;
@@ -1121,9 +1163,12 @@ function processClientJsonMessage(ctx, msg) {
 }
 
 function validBinaryPcmFrame(buf) {
-  if (!Buffer.isBuffer(buf) || (buf.length !== 972 && buf.length !== 3084)) return false;
-  const sentAt = buf.readDoubleLE(4);
-  return Number.isFinite(sentAt) && sentAt > 0;
+  return (
+    Buffer.isBuffer(buf) &&
+    buf.length === 972 &&
+    Number.isFinite(buf.readDoubleLE(4)) &&
+    buf.readDoubleLE(4) > 0
+  );
 }
 
 // WebSocket Connection Handler
@@ -1154,10 +1199,10 @@ wss.on('connection', (ws, req) => {
       ) {
         return;
       }
-      ctx.currentRoom.activePublisherClientId = ctx.clientId;
 
       const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
       if (!validBinaryPcmFrame(buf)) return;
+      ctx.currentRoom.activePublisherClientId = ctx.clientId;
       let fallbackJsonStr = null;
 
       for (const r of getTargetBroadcastRooms(ctx.currentRoom)) {
@@ -1230,6 +1275,7 @@ wss.on('close', () => {
 });
 
 // Serverless HTTP Realtime Relay Endpoint (Vercel Fallback)
+// PATCH: server-outbox-v50
 function getOrCreateRelaySession(clientId) {
   cleanupStaleRelaySessions();
   const cid = String(clientId || `relay-${Date.now()}-${clientSeq++}`);
@@ -1248,9 +1294,21 @@ function getOrCreateRelaySession(clientId) {
         send(data) {
           try {
             const parsed = typeof data === 'string' ? JSON.parse(data) : data;
-            if (sess.outbox.length >= 45) sess.outbox.shift();
-            sess.outbox.push(parsed);
-          } catch {}
+            const now = Date.now();
+            // Store internal envelopes; never trust remote sentAt for queue TTL.
+            sess.outbox = sess.outbox.filter((e) => e.message.type !== 'audio-chunk' || now - e.at <= 200);
+            if (parsed.type === 'audio-chunk') {
+              const audio = sess.outbox.filter((e) => e.message.type === 'audio-chunk');
+              if (audio.length >= 10) {
+                const oldest = sess.outbox.findIndex((e) => e.message.type === 'audio-chunk');
+                sess.outbox.splice(oldest, 1);
+              }
+            } else if (sess.outbox.filter((e) => e.message.type !== 'audio-chunk').length >= 64) {
+              const oldest = sess.outbox.findIndex((e) => e.message.type !== 'audio-chunk');
+              sess.outbox.splice(oldest, 1);
+            }
+            sess.outbox.push({ at: now, message: parsed });
+          } catch (e) {}
         }
       }
     };
@@ -1259,6 +1317,14 @@ function getOrCreateRelaySession(clientId) {
   const session = httpRelaySessions.get(cid);
   session.lastSeen = Date.now();
   return session;
+}
+
+function drainRysRelaySession(sess) {
+  const now = Date.now();
+  return sess.outbox
+    .splice(0)
+    .filter((e) => e.message.type !== 'audio-chunk' || now - e.at <= 200)
+    .map((e) => e.message);
 }
 
 app.post('/api/ws-relay', (req, res) => {
@@ -1277,7 +1343,7 @@ app.post('/api/ws-relay', (req, res) => {
       processClientJsonMessage(session, msg);
     }
   }
-  const drained = session.outbox.splice(0, session.outbox.length);
+  const drained = drainRysRelaySession(session);
   return res.json({ clientId: session.clientId, messages: drained });
 });
 
@@ -1297,7 +1363,7 @@ app.get('/api/ws-relay', (req, res) => {
       token: req.query.token || ''
     });
   }
-  const drained = session.outbox.splice(0, session.outbox.length);
+  const drained = drainRysRelaySession(session);
   return res.json({ clientId: session.clientId, messages: drained });
 });
 

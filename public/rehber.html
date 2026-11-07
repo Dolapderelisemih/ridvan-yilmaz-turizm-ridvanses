@@ -28,7 +28,7 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=47"></script>
+  <script src="/vercel-ws-shim.js?v=50"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .console-wrap {
@@ -1727,53 +1727,39 @@
       }
     } catch {}
 
-    function handleGuideMicFloatChunk(input) {
+    // PATCH: guide-handler-v50
+    function handleGuideMicFloatChunk(m) {
       if ((!isMicBroadcasting && !isVoiceLoopbackTesting) || !audioCtx) return;
+      if (m?.type !== 'frame' || !(m.samples instanceof Float32Array) || m.samples.length !== 480) return;
       lastGuideMicChunkAt = Date.now();
       if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
         audioCtx.resume().catch(() => {});
       }
-
-      let downsampled, rms, outSampleRate, gateOpen;
-      if (input && input.type === 'frame' && input.samples instanceof Float32Array) {
-        downsampled = input.samples;
-        rms = Number.isFinite(input.rms) ? input.rms : 0;
-        outSampleRate = 24000;
-        gateOpen = Boolean(input.gateOpen) && !isGuideMicMuted;
-      } else {
-        const res = processGuideFloatChunkDsp(
-          input,
-          audioCtx.sampleRate || 48000
-        );
-        downsampled = res.downsampled;
-        rms = res.rms;
-        outSampleRate = res.outSampleRate;
-        gateOpen = res.gateOpen;
-      }
-
-      const level = Math.min(1, rms * 6.0);
+      const a = m.samples;
+      const rms = m.rms;
+      const level = Math.min(1, rms * 6);
       animateGuideSpectrum(level);
 
-      const dbEl = document.getElementById('dbMeterText');
-      if (dbEl) {
+      const label = document.getElementById('dbMeterText');
+      if (label) {
         if (isGuideMicMuted) {
-          dbEl.textContent = '🔇 Mikrofon Geçici Sessizde (Özel Konuşma Modu)';
+          label.textContent = '🔇 Mikrofon Geçici Sessizde (Özel Konuşma Modu)';
+        } else if (!m.ready) {
+          label.textContent = '400 ms ortam ölçümü: konuşmadan bekleyin';
         } else {
           const dbVal = rms > 0.0001 ? Math.max(-48, Math.min(0, Math.round(20 * Math.log10(rms)))) : -48;
-          dbEl.textContent =
-            !gateOpen || dbVal <= -42
+          label.textContent =
+            !m.gateOpen || dbVal <= -42
               ? '🛡️ Yakın-Alan Ses Kilidi: Yan Sesler Engelleniyor'
               : `🎙️ Rehber Sesi Yayında (${dbVal} dB • Saf Stüdyo Kristal HD)`;
         }
       }
 
       if (isVoiceLoopbackTesting) {
-        loopbackRecordedChunks.push({ samples: downsampled, sampleRate: outSampleRate });
+        loopbackRecordedChunks.push({ samples: a.slice(), sampleRate: 24000 });
         return;
       }
 
-      // Arka planda (WhatsApp veya başka bir uygulamadayken) tarayıcı setTimeout/setInterval zamanlayıcılarını
-      // yavaşlatsa bile AudioWorklet her 20ms'de bir çalıştığı için WS bağlantısını buradan denetle ve canlı tut!
       const nowMs = Date.now();
       if (guideAudioGuardChannel) {
         try {
@@ -1785,52 +1771,34 @@
         connectGuideWs();
       }
 
-      // Her 20ms (480 örnek) çerçevede sıra numarasını (seq) modüler 31-bit olarak kesintisiz artır.
-      // Rehber tamamen sustuktan ~3.0 saniye sonra (20ms'de 150 çerçeve) sessizlik paketlerini durdur ki cümle ortasında tampon sıfırlanmasın!
-      const maxSilentFrames = downsampled.length <= 480 ? 150 : 45;
-      if (isGuideMicMuted || rms < 0.00025) {
-        guideSilentChunksCount++;
-        if (guideSilentChunksCount > maxSilentFrames) {
-          guideWasIdlePaused = true;
-          if (guideSilentChunksCount % 150 === 0 && ws && ws.readyState === WebSocket.OPEN) {
-            try {
-              ws.send(JSON.stringify({ type: 'ping', ts: nowMs }));
-            } catch {}
-          }
-          return;
-        }
-      } else {
-        guideSilentChunksCount = 0;
+      guideAudioSeq = (guideAudioSeq + 1) & 0x7fffffff;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        guideWasIdlePaused = true;
+        return;
       }
-
-      const currentSeq = (guideAudioSeq + 1) % 0x80000000;
-      guideAudioSeq = currentSeq;
-      const isPhraseStart = guideWasIdlePaused;
-      guideWasIdlePaused = false;
-
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        if (ws.bufferedAmount && ws.bufferedAmount > 65536) {
-          return;
-        }
-        const isRelayMode = Boolean(ws._isRelay || ws.isRelay);
-        if (!isRelayMode) {
-          const binaryFrame = encodeBinaryAudioPacket(downsampled, currentSeq, nowMs, isPhraseStart);
-          ws.send(binaryFrame);
-        } else {
-          const pcm16 = floatTo16BitBase64(downsampled);
+      if (ws.bufferedAmount > 19200) return;
+      const phraseStart = guideWasIdlePaused;
+      try {
+        if (ws.isRelay || ws._isRelay) {
           ws.send(JSON.stringify({
             type: 'audio-chunk',
-            seq: currentSeq,
-            phraseStart: isPhraseStart,
-            sentAt: nowMs,
-            sampleRate: outSampleRate,
-            pcm16,
+            seq: guideAudioSeq,
+            phraseStart,
+            sentAt: Date.now(),
+            sampleRate: 24000,
+            pcm16: floatTo16BitBase64(a),
             level
           }));
+        } else {
+          ws.send(encodeBinaryAudioPacket(a, guideAudioSeq, Date.now(), phraseStart));
         }
+        guideWasIdlePaused = false;
+      } catch (e) {
+        guideWasIdlePaused = true;
       }
     }
 
+    // PATCH: guide-graph-v50
     async function setupGuideMicrophoneGraph() {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!audioCtx) {
@@ -1936,14 +1904,13 @@
       guideWasIdlePaused = true;
 
       lastGuideMicChunkAt = Date.now();
-      let workletSuccess = false;
-      if (audioCtx.audioWorklet && typeof window.AudioWorkletNode !== 'undefined') {
+      const ctx = audioCtx;
+      const url = '/pcm-capture-worklet.js?v=50-audio';
+      if (ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
         try {
-          if (!workletModuleLoaded) {
-            await audioCtx.audioWorklet.addModule('/pcm-capture-worklet.js?v=49');
-            workletModuleLoaded = true;
-          }
-          scriptProcessor = new AudioWorkletNode(audioCtx, 'rys-pcm-capture', {
+          await ctx.audioWorklet.addModule(url);
+          if (audioCtx !== ctx) throw Error('Eski bağlam');
+          scriptProcessor = new AudioWorkletNode(ctx, 'rys-pcm-capture', {
             numberOfInputs: 1,
             numberOfOutputs: 1,
             outputChannelCount: [1],
@@ -1952,46 +1919,31 @@
               reject: guideSideVoiceRejectLevel
             }
           });
-          let gotFirstWorkletChunk = false;
-          scriptProcessor.port.onmessage = (ev) => {
-            gotFirstWorkletChunk = true;
-            if (ev && ev.data) handleGuideMicFloatChunk(ev.data);
+          scriptProcessor.port.onmessage = (e) => {
+            if (audioCtx === ctx) handleGuideMicFloatChunk(e.data);
           };
-          guideMicGainNode.connect(scriptProcessor);
-          scriptProcessor.connect(zeroGainNode);
-          zeroGainNode.connect(audioCtx.destination);
-          workletSuccess = true;
-          // Mobil WebKit/Android'de AudioWorklet düğümü oluşup 900ms içinde tetiklenmezse otomatik ScriptProcessor yedeğine geç:
-          setTimeout(() => {
-            if (!gotFirstWorkletChunk && (isMicBroadcasting || isVoiceLoopbackTesting) && audioCtx && guideMicGainNode && zeroGainNode) {
-              try {
-                if (scriptProcessor) {
-                  if (scriptProcessor.port) scriptProcessor.port.onmessage = null;
-                  scriptProcessor.disconnect();
-                }
-              } catch {}
-              scriptProcessor = audioCtx.createScriptProcessor(2048, 1, 1);
-              guideMicGainNode.connect(scriptProcessor);
-              scriptProcessor.connect(zeroGainNode);
-              zeroGainNode.connect(audioCtx.destination);
-              scriptProcessor.onaudioprocess = (e) => {
-                handleGuideMicFloatChunk(e.inputBuffer.getChannelData(0));
-              };
-            }
-          }, 900);
-        } catch (workletErr) {
-          console.warn('AudioWorklet yüklenemedi, ScriptProcessor fallback devrede:', workletErr);
+        } catch (e) {
+          console.warn(e);
+          scriptProcessor = null;
         }
       }
-      if (!workletSuccess) {
-        scriptProcessor = audioCtx.createScriptProcessor(2048, 1, 1);
-        guideMicGainNode.connect(scriptProcessor);
-        scriptProcessor.connect(zeroGainNode);
-        zeroGainNode.connect(audioCtx.destination);
+      if (!scriptProcessor) {
+        const { RysCaptureKernel } = await import(url);
+        if (audioCtx !== ctx) throw Error('Eski bağlam');
+        const k = new RysCaptureKernel(
+          ctx.sampleRate,
+          { muted: isGuideMicMuted, reject: guideSideVoiceRejectLevel },
+          handleGuideMicFloatChunk
+        );
+        scriptProcessor = ctx.createScriptProcessor(2048, 1, 1);
+        scriptProcessor.port = { postMessage: (m) => k.control(m) };
         scriptProcessor.onaudioprocess = (e) => {
-          handleGuideMicFloatChunk(e.inputBuffer.getChannelData(0));
+          if (audioCtx === ctx) k.process(e.inputBuffer.getChannelData(0), e.playbackTime);
         };
       }
+      guideMicGainNode.connect(scriptProcessor);
+      scriptProcessor.connect(zeroGainNode);
+      zeroGainNode.connect(ctx.destination);
     }
 
     async function healGuideMicrophoneIfNeeded(forceRebuild = false) {
