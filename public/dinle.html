@@ -16,7 +16,7 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=50"></script>
+  <script src="/vercel-ws-shim.js?v=51"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
@@ -1594,6 +1594,7 @@
       }
     }
 
+    // PATCH: rx-init-v51
     function initRxPlayerWorklet() {
       if (rxPlayerWorkletNode && rxPlayerWorkletNode.context !== audioCtx) {
         rxPlayerWorkletNode = null;
@@ -1605,7 +1606,7 @@
       const token = ++rxLoadToken;
       rxPlayerWorkletLoading = true;
       ctx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=50-audio')
+        .addModule('/pcm-player-worklet.js?v=51-audio')
         .then(() => {
           if (token !== rxLoadToken || audioCtx !== ctx || rxPlayerWorkletNode) return;
           const node = new AudioWorkletNode(ctx, 'rys-pcm-player', {
@@ -1614,17 +1615,17 @@
             outputChannelCount: [1]
           });
           node.onprocessorerror = () => {
+            if(audioCtx!==ctx||rxPlayerWorkletNode!==node)return;
             rxPlayerWorkletAlive = false;
             lastRxWorkletHeartbeatAt = 1;
           };
           node.port.onmessage = (ev) => {
+            if(audioCtx!==ctx||rxPlayerWorkletNode!==node)return;
             const d = (ev && ev.data) || {};
             if (d.type === 'audio-heartbeat') {
               rxPlayerWorkletAlive = true;
               lastRxWorkletHeartbeatAt = Date.now();
-              if (typeof pilgrimBackgroundHeartbeatTick === 'function') {
-                pilgrimBackgroundHeartbeatTick();
-              }
+
             } else if (d.type === 'stats') {
               window.__ryRxAudioStats = d;
             }
@@ -1762,7 +1763,7 @@
       }, 3500);
     }
 
-    // PATCH: recovery-v50
+    // PATCH: recovery-v51
     async function forceResurrectPilgrimAudio(trigger = 'manual') {
       if (!isAudioListening || intentionalLeave) return;
       if (trigger === 'user-gesture') {
@@ -1791,9 +1792,7 @@
         }
         if (audioCtx !== ctx || !isAudioListening || intentionalLeave) return;
         if (ctx.state !== 'running') {
-          if (trigger === 'user-gesture') {
-            rebuildPilgrimAudioEngine('gesture-rebuild');
-          }
+          // OS may still own audio focus. Keep one context and wait for a later gesture/state event.
           syncAudioUnlockButtonUi();
           return;
         }
@@ -2555,7 +2554,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js?v=50').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=51').catch(() => {});
       });
     }
 
@@ -2690,29 +2689,28 @@
     let wakeLockSentinel = null;
     let wakeLockDesired = true;
 
-    async function requestWakeLock() {
-      wakeLockDesired = true;
-      const titleEl = document.getElementById('wakeLockStatusTitle');
-      const subEl = document.getElementById('wakeLockStatusSub');
-      const btnEl = document.getElementById('wakeLockBtn');
-
-      if ('wakeLock' in navigator) {
-        try {
-          wakeLockSentinel = await navigator.wakeLock.request('screen');
-          if (titleEl) titleEl.textContent = 'Tavaf Kesintisiz Modu Aktif (Ekran Kapanmaz)';
-          if (subEl) subEl.textContent = 'WakeLock + Kilit Ekranı Medya Oynatıcısı devrede. Ses kesilmez.';
-          if (btnEl) btnEl.textContent = 'Tavaf Koruyucu Açık';
-          wakeLockSentinel.addEventListener('release', () => {
-            if (titleEl && !wakeLockDesired) {
-              titleEl.textContent = 'Kilit Ekranı Arka Plan Modu';
-            }
+    // PATCH: wakelock-v51
+    let rysWakePending=null;
+    async function requestWakeLock(){
+      wakeLockDesired=true;
+      const title=document.getElementById('wakeLockStatusTitle'),sub=document.getElementById('wakeLockStatusSub');
+      if(wakeLockSentinel&&!wakeLockSentinel.released)return;
+      if(rysWakePending)return rysWakePending;
+      if(!navigator.wakeLock||document.visibilityState!=='visible')return;
+      rysWakePending=(async()=>{
+        try{
+          const sentinel=await navigator.wakeLock.request('screen');
+          if(!wakeLockDesired||document.visibilityState!=='visible'){await sentinel.release();return;}
+          wakeLockSentinel=sentinel;
+          sentinel.addEventListener('release',()=>{
+            if(wakeLockSentinel===sentinel)wakeLockSentinel=null;
+            if(title)title.textContent='Ekran koruması bırakıldı';
           });
-          return;
-        } catch (err) {}
-      }
-      if (titleEl) titleEl.textContent = 'Kilit Ekranı Arka Plan Ses Koruyucu Aktif';
-      if (subEl) subEl.textContent = 'MediaSession ve arka plan ses kanalı ile tuş kilidinde dinleme aktif.';
-      if (btnEl) btnEl.textContent = 'Koruyucu Açık';
+          if(title)title.textContent='Ekran açık tutma etkin';
+          if(sub)sub.textContent='İşletim sistemi ses kesintileri ayrıca yönetilir.';
+        }catch(e){if(title)title.textContent='Ekran açık tutma kullanılamıyor';}
+        finally{rysWakePending=null;}
+      })();return rysWakePending;
     }
 
     async function releaseWakeLock() {
@@ -2903,6 +2901,7 @@
       if (audioEl) audioEl.pause();
     }
 
+    // PATCH: media-pilgrim-v51
     function updateMediaSessionMetadata() {
       if (!('mediaSession' in navigator)) return;
       const title = document.getElementById('liveTopicText')?.textContent?.trim() || 'Canlı Tavaf & Siyer Rehberliği';
@@ -2927,25 +2926,9 @@
           forceResurrectPilgrimAudio('mediasession-play');
         }
       });
-      // KRİTİK DÜZELTME: Alarm çaldığında veya arama geldiğinde iOS/Android işletim sistemi otomatik olarak
-      // MediaSession 'pause'/'stop' tetikler! Burada toggleAudioPlayback() çağrılırsa isAudioListening = false olur
-      // ve alarm bittiğinde ses bir daha asla geri gelmez! Bunun yerine kesinti kurtarma döngüsünü başlatıyoruz:
-      navigator.mediaSession.setActionHandler('pause', () => {
-        if (isAudioListening) {
-          handleSystemAudioInterruption('mediasession-pause');
-          try {
-            navigator.mediaSession.playbackState = 'playing';
-          } catch {}
-        }
-      });
-      navigator.mediaSession.setActionHandler('stop', () => {
-        if (isAudioListening) {
-          handleSystemAudioInterruption('mediasession-stop');
-          try {
-            navigator.mediaSession.playbackState = 'playing';
-          } catch {}
-        }
-      });
+      // Kullanıcı pause/stop komutu dinleme tercihini değiştirir; OS kesintisi context state ile izlenir.
+      navigator.mediaSession.setActionHandler('pause',()=>{if(isAudioListening)toggleAudioPlayback();});
+      navigator.mediaSession.setActionHandler('stop',()=>{if(isAudioListening)toggleAudioPlayback();});
     }
   </script>
 

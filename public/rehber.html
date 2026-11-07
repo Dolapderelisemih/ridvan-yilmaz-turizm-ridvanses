@@ -28,7 +28,7 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=50"></script>
+  <script src="/vercel-ws-shim.js?v=51"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .console-wrap {
@@ -1358,6 +1358,7 @@
       return 'data:audio/wav;base64,' + btoa(binary);
     }
 
+    // PATCH: media-guide-v51
     function updateGuideMediaSession() {
       if (!('mediaSession' in navigator)) return;
       try {
@@ -1377,15 +1378,7 @@
         navigator.mediaSession.setActionHandler('play', () => {
           recoverGuideLiveSession();
         });
-        navigator.mediaSession.setActionHandler('pause', () => {
-          // Alarm veya bildirim geldiğinde işletim sisteminin yayını kapatmasını engelle, kesinti sonrası otomatik kurtar:
-          if (isMicBroadcasting || isDemoBroadcasting) {
-            setTimeout(() => recoverGuideLiveSession(), 450);
-            try {
-              navigator.mediaSession.playbackState = 'playing';
-            } catch {}
-          }
-        });
+        navigator.mediaSession.setActionHandler('pause',()=>{if(isMicBroadcasting)stopMicBroadcast();if(isDemoBroadcasting)toggleDemoBroadcast();});
       } catch {}
     }
 
@@ -1727,11 +1720,14 @@
       }
     } catch {}
 
-    // PATCH: guide-handler-v50
+    // PATCH: guide-handler-v51
     function handleGuideMicFloatChunk(m) {
       if ((!isMicBroadcasting && !isVoiceLoopbackTesting) || !audioCtx) return;
       if (m?.type !== 'frame' || !(m.samples instanceof Float32Array) || m.samples.length !== 480) return;
       lastGuideMicChunkAt = Date.now();
+      if(Number.isFinite(m.capturedAt)&&audioCtx.currentTime-m.capturedAt>.180){
+        guideAudioSeq=(guideAudioSeq+1)&0x7fffffff;return;
+      }
       if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
         audioCtx.resume().catch(() => {});
       }
@@ -1905,7 +1901,7 @@
 
       lastGuideMicChunkAt = Date.now();
       const ctx = audioCtx;
-      const url = '/pcm-capture-worklet.js?v=50-audio';
+      const url = "/pcm-capture-worklet.js?v=51-audio";
       if (ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
         try {
           await ctx.audioWorklet.addModule(url);

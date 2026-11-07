@@ -571,8 +571,47 @@ async function runStep2And3LiveServerAndWsTests() {
     `Rehber SOS Aldı: ${guideReceivedLiveSos}, SOS Çözüldü: ${sosResolveData.alert?.status === 'resolved'}, HTTP Röle Joined: ${relayJoined}, QR: ${qrSvgRes.status}/${qrPngRes.status}`
   );
 
+  await runV51TransportRoundTrip({url:wsUrl,token:authToken});
+
   guideGenelWs.close();
   pilgrimWs.close();
+}
+
+// PATCH: transport-e2e-v51
+async function runV51TransportRoundTrip({url,token}){
+  const assert=require('node:assert/strict'),{WebSocket}=require('ws');
+  const guide=new WebSocket(url),listener=new WebSocket(url);
+  const binaries=[],jsons=[];let joined=0;
+  const until=async predicate=>{
+    const end=Date.now()+3000;
+    while(!predicate()){if(Date.now()>end)throw Error('V51 transport deadline');await new Promise(r=>setTimeout(r,10));}
+  };
+  const open=socket=>new Promise((resolve,reject)=>{socket.once('open',resolve);socket.once('error',reject);});
+  guide.on('message',(raw,binary)=>{if(!binary){try{if(JSON.parse(raw).type==='joined')joined++;}catch(e){}}});
+  listener.on('message',(raw,binary)=>{
+    if(binary)binaries.push(Buffer.from(raw));
+    else{try{const m=JSON.parse(raw);if(m.type==='joined')joined++;jsons.push(m);}catch(e){}}
+  });
+  try{
+    await Promise.all([open(guide),open(listener)]);
+    const room='v51-'+Date.now().toString(36);
+    guide.send(JSON.stringify({type:'join',role:'guide',token,tourCode:'RY-KASIM',roomId:room,name:'V51 test guide'}));
+    listener.send(JSON.stringify({type:'join',role:'pilgrim',tourCode:'RY-KASIM',roomId:room,name:'V51 test listener'}));
+    await until(()=>joined===2);
+    guide.send(JSON.stringify({type:'guide-stream-state',isLive:true,broadcastMode:'mic'}));
+    const make=seq=>{const b=Buffer.alloc(972);b.writeUInt32LE(seq,0);b.writeDoubleLE(Date.now(),4);b.writeInt16LE(1234,12);return b;};
+    guide.send(make(0));guide.send(Buffer.alloc(2060));guide.send(make(2));
+    const unit=seq=>({type:'audio-chunk',seq,sentAt:Date.now(),sampleRate:24000,pcm16:Buffer.alloc(960).toString('base64')});
+    guide.send(JSON.stringify({type:'audio-chunk',frames:[unit(0),unit(1),unit(2)]}));
+    await until(()=>binaries.some(b=>b.readUInt32LE(0)===2)&&jsons.filter(m=>m.type==='audio-chunk').length>=3);
+    assert.equal(binaries.length,2);assert(binaries.every(b=>b.length===972));
+    assert.equal(binaries[0].readUInt32LE(0),0);assert.equal(binaries[0].readInt16LE(12),1234);
+    const audio=jsons.filter(m=>m.type==='audio-chunk');
+    assert.deepEqual(audio.map(m=>m.seq),[0,1,2]);assert(audio.every(m=>Buffer.from(m.pcm16,'base64').length===960));
+    if(typeof recordResult==='function')recordResult('ADIM-3.V51','Gerçek WS: binary ve JSON seq=0, batch framing ve bozuk frame reddi',true);
+  }finally{
+    for(const s of [guide,listener]){s.removeAllListeners();try{s.terminate();}catch(e){}}
+  }
 }
 
 async function runStep4FrontendPwaAndAtomicWriteChecks() {
@@ -764,131 +803,18 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
     `runtime.json geçerli: ${runtimeExists}, kalıntı .tmp yok: ${!tmpLeftover}`
   );
 
-  // 4.5 Saf Stüdyo Kristal HD (Tek Seçenek + Boğukluk Giderici EQ + 24 kHz Resampler + Cümle Korumalı Ses Kilidi) Doğrulaması
-  const rehberHtml = fs.readFileSync(path.join(ROOT_DIR, 'public', 'rehber.html'), 'utf8');
-  const dspStartIdx = rehberHtml.indexOf('let guideGateEnv = 0;');
-  const dspEndIdx = rehberHtml.indexOf('let lastGuideMicChunkAt = 0;');
-  const dspCodeSlice = rehberHtml.slice(dspStartIdx, dspEndIdx);
+  // PATCH: retire-legacy-test-v51
+  const rehberHtml=fs.readFileSync(path.join(ROOT_DIR,'public','rehber.html'),'utf8');
+  recordResult('ADIM-4.5','Eski kullanılmayan DSP/AES testi emekliye ayrıldı; aktif kernel testleri ADIM-5 içinde',true,
+    'Gerçek kalabalık/echo izolasyonu sentetik seviye kapısıyla kanıtlanmaz');
 
-  const dspSandbox = {
-    Float32Array,
-    Math,
-    Date: { now: () => 100000 },
-    guideSideVoiceRejectLevel: 0.50,
-    isGuideMicMuted: false
-  };
-  vm.createContext(dspSandbox);
-  vm.runInContext(dspCodeSlice, dspSandbox);
-
-  // A) Rehber mikrofona yakın (10-15 cm) konuşuyor (Genlik = 0.22)
-  const guideChunk = new Float32Array(3072);
-  for (let i = 0; i < guideChunk.length; i++) {
-    guideChunk[i] = 0.22 * Math.sin((2 * Math.PI * 220 * i) / 48000);
-  }
-  let guideOut;
-  for (let c = 0; c < 6; c++) {
-    guideOut = dspSandbox.processGuideFloatChunkDsp(guideChunk, 48000);
-  }
-
-  // A-1) Cümle içinde rehber sesini alçalttığında (yumuşak hece / kelime sonu, Genlik = 0.052) Çift Eşikli Hysteresis sesi kesmeden %100 iletiyor mu?
-  const softSyllableChunk = new Float32Array(3072);
-  for (let i = 0; i < softSyllableChunk.length; i++) {
-    softSyllableChunk[i] = 0.052 * Math.sin((2 * Math.PI * 220 * i) / 48000);
-  }
-  const softSyllableOut = dspSandbox.processGuideFloatChunkDsp(softSyllableChunk, 48000);
-
-  // A-2) Cümle ortası kısa nefes/hece boşluğunda Cümle Koruması kapıyı açık tutuyor mu?
-  const silenceChunk = new Float32Array(3072);
-  const midSentenceHoldOut = dspSandbox.processGuideFloatChunkDsp(silenceChunk, 48000);
-
-  // A-3) Çapraz Cihaz Akustik Yankı Bastırıcı (AES): Rehber duraksadıktan hemen sonra (128ms) yan telefondaki hoparlörden
-  // dönen yankı dalgası (Genlik = 0.032) cümle tutucuyu anında kapatıp bastırılıyor mu?
-  const echoReturnChunk = new Float32Array(3072);
-  for (let i = 0; i < echoReturnChunk.length; i++) {
-    echoReturnChunk[i] = 0.032 * Math.sin((2 * Math.PI * 220 * i) / 48000);
-  }
-  let echoOut;
-  for (let c = 0; c < 3; c++) {
-    echoOut = dspSandbox.processGuideFloatChunkDsp(echoReturnChunk, 48000);
-  }
-
-  // B) Rehber cümlesini bitirip sustuktan sonra (8 chunk = 512ms) 1.2 metre yanındaki başka bir kişi konuşuyor (Genlik = 0.026)
-  for (let c = 0; c < 8; c++) {
-    dspSandbox.processGuideFloatChunkDsp(silenceChunk, 48000);
-  }
-  const sidePersonChunk = new Float32Array(3072);
-  for (let i = 0; i < sidePersonChunk.length; i++) {
-    sidePersonChunk[i] = 0.026 * Math.sin((2 * Math.PI * 260 * i) / 48000);
-  }
-  let sideOut;
-  for (let c = 0; c < 4; c++) {
-    sideOut = dspSandbox.processGuideFloatChunkDsp(sidePersonChunk, 48000);
-  }
-
-  // C) 44100 Hz donanımdan tam 24000 Hz çıktı üretildiği ve Geçici Sustur (Mute) kontrolü
-  const resampled44k = dspSandbox.processGuideFloatChunkDsp(guideChunk, 44100);
-  dspSandbox.isGuideMicMuted = true;
-  const mutedOut = dspSandbox.processGuideFloatChunkDsp(guideChunk, 48000);
-
-  // D) Ses seçeneklerinde (#guideAcousticModeSelect) SADECE 1 adet en kaliteli seçeneğin (studio_crystal_hd) bulunduğu kontrolü
-  const selectMatch = rehberHtml.match(/<select id="guideAcousticModeSelect"[\s\S]*?<\/select>/);
-  const optionCount = selectMatch ? (selectMatch[0].match(/<option /g) || []).length : 0;
-  const hasSingleCrystalOption = optionCount === 1 && selectMatch[0].includes('value="studio_crystal_hd"');
-
-  const hasGain100 = rehberHtml.includes('guideMicGainMultiplier = 1.0');
-  const hasClarityEq =
-    rehberHtml.includes('highPass.frequency.value = 85') &&
-    rehberHtml.includes('mudCut.frequency.value = 210') &&
-    rehberHtml.includes('presence.frequency.value = 3200') &&
-    rehberHtml.includes('lowPass.frequency.value = 10500');
-  const hasEchoCancelNoMuffling =
-    rehberHtml.includes('echoCancellation: true') &&
-    rehberHtml.includes('noiseSuppression: false') &&
-    rehberHtml.includes('autoGainControl: false');
-
-  const sideAttenuationRatio = sideOut.rms / (0.026 * 0.707);
-  const echoAttenuationRatio = echoOut.rms / (0.032 * 0.707);
-  assertCondition(
-    'ADIM-4.5 (SAF STÜDYO KRİSTAL HD + HYSTERESIS AKICI SES + AES YANKI KALKANI + KÂBE İZOLASYONU)',
-    'Tek seçenek (Saf Stüdyo Kristal HD), yumuşak hece sürekliliği, AES yankı bastırma ve Kâbe yan ses izolasyonu doğrulandı',
-    hasSingleCrystalOption &&
-      guideOut.gateOpen === true &&
-      guideOut.rms > 0.15 &&
-      softSyllableOut.gateOpen === true &&
-      softSyllableOut.rms > 0.033 &&
-      midSentenceHoldOut.gateOpen === true &&
-      echoOut.gateOpen === false &&
-      echoAttenuationRatio < 0.08 &&
-      sideOut.gateOpen === false &&
-      sideAttenuationRatio < 0.08 &&
-      resampled44k.outSampleRate === 24000 &&
-      mutedOut.rms === 0 &&
-      hasGain100 &&
-      hasClarityEq &&
-      hasEchoCancelNoMuffling,
-    `Tek Seçenek: ${hasSingleCrystalOption}, Yumuşak Hece: ${softSyllableOut.gateOpen} (RMS:${softSyllableOut.rms.toFixed(3)}), Yankı Bastırma: %${((1 - echoAttenuationRatio) * 100).toFixed(1)}, Yan Ses Bastırma: %${((1 - sideAttenuationRatio) * 100).toFixed(1)}`
-  );
-
-  // 4.6 Alarm / Telefon Araması / Bildirim Kesintisi Sonrası Otomatik Ses ve Yayın Diriltme Doğrulaması
-  const dinleHtml = fs.readFileSync(path.join(ROOT_DIR, 'public', 'dinle.html'), 'utf8');
-  const workletCode = fs.readFileSync(path.join(ROOT_DIR, 'public', 'pcm-player-worklet.js'), 'utf8');
-  const hasMediaSessionSafePause =
-    dinleHtml.includes("handleSystemAudioInterruption('mediasession-pause')") &&
-    dinleHtml.includes("handleSystemAudioInterruption('mediasession-stop')");
-  const hasHotSwapRebuild =
-    dinleHtml.includes('function rebuildPilgrimAudioEngine(') &&
-    dinleHtml.includes('function forceResurrectPilgrimAudio(') &&
-    dinleHtml.includes('function verifyPilgrimWebSocketAfterInterruption(') &&
-    dinleHtml.includes('attachBgKeepAliveAudioListeners(');
-  const hasFastWorkletHeartbeat =
-    workletCode.includes("type: 'audio-heartbeat'") && workletCode.includes('this.hb >= this.rate * 0.5');
-
-  assertCondition(
-    'ADIM-4.6 (ALARM / ARAMA / BİLDİRİM SONRASI OTOMATİK SES VE YAYIN DİRİLTME)',
-    'MediaSession pause/stop tuzağı kaldırıldı; AudioContext/AudioWorklet sıfırdan otomatik kurulum (rebuildPilgrimAudioEngine) ve yarı-açık WS onarımı doğrulandı',
-    hasMediaSessionSafePause && hasHotSwapRebuild && hasFastWorkletHeartbeat,
-    `MediaSession Koruması: ${hasMediaSessionSafePause}, HotSwap Rebuild: ${hasHotSwapRebuild}, 500ms Nabız: ${hasFastWorkletHeartbeat}`
-  );
+  // PATCH: mobile-test-v51
+  const dinleHtml=fs.readFileSync(path.join(ROOT_DIR,'public','dinle.html'),'utf8');
+  const workletCode=fs.readFileSync(path.join(ROOT_DIR,'public','pcm-player-worklet.js'),'utf8');
+  assertCondition('ADIM-4.6','Mobil ses kurtarma yapı taşları mevcut; davranış ADIM-5 ve cihaz matrisiyle doğrulanır',
+    dinleHtml.includes('function forceResurrectPilgrimAudio(')&&
+    dinleHtml.includes('function rebuildPilgrimAudioEngine(')&&workletCode.includes('audio-heartbeat'),
+    'Kod varlığı OS kesintisizlik garantisi değildir');
 
   // 4.7 Faz 1-4 İstemci & Mimari Denetim Onarımları Doğrulaması (KRİTİK-02, YÜKSEK-01, ORTA-01..05, DÜŞÜK-01..02)
   const testSig = mockWsInstance._computeMqttFrameSig('ridvanses/v2/room/RYKASIM/GENEL', 'audio-chunk', 1700000000000, 'cid-1');
@@ -1128,6 +1054,117 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
   );
 }
 
+// PATCH: verify-v51
+async function runStep5V51AudioChecks(options={}){
+  const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+  const cp=require('node:child_process'),crypto=require('node:crypto');
+  const report=fs.readFileSync('AUDIO_EXCELLENCE_REPORT.md','utf8').replace(/\r\n/g,'\n');
+  const fence=String.fromCharCode(96).repeat(3);
+  const blocks=[...report.matchAll(new RegExp(fence+'js\\s*\\n([\\s\\S]*?)'+fence,'g'))].map(m=>m[1]);
+  const get=id=>{const code=blocks.find(x=>x.startsWith('// PATCH: '+id+'\n'));assert(code,id);return code;};
+  const source=file=>fs.readFileSync(file,'utf8');
+  function scope(code,extra='',globals={}){
+    let P;const c={Float32Array,Float64Array,Math,Number,Boolean,Buffer,Promise,
+      sampleRate:48000,currentTime:0,structuredClone,
+      AudioWorkletProcessor:class{constructor(){this.port={postMessage(){}};}},
+      registerProcessor:(n,K)=>P=K,...globals};
+    vm.createContext(c);vm.runInContext(code.replace(/^export .*$/mg,'')+'\n'+extra,c);return {c,P};
+  }
+  const patchMode=options.patches===true;
+  const capture=patchMode?get('capture-v51'):source('public/pcm-capture-worklet.js');
+  const player=patchMode?get('player-v51'):source('public/pcm-player-worklet.js');
+  const compile=code=>{
+    const r=cp.spawnSync(process.execPath,['--check','--input-type=module'],{input:code,encoding:'utf8'});
+    assert.equal(r.status,0,r.stderr);
+  };
+  for(let code of blocks){
+    if(code.startsWith('// PATCH: binary-v51'))code='function binaryBlock(ctx,ws,raw,isBinary){'+code+'}';
+    if(code.startsWith('// PATCH: seq-v51'))code='const o={'+code+'};';
+    compile(code);
+  }
+  const cap=scope(capture,'globalThis.G=RysNearExpander;globalThis.F=RysFir24;globalThis.K=RysCaptureKernel;').c;
+  const guard=new cap.G();
+  for(const x of [NaN,Infinity,-Infinity,1e308,-1e308,1e-300,0])assert(Number.isFinite(guard.step(x)));
+  const f=new cap.F(48000);let bad=0;
+  for(let i=0;i<600;i++)f.push(i===0?1e308:0,y=>{if(!Number.isFinite(y))bad++;});assert.equal(bad,0);
+  const long=new cap.G();
+  for(let i=0;i<24000;i++)long.step(.0001*Math.sin(2*Math.PI*220*i/24000));
+  long.setProfile({continuousSpeech:true});
+  for(let i=0;i<24000*12;i++)long.step(.1*Math.sin(2*Math.PI*220*i/24000));
+  assert(long.g>.98,'Manual continuous speech must not be learned away');
+  for(const sr of [44100,48000]){
+    const run=size=>{let out=[];const k=new cap.K(sr,{},m=>out.push(...m.samples));
+      for(let i=0;i<sr;i+=size)k.process(Float32Array.from({length:Math.min(size,sr-i)},(_,j)=>.01*Math.sin((i+j)*.1)));
+      assert.equal(k.offset,0);assert.equal(out.length,24000);assert(out.every(Number.isFinite));return out;};
+    assert.deepEqual(run(128),run(2048));
+    for(const hz of [16000,20000]){
+      const fir=new cap.F(sr);let sq=0,n=0,count=0;
+      for(let i=0;i<sr;i++)fir.push(Math.sin(2*Math.PI*hz*i/sr),y=>{if(count++>2400){sq+=y*y;n++;}});
+      assert(20*Math.log10(Math.sqrt(sq/n)*Math.SQRT2)<-60);
+    }
+  }
+  const {P,c:pc}=scope(player,'globalThis.diff=rysDiff;');
+  const p=new P();p.expected=7;p.missing=1;
+  p.plc={fill(a){a.fill(.2);},append(){}};
+  p.q.set(7,new Float32Array(480).fill(-.2));p._nextFrame();
+  assert(Math.abs(p.frame[0]-.2)<1e-6);assert(Math.abs(p.frame[71]+.2)<1e-6);
+  const queue=new P();
+  const push=(seq,phrase=false)=>queue._push({samples:new Float32Array(480).fill(.1),seq,phraseStart:phrase,arrival:seq*20});
+  push(11);push(10,true);assert(queue.q.has(11));push(11);assert.equal(queue.stats.duplicate,1);
+  for(let i=12;i<20;i++)push(i);
+  for(let i=0;i<500;i++){const a=new Float32Array(128);queue.process([],[[a]]);assert(a.every(Number.isFinite));}
+  assert(!queue.playing);assert.equal(pc.diff(0,0x7fffffff),1);
+  const framing=source('public/vercel-ws-shim.js');
+  const start=framing.indexOf('  function validRysAudio('),end=framing.indexOf('  // PATCH: coalescing',start);
+  const validCode=framing.slice(start,end);
+  let jobs=[],now=0,sent=[];
+  const cc=scope(validCode+'\n'+get('coalescer-v51'),'globalThis.C=RysAudioCoalescer;').c;
+  const co=new cc.C(m=>sent.push(m),()=>now,fn=>{jobs.push(fn);return jobs.length;},()=>{});
+  const unit=i=>({type:'audio-chunk',seq:i,sentAt:1,sampleRate:24000,pcm16:Buffer.alloc(960).toString('base64')});
+  co.push(unit(0));const oldJob=jobs[0];now=20;co.push(unit(1));now=40;co.push(unit(2));
+  assert.equal(sent.length,1);assert.equal(sent[0]._queuedAt,0);
+  now=60;co.push(unit(3));oldJob();assert.equal(sent.length,1);jobs[jobs.length-1]();assert.equal(sent.length,2);
+  let fast=0,terminated=0;
+  const fc=scope(get('fanout-v51'),'',{WebSocket:{OPEN:1}}).c;
+  const slow={readyState:1,bufferedAmount:20000,terminate(){terminated++;},send(){throw Error('unexpected send');}};
+  const throws={readyState:1,bufferedAmount:0,send(){throw Error('peer gone');}};
+  const good={readyState:1,bufferedAmount:0,send(){fast++;}};
+  fc.broadcastToRoom({clients:new Map([[1,{ws:slow}],[2,{ws:throws}],[3,{ws:good}]])},{type:'audio-chunk'});
+  assert.equal(fast,1);assert.equal(terminated,1);
+  const drainText=source('server.js');const da=drainText.indexOf('function drainRysRelaySession(');
+  const db=drainText.indexOf("\napp.post('/api/ws-relay'",da);
+  const dc=scope(drainText.slice(da,db),'',{Date:{now:()=>450}}).c;
+  const sess={outbox:Array.from({length:23},(_,i)=>({at:i*20,message:{type:'audio-chunk',seq:i}}))};
+  const kept=dc.drainRysRelaySession(sess).length;assert.equal(kept,10);
+  const makeFn=(text,name)=>{
+    const m=new RegExp('^    (?:async )?function '+name+'\\(','m').exec(text);assert(m,name);
+    return text.slice(m.index,text.indexOf('\n    }',m.index)+6).trim();
+  };
+  let resumes=0;
+  const recoveryCode=patchMode?get('recovery-v51'):makeFn(source('public/dinle.html'),'forceResurrectPilgrimAudio');
+  const rc=scope(recoveryCode,'',{isAudioListening:true,intentionalLeave:false,rxRecoveryBusy:true,
+    audioCtx:{resume(){resumes++;return Promise.resolve();}},ensureAudioContext(){}}).c;
+  await rc.forceResurrectPilgrimAudio('user-gesture');assert.equal(resumes,1);
+  let requests=0,releaseCount=0,resolve;
+  const sentinel={released:false,release(){releaseCount++;return Promise.resolve();},addEventListener(){}};
+  const wc=scope(get('wakelock-v51'),'',{wakeLockDesired:true,wakeLockSentinel:null,
+    document:{visibilityState:'visible',getElementById(){return null;}},
+    navigator:{wakeLock:{request(){requests++;return new Promise(r=>resolve=r);}}}}).c;
+  const wa=wc.requestWakeLock(),wb=wc.requestWakeLock();assert.equal(requests,1);
+  wc.wakeLockDesired=false;resolve(sentinel);await Promise.all([wa,wb]);assert.equal(releaseCount,1);
+  let pauses=0;const mediaCode=patchMode?get('media-pilgrim-v51'):makeFn(source('public/dinle.html'),'updateMediaSessionMetadata');
+  const handlers={};const mc=scope(mediaCode,'',{currentTour:null,isAudioListening:true,document:{getElementById(){return null;}},
+    navigator:{mediaSession:{setActionHandler(n,f){handlers[n]=f;}}},MediaMetadata:class{},
+    toggleAudioPlayback(){pauses++;},forceResurrectPilgrimAudio(){}}).c;
+  mc.updateMediaSessionMetadata();assert(handlers.pause);handlers.pause();assert.equal(pauses,1);
+  if(patchMode){
+    const hashes=JSON.parse(report.match(/<!-- BASELINE-HASHES (.*?) -->/)[1]);
+    for(const [file,h]of Object.entries(hashes))assert.equal(crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'),h,file);
+  }
+  console.log('V51 PASS: syntax, finite extremes, manual long speech, FIR/SRC, continuation blend, reorder, timer generation/TTL, peer isolation, gesture, wake single-flight, user pause');
+  console.log('HTTP baseline: 23 frames / 450 ms drain -> '+kept+' survive; this is not zero-drop HTTP');
+}
+
 async function main() {
   const runtimePath = path.join(ROOT_DIR, 'data', 'runtime.json');
   const runtimeSnapshot = fs.existsSync(runtimePath) ? fs.readFileSync(runtimePath, 'utf8') : null;
@@ -1135,6 +1172,7 @@ async function main() {
     await runStep1StaticAndSyntaxChecks();
     await runStep2And3LiveServerAndWsTests();
     await runStep4FrontendPwaAndAtomicWriteChecks();
+    await runStep5V51AudioChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);

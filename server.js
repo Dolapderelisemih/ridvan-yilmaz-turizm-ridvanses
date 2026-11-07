@@ -427,18 +427,26 @@ function serializeRoom(room, includePilgrimDetails = true) {
   };
 }
 
-function broadcastToRoom(room, payload, excludeWs = null, isAudioOverride = false) {
-  const isAudio = isAudioOverride || Boolean(payload && typeof payload === 'object' && payload.type === 'audio-chunk');
-  const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
-  for (const client of room.clients.values()) {
-    if (client.ws !== excludeWs && client.ws.readyState === WebSocket.OPEN) {
-      // Dinleyicinin soketinde aşırı veri birikmişse (şebeke takılması), eski sesleri kuyruğa yığma.
-      // Hat açıldığında dinleyici doğrudan en güncel canlı sese bağlansın (96 KB 24kHz HD tamponu).
-      if (isAudio && client.ws.bufferedAmount && client.ws.bufferedAmount > 98304) {
-        continue;
-      }
-      client.ws.send(data);
-    }
+// PATCH: fanout-v51
+function rysSendAudio(socket,data,binary=false){
+  if(socket.readyState!==WebSocket.OPEN)return false;
+  if(!socket.isHttpRelay&&socket.bufferedAmount>(binary?9600:13200)){
+    socket._rysAudioDrops=(socket._rysAudioDrops||0)+1;
+    if(typeof socket.terminate==='function')socket.terminate();return false;
+  }
+  try{
+    if(socket.isHttpRelay)socket.send(data);
+    else socket.send(data,{binary},err=>{if(err&&typeof socket.terminate==='function')socket.terminate();});
+    return true;
+  }catch(e){socket._rysAudioErrors=(socket._rysAudioErrors||0)+1;return false;}
+}
+function broadcastToRoom(room,payload,excludeWs=null,isAudioOverride=false){
+  const audio=isAudioOverride||!!(payload&&typeof payload==='object'&&payload.type==='audio-chunk');
+  const data=typeof payload==='string'?payload:JSON.stringify(payload);
+  for(const client of room.clients.values()){
+    const socket=client.ws;if(socket===excludeWs||socket.readyState!==WebSocket.OPEN)continue;
+    if(audio)rysSendAudio(socket,data,false);
+    else {try{socket.send(data);}catch(e){}}
   }
 }
 
@@ -1098,7 +1106,8 @@ function processClientJsonMessageV49(ctx, msg) {
       currentRoom.activePublisherClientId = clientId;
       const serializedAudio = JSON.stringify({
         type: 'audio-chunk',
-        seq: msg.seq || null,
+        // PATCH: seq-v51
+        seq: msg.seq ?? null,
         phraseStart: Boolean(msg.phraseStart),
         speakerId: clientId,
         speakerName: sender.name,
@@ -1188,6 +1197,7 @@ wss.on('connection', (ws, req) => {
 
   ws.on('message', (raw, isBinary) => {
     ws.isAlive = true;
+    // PATCH: binary-v51
     if (isBinary) {
       if (!ctx.currentRoom || !(ws.isAuthenticated || ctx.isAuthenticated)) return;
       const sender = ctx.currentRoom.clients.get(ctx.clientId);
@@ -1209,11 +1219,7 @@ wss.on('connection', (ws, req) => {
         for (const peer of r.clients.values()) {
           if (peer.ws === ws || peer.ws.readyState !== WebSocket.OPEN) continue;
           if (!peer.ws.isHttpRelay) {
-            // Dinleyici soket kuyruğu ~400ms (19200 byte) üstüne birikirse bayat ses oluşturmamak için atla
-            if (peer.ws.bufferedAmount && peer.ws.bufferedAmount > 19200) {
-              continue;
-            }
-            peer.ws.send(buf, { binary: true });
+            rysSendAudio(peer.ws,buf,true);
           } else if (buf.length > 12) {
             if (!fallbackJsonStr) {
               const rawSeq = buf.readUInt32LE(0);
@@ -1234,7 +1240,7 @@ wss.on('connection', (ws, req) => {
                 sentAt
               });
             }
-            peer.ws.send(fallbackJsonStr);
+            rysSendAudio(peer.ws,fallbackJsonStr,false);
           }
         }
       }

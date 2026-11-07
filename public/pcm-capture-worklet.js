@@ -1,3 +1,4 @@
+// PATCH: capture-v51
 // PATCH: capture-v50
 // RıdvanSes v50 — Gerçek Zamanlı AudioWorklet Yakalama Motoru
 // 193-Tap 256-Faz Blackman Windowed-Sinc Polyphase Anti-Aliasing FIR (RysFir24 — >-118 dB Stopband)
@@ -6,6 +7,7 @@
 
 class RysFir24 {
   constructor(rate) {
+    if(!Number.isFinite(rate)||rate<8000||rate>192000)throw new RangeError('Invalid input rate');
     this.rate = rate;
     this.t = 0;
     this.count = 0;
@@ -28,7 +30,7 @@ class RysFir24 {
   }
 
   push(x, emit) {
-    this.r[this.count & 511] = Number.isFinite(x) ? x : 0;
+    this.r[this.count & 511] = Number.isFinite(x) ? Math.max(-8,Math.min(8,x)) : 0;
     this.count++;
     while (Math.floor(this.t / 24000) < this.count) {
       const pos = this.t / 24000;
@@ -48,7 +50,8 @@ class RysFir24 {
 
 class RysNearExpander {
   constructor(o = {}) {
-    this.reject = o.reject ?? 0.5;
+    this.reject = Number.isFinite(o.reject)?Math.max(.15,Math.min(.85,o.reject)):.5;
+    this.continuousSpeech=!!o.continuousSpeech;
     this.hpX = 0;
     this.hpY = 0;
     this.lp = new Float64Array(3);
@@ -69,6 +72,7 @@ class RysNearExpander {
   }
 
   setProfile(o = {}) {
+    if(o.continuousSpeech!==undefined)this.continuousSpeech=!!o.continuousSpeech;
     if (Number.isFinite(o.reject)) {
       this.reject = Math.max(0.15, Math.min(0.85, o.reject));
     }
@@ -82,9 +86,10 @@ class RysNearExpander {
   }
 
   step(raw) {
+    raw=Number.isFinite(raw)?Math.max(-8,Math.min(8,raw)):0;
     const x = 0.9793 * (this.hpY + raw - this.hpX);
     this.hpX = raw;
-    this.hpY = x;
+    this.hpY = Math.abs(x)<1e-20?0:x;
     for (let k = 0; k < 3; k++) {
       this.lp[k] += this.a[k] * (x - this.lp[k]);
     }
@@ -129,7 +134,7 @@ class RysNearExpander {
         this.hold--;
       }
     }
-    const want = this.ready && this.hold ? 1 : 0.126;
+    const want = this.ready && (this.hold || this.continuousSpeech) ? 1 : 0.126;
     this.g += (want - this.g) * (1 - Math.exp(-1 / (24000 * (want > this.g ? 0.003 : 0.12))));
     const d = this.look[this.li];
     this.look[this.li] = x;
@@ -164,7 +169,7 @@ class RysCaptureKernel {
           type: 'frame',
           samples: this.frame,
           rms: Math.sqrt(this.sq / 480),
-          gateOpen: !this.muted && this.gate.hold > 0,
+          gateOpen: !this.muted && (this.gate.hold > 0 || this.gate.continuousSpeech),
           ready: this.gate.ready,
           capturedAt: this.time
         });

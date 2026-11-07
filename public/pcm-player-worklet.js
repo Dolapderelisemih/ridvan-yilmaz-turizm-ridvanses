@@ -1,3 +1,4 @@
+// PATCH: player-v51
 // PATCH: player-v50
 // RıdvanSes v50 — Sıra Numarası (Seq) Tabanlı Jitter Tamponu, 48..400 Lag Pitch-PLC ve ±1000 ppm Hermite ASRC Oynatıcı
 const RYS_MOD = 0x80000000;
@@ -101,6 +102,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
   _reset() {
     this.plc = new RysPitchPlc();
     this.plcFrame = new Float32Array(480);
+    this.recoveryFrame=new Float32Array(480);this.continuation=new Float32Array(480);
     this.q = new Map();
     this.expected = null;
     this.playing = false;
@@ -194,24 +196,22 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
   }
 
   _nextFrame() {
-    const packet = this.q.get(this.expected);
-    this.q.delete(this.expected);
-    this.expected = (this.expected + 1) % RYS_MOD;
-    this.fi = 0;
-    if (packet) {
-      // PLC ve gerçek waveform arasında 5 ms raised-cosine geçiş.
-      const recovery = this.missing > 0;
-      if (recovery) this._startBlend();
-      this.missing = 0;
-      this.frame = packet;
-      this.history.set(packet);
-      this.haveHistory = true;
-      this.plc.append(packet);
-    } else {
-      this.missing++;
-      this.stats.concealed += 480;
-      this.plc.fill(this.plcFrame);
-      this.frame = this.plcFrame;
+    const packet=this.q.get(this.expected);this.q.delete(this.expected);
+    this.expected=(this.expected+1)%RYS_MOD;this.fi=0;
+    if(packet){
+      const recovery=this.missing>0;
+      if(recovery){
+        // Predict the next PLC samples before replacing its state with real media.
+        this.plc.fill(this.continuation);this.recoveryFrame.set(packet);
+        for(let i=0;i<72;i++){
+          const w=.5-.5*Math.cos(Math.PI*i/71);
+          this.recoveryFrame[i]=(1-w)*this.continuation[i]+w*packet[i];
+        }
+        this.frame=this.recoveryFrame;
+      }else this.frame=packet;
+      this.missing=0;this.history.set(packet);this.haveHistory=true;this.plc.append(packet);
+    }else{
+      this.missing++;this.stats.concealed+=480;this.plc.fill(this.plcFrame);this.frame=this.plcFrame;
     }
   }
 

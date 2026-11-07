@@ -81,63 +81,34 @@
   }
 
   // PATCH: coalescing-v50
+  // PATCH: coalescer-v51
   class RysAudioCoalescer {
-    constructor(
-      send,
-      clock = () => Date.now(),
-      schedule = (f, ms) => setTimeout(f, ms),
-      cancel = (id) => clearTimeout(id)
-    ) {
-      this.send = send;
-      this.clock = clock;
-      this.schedule = schedule;
-      this.cancel = cancel;
-      this.frames = [];
-      this.timer = null;
-      this.oldest = 0;
+    constructor(send,clock=()=>Date.now(),schedule=(f,ms)=>setTimeout(f,ms),cancel=id=>clearTimeout(id)){
+      this.send=send;this.clock=clock;this.schedule=schedule;this.cancel=cancel;
+      this.frames=[];this.timer=null;this.oldest=0;this.generation=0;
     }
-
-    push(m) {
-      if (!validRysAudio(m)) return;
-      if (!this.frames.length) this.oldest = this.clock();
-      if (this.clock() - this.oldest > 120) {
-        this.clear();
-        this.oldest = this.clock();
-      }
-      this.frames.push({ ...m });
-      if (this.frames.length === 3) {
-        this.flush();
-      } else if (this.timer === null) {
-        this.timer = this.schedule(() => {
-          this.timer = null;
-          this.flush();
-        }, 40);
-      }
+    push(m){
+      if(!validRysAudio(m))return;
+      const now=this.clock();
+      if(this.frames.length&&now-this.oldest>120)this.clear();
+      if(!this.frames.length)this.oldest=now;
+      this.frames.push({...m});
+      if(this.frames.length===3){this.flush();return;}
+      if(this.timer===null){const generation=this.generation;
+        this.timer=this.schedule(()=>{if(generation!==this.generation)return;this.timer=null;this.flush();},40);}
     }
-
-    flush() {
-      if (this.timer !== null) {
-        this.cancel(this.timer);
-        this.timer = null;
-      }
-      const frames = this.frames;
-      this.frames = [];
-      if (frames.length && this.clock() - this.oldest <= 120) {
-        this.send({ type: 'audio-chunk', frames });
-      }
+    flush(){
+      if(this.timer!==null)this.cancel(this.timer);this.timer=null;this.generation++;
+      const frames=this.frames;this.frames=[];
+      if(frames.length&&this.clock()-this.oldest<=120)
+        this.send({type:'audio-chunk',frames,_queuedAt:this.oldest});
     }
-
-    clear() {
-      if (this.timer !== null) this.cancel(this.timer);
-      this.timer = null;
-      this.frames = [];
-    }
+    clear(){if(this.timer!==null)this.cancel(this.timer);this.timer=null;this.frames=[];this.generation++;}
   }
-
   function installRysCoalescing(sock) {
     const send = sock.send.bind(sock);
     const close = sock.close.bind(sock);
-    const c = new RysAudioCoalescer((m) => send(JSON.stringify({ ...m, _queuedAt: Date.now() })));
+    const c = new RysAudioCoalescer((m) => send(JSON.stringify({ ...m, _queuedAt: m._queuedAt })));
     sock._audioCoalescer = c;
     sock.send = (data) => {
       let m;
@@ -326,7 +297,8 @@
         this.onopen({ type: 'open', relay: true });
       }
 
-      this._pollTimer = setInterval(() => this._flushAndPoll(), 450);
+      // PATCH: poll-v51
+      this._pollTimer = setInterval(() => this._flushAndPoll(), 100);
 
       // Birincil VDS sunucusu tekrar ayağa kalktığında MQTT yedek rölesinden kayıpsız geri dönüş (Zero-Drop Failback)
       const isServerlessHost = typeof this.url === 'string' && this.url.includes('.vercel.app/ws');
