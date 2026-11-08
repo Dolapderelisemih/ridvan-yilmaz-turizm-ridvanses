@@ -277,6 +277,7 @@
     _activateCloudRelay(){
       if(this._isRelay||this._closedExplicitly)return;
       this._isRelay=true;this._opened=true;
+      this._resetRelaySession();
       this._httpEpoch=(this._httpEpoch||0)+1;this._relayAbort?.abort();this._inFlight=false;
       try{if(this._native){this._native.onopen=null;this._native.onmessage=null;
         this._native.onerror=null;this._native.onclose=null;this._native.close();}}catch(e){}
@@ -290,62 +291,88 @@
       if(!this.url.includes('.vercel.app/ws')&&!this._vdsFailbackTimer)
         this._vdsFailbackTimer=setInterval(()=>this._tryNativeFailback(),12000);
     }
+    _resetRelaySession(){
+      const clientId=this._relayClientId,relayKey=this._relayKey;
+      if(clientId&&relayKey){
+        // Best-effort close is safe even after commit: it names only the old HTTP ID.
+        try{fetch('/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({type:'relay-close',version:56,clientId,relayKey}),keepalive:true}).catch(()=>{});}catch(e){}
+      }
+      this._relayClientId=null;this._relayKey=null;this._relayFenced=false;
+      this._httpEpoch=(this._httpEpoch||0)+1;
+      this._relayAbort?.abort();this._relayAbort=null;this._inFlight=false;
+    }
     _tryNativeFailback(){
       if(!this._isRelay||this.readyState!==1||this._closedExplicitly||this._failbackProbe)return;
       const join=this._joinContext,generation=this._transportGeneration||0;
       const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join');
-      let request,ackType;
-      if(mode==='admin-subscribe'){
-        request={type:mode,token:(localStorage.getItem('ry_auth_token')||'').trim()};ackType='admin-rooms-update';
-      }else if(mode==='family-subscribe'){
-        if(!join)return;request={type:mode,tourCode:join.tourCode};ackType='family-state';
-      }else{if(!join)return;request={...join};ackType='joined';}
+      const request=mode==='admin-subscribe'?{type:mode,token:(localStorage.getItem('ry_auth_token')||'').trim()}:
+        mode==='family-subscribe'?(join?{type:mode,tourCode:join.tourCode}:null):join?{...join}:null;
+      if(!request)return;
       let probe;try{probe=new NativeWebSocket(this.url);probe.binaryType='arraybuffer';}catch(e){return;}
-      this._failbackProbe=probe;let finished=false;
+      this._failbackProbe=probe;let finished=false,commitSent=false,handoffId=null;
+      const valid=()=>!this._closedExplicitly&&this._isRelay&&this.readyState===1&&
+        (this._transportGeneration||0)===generation;
       const cancel=()=>{
         if(finished)return;finished=true;clearTimeout(timer);
         if(this._failbackProbe===probe)this._failbackProbe=null;
         if(this._cancelNativeProbe===cancel)this._cancelNativeProbe=null;
         probe.onopen=null;probe.onmessage=null;probe.onerror=null;probe.onclose=null;
         try{probe.close();}catch(e){}
+        // A commit ACK may have been lost. Never reuse a possibly retired source ID.
+        if(commitSent||this._relayFenced)this._resetRelaySession();
       };
-      const timer=setTimeout(cancel,3000);this._cancelNativeProbe=cancel;
+      const timer=setTimeout(cancel,5000);this._cancelNativeProbe=cancel;
       probe.onerror=cancel;probe.onclose=cancel;
       probe.onopen=()=>{
-        if(this._closedExplicitly||!this._isRelay||(this._transportGeneration||0)!==generation){cancel();return;}
-        try{probe.send(JSON.stringify(request));}catch(e){cancel();}
+        if(!valid()){cancel();return;}
+        // No HTTP source may appear behind a source-less prepare. An old open response is harmless.
+        if(!this._relayClientId||!this._relayKey){this._resetRelaySession();this._relayFenced=true;}
+        try{probe.send(JSON.stringify({type:'handoff-prepare',subscription:request,
+          relayClientId:this._relayClientId||null,relayKey:this._relayKey||null}));}catch(e){cancel();}
       };
       probe.onmessage=ev=>{
         let msg;try{msg=JSON.parse(ev.data);}catch(e){return;}
-        if(msg.type==='auth-error'||msg.type==='pin-error'){cancel();return;}
-        if(msg.type!==ackType)return;
-        if(this._closedExplicitly||!this._isRelay||(this._transportGeneration||0)!==generation){cancel();return;}
-        if(mode==='join'&&(!msg.room||String(msg.room.tourCode).toUpperCase().trim()!==String(join.tourCode||'RY-KASIM').toUpperCase().trim()||
-          String(msg.room.roomId)!==String(join.roomId||'genel').trim())){cancel();return;}
+        if(!valid()){cancel();return;}
+        if(msg.type==='handoff-error'||msg.type==='auth-error'||msg.type==='pin-error'){
+          if(msg.code==='stale-relay')this._resetRelaySession();cancel();return;
+        }
+        if(msg.type==='handoff-prepared'){
+          if(commitSent)return;
+          if(typeof msg.handoffId!=='string'||!/^[0-9a-f]{32}$/.test(msg.handoffId)){cancel();return;}
+          handoffId=msg.handoffId;commitSent=true;
+          try{probe.send(JSON.stringify({type:'handoff-commit',handoffId}));}catch(e){cancel();}
+          return;
+        }
+        if(msg.type!=='handoff-committed'||!commitSent||msg.handoffId!==handoffId)return;
+        const ack=msg.ack,expected=mode==='join'?'joined':mode==='family-subscribe'?'family-state':'admin-rooms-update';
+        if(ack?.type!==expected){cancel();return;}
+        if(mode==='join'&&(!ack.room||String(ack.room.tourCode).toUpperCase().trim()!==
+          String(join.tourCode||'RY-KASIM').toUpperCase().trim()||
+          String(ack.room.roomId)!==String(join.roomId||'genel').trim())){cancel();return;}
+        if(mode==='family-subscribe'&&String(ack.tourCode).toUpperCase().trim()!==
+          String(join.tourCode||'RY-KASIM').toUpperCase().trim()){cancel();return;}
         finished=true;clearTimeout(timer);this._failbackProbe=null;this._cancelNativeProbe=null;
         this._native=probe;this._isRelay=false;this._opened=true;
-        this._httpEpoch=(this._httpEpoch||0)+1;this._relayAbort?.abort();this._relayAbort=null;this._inFlight=false;
+        this._resetRelaySession();
         if(this._pollTimer){clearInterval(this._pollTimer);this._pollTimer=null;}
         if(this._vdsFailbackTimer){clearInterval(this._vdsFailbackTimer);this._vdsFailbackTimer=null;}
         probe.onmessage=e=>{if(!this._isRelay&&this.readyState===1)this.onmessage?.(e);};
         probe.onerror=e=>this.onerror?.(e);
         probe.onclose=e=>{if(!this._isRelay){this.readyState=3;this.onclose?.(e);}};
-        // Deliver the snapshot before the application's fresh state updates.
-        this.onmessage?.(ev);
+        try{this.onmessage?.({data:JSON.stringify(ack)});}catch(e){this.onerror?.(e);}
         if(this._closedExplicitly||this.readyState!==1||this._isRelay||this._native!==probe)return;
         this._failbackSubscription=request;
-        try{this.onopen?.({type:'open',failback:true});}
-        catch(e){this.onerror?.(e);}
+        try{this.onopen?.({type:'open',failback:true});}catch(e){this.onerror?.(e);}
         finally{this._failbackSubscription=null;}
         if(this._closedExplicitly||this.readyState!==1||this._isRelay||this._native!==probe)return;
         const pending=this._sendQueue.splice(0),now=Date.now();
         for(const m of pending){
-          if(m.type==='join'||m.type==='family-subscribe'||m.type==='admin-subscribe'||m.type==='guide-stream-state')continue;
+          if(['join','family-subscribe','admin-subscribe','guide-stream-state'].includes(m.type))continue;
           if(m.type==='audio-chunk'&&(!Number.isFinite(m._queuedAt)||now-m._queuedAt>200))continue;
           try{this.send(JSON.stringify(m));}catch(e){this.onerror?.(e);}
         }
-        this._audioCoalescer?.flush();
-        this._closeMqttClients();window.__ryConsecutiveVdsFailures=0;
+        this._audioCoalescer?.flush();this._closeMqttClients();window.__ryConsecutiveVdsFailures=0;
       };
     }
 
@@ -651,9 +678,16 @@
         if (!parsed._msgId) {
           parsed._msgId = 'm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
         }
+        if(['join','family-subscribe','admin-subscribe'].includes(parsed.type))this._cancelNativeProbe?.();
+        if(parsed.type==='guide-stream-state')this._lastGuideState={...parsed};
+        if(['family-subscribe','admin-subscribe'].includes(parsed.type)){
+          this._lastGuideState=null;this._audioCoalescer?.clear();
+          this._sendQueue=this._sendQueue.filter(m=>m.type!=='audio-chunk');
+        }
         if (parsed.type === 'join') {
           const old=this._joinContext;
           if(old&&(old.tourCode!==parsed.tourCode||old.roomId!==parsed.roomId||old.role!==parsed.role)){
+            this._lastGuideState=null;
             this._audioCoalescer?.clear();this._sendQueue=this._sendQueue.filter(m=>m.type!=='audio-chunk');
           }
           this._isAdmin=false;
@@ -840,44 +874,62 @@
 
     // PATCH: shim-http-v52
     async _flushAndPoll(){
-      if(this.readyState!==1||!this._isRelay||this._inFlight)return;
+      if(this.readyState!==1||!this._isRelay||this._inFlight||this._relayFenced)return;
       const epoch=this._httpEpoch||0;
+      const current=()=>this.readyState===1&&this._isRelay&&(this._httpEpoch||0)===epoch;
       const batch=this._sendQueue.splice(0).filter(m=>m.type!=='audio-chunk'||
         (Number.isFinite(m._queuedAt)&&Date.now()-m._queuedAt<=200));
-      // Broker connectivity does not prove this room has an MQTT publisher.
-      // Keep HTTP receive/control active; the player deduplicates audio by seq.
       this._inFlight=true;const ac=new AbortController();this._relayAbort=ac;
       const timer=setTimeout(()=>ac.abort(),3000);let success=false;
       try{
+        if(!this._relayClientId||!this._relayKey){
+          // Opening has no subscription/media side effect, even if this response is lost.
+          const opened=await fetch('/api/ws-relay',{method:'POST',signal:ac.signal,
+            headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'relay-open',version:56})});
+          const data=await opened.json();if(!current())return;
+          if(!opened.ok||!String(data.clientId||'').startsWith('rys56-')||
+            !/^[0-9a-f]{48}$/.test(data.relayKey||''))throw Error('Relay open failed');
+          this._relayClientId=data.clientId;this._relayKey=data.relayKey;
+          if(this._lastGuideState&&this._joinContext?.role==='guide')
+            batch.push({...this._lastGuideState});
+        }
         const token=(localStorage.getItem('ry_auth_token')||'').trim();
         const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join');
         const context=mode==='admin-subscribe'?{type:mode,token}:
           mode==='family-subscribe'?{type:mode,tourCode:this._joinContext?.tourCode||'RY-KASIM'}:
           this._joinContext;
-        // POST also for an empty poll: PIN/device/phone/lang stay in the body.
+        const fresh=batch.filter(m=>m.type!=='audio-chunk'||
+          Number.isFinite(m._queuedAt)&&Date.now()-m._queuedAt<=200);
         const res=await fetch('/api/ws-relay',{method:'POST',signal:ac.signal,
-          headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:this._clientId,
-            token,subscriptionContext:context,joinContext:mode==='join'?context:null,messages:batch})});
-        if(!res.ok)throw Error('Relay HTTP '+res.status);
-        const payload=await res.json();
-        if(this.readyState!==1||!this._isRelay||(this._httpEpoch||0)!==epoch)return;
+          headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:this._relayClientId,
+            relayKey:this._relayKey,token,subscriptionContext:context,messages:fresh})});
+        const payload=await res.json();if(!current())return;
+        if(!res.ok){
+          if(res.status===409){
+            if(payload.error==='relay-session-retired'&&this._failbackProbe)this._relayFenced=true;
+            else{
+              for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
+              batch.length=0;this._cancelNativeProbe?.();this._resetRelaySession();
+            }
+          }
+          throw Error('Relay HTTP '+res.status);
+        }
         if(Array.isArray(payload.messages))for(const m of payload.messages)this._deliverIncomingMessage(m);
         success=true;
       }catch(e){
-        if(this.readyState===1&&this._isRelay&&(this._httpEpoch||0)===epoch)
-          for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
+        if(current())for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
       }finally{
         clearTimeout(timer);
         if(this._relayAbort===ac)this._relayAbort=null;
         if((this._httpEpoch||0)===epoch)this._inFlight=false;
-        if(success&&this.readyState===1&&this._isRelay&&this._sendQueue.length)
-          queueMicrotask(()=>{if(this.readyState===1&&this._isRelay)this._flushAndPoll();});
+        if(success&&current()&&this._sendQueue.length)
+          queueMicrotask(()=>{if(current())this._flushAndPoll();});
       }
     }
 
     // PATCH: shim-close-v53
     close() {
-      this._closedExplicitly=true;this._cancelNativeProbe?.();
+      this._closedExplicitly=true;this._cancelNativeProbe?.();this._resetRelaySession?.();
       this.readyState = 3;
       this._httpEpoch=(this._httpEpoch||0)+1;
       this._relayAbort?.abort();this._relayAbort=null;

@@ -73,7 +73,7 @@ app.use((req, res, next) => {
   ) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-RY-Auth');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-RY-Auth, X-Rys-Relay-Key');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
   if (req.method === 'OPTIONS') {
@@ -882,14 +882,12 @@ function processClientJsonMessageV49(ctx, msg) {
       return;
     }
     ws.isAdmin = true;
-    ws.send(
-      JSON.stringify({
+    sendRysSubscriptionAck(ctx, {
         type: 'admin-rooms-update',
         rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true)),
         sosAlerts: db.sosAlerts,
         announcements: db.announcements
-      })
-    );
+      });
     return;
   }
 
@@ -898,16 +896,14 @@ function processClientJsonMessageV49(ctx, msg) {
     ws.familyTourCode = tourCode;
     const room = getOrCreateRoom(tourCode, 'genel');
     const steps = getTourSteps(tourCode);
-    ws.send(
-      JSON.stringify({
+    sendRysSubscriptionAck(ctx, {
         type: 'family-state',
         tourCode,
         room: serializeRoom(room, false),
         steps,
         stats: computeJourneyStats(steps),
         announcements: db.announcements.filter((a) => a.tourCode === tourCode || a.tourCode === 'ALL')
-      })
-    );
+      });
     return;
   }
 
@@ -952,6 +948,10 @@ function processClientJsonMessageV49(ctx, msg) {
         const sameDevice = Boolean(deviceId && existingClient.deviceId && existingClient.deviceId === deviceId);
         const sameGuide = Boolean(role === 'guide' && existingClient.role === 'guide' && r.roomId === roomId && existingClient.name === clientObj.name);
         if (sameDevice || sameGuide) {
+          if(existingClient.ws?.isHttpRelay){
+            const oldRelay=httpRelaySessions.get(existingId);
+            if(oldRelay&&(oldRelay.relayKey||ctx.rysAckCapture))oldRelay.relayRetired=true;
+          }
           r.clients.delete(existingId);
           if (r.activePublisherClientId === existingId) {
             r.activePublisherClientId = clientId;
@@ -979,8 +979,7 @@ function processClientJsonMessageV49(ctx, msg) {
     }
 
     const tourSteps = getTourSteps(tourCode);
-    ws.send(
-      JSON.stringify({
+    sendRysSubscriptionAck(ctx, {
         type: 'joined',
         clientId,
         room: serializeRoom(ctx.currentRoom, role === 'guide'),
@@ -988,8 +987,7 @@ function processClientJsonMessageV49(ctx, msg) {
         siyerPoints: db.siyerPoints,
         steps: tourSteps,
         stats: computeJourneyStats(tourSteps)
-      })
-    );
+      });
     broadcastRoomState(ctx.currentRoom);
     return;
   }
@@ -1201,7 +1199,8 @@ wss.on('connection', (ws, req) => {
     clientId: `client-${Date.now()}-${clientSeq++}`,
     ws,
     currentRoom: null,
-    isAuthenticated: ws.isAuthenticated
+    isAuthenticated: ws.isAuthenticated,
+    rysHandshakeToken: extractAuthTokenFromReq(req)
   };
 
   ws.on('message', (raw, isBinary) => {
@@ -1262,10 +1261,12 @@ wss.on('connection', (ws, req) => {
     } catch {
       return;
     }
+    if(handleRysNativeHandoff(ctx,msg))return;
     processClientJsonMessage(ctx, msg);
   });
 
   ws.on('close', () => {
+    clearRysHandoff(ctx);
     if (ctx.currentRoom) {
       removeClientFromRoom(ctx.currentRoom, ctx.clientId);
     }
@@ -1340,6 +1341,145 @@ function drainRysRelaySession(sess) {
     .splice(0)
     .filter((e) => e.message.type !== 'audio-chunk' || now - e.at <= 200)
     .map((e) => e.message);
+}
+
+// v56: opaque HTTP sessions; opening never joins a room or executes messages.
+function openRysRelay56(res){
+  const s=getOrCreateRelaySession('rys56-'+crypto.randomBytes(18).toString('hex'));
+  s.relayKey=crypto.randomBytes(24).toString('hex');
+  s.relayRevision=0;s.relayDigest=null;s.relayRetired=false;
+  return res.json({type:'relay-opened',clientId:s.clientId,relayKey:s.relayKey});
+}
+function closeRysRelay56(req,res){
+  const s=httpRelaySessions.get(String(req.body?.clientId||''));
+  const a=String(req.body?.relayKey||''),b=String(s?.relayKey||'');
+  if(!s||!/^[0-9a-f]{48}$/.test(a)||!/^[0-9a-f]{48}$/.test(b)||
+    !crypto.timingSafeEqual(Buffer.from(a),Buffer.from(b)))
+    return res.status(401).json({error:'relay-key-required'});
+  s.relayRetired=true;s.ws.isAdmin=false;s.ws.familyTourCode=null;
+  if(s.currentRoom?.clients.has(s.clientId))removeClientFromRoom(s.currentRoom,s.clientId,0);
+  return res.json({closed:true});
+}
+function resolveRysRelay(req,res,input){
+  const id=String(input?.clientId||'');
+  let s=httpRelaySessions.get(id);
+  if(id.startsWith('rys56-')){
+    if(!s){res.status(409).json({error:'relay-session-expired'});return null;}
+    const supplied=String((req.method==='GET'?null:input?.relayKey)||req.headers?.['x-rys-relay-key']||'');
+    const expected=String(s.relayKey||'');
+    if(!/^[0-9a-f]{48}$/.test(supplied)||!/^[0-9a-f]{48}$/.test(expected)||
+      !crypto.timingSafeEqual(Buffer.from(supplied),Buffer.from(expected))){
+      res.status(401).json({error:'relay-key-required'});return null;
+    }
+  }else s=s||getOrCreateRelaySession(id);
+  if(s.relayRetired){res.status(409).json({error:'relay-session-retired'});return null;}
+  s.lastSeen=Date.now();return s;
+}
+function digestRysSubscription(m){
+  if(!m)return null;
+  return crypto.createHash('sha256').update(JSON.stringify([
+    m.type,String(m.tourCode||'RY-KASIM').toUpperCase().trim(),
+    String(m.roomId||'genel').trim(),m.role==='guide'?'guide':'pilgrim',
+    m.name||'',m.deviceId===undefined?null:String(m.deviceId).trim(),
+    m.phone===undefined?null:m.phone,m.lang===undefined?null:m.lang,
+    m.pin===undefined?null:String(m.pin),m.token||''
+  ])).digest('hex');
+}
+function sendRysSubscriptionAck(ctx,payload){
+  if(ctx.rysAckCapture)ctx.rysAckCapture.ack=payload;
+  else ctx.ws.send(JSON.stringify(payload));
+}
+function clearRysHandoff(ctx){
+  if(ctx.rysHandoff?.timer)clearTimeout(ctx.rysHandoff.timer);
+  ctx.rysHandoff=null;
+}
+function validateRysHandoff(ctx,request){
+  const authed=!!(isValidAuthToken(request.token)||isValidAuthToken(ctx.rysHandshakeToken));
+  ctx.isAuthenticated=authed;ctx.ws.isAuthenticated=authed;
+  if((request.type==='admin-subscribe'||request.type==='join'&&request.role==='guide')&&!authed)
+    return 'auth-required';
+  if(request.type==='join'&&request.role!=='guide'&&!authed){
+    const code=String(request.tourCode||'RY-KASIM').toUpperCase().trim();
+    const tour=(db.tours||[]).find(t=>String(t.code||'').toUpperCase()===code);
+    if(tour?.pinProtected&&tour.pin&&String(tour.pin).trim()!==String(request.pin||'').trim())
+      return 'pin-required';
+  }
+  return null;
+}
+function handleRysNativeHandoff(ctx,msg){
+  if(!['handoff-prepare','handoff-commit','handoff-cancel'].includes(msg?.type))return false;
+  const reply=payload=>ctx.ws.send(JSON.stringify(payload));
+  const fail=code=>{clearRysHandoff(ctx);reply({type:'handoff-error',code});};
+  if(msg.type==='handoff-cancel'){clearRysHandoff(ctx);return true;}
+  if(msg.type==='handoff-prepare'){
+    if(ctx.currentRoom||ctx.ws.isAdmin||ctx.ws.familyTourCode){fail('probe-already-subscribed');return true;}
+    const raw=msg.subscription;
+    if(!raw||!['join','family-subscribe','admin-subscribe'].includes(raw.type)||
+      JSON.stringify(raw).length>8192){fail('invalid-subscription');return true;}
+    const request=JSON.parse(JSON.stringify(raw));
+    const invalid=validateRysHandoff(ctx,request);if(invalid){fail(invalid);return true;}
+    let source=null;
+    if(msg.relayClientId){
+      source=httpRelaySessions.get(String(msg.relayClientId));
+      const a=String(msg.relayKey||''),b=String(source?.relayKey||'');
+      if(!source||source.relayRetired||!/^[0-9a-f]{48}$/.test(a)||!/^[0-9a-f]{48}$/.test(b)||
+        !crypto.timingSafeEqual(Buffer.from(a),Buffer.from(b))){
+        fail('stale-relay');return true;
+      }
+      if(!source.relayDigest||source.relayDigest!==digestRysSubscription(request)){
+        fail('context-changed');return true;
+      }
+      // Transfer optional identity fields from this same existing HTTP membership.
+      if(request.type==='join'){
+        const previous=source.currentRoom?.clients.get(source.clientId);
+        if(!previous){fail('source-not-joined');return true;}
+        request.name=request.name||previous.name;
+        for(const key of ['deviceId','phone','lang'])
+          if(request[key]===undefined)request[key]=previous[key];
+      }
+    }
+    clearRysHandoff(ctx);
+    const pending={id:crypto.randomBytes(16).toString('hex'),request,source,
+      revision:source?.relayRevision||0,digest:source?.relayDigest||null,expires:Date.now()+3000};
+    pending.timer=setTimeout(()=>{
+      if(ctx.rysHandoff===pending){ctx.rysHandoff=null;reply({type:'handoff-error',code:'prepare-expired'});}
+    },3000);pending.timer.unref?.();
+    ctx.rysHandoff=pending;
+    reply({type:'handoff-prepared',handoffId:pending.id});return true;
+  }
+  if(ctx.rysCommittedHandoff?.id===msg.handoffId){
+    ctx.ws.send(ctx.rysCommittedHandoff.envelope);return true; // Idempotent retry; no second join.
+  }
+  const p=ctx.rysHandoff;
+  if(!p||p.id!==msg.handoffId||Date.now()>p.expires){fail('prepare-expired');return true;}
+  if(p.source&&(httpRelaySessions.get(p.source.clientId)!==p.source||p.source.relayRetired||
+    p.source.relayRevision!==p.revision||p.source.relayDigest!==p.digest||
+    p.request.type==='join'&&!p.source.currentRoom?.clients.has(p.source.clientId))){
+    fail('context-changed');return true;
+  }
+  const invalid=validateRysHandoff(ctx,p.request);if(invalid){fail(invalid);return true;}
+  const capture={ack:null};ctx.rysAckCapture=capture;
+  try{
+    // No await in this transaction: membership transfer and source fencing are one event-loop turn.
+    processClientJsonMessage(ctx,p.request);
+    const expected=p.request.type==='join'?'joined':
+      p.request.type==='family-subscribe'?'family-state':'admin-rooms-update';
+    if(capture.ack?.type!==expected){fail('subscription-rejected');return true;}
+    if(p.source){
+      p.source.relayRetired=true;p.source.ws.isAdmin=false;p.source.ws.familyTourCode=null;
+      if(p.source.currentRoom?.clients.has(p.source.clientId))
+        removeClientFromRoom(p.source.currentRoom,p.source.clientId,0);
+    }
+    if(p.request.type==='join')capture.ack.room=serializeRoom(ctx.currentRoom,p.request.role==='guide');
+    const envelope=JSON.stringify({type:'handoff-committed',handoffId:p.id,ack:capture.ack});
+    ctx.rysCommittedHandoff={id:p.id,envelope};
+    clearRysHandoff(ctx);ctx.ws.send(envelope);
+  }catch(e){
+    clearRysHandoff(ctx);
+    try{reply({type:'handoff-error',code:'commit-failed'});}catch(ignore){}
+    try{ctx.ws.close();}catch(ignore){}
+  }finally{ctx.rysAckCapture=null;}
+  return true;
 }
 
 // PATCH: relay-auth-v53
@@ -1417,6 +1557,12 @@ function serveRysRelay(session,req,res,token,context,messages=[]){
     return res.json({clientId:session.clientId,messages:errors.length?errors:
       [{type:'pin-error',message:'Kafile/oda katılımı reddedildi; PIN ve yetkiyi kontrol edin.'}]});
   }
+  if(session.relayKey&&context){
+    const digest=digestRysSubscription(context);
+    if(session.relayDigest!==digest){session.relayDigest=digest;session.relayRevision=(session.relayRevision||0)+1;}
+  }
+  if(session.relayKey&&!context&&messages.some(m=>['join','family-subscribe','admin-subscribe'].includes(m?.type)))
+    return res.status(400).json({error:'relay-context-required'});
   for(const m of messages){
     if(!m||typeof m!=='object')continue;
     // Explicit context is the latest subscription. Do not replay stale queued joins.
@@ -1427,10 +1573,13 @@ function serveRysRelay(session,req,res,token,context,messages=[]){
 }
 
 app.post('/api/ws-relay',(req,res)=>{
+  if(req.body?.type==='relay-open'&&req.body.version===56)return openRysRelay56(res);
+  if(req.body?.type==='relay-close'&&req.body.version===56)return closeRysRelay56(req,res);
   const {clientId,messages,joinContext,subscriptionContext,token}=req.body||{};
   const context=subscriptionContext||joinContext||null;
   const list=Array.isArray(messages)?messages:req.body?.message?[req.body.message]:[];
-  return serveRysRelay(getOrCreateRelaySession(clientId),req,res,token,context,list);
+  const session=resolveRysRelay(req,res,req.body||{});if(!session)return;
+  return serveRysRelay(session,req,res,token,context,list);
 });
 app.get('/api/ws-relay',(req,res)=>{
   // Legacy GET is retained. Existing joined sessions need not repeat their PIN.
@@ -1442,7 +1591,8 @@ app.get('/api/ws-relay',(req,res)=>{
       name:q.name||'',pin:q.pin||'',token:q.token,
       ...(q.deviceId!==undefined?{deviceId:q.deviceId}:{}),
       ...(q.phone!==undefined?{phone:q.phone}:{}),...(q.lang!==undefined?{lang:q.lang}:{})}:null;
-  return serveRysRelay(getOrCreateRelaySession(q.clientId),req,res,q.token,context);
+  const session=resolveRysRelay(req,res,q);if(!session)return;
+  return serveRysRelay(session,req,res,q.token,context);
 });
 
 // ======================== REST API ENDPOINTS ========================

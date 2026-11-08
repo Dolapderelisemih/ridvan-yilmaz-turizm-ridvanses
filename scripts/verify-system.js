@@ -575,6 +575,7 @@ async function runStep2And3LiveServerAndWsTests() {
   await runV53RelayRoundTrip({baseUrl,token:authToken});
   await runV54RelayRoundTrip({baseUrl,url:wsUrl,token:authToken});
   await runV55RelayEdgeChecks({baseUrl,url:wsUrl,token:authToken});
+  await runV56HandoffChecks({baseUrl,url:wsUrl,token:authToken});
 
   guideGenelWs.close();
   pilgrimWs.close();
@@ -1224,7 +1225,7 @@ async function runStep5V53AudioChecks(){
     }
   }).c;
   const relay=new hc.R();Object.assign(relay,{readyState:1,_isRelay:true,_inFlight:false,_sendQueue:[],
-    _clientId:'unit',_joinContext:{},_busConnected:()=>false,_deliverIncomingMessage(){delivered++;},_closeMqttClients(){}});
+    _clientId:'unit',_relayClientId:'legacy-unit',_relayKey:'unit',_joinContext:{},_busConnected:()=>false,_deliverIncomingMessage(){delivered++;},_closeMqttClients(){}});
   relay._enqueueRelayMessage({type:'ping'});const flight=relay._flushAndPoll();
   relay._enqueueRelayMessage({type:'join'});await relay._flushAndPoll();assert.equal(fetchCalls,1);
   resolveFirst();await flight;assert.equal(delivered,1);assert.equal(httpJobs.length,1);
@@ -1314,12 +1315,14 @@ async function runStep5V53AudioChecks(){
   const fail=makeRelay();fail._tryNativeFailback();let probe=probes.at(-1);probe.onopen();
   probe.onmessage({data:JSON.stringify({type:'auth-error'})});assert(fail._isRelay);assert.equal(fail._audioCoalescer.frames.length,2);
   const wrong=makeRelay();wrong._tryNativeFailback();probe=probes.at(-1);probe.onopen();
-  probe.onmessage({data:JSON.stringify({type:'joined',room:{tourCode:'RY-KASIM',roomId:'wrong'}})});assert(wrong._isRelay);
+  probe.onmessage({data:JSON.stringify({type:'handoff-prepared',handoffId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'})});
+  probe.onmessage({data:JSON.stringify({type:'handoff-committed',handoffId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',ack:{type:'joined',room:{tourCode:'RY-KASIM',roomId:'wrong'}}})});assert(wrong._isRelay);
   const stale=makeRelay();stale._tryNativeFailback();probe=probes.at(-1);probe.onopen();stale._transportGeneration++;
-  probe.onmessage({data:JSON.stringify({type:'joined',room:{tourCode:'RY-KASIM',roomId:'a'}})});assert(stale._isRelay);
+  probe.onmessage({data:JSON.stringify({type:'handoff-prepared',handoffId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'})});assert(stale._isRelay);
   const success=makeRelay();success._tryNativeFailback();probe=probes.at(-1);probe.onopen();
   assert(success._isRelay);assert.equal(closedMqtt,0);
-  probe.onmessage({data:JSON.stringify({type:'joined',room:{tourCode:'RY-KASIM',roomId:'a'}})});
+  probe.onmessage({data:JSON.stringify({type:'handoff-prepared',handoffId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'})});assert(success._isRelay);
+  probe.onmessage({data:JSON.stringify({type:'handoff-committed',handoffId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',ack:{type:'joined',room:{tourCode:'RY-KASIM',roomId:'a'}}})});
   assert(!success._isRelay);assert.equal(opened,1);assert.equal(closedMqtt,1);
   const batch=probe.sent.find(m=>Array.isArray(m.frames));assert(batch);assert.deepEqual(Array.from(batch.frames,m=>m.seq),[10,11]);
   assert(probe.sent.some(m=>m.type==='guide-stream-state'&&m.isLive));
@@ -1498,9 +1501,12 @@ async function runStep5V54AudioChecks(){
     t.install(s);s._audioCoalescer.push(audio(10));s._audioCoalescer.push(audio(11));
     const oldJob=jobs.at(-1);s._tryNativeFailback();const probe=probes.at(-1);probe.onopen();assert(s._isRelay);
     const type=mode==='join'?'joined':mode==='family-subscribe'?'family-state':'admin-rooms-update';
-    probe.onmessage({data:JSON.stringify({type,room:{tourCode:'RY-KASIM',roomId:'a'},tourCode:'RY-KASIM'})});
+    probe.onmessage({data:JSON.stringify({type:'handoff-prepared',handoffId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'})});assert(s._isRelay);
+    probe.onmessage({data:JSON.stringify({type:'handoff-committed',handoffId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',ack:{type,room:{tourCode:'RY-KASIM',roomId:'a'},tourCode:'RY-KASIM'}})});
     assert(!s._isRelay);assert.deepEqual(order,['ack','open']);
-    assert.equal(probe.sent.filter(m=>m.type===mode).length,1,'Exactly one native subscription for '+mode);
+    assert.equal(probe.sent.filter(m=>m.type==='handoff-prepare'&&m.subscription.type===mode).length,1);
+    assert.equal(probe.sent.filter(m=>m.type==='handoff-commit').length,1);
+    assert.equal(probe.sent.filter(m=>m.type===mode).length,0,'No ordinary duplicate subscription for '+mode);
     const seqs=probe.sent.flatMap(m=>m.frames?m.frames.map(f=>f.seq):[]);
     assert.deepEqual(seqs,[8,9,10,11]);const count=probe.sent.length;oldJob();assert.equal(probe.sent.length,count);
     s.close();
@@ -1511,18 +1517,18 @@ async function runStep5V54AudioChecks(){
     localStorage:{getItem:()=>''},fetch:async(url,opts)=>{assert.equal(url,'/api/ws-relay');assert.equal(opts.method,'POST');
       bodies.push(JSON.parse(opts.body));return {ok:true,json:async()=>({messages:[]})};}}).c;
   for(const connected of [false,true])for(const mode of ['family-subscribe','admin-subscribe','join']){
-    const s=new relay.R();Object.assign(s,{readyState:1,_isRelay:true,_sendQueue:[],_clientId:'unit',
+    const s=new relay.R();Object.assign(s,{readyState:1,_isRelay:true,_sendQueue:[],_clientId:'unit',_relayClientId:'legacy-unit',_relayKey:'unit',
       _subscriptionType:mode,_joinContext:{type:'join',tourCode:'X',role:'pilgrim',pin:'1453',deviceId:'device'},
       _busConnected:()=>connected,_deliverIncomingMessage(){},_enqueueRelayMessage(){}});
     const before=bodies.length;await s._flushAndPoll();
     assert.equal(bodies.length,before+1,'Broker connectivity must not suppress empty polling');
     const body=bodies.at(-1);assert.equal(body.subscriptionContext.type,mode);
-    if(mode!=='join')assert.equal(body.joinContext,null);
+    if(mode!=='join')assert.equal(body.joinContext??null,null);
     else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
   }
-  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v55"));assert(sw.includes('/vercel-ws-shim.js?v=55'));
+  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v56"));assert(sw.includes('/vercel-ws-shim.js?v=56'));
   for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
-    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'55',f+' stale shim');
+    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'56',f+' stale shim');
   }
   if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
   console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
@@ -1586,7 +1592,7 @@ async function runV55RelayEdgeChecks({baseUrl,url,token}){
     vm.runInContext('class Relay{'+source.slice(begin,end)+'}\nglobalThis.R=Relay;',sandbox);
     const make=(mode,context,id)=>{
       const r=new sandbox.R(),delivered=[];
-      Object.assign(r,{readyState:1,_isRelay:true,_clientId:id,_subscriptionType:mode,_joinContext:context,
+      Object.assign(r,{readyState:1,_isRelay:true,_clientId:id,_relayClientId:id,_relayKey:'unit',_subscriptionType:mode,_joinContext:context,
         _sendQueue:[],_busConnected:()=>true,_deliverIncomingMessage:m=>delivered.push(m),_enqueueRelayMessage(){}});
       return {r,delivered};
     };
@@ -1620,6 +1626,263 @@ async function runV55RelayEdgeChecks({baseUrl,url,token}){
   }
 }
 
+async function runV56HandoffChecks({baseUrl,url,token}){
+  const assert=require('node:assert/strict'),{WebSocket}=require('ws');
+  const stamp=Date.now().toString(36),code='RY-V56-'+stamp.toUpperCase(),sockets=[];
+  const post=async body=>{
+    const r=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    return {status:r.status,...await r.json()};
+  };
+  const open=async extra=>{
+    const r=await post({type:'relay-open',version:56,...extra});
+    assert.equal(r.status,200);assert(r.clientId.startsWith('rys56-'));assert(/^[0-9a-f]{48}$/.test(r.relayKey));
+    return {clientId:r.clientId,relayKey:r.relayKey};
+  };
+  const wait=async predicate=>{
+    const until=Date.now()+2500;while(!predicate()){
+      if(Date.now()>until)throw Error('V56 WS deadline');await new Promise(r=>setTimeout(r,5));
+    }
+  };
+  const socket=async()=>{
+    const ws=new WebSocket(url),messages=[];let closed=false;sockets.push(ws);
+    ws.on('message',(raw,binary)=>{if(!binary)try{messages.push(JSON.parse(raw.toString()));}catch(e){}});
+    ws.on('close',()=>closed=true);
+    await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});
+    return {ws,messages,closed:()=>closed};
+  };
+  const prepare=async(s,source,subscription)=>{
+    s.ws.send(JSON.stringify({type:'handoff-prepare',relayClientId:source?.clientId||null,
+      relayKey:source?.relayKey||null,subscription}));
+    await wait(()=>s.messages.some(m=>m.type==='handoff-prepared'||m.type==='handoff-error'));
+    const prepared=s.messages.find(m=>m.type==='handoff-prepared');assert(prepared,'Prepare rejected');
+    return prepared.handoffId;
+  };
+  const commit=async(s,id)=>{
+    s.ws.send(JSON.stringify({type:'handoff-commit',handoffId:id}));
+    await wait(()=>s.messages.some(m=>m.type==='handoff-committed'||m.type==='handoff-error'));
+    return s.messages.find(m=>m.type==='handoff-committed');
+  };
+  const media=seq=>({type:'audio-chunk',seq,sentAt:Date.now(),sampleRate:24000,pcm16:Buffer.alloc(960).toString('base64')});
+  const guide={type:'join',role:'guide',tourCode:code,roomId:'genel',name:'V56 guide '+stamp,deviceId:'v56-guide-'+stamp,token};
+  const pilgrim={type:'join',role:'pilgrim',tourCode:code,roomId:'genel',name:'V56 listener',deviceId:'v56-listener-'+stamp,pin:'1453'};
+  const headers={'Content-Type':'application/json',Authorization:'Bearer '+token};
+  try{
+    assert.equal((await fetch(baseUrl+'/api/tours',{method:'POST',headers,
+      body:JSON.stringify({code,name:'V56 handoff regression',pin:'1453',guideName:guide.name})})).status,200);
+    const source=await open({subscriptionContext:guide,messages:[guide]});
+    const before=await post({clientId:'v56-family-view-'+stamp,subscriptionContext:{type:'family-subscribe',tourCode:code}});
+    assert.equal(before.messages.find(m=>m.type==='family-state').room.connectedGuides.length,0,'relay-open must have no join side effect');
+    assert.equal((await post({...source,token,subscriptionContext:guide,messages:[guide,{type:'guide-stream-state',isLive:true,broadcastMode:'mic'}]})).status,200);
+    const listener=await open();await post({...listener,subscriptionContext:pilgrim,messages:[pilgrim]});
+    // Prepare/cancel leaves the old HTTP publisher usable.
+    const canceled=await socket();await prepare(canceled,source,guide);
+    await post({...source,token,subscriptionContext:guide,messages:[media(0)]});
+    assert((await post({...listener,subscriptionContext:pilgrim})).messages.some(m=>m.type==='audio-chunk'&&m.seq===0));
+    canceled.ws.send(JSON.stringify({type:'handoff-cancel'}));canceled.ws.close();
+    assert.equal((await post({...source,token,subscriptionContext:guide,messages:[]})).status,200);
+    // A changed HTTP context invalidates a prepared ticket without moving membership.
+    const changed=await socket(),changedId=await prepare(changed,source,guide);
+    const moved={...guide,roomId:'siyer'};
+    await post({...source,token,subscriptionContext:moved,messages:[]});
+    assert.equal(await commit(changed,changedId),undefined);
+    assert(changed.messages.some(m=>m.type==='handoff-error'&&m.code==='context-changed'));changed.ws.close();
+    await post({...source,token,subscriptionContext:guide,messages:[{type:'guide-stream-state',isLive:true,broadcastMode:'mic'}]});
+    // Commit is the server's linearization point. Every late old request is fenced.
+    const native=await socket(),id=await prepare(native,source,guide);
+    const committed=await commit(native,id);assert.equal(committed?.ack?.type,'joined');
+    assert.equal(committed.ack.room.connectedGuides.length,1);
+    for(let n=0;n<3;n++){
+      const late=await post({...source,token,subscriptionContext:guide,messages:[media(10+n)]});
+      assert.equal(late.status,409);assert.equal(late.error,'relay-session-retired');
+    }
+    const roomEvents=native.messages.filter(m=>m.type==='room-state').length;
+    native.ws.send(JSON.stringify({type:'handoff-commit',handoffId:id}));
+    await wait(()=>native.messages.filter(m=>m.type==='handoff-committed').length===2);
+    assert.equal(native.messages.filter(m=>m.type==='room-state').length,roomEvents,'Commit retry must not rejoin');
+    assert.equal((await post({type:'relay-close',version:56,...source})).status,200);
+    const binary=Buffer.alloc(972);binary.writeUInt32LE(3,0);binary.writeDoubleLE(Date.now(),4);
+    native.ws.send(binary);await new Promise(r=>setTimeout(r,25));
+    assert((await post({...listener,subscriptionContext:pilgrim})).messages.some(m=>m.type==='audio-chunk'&&m.seq===3));
+    assert(!native.closed(),'Late relay request must not terminate the native socket');
+    assert.equal((await post({clientId:source.clientId,relayKey:'g'.repeat(48)})).status,401);
+    assert.equal((await post({clientId:source.clientId,relayKey:'ğ'.repeat(48)})).status,401);
+    assert.equal((await post({clientId:'rys56-'+'f'.repeat(36),relayKey:'b'.repeat(48)})).status,409);
+    const get=await fetch(baseUrl+'/api/ws-relay?'+new URLSearchParams({clientId:listener.clientId}));
+    assert.equal(get.status,401,'A public clientId alone must not drain a v56 outbox');
+    const preflight=await fetch(baseUrl+'/api/ws-relay',{method:'OPTIONS',headers:{
+      Origin:'https://ridvanses.vercel.app','Access-Control-Request-Method':'GET',
+      'Access-Control-Request-Headers':'x-rys-relay-key'}});
+    assert((preflight.headers.get('access-control-allow-headers')||'').toLowerCase().includes('x-rys-relay-key'));
+    const keyedGet=await fetch(baseUrl+'/api/ws-relay?'+new URLSearchParams({clientId:listener.clientId}),
+      {headers:{'X-Rys-Relay-Key':listener.relayKey}});
+    assert.equal(keyedGet.status,200);
+    const urlKey=await fetch(baseUrl+'/api/ws-relay?'+new URLSearchParams({clientId:listener.clientId,relayKey:listener.relayKey}));
+    assert.equal(urlKey.status,401,'Relay key must not be accepted from a GET URL');
+    // Pilgrim without deviceId still transfers exactly one membership; PIN is rechecked.
+    for(const subscription of [
+      {...pilgrim,deviceId:'',name:'V56 no-device listener',phone:'preserved-phone',lang:'ar'},
+      {type:'family-subscribe',tourCode:code},
+      {type:'admin-subscribe',token}
+    ]){
+      const old=await open();await post({...old,token:subscription.type==='admin-subscribe'?token:undefined,
+        subscriptionContext:subscription,messages:[subscription]});
+      if(subscription.type==='join'){
+        const wrong=await socket();wrong.ws.send(JSON.stringify({type:'handoff-prepare',relayClientId:old.clientId,relayKey:old.relayKey,
+          subscription:{...subscription,pin:'wrong'}}));
+        await wait(()=>wrong.messages.some(m=>m.type==='handoff-error'));
+        assert(wrong.messages.some(m=>m.code==='pin-required'));wrong.ws.close();
+        assert.equal((await post({...old,subscriptionContext:subscription})).status,200);
+      }
+      const target=await socket(),ticket=await prepare(target,old,subscription);
+      const done=await commit(target,ticket);assert(done);
+      assert.equal(done.ack.type,subscription.type==='join'?'joined':subscription.type==='family-subscribe'?'family-state':'admin-rooms-update');
+      if(subscription.type==='join')assert.equal(done.ack.room.totalListeners,2);
+      assert.equal((await post({...old,token,subscriptionContext:subscription})).status,409);
+      target.ws.close();
+    }
+    // A fresh HTTP generation replaces and fences an abandoned v56 generation.
+    const chainJoin={...guide,roomId:'chain',name:'V56 chain '+stamp,deviceId:'chain-'+stamp};
+    const older=await open(),newer=await open();
+    await post({...older,token,subscriptionContext:chainJoin});
+    await post({...newer,token,subscriptionContext:chainJoin});
+    assert.equal((await post({...older,token,subscriptionContext:chainJoin})).status,409);
+    const chainNative=await socket(),chainTicket=await prepare(chainNative,newer,chainJoin);
+    assert(await commit(chainNative,chainTicket));
+    assert.equal((await post({...older,token,subscriptionContext:chainJoin})).status,409);
+    chainNative.ws.close();
+    // MQTT-only source: no HTTP session has joined, so no source fencing is needed.
+    const lone=await socket(),loneId=await prepare(lone,null,{type:'family-subscribe',tourCode:code});
+    assert.equal((await commit(lone,loneId)).ack.type,'family-state');lone.ws.close();
+    if(typeof recordResult==='function')recordResult('ADIM-3.V56',
+      'Gerçek HTTP/WS: yan etkisiz open/prepare, cancel, revision, commit/idempotans, eski istek409, native PCM, PIN ve3 abonelik',true);
+    console.log('V56 E2E PASS: prepare has no membership side effect; committed source fenced; late requests cannot kill native');
+  }finally{
+    for(const ws of sockets)ws.close();
+    await fetch(baseUrl+'/api/tours/'+code,{method:'DELETE',headers:{Authorization:'Bearer '+token}});
+  }
+}
+
+async function runStep5V56HandoffChecks(){
+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),crypto=require('node:crypto');
+  const assert=require('node:assert/strict'),read=f=>fs.readFileSync(path.join(ROOT_DIR,f),'utf8').replace(/\r\n/g,'\n');
+  function pick(text,name,kind='function'){
+    const head=kind==='class'?'class ':kind==='method'?'(?:async )?':'(?:async )?function ';
+    const m=new RegExp('^([ \\t]*)'+head+name+(kind==='class'?'\\b':'\\([^\\n]*\\)\\s*\\{'),'m').exec(text);
+    assert(m,'Missing '+name);
+    for(let end=text.indexOf('}',m.index+m[0].length);end>=0;end=text.indexOf('}',end+1)){
+      const code=text.slice(m.index,end+1).trim();
+      try{new vm.Script(kind==='method'?'class Probe{'+code+'}':code);return code;}catch(e){if(e.name!=='SyntaxError')throw e;}
+    }
+    throw Error('Unterminated '+name);
+  }
+  const server=read('server.js'),shim=read('public/vercel-ws-shim.js');
+  const names=['resolveRysRelay','digestRysSubscription','sendRysSubscriptionAck','clearRysHandoff','validateRysHandoff','handleRysNativeHandoff'];
+  let now=1000,allowed=true,joins=0,created=0;
+  const sessions=new Map(),serverJobs=[];
+  const sc={crypto,Buffer,console,Date:{now:()=>now},httpRelaySessions:sessions,db:{tours:[]},
+    isValidAuthToken:t=>allowed&&t==='good',
+    getOrCreateRelaySession(){created++;throw Error('Unknown v56 ID must not be recreated');},
+    setTimeout(fn){serverJobs.push(fn);return {unref(){}};},clearTimeout(){},
+    removeClientFromRoom(room,id){room.clients.delete(id);},
+    serializeRoom:room=>({members:room.clients.size}),
+    processClientJsonMessage(ctx,request){
+      joins++;ctx.currentRoom=activeSource.currentRoom;
+      ctx.currentRoom.clients.set(ctx.clientId,{role:'guide',name:request.name});
+      sc.sendRysSubscriptionAck(ctx,{type:'joined',room:{members:ctx.currentRoom.clients.size}});
+    }};
+  vm.createContext(sc);vm.runInContext(names.map(n=>pick(server,n)).join('\n'),sc);
+  let activeSource;
+  const request={type:'join',role:'guide',token:'good',tourCode:'X',roomId:'genel',name:'Guide',deviceId:'d'};
+  const make=()=>{
+    const source={clientId:'rys56-unit',relayKey:'b'.repeat(48),relayRevision:1,relayRetired:false,ws:{},
+      currentRoom:{clients:new Map([['rys56-unit',{role:'guide',name:'Guide',deviceId:'d'}]])}};
+    source.relayDigest=sc.digestRysSubscription(request);sessions.set(source.clientId,source);activeSource=source;
+    const sent=[],ctx={clientId:'native',currentRoom:null,ws:{send:s=>sent.push(JSON.parse(s)),close(){}}};
+    sc.handleRysNativeHandoff(ctx,{type:'handoff-prepare',subscription:request,relayClientId:source.clientId,relayKey:source.relayKey});
+    const id=sent.find(m=>m.type==='handoff-prepared').handoffId;
+    return {source,ctx,sent,id};
+  };
+  let a=make();assert.equal(joins,0);now+=4000;
+  sc.handleRysNativeHandoff(a.ctx,{type:'handoff-commit',handoffId:a.id});
+  assert(a.sent.some(m=>m.code==='prepare-expired'));assert(!a.source.relayRetired);assert.equal(joins,0);
+  a=make();sc.handleRysNativeHandoff(a.ctx,{type:'handoff-cancel'});assert(!a.ctx.rysHandoff);assert.equal(joins,0);
+  a=make();allowed=false;sc.handleRysNativeHandoff(a.ctx,{type:'handoff-commit',handoffId:a.id});
+  assert(a.sent.some(m=>m.code==='auth-required'));assert(!a.source.relayRetired);assert.equal(joins,0);allowed=true;
+  a=make();sc.handleRysNativeHandoff(a.ctx,{type:'handoff-commit',handoffId:a.id});
+  assert(a.source.relayRetired);assert.equal(joins,1);assert.equal(a.source.currentRoom.clients.size,1);
+  sc.handleRysNativeHandoff(a.ctx,{type:'handoff-commit',handoffId:a.id});assert.equal(joins,1);
+  sessions.delete(a.source.clientId);
+  let status=200;const res={status(n){status=n;return this;},json(){return this;}};
+  assert.equal(sc.resolveRysRelay({headers:{},method:'POST'},res,{clientId:a.source.clientId,relayKey:a.source.relayKey}),null);
+  assert.equal(status,409);assert.equal(created,0,'Cleanup must not let a retired ID be recreated');
+
+  // Client: commit was sent, HTTP reports retired, but the commit ACK is lost.
+  const helpers=['validRysAudio','unpackRysAudio','installRysCoalescing'].map(n=>pick(shim,n)).join('\n');
+  const probes=[],jobs=[];let fetchMode='retired',delivered=0,mqttClosed=0,published=0,resolveOpen;
+  const bodies=[];
+  class Native{constructor(){this.readyState=1;this.sent=[];probes.push(this);}send(s){this.sent.push(JSON.parse(s));}close(){this.readyState=3;}}
+  const cc={console,Buffer,Date:{now:()=>100},AbortController,ArrayBuffer,Float32Array,URLSearchParams,
+    NativeWebSocket:Native,window:{},localStorage:{getItem:()=>''},
+    setTimeout(fn,ms){const job={fn,ms};jobs.push(job);return job;},clearTimeout(){},setInterval:()=>1,clearInterval(){},queueMicrotask,
+    fetch:async(route,options)=>{
+      const body=JSON.parse(options.body);bodies.push(body);
+      if(body.type==='relay-close')return {ok:true,json:async()=>({closed:true})};
+      if(fetchMode==='offline')throw Error('API offline');
+      if(body.type==='relay-open'){
+        if(fetchMode==='deferred')return new Promise(r=>resolveOpen=r);
+        return {ok:true,json:async()=>({clientId:'rys56-new',relayKey:'c'.repeat(48)})};
+      }
+      if(fetchMode==='retired')return {ok:false,status:409,json:async()=>({error:'relay-session-retired'})};
+      return {ok:true,json:async()=>({messages:[{type:'room-state'}]})};
+    }};
+  vm.createContext(cc);vm.runInContext(helpers+'\n'+pick(shim,'RysAudioCoalescer','class')+'\n'+
+    pick(shim,'SmartWebSocket','class')+'\nglobalThis.S=SmartWebSocket;globalThis.install=installRysCoalescing;',cc);
+  const client=()=>{
+    const s=Object.create(cc.S.prototype);
+    Object.assign(s,{url:'wss://local/ws',readyState:1,_isRelay:true,_httpEpoch:0,_transportGeneration:0,
+      _clientId:'stable-mqtt-identity',_relayClientId:'rys56-old',_relayKey:'b'.repeat(48),
+      _subscriptionType:'join',_joinContext:{...request},_sendQueue:[],
+      _lastGuideState:{type:'guide-stream-state',isLive:true,broadcastMode:'mic'},
+      _busConnected:()=>true,_initMqttBus(){},_publishMqtt(){published++;},
+      _closeMqttClients(){mqttClosed++;},_deliverIncomingMessage(){delivered++;},onmessage(){},onerror(){}});
+    cc.install(s);return s;
+  };
+  const c=client();c._tryNativeFailback();const probe=probes.at(-1);probe.onopen();
+  const handoffId='a'.repeat(32);probe.onmessage({data:JSON.stringify({type:'handoff-prepared',handoffId})});
+  assert(probe.sent.some(m=>m.type==='handoff-commit'));
+  await c._flushAndPoll();assert(c._relayFenced);assert.equal(c._relayClientId,'rys56-old');
+  const sent=bodies.length;await c._flushAndPoll();assert.equal(bodies.length,sent,'Do not reopen while commit ACK is pending');
+  jobs.find(j=>j.ms===5000).fn();
+  assert(c._isRelay);assert.equal(c._relayClientId,null);assert.equal(c._relayKey,null);assert(!c._relayFenced);
+  assert.equal(mqttClosed,0,'Failed failback must keep MQTT active');
+  fetchMode='normal';await c._flushAndPoll();
+  assert.equal(c._relayClientId,'rys56-new');assert.equal(c._clientId,'stable-mqtt-identity');
+  const normal=bodies.filter(b=>b.subscriptionContext).at(-1);
+  assert.equal(normal.clientId,'rys56-new');assert(normal.messages.some(m=>m.type==='guide-stream-state'&&m.isLive));
+  const closing=client();closing._relayClientId=null;closing._relayKey=null;fetchMode='deferred';
+  const flight=closing._flushAndPoll();closing.close();
+  resolveOpen({ok:true,json:async()=>({clientId:'rys56-late',relayKey:'d'.repeat(48)})});
+  await flight;assert.equal(closing.readyState,3);assert.equal(closing._relayClientId,null);
+  // A source-less prepare must abort an in-flight open and keep new HTTP joins paused.
+  const opening=client();opening._relayClientId=null;opening._relayKey=null;fetchMode='deferred';
+  const openingFlight=opening._flushAndPoll();opening._tryNativeFailback();
+  const sourceLess=probes.at(-1);sourceLess.onopen();
+  assert(opening._relayFenced);
+  assert.equal(sourceLess.sent.find(m=>m.type==='handoff-prepare').relayClientId,null);
+  resolveOpen({ok:true,json:async()=>({clientId:'rys56-too-late',relayKey:'e'.repeat(48)})});
+  await openingFlight;assert.equal(opening._relayClientId,null);
+  const requests=bodies.length;await opening._flushAndPoll();assert.equal(bodies.length,requests);
+  sourceLess.onerror();assert(!opening._relayFenced);assert(opening._isRelay);
+  fetchMode='offline';const offline=client();offline._relayClientId=null;offline._relayKey=null;
+  await offline._flushAndPoll();assert(offline._isRelay);
+  const frame=seq=>({type:'audio-chunk',seq,sampleRate:24000,sentAt:100,pcm16:Buffer.alloc(960).toString('base64')});
+  for(let i=0;i<3;i++)offline.send(JSON.stringify(frame(i)));
+  assert(published>0,'MQTT audio must keep working while relay-open is unavailable');
+  if(typeof recordResult==='function')recordResult('ADIM-5.V56',
+    'Prepare expiry/revoke/cancel; silinen ID409; ACK kaybı/fencing/yeni oturum; geç open cevabı; MQTT bağımsızlığı',true);
+  console.log('V56 UNIT PASS: expired/revoked prepare has no side effects; lost ACK recovers with fresh HTTP ID; no source-ID resurrection');
+}
+
 async function main() {
   const runtimePath = path.join(ROOT_DIR, 'data', 'runtime.json');
   const runtimeSnapshot = fs.existsSync(runtimePath) ? fs.readFileSync(runtimePath, 'utf8') : null;
@@ -1629,6 +1892,7 @@ async function main() {
     await runStep4FrontendPwaAndAtomicWriteChecks();
     await runStep5V53AudioChecks();
     await runStep5V54AudioChecks();
+    await runStep5V56HandoffChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);
