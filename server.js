@@ -451,9 +451,15 @@ function rysSendAudio(socket,data,binary=false,now=Date.now()){
 function broadcastToRoom(room,payload,excludeWs=null,isAudioOverride=false){
   const audio=isAudioOverride||!!(payload&&typeof payload==='object'&&payload.type==='audio-chunk');
   const data=typeof payload==='string'?payload:JSON.stringify(payload);
+  let relayData;
   for(const client of room.clients.values()){
     const socket=client.ws;if(socket===excludeWs||socket.readyState!==WebSocket.OPEN)continue;
-    if(audio)rysSendAudio(socket,data,false);
+    if(audio){
+      if(socket.isHttpRelay&&relayData===undefined){
+        try{relayData=payload&&typeof payload==='object'?payload:JSON.parse(data);}catch(e){relayData=data;}
+      }
+      rysSendAudio(socket,socket.isHttpRelay?relayData:data,false);
+    }
     else {try{socket.send(data);}catch(e){}}
   }
 }
@@ -507,22 +513,21 @@ function revokeAuthToken(token) {
 
 // IP Tabanlı Hafif Hız Sınırlayıcı (Sliding Window Rate Limiter)
 const rateLimitBuckets = new Map();
-function createRateLimiter({ windowMs = 60000, max = 30, message = 'Çok fazla istek gönderildi. Lütfen biraz bekleyiniz.' } = {}) {
+function createRateLimiter({ windowMs = 60000, max = 30, scope = '', message = 'Çok fazla istek gönderildi. Lütfen biraz bekleyiniz.' } = {}) {
   return (req, res, next) => {
     const now = Date.now();
     const ip = String(req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'local').trim();
-    const key = `${req.baseUrl}${req.path}:${ip}`;
+    const key = `${scope}:${req.baseUrl}${req.path}:${ip}`;
     let entry = rateLimitBuckets.get(key);
-    if (!entry || now > entry.resetAt) {
+    if (!entry || now >= entry.resetAt) {
+      if (!entry && rateLimitBuckets.size >= 5000) {
+        for (const [k, v] of rateLimitBuckets) if (now >= v.resetAt) rateLimitBuckets.delete(k);
+        if (rateLimitBuckets.size >= 5000) return res.status(429).json({ success: false, message });
+      }
       entry = { count: 0, resetAt: now + windowMs };
       rateLimitBuckets.set(key, entry);
     }
     entry.count += 1;
-    if (rateLimitBuckets.size > 5000) {
-      for (const [k, v] of rateLimitBuckets.entries()) {
-        if (now > v.resetAt) rateLimitBuckets.delete(k);
-      }
-    }
     if (entry.count > max) {
       return res.status(429).json({
         success: false,
@@ -538,11 +543,21 @@ const loginRateLimiter = createRateLimiter({
   max: 30,
   message: 'Çok fazla giriş denemesi yapıldı. Lütfen 1 dakika sonra tekrar deneyiniz.'
 });
-const joinTourRateLimiter = createRateLimiter({
-  windowMs: 60000,
-  max: 60,
-  message: 'Çok fazla kafile doğrulama isteği gönderildi. Lütfen kısa süre bekleyiniz.'
+// v59: shared NAT admission and failed PIN attempts use separate buckets.
+const joinTourAdmissionLimiter = createRateLimiter({
+  scope: 'join-valid', windowMs: 60000, max: 1200,
+  message: 'Kafile katılımı yoğun. Lütfen kısa süre sonra tekrar deneyiniz.'
 });
+const joinTourFailureLimiter = createRateLimiter({
+  scope: 'join-invalid', windowMs: 60000, max: 60,
+  message: 'Çok fazla hatalı kafile veya PIN denemesi. Lütfen 1 dakika bekleyiniz.'
+});
+function joinTourRateLimiter(req, res, next) {
+  const body = req.body || {}, code = String(body.code || '').toUpperCase().trim();
+  const tour = db.tours.find(t => t.code.toUpperCase() === code);
+  const valid = !!tour && !(tour.pinProtected && tour.pin && String(tour.pin) !== String(body.pin || '').trim());
+  return (valid ? joinTourAdmissionLimiter : joinTourFailureLimiter)(req, res, next);
+}
 const sosRateLimiter = createRateLimiter({
   windowMs: 60000,
   max: 20,
@@ -1265,7 +1280,7 @@ wss.on('connection', (ws, req) => {
       const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
       if (!validBinaryPcmFrame(buf)) return;
       ctx.currentRoom.activePublisherClientId = ctx.clientId;
-      let fallbackJsonStr = null;
+      let fallbackPayload = null;
 
       for (const r of getTargetBroadcastRooms(ctx.currentRoom)) {
         for (const peer of r.clients.values()) {
@@ -1273,13 +1288,13 @@ wss.on('connection', (ws, req) => {
           if (!peer.ws.isHttpRelay) {
             rysSendAudio(peer.ws,buf,true);
           } else if (buf.length > 12) {
-            if (!fallbackJsonStr) {
+            if (!fallbackPayload) {
               const rawSeq = buf.readUInt32LE(0);
               const phraseStart = Boolean(rawSeq & 0x80000000);
               const seq = rawSeq & 0x7fffffff;
               const sentAt = buf.readDoubleLE(4);
               const pcmSlice = buf.subarray(12);
-              fallbackJsonStr = JSON.stringify({
+              fallbackPayload = {
                 type: 'audio-chunk',
                 seq,
                 phraseStart,
@@ -1290,9 +1305,9 @@ wss.on('connection', (ws, req) => {
                 pcm16: pcmSlice.toString('base64'),
                 level: 0.35,
                 sentAt
-              });
+              };
             }
-            rysSendAudio(peer.ws,fallbackJsonStr,false);
+            rysSendAudio(peer.ws,fallbackPayload,false);
           }
         }
       }

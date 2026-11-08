@@ -16,7 +16,7 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=57"></script>
+  <script src="/vercel-ws-shim.js?v=59"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
@@ -1606,7 +1606,7 @@
       const token = ++rxLoadToken;
       rxPlayerWorkletLoading = true;
       ctx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=53-audio')
+        .addModule('/pcm-player-worklet.js?v=59-audio')
         .then(() => {
           if (token !== rxLoadToken || audioCtx !== ctx || rxPlayerWorkletNode) return;
           const node = new AudioWorkletNode(ctx, 'rys-pcm-player', {
@@ -1876,7 +1876,7 @@
         if (typeof audioCtx.createWaveShaper === 'function') {
           softClipper = audioCtx.createWaveShaper();
           softClipper.curve = createTransparentSoftClipperCurve();
-          softClipper.oversample = 'none';
+          softClipper.oversample = '4x';
         }
 
         rxHighPass.connect(rxClarity);
@@ -1963,7 +1963,7 @@
     function updateVolume(val) {
       volumeMultiplier = Number(val) / 100;
       document.getElementById('volumeLabel').textContent = `%${val}`;
-      if (gainNode) gainNode.gain.value = volumeMultiplier;
+      if (gainNode) gainNode.gain.setTargetAtTime(volumeMultiplier, audioCtx.currentTime, 0.010);
     }
 
     let nextAudioTime = 0;
@@ -2555,7 +2555,7 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         // PATCH: sw-register-v53
-        navigator.serviceWorker.register('/sw.js?v=57').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=59').catch(() => {});
       });
     }
 

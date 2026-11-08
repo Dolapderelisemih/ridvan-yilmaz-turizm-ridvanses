@@ -578,6 +578,7 @@ async function runStep2And3LiveServerAndWsTests() {
   await runV56HandoffChecks({baseUrl,url:wsUrl,token:authToken});
   await runV57RoutingChecks({baseUrl,url:wsUrl,token:authToken});
   await runV58InputChecks({baseUrl,url:wsUrl,token:authToken});
+  await runV59FanoutChecks({baseUrl,url:wsUrl,token:authToken});
 
   guideGenelWs.close();
   pilgrimWs.close();
@@ -1528,9 +1529,9 @@ async function runStep5V54AudioChecks(){
     if(mode!=='join')assert.equal(body.joinContext??null,null);
     else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
   }
-  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v57"));assert(sw.includes('/vercel-ws-shim.js?v=57'));
+  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v59"));assert(sw.includes('/vercel-ws-shim.js?v=59'));
   for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
-    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'57',f+' stale shim');
+    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'59',f+' stale shim');
   }
   if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
   console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
@@ -2121,6 +2122,198 @@ async function runStep5V58InputChecks(){
   console.log('V58 UNIT PASS: bounded iterative wire validation; non-string metadata rejected; PCM/demo accepted; malformed cookies ignored');
 }
 
+
+// v59: real 301 WebSockets; deterministic queue fault injection is reported separately from TCP pause.
+async function runV59FanoutChecks({baseUrl,url,token}){
+  const assert=require('node:assert/strict'),wsLib=require('ws');
+  const {monitorEventLoopDelay}=require('node:perf_hooks');
+  const code='RY-V59-'+Date.now().toString(36).toUpperCase(),ip='198.51.100.59';
+  const auth={Authorization:'Bearer '+token,'Content-Type':'application/json'};
+  const sockets=[],peers=new Map(),received=Array.from({length:300},()=>[]),faults=[],latencies=[],sent=new Map();
+  const originalUpgrade=wsLib.WebSocketServer.prototype.handleUpgrade;let joined=0;
+  const deadline=async(test,ms=10000)=>{const end=Date.now()+ms;while(!test()){
+    if(Date.now()>end)throw Error('V59 deadline; joined='+joined);await new Promise(r=>setTimeout(r,5));}};
+  const request=async(body)=>{const r=await fetch(baseUrl+'/api/join-tour',{method:'POST',
+    headers:{'Content-Type':'application/json','X-Forwarded-For':ip},body:JSON.stringify(body)});await r.arrayBuffer();return r.status;};
+  const lag=monitorEventLoopDelay({resolution:10});let guide,created=false;
+  wsLib.WebSocketServer.prototype.handleUpgrade=function(req,socket,head,cb){
+    return originalUpgrade.call(this,req,socket,head,(ws,request)=>{
+      if(request?.headers['x-rys-v59']!==undefined)peers.set(request.headers['x-rys-v59'],ws);
+      return cb(ws,request);
+    });
+  };
+  const connect=async(index,role)=>{
+    const socket=new wsLib.WebSocket(url,{headers:{'X-Forwarded-For':ip,'X-Rys-V59':String(index)}});sockets.push(socket);
+    socket.on('error',e=>faults.push(e.message));
+    socket.on('message',(raw,binary)=>{
+      if(binary){
+        if(role==='guide')return;
+        const seq=raw.length===972?raw.readUInt32LE(0)&0x7fffffff:-1,expected=sent.get(seq);
+        if(!expected||!raw.equals(expected.bytes))faults.push('PCM mismatch '+index+'/'+seq);
+        else{received[index].push(seq);latencies.push(performance.now()-expected.at);}
+      }else{try{if(JSON.parse(raw.toString()).type==='joined')joined++;}catch(e){faults.push('bad JSON');}}
+    });
+    await new Promise((resolve,reject)=>{socket.once('open',resolve);socket.once('error',reject);});
+    socket.send(JSON.stringify({type:'join',role,tourCode:code,roomId:'genel',pin:'3159',
+      token:role==='guide'?token:undefined,name:'V59 '+role+' '+index,deviceId:'v59-'+code+'-'+index}));
+    return socket;
+  };
+  let pace0=0;
+  const frame=async(seq)=>{
+    if(seq===0)pace0=performance.now();
+    const bytes=Buffer.alloc(972);bytes.writeUInt32LE(seq,0);bytes.writeDoubleLE(Date.now(),4);
+    for(let i=0;i<480;i++)bytes.writeInt16LE(Math.round(9000*Math.sin(2*Math.PI*200*(seq*480+i)/24000)),12+2*i);
+    sent.set(seq,{bytes,at:performance.now()});guide.send(bytes);
+    await new Promise(r=>setTimeout(r,Math.max(0,pace0+(seq+1)*20-performance.now()))); // paced 50 pps, never a synthetic all-at-once send storm
+  };
+  try{
+    const create=await fetch(baseUrl+'/api/tours',{method:'POST',headers:auth,
+      body:JSON.stringify({code,name:'V59 CGNAT 300',pin:'3159',guideName:'V59 guide -1'})});
+    assert.equal(create.status,200);await create.arrayBuffer();created=true;
+    const statuses=[];
+    for(let start=0;start<300;start+=30)statuses.push(...await Promise.all(Array.from({length:30},()=>request({code,pin:'3159'}))));
+    console.log('V59 CGNAT HTTP: '+JSON.stringify(statuses.reduce((a,s)=>(a[s]=(a[s]||0)+1,a),{})));
+    assert.equal(statuses.filter(s=>s===200).length,300,'300 valid clients behind one NAT must be admitted');
+    for(let i=0;i<61;i++)assert.equal(await request({code,pin:'wrong'}),i<60?403:429);
+    assert.equal(await request({code,pin:'3159'}),200,'failed PIN bucket must not block valid NAT peers');
+    guide=await connect(-1,'guide');
+    for(let start=0;start<300;start+=30)await Promise.all(Array.from({length:30},(_,j)=>connect(start+j,'pilgrim')));
+    await deadline(()=>joined===301&&peers.size===301);
+    const cpu=process.cpuUsage(),started=performance.now();lag.enable();
+    for(let seq=0;seq<20;seq++)await frame(seq);
+    await deadline(()=>received.every(a=>a.length===20));
+    const slow=sockets.filter(s=>s!==guide).slice(0,30);
+    for(let i=0;i<30;i++){
+      slow[i]._socket.pause();
+      // Deterministic transport-queue pressure, independent of OS TCP window size.
+      Object.defineProperty(peers.get(String(i)),'bufferedAmount',{configurable:true,get:()=>20000});
+    }
+    for(let seq=20;seq<70;seq++)await frame(seq);
+    const dropped=Array.from({length:30},(_,i)=>peers.get(String(i))._rysAudioDrops||0);
+    assert(dropped.every(n=>n===50),'each congested peer must drop exactly its 50 stale frames');
+    for(let i=0;i<30;i++){delete peers.get(String(i)).bufferedAmount;slow[i]._socket.resume();}
+    for(let seq=70;seq<110;seq++)await frame(seq);
+    await deadline(()=>received.slice(30).every(a=>a.length===110)&&received.slice(0,30).every(a=>a.length===60));
+    for(let i=0;i<3;i++)Object.defineProperty(peers.get(String(i)),'bufferedAmount',{configurable:true,get:()=>65537});
+    for(let seq=110;seq<120;seq++)await frame(seq);
+    await deadline(()=>received.slice(30).every(a=>a.length===120));
+    await deadline(()=>[0,1,2].every(i=>peers.get(String(i))._rysClosing));
+    lag.disable();
+    for(let i=30;i<300;i++)assert.deepEqual(received[i],Array.from({length:120},(_,n)=>n));
+    for(let i=3;i<30;i++)assert.deepEqual(received[i],[...Array.from({length:20},(_,n)=>n),...Array.from({length:50},(_,n)=>n+70)]);
+    assert.deepEqual(faults,[]);assert(latencies.every(x=>Number.isFinite(x)&&x>=0));
+    latencies.sort((a,b)=>a-b);const percentile=p=>latencies[Math.floor((latencies.length-1)*p)];
+    const elapsed=performance.now()-started,used=process.cpuUsage(cpu);
+    assert(percentile(.99)<500,'local fanout P99 exceeded 500ms; inspect host contention');
+    const metrics={listeners:300,healthy:270,frames:120,healthyFrames:270*120,
+      slowQueueDrops:dropped.reduce((a,b)=>a+b,0),hardIsolated:3,corrupt:0,
+      p50Ms:+percentile(.5).toFixed(2),p95Ms:+percentile(.95).toFixed(2),p99Ms:+percentile(.99).toFixed(2),
+      maxMs:+latencies.at(-1).toFixed(2),eventLoopP99Ms:+(lag.percentile(99)/1e6).toFixed(2),
+      cpuMs:+((used.user+used.system)/1000).toFixed(1),elapsedMs:+elapsed.toFixed(1)};
+    console.log('V59 METRICS '+JSON.stringify(metrics));
+    recordResult('ADIM-3.V59','300 same-IP joins; 301 real WS; 270 healthy intact; 30 paused + injected queues; 3 hard-isolated',true,JSON.stringify(metrics));
+    console.log('V59 E2E PASS: byte integrity and local transport delay; physical crackle/OS background are not measured');
+  }finally{
+    lag.disable();wsLib.WebSocketServer.prototype.handleUpgrade=originalUpgrade;
+    for(const s of sockets)try{s._socket?.resume();s.terminate();}catch(e){}
+    if(created){const r=await fetch(baseUrl+'/api/tours/'+code,{method:'DELETE',headers:auth});await r.arrayBuffer();}
+  }
+}
+
+
+async function runStep5V59AudioChecks(){
+  const assert=require('node:assert/strict');
+  const read=f=>fs.readFileSync(path.join(ROOT_DIR,f),'utf8').replace(/\r\n/g,'\n');
+  const capture=read('public/pcm-capture-worklet.js'),player=read('public/pcm-player-worklet.js'),guide=read('public/rehber.html'),listener=read('public/dinle.html'),server=read('server.js');
+  function pick(source,name){
+    const match=new RegExp('^[ \\t]*(?:async )?function '+name+'\\(','m').exec(source);
+    if(!match)throw Error('V59 missing '+name);
+    for(let end=source.indexOf('}',match.index);end>=0;end=source.indexOf('}',end+1)){
+      const text=source.slice(match.index,end+1);try{new vm.Script(text);return text;}catch(e){if(e.name!=='SyntaxError')throw e;}
+    }throw Error('V59 unterminated '+name);
+  }
+  const box={Float32Array,Float64Array,Math,Number,RangeError,AudioWorkletProcessor:class{constructor(){this.port={postMessage(){}};}},
+    registerProcessor:(n,P)=>box.P=P,sampleRate:48000};
+  vm.createContext(box);vm.runInContext(capture.replace(/^export .*$/mg,''),box);
+  const rms=a=>Math.sqrt(a.reduce((s,v)=>s+v*v,0)/a.length);
+  const dsp=[];
+  for(const rate of [8000,16000,44100,48000]){
+    const input=Float32Array.from({length:rate*2},(_,i)=>.2+.8*Math.sin(2*Math.PI*997*i/rate));
+    const run=block=>{const frames=[],kernel=new box.RysCaptureKernel(rate,{continuousSpeech:true,comfortFade:false},m=>frames.push(Array.from(m.samples)));
+      for(let i=0;i<input.length;i+=block)kernel.process(input.subarray(i,i+block),i/rate);
+      assert.equal(frames.length,100);assert(frames.every(a=>a.length===480&&a.every(Number.isFinite)));
+      return frames.flat();};
+    const a=run(128),b=run(2048);assert.deepEqual(a,b,'128/2048 partition must preserve all samples');
+    const stable=a.slice(24000),dc=stable.reduce((s,x)=>s+x,0)/stable.length;
+    assert(Math.abs(dc)<1e-5);assert(Math.max(...stable.map(Math.abs))<.98);
+    const impulse=new box.RysFir24(rate),tail=[];
+    for(let i=0;i<rate;i++)impulse.push(i===0?1:0,x=>tail.push(x));
+    assert.equal(tail.length,24000);assert(tail.slice(2000).every(x=>Math.abs(x)<1e-15));
+    const amplitude=f=>{const fir=new box.RysFir24(rate),out=[];
+      for(let i=0;i<rate;i++)fir.push(.2*Math.sin(2*Math.PI*f*i/rate),x=>out.push(x));return rms(out.slice(2400));};
+    const pass=amplitude(1000);assert(pass>.13&&pass<.15);
+    const stop=rate>=44100?amplitude(14000):amplitude(rate*.49);
+    const stopDb=20*Math.log10(Math.max(1e-16,stop)/pass);
+    assert(stopDb<(rate>=44100?-75:-30),'band-edge rejection '+rate+' '+stopDb);
+    dsp.push({rate,frames:100,dc:+dc.toExponential(2),stopDb:+stopDb.toFixed(1)});
+  }
+  const loud=new box.RysCaptureKernel(48000,{continuousSpeech:true,comfortFade:false},m=>loudFrames.push(...m.samples)),loudFrames=[];
+  loud.process(Float32Array.from({length:96000},(_,i)=>.3+6*Math.sin(2*Math.PI*997*i/48000)));
+  assert(loudFrames.every(x=>Number.isFinite(x)&&Math.abs(x)<=.980001));
+  // Model a quiet consonant immediately after a loud vowel: verify hangover, not speaker identity.
+  const gate=new box.RysNearExpander();for(let i=0;i<12000;i++)gate.step(0);
+  for(let i=0;i<2400;i++)gate.step(.3*Math.sin(2*Math.PI*1500*i/24000));assert(gate.hold>0);
+  for(let i=0;i<480;i++)gate.step(.006*Math.sin(2*Math.PI*3000*i/24000));assert(gate.hold>0&&gate.g>.9);
+  vm.runInContext(player,box);const P=box.P,p=new P(),arrivals=[];
+  for(let seq=0;seq<110;seq++){
+    if(seq===20||seq===21)continue;
+    arrivals.push({seq,at:seq*20+[0,28,2,9][seq%4],samples:Float32Array.from({length:480},(_,i)=>.25*Math.sin(2*Math.PI*200*(seq*480+i)/24000))});
+  }arrivals.sort((a,b)=>a.at-b.at);
+  let now=0,prev=0,maxStep=0,index=0;
+  while(now<2050){
+    while(index<arrivals.length&&arrivals[index].at<=now){const m=arrivals[index++];p._push({...m,arrival:m.at});if(m.seq%7===0)p._push({...m,arrival:m.at});}
+    const out=new Float32Array(128);p.process([],[[out]]);
+    for(const y of out){assert(Number.isFinite(y)&&Math.abs(y)<=.99);maxStep=Math.max(maxStep,Math.abs(y-prev));prev=y;}
+    now+=128/48;
+  }
+  assert(p.stats.duplicate>0);assert(p.stats.concealed>=960);assert(maxStep<.06,'200Hz fixture abrupt jump '+maxStep);
+  const catchup=new P();catchup.playing=true;catchup.target=.08;catchup.expected=0;
+  catchup.haveHistory=true;catchup.frame.fill(.1);catchup.fi=0;catchup.catchupArmed=true;
+  for(let seq=0;seq<20;seq++)catchup.q.set(seq,new Float32Array(480).fill(-.1));
+  catchup.plc={fill:a=>a.fill(.1),append(){}};const phase=.375;catchup.phase=phase;
+  catchup._nextFrame();assert.equal(catchup.stats.catchupDropped,14);assert.equal(catchup.expected,15);
+  assert.equal(catchup.phase,phase);assert(Math.abs(catchup.frame[0]-.1)<1e-6);assert(Math.abs(catchup.frame[71]+.1)<1e-6);
+  const arming=new P();arming.playing=true;arming.target=.08;arming.haveHistory=true;arming.frame.fill(.1);arming.fi=0;
+  for(let i=0;i<210;i++){while(arming.q.size<20){const seq=arming.expected===null?0:(arming.expected+arming.q.size)%0x80000000;if(arming.expected===null)arming.expected=seq;arming.q.set(seq,new Float32Array(480).fill(.1));}
+    arming.process([],[[new Float32Array(128)]]);if(arming.stats.catchupDropped>0)break;}
+  assert(arming.stats.catchupDropped>0,'sustained backlog must arm catch-up within 560ms');
+  const env={isMicBroadcasting:true,isVoiceLoopbackTesting:false,isHealingGuideMic:false,
+    micStream:{getAudioTracks:()=>[{readyState:'live',muted:true}],getTracks:()=>[]},guideTrackMutedAt:1000,guideLastMicRebuildAt:0,
+    lastGuideMicChunkAt:5000,Date:{now:()=>5000},audioCtx:null,disconnectGuideAudioNodes(){},
+    setupGuideMicrophoneGraph:async()=>{env.rebuilds++;},rebuilds:0,window:{},document:{getElementById:()=>null},console};
+  vm.createContext(env);vm.runInContext(pick(guide,'healGuideMicrophoneIfNeeded'),env);
+  await env.healGuideMicrophoneIfNeeded();assert.equal(env.rebuilds,1);await env.healGuideMicrophoneIfNeeded();assert.equal(env.rebuilds,1);
+  assert(guide.includes('healGuideMicrophoneIfNeeded(true), 350'));assert(guide.includes('audioTrack.onmute'));
+  for(const [source,name,node,value] of [[guide,'updateGuideMicGain','guideMicGainNode',1.25],[listener,'updateVolume','gainNode',1.25]]){
+    const calls=[],g={audioCtx:{currentTime:9},document:{getElementById:()=>({})}};g[node]={gain:{setTargetAtTime:(...args)=>calls.push(args)}};
+    vm.createContext(g);vm.runInContext(pick(source,name),g);g[name](125);assert.deepEqual(calls,[[value,9,.01]]);
+  }
+  assert(listener.includes("softClipper.oversample = '4x'"));
+  const rateBox={rateLimitBuckets:new Map(),Date:{now:()=>0}};vm.createContext(rateBox);vm.runInContext(pick(server,'createRateLimiter'),rateBox);
+  const response={status(n){this.code=n;return this;},json(){}};let admitted=0;
+  const limiter=rateBox.createRateLimiter({max:1});const req={baseUrl:'',path:'/x',ip:'one',headers:{}};
+  limiter(req,response,()=>admitted++);limiter(req,response,()=>admitted++);assert.equal(admitted,1);assert.equal(response.code,429);
+  for(let i=0;i<5100;i++)limiter({...req,ip:'ip-'+i},response,()=>{});assert.equal(rateBox.rateLimitBuckets.size,5000);
+  rateBox.Date.now=()=>60000;limiter({...req,ip:'fresh'},response,()=>admitted++);assert.equal(admitted,2);
+  assert(server.includes('rysSendAudio(peer.ws,fallbackPayload,false)'));
+  assert(!server.includes('fallbackJsonStr'));
+  assert(read('public/sw.js').includes('pcm-player-worklet.js?v=59-audio'));
+  assert(read('public/sw.js').includes('pcm-capture-worklet.js?v=53-audio'));
+  recordResult('ADIM-5.V59','8/16/44.1/48k DSP; FIR rejection; DC/limiter/partition; PLC/jitter/catchup; mic mute/retry; gain ramps; bounded CGNAT buckets',true);
+  console.log('V59 DSP METRICS '+JSON.stringify({rates:dsp,fixture200HzMaxStep:+maxStep.toFixed(6),concealedSamples:p.stats.concealed}));
+  console.log('V59 UNIT PASS: numerical model checks; no physical headset or lock-screen guarantee');
+}
+
 async function main() {
   const runtimePath = path.join(ROOT_DIR, 'data', 'runtime.json');
   const runtimeSnapshot = fs.existsSync(runtimePath) ? fs.readFileSync(runtimePath, 'utf8') : null;
@@ -2133,6 +2326,7 @@ async function main() {
     await runStep5V56HandoffChecks();
     await runStep5V57RoutingChecks();
     await runStep5V58InputChecks();
+    await runStep5V59AudioChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);

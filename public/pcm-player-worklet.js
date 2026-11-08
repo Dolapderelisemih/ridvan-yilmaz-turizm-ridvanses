@@ -85,7 +85,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     this.jitter = 0;
     this.lastArrival = null;
     this.lastSeq = null;
-    this.stats = { late: 0, duplicate: 0, concealed: 0, resync: 0, queueDropped:0 };
+    this.stats = { late: 0, duplicate: 0, concealed: 0, resync: 0, queueDropped:0, catchupDropped:0 };
     this.phraseSeen = new Set();
     this.tail = new Float32Array(Math.max(2, Math.round(this.rate * 0.005)));
     this.blend = new Float32Array(this.tail.length);
@@ -105,7 +105,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     this.plc = new RysPitchPlc();
     this.plcFrame = new Float32Array(480);
     this.recoveryFrame=new Float32Array(480);this.continuation=new Float32Array(480);
-    this.pendingQueueBlend=false;
+    this.pendingQueueBlend=false;this.catchupAge=0;this.catchupArmed=false;
     this.q = new Map();
     this.expected = null;
     this.playing = false;
@@ -177,6 +177,17 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
   }
 
   _nextFrame() {
+    if(this.catchupArmed){
+      this.catchupArmed=false;
+      const keep=Math.ceil(this.target/.020)+2;
+      const keys=Array.from(this.q.keys()).sort((a,b)=>rysDiff(a,this.expected)-rysDiff(b,this.expected));
+      const remove=Math.max(0,keys.length-keep);
+      if(remove){
+        for(let i=0;i<remove;i++)this.q.delete(keys[i]);
+        this.expected=keys[remove];this.stats.catchupDropped+=remove;
+        this.pendingQueueBlend=this.haveHistory;
+      }
+    }
     const packet=this.q.get(this.expected);this.q.delete(this.expected);
     this.expected=(this.expected+1)%RYS_MOD;this.fi=0;
     if(packet){
@@ -241,6 +252,11 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
         return true;
       }
     }
+    // Ppm drift correction cannot drain a sustained network backlog promptly.
+    if(this.q.size*.020>this.target+.120){
+      this.catchupAge+=n/this.rate;
+      if(this.catchupAge>=.500){this.catchupArmed=true;this.catchupAge=0;}
+    }else this.catchupAge=0;
     const queued = this.q.size * 480 + (480 - this.fi);
     const error = queued / 24000 - this.target;
     const wanted = 1 + Math.max(-0.001, Math.min(0.001, error * 0.01));
@@ -290,7 +306,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
       this.wait = 0;
       this.primed = false;
       this.fi = 480;
-      this.haveHistory = false;this.missing=0;this.pendingQueueBlend=false;this.plc=new RysPitchPlc();
+      this.haveHistory = false;this.missing=0;this.pendingQueueBlend=false;this.catchupAge=0;this.catchupArmed=false;this.plc=new RysPitchPlc();
       this.resetFrom = this.lastOut;
       this.resetFade = 0;
     }

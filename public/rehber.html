@@ -28,7 +28,7 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=57"></script>
+  <script src="/vercel-ws-shim.js?v=59"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .console-wrap {
@@ -1261,7 +1261,7 @@
       const lbl = document.getElementById('guideMicGainLabel');
       if (lbl) lbl.textContent = `%${val}`;
       if (guideMicGainNode) {
-        guideMicGainNode.gain.value = guideMicGainMultiplier;
+        guideMicGainNode.gain.setTargetAtTime(guideMicGainMultiplier, audioCtx.currentTime, 0.010);
       }
     }
 
@@ -1493,6 +1493,7 @@
     let guideAudioSeq = Math.floor((Date.now() % 10000000) / 10);
     let lastGuideBgWsReconnectAt = 0;
     let isHealingGuideMic = false;
+    let guideTrackMutedAt = 0, guideLastMicRebuildAt = 0, guideDeviceChangeTimer = null;
     let guideSourceNode = null;
     let guideHighPassNode = null;
     let guideMudCutNode = null;
@@ -1635,9 +1636,8 @@
         await audioCtx.resume();
       }
 
-      // ÖNEMLİ: Donanım Akustik Yankı İptali (echoCancellation: true) telefonun yönlü (beamforming) mikrofonunu
-      // aktif eder ve hoparlörden dönen yankıyı donanımda siler; noiseSuppression ve autoGainControl ise
-      // tiz harfleri boğuklaştırmaması ve Kâbe kalabalık sesini yükseltmemesi için %100 KAPALI (false) tutulur!
+      // AEC is a browser/device request; it does not guarantee beamforming or remote-speaker cancellation.
+      // Disable AGC/NS by preference; inspect track.getSettings() on each real headset.
       try {
         micStream = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -1655,7 +1655,10 @@
 
       // Gelen telefon araması veya Bluetooth/yaka mikrofonu çıkması durumunda otomatik mikrofon kurtarma (Auto-Heal)
       const audioTrack = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
+      guideTrackMutedAt = audioTrack?.muted ? Date.now() : 0;
       if (audioTrack) {
+        audioTrack.onmute = () => { if (micStream?.getAudioTracks()[0] === audioTrack) guideTrackMutedAt = Date.now(); };
+        audioTrack.onunmute = () => { if (micStream?.getAudioTracks()[0] === audioTrack) guideTrackMutedAt = 0; };
         audioTrack.onended = () => {
           if (isMicBroadcasting && !isHealingGuideMic) {
             console.warn('🔄 [Rehber Mikrofon] Mikrofon izi kesildi (arama/kulaklık değişimi), 300ms içinde otomatik kurtarılıyor...');
@@ -1765,8 +1768,11 @@
       if (!isMicBroadcasting || isVoiceLoopbackTesting || isHealingGuideMic) return;
       const track = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
       const trackDead = !track || track.readyState === 'ended';
+      const trackMuted = !!track?.muted && guideTrackMutedAt > 0 && Date.now() - guideTrackMutedAt > 2000;
       const captureStalled = lastGuideMicChunkAt > 0 && (Date.now() - lastGuideMicChunkAt > 2000);
-      if (forceRebuild || trackDead || captureStalled) {
+      if (forceRebuild || trackDead || trackMuted || captureStalled) {
+        if (Date.now() - guideLastMicRebuildAt < 3000) return;
+        guideLastMicRebuildAt = Date.now();
         isHealingGuideMic = true;
         try {
           disconnectGuideAudioNodes();
@@ -1775,7 +1781,7 @@
             micStream = null;
           }
           // Alarm veya telefon araması sonrası AudioContext kilitlendiyse sıfırdan temiz AudioContext aç:
-          if ((trackDead || captureStalled) && audioCtx) {
+          if ((trackDead || trackMuted || captureStalled) && audioCtx) {
             const oldCtx = audioCtx;
             audioCtx = null;
             workletModuleLoaded = false;
@@ -1809,7 +1815,8 @@
     if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
       navigator.mediaDevices.addEventListener('devicechange', () => {
         if (isMicBroadcasting) {
-          setTimeout(() => healGuideMicrophoneIfNeeded(), 350);
+          clearTimeout(guideDeviceChangeTimer);
+          guideDeviceChangeTimer = setTimeout(() => healGuideMicrophoneIfNeeded(true), 350);
         }
       });
     }

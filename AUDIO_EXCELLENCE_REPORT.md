@@ -1,422 +1,772 @@
-# RıdvanSes v57 — Uygulama doğrulaması ve giriş hata yalıtımı
+# RıdvanSes v59 — Gerçek Zamanlı Ses ve 300 Dinleyici Denetimi
 
-**Tarih:** 8 Kasım 2026  
-**İncelenen gerçek HEAD:** `15366541ba38ec83fcdd97075af29951506d115e`  
-**Teslim:** Yalnız `AUDIO_EXCELLENCE_REPORT.md`. Gerçek kaynaklara dokunulmadı.
+Tarih: 8 Kasım 2026. İncelenen disk HEAD: fb29574fd00e9c3af57ae59b6a69be3ec33d0e73 (v58). Çıktı yalnız bu rapordur; yama kaynaklara uygulanmamıştır. Commit/push/dağıtım yapılmamıştır.
 
-**Karar:** v57 diff’i eksiksiz uygulanmış; doğrudan diskten **32/32 PASS + V53/V54/V55 PASS + V56 E2E/UNIT PASS + V57 E2E/UNIT PASS, exit0** doğrulandı. Rota izolasyonu,35 sn sınırı ve mevcut atomik handoff kontrolleri geçiyor. Ek bozuk-girdi incelemesinde **P1 oda durumu zehirlenmesi** ve **P2 bağlantı hatalarının süreç genelindeki işleyiciye kaçması** yeniden üretildi. Bu yüzden tüm aktarım katmanları için koşulsuz onay verilmez. Aşağıdaki dar kapsamlı **v58 sunucu/test yaması**, kaynaklara yazılmadan **34/34 PASS, exit0** ile sınandı.
+## 1. Karar ve v58 doğrulaması
 
-Bu bulgular v57 diff’inin eksik uygulanması olarak değerlendirilmemelidir. Önceki testler düzgün biçimli protokol mesajlarını ve taşıma yarışlarını kapsıyordu; metadata’nın geçersiz veri türünü ve socket hata sınırını kapsamıyordu.
+Önceki rapordaki v58 diff için git apply --reverse --check --ignore-space-change -: **exit 0** (ek bayrak olmadan git apply --reverse --check de exit0). Diskte node scripts/verify-system.js: **34 / 34 PASS, exit 0**; V53/V54/V56/V57/V58 regresyonları geçti. Bu, Kâbe'de 300 fiziksel telefon için sıfır kopma/cızırtı sertifikası değildir.
 
-## 1. Disk doğrulaması ve diff eşliği
+**v59 gereklidir:** ortak IP katılım sınırı, live fakat muted mikrofon izinin kurtarılamaması, biriken gecikmenin çok yavaş giderilmesi, ani gain değişimi ve HTTP fan-out'ta tekrarlanan JSON parse için tam yama aşağıdadır. Fiziksel ADC kırpılması, başka konuşmacıların %100 ayrılması, TCP head-of-line ve OS arka plan durdurması JavaScript ile sıfırlanamaz.
 
-Çalıştırıldı:
+İstekteki genel adların karşılığı: client.js = public/rehber.html + public/dinle.html; client-shim.js = public/vercel-ws-shim.js; pcm-worklet.js = public/pcm-capture-worklet.js + public/pcm-player-worklet.js. Ayrı client.js dosyaları yok. Gerçek endpoint /api/ws-relay; /api/rys-relay veya checkRateLimit adlı fonksiyon yok.
 
-```powershell
-node scripts/verify-system.js
-```
+Başlangıçta kullanıcıya ait AUDIT_FIX_SUMMARY.md ve AUDIT_REPORT.md silmeleri vardı; korunmuştur. Rapor dışındaki kaynakların HEAD'de bırakılması bu silmeleri geri almak anlamına gelmez.
 
-Gözlenen ilgili sonuçlar:
+## 2. Bulgular — v58 disk satırları
 
-```text
-V53 PASS: source-only DSP/SRC/comfort/profile, queue/PLC/seq, binary+JSON dedup, coalescer, congestion, HTTP single-flight/drain/close, gesture/wake/pause
-V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs
-V55 PASS: partial name/phone/lang/device preservation; broker-connected empty HTTP poll; mixed native PCM; family/admin deltas
-V56 E2E PASS: prepare has no membership side effect; committed source fenced; late requests cannot kill native
-V56 UNIT PASS: expired/revoked prepare has no side effects; lost ACK recovers with fresh HTTP ID; no source-ID resurrection
-V57 E2E PASS: delayed relay-open + A-to-B switch; old PCM/control dropped; fresh B PCM/control delivered
-V57 UNIT PASS: idle sweep; 35000/35001ms expiry; stale-route response/retry dropped; same-route retry retained
-TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: 32 / 32 [BAŞARILI / PASS]
-```
+| Öncelik | Kaynak / konum | Etki ve v59 çözümü |
+|---|---|---|
+| P1-59-01 | server.js:508–545, 1830–1845 | /api/join-tour toplam60/IP/dakika: tek NAT'ta300 doğru katılımın240'ı429 olabilir. Doğru code/PIN için1200/dakika admission; yanlış denemeler ayrı scope ile60/dakika. Yanlış PIN kotası doğru kullanıcıyı engellemez. |
+| P2-59-02 | public/rehber.html:1656–1664, 1764–1813 | devicechange zorlamasız heal çağırıyor; live iz sıfır üretirken chunk heartbeat sürer. Debounce force rebuild, onmute/onunmute, 2s mute tespiti ve 3s tekrar freni eklenir. Fiziksel konuşma sessizliği yüzünden reset yapılmaz. |
+| P2-59-03 | public/pcm-player-worklet.js:159–166, 244–247 | 33→24 trim sonrası480ms kalabilir. ±1000ppm en fazla1ms/s kazandırır; 300ms fazlayı eritmek yaklaşık300s sürer. target+120ms üzerinde500ms kalınca sonraki kaynak çerçevesinde target+40ms'e trim ve72 örnek raised-cosine PLC geçişi. Eski kelimeler atlanır; geri getirilemez. |
+| P2-59-04 | public/rehber.html:1259–1265; public/dinle.html:1963–1966 | Doğrudan gain.value ataması dalgada ani sıçrama yapabilir.10ms setTargetAtTime; ilk kurulum ataması korunur. |
+| P2-59-05 | server.js:451–456, 1268–1295, 1357–1374 | Native binary zaten tek Buffer'dır. HTTP alıcı başına aynı JSON tekrar parse ediliyor. Native→HTTP tek immutable DTO; JSON broadcast'ta tek lazy parse/ortak DTO. TTL/kapasite, yetki, rota ve handoff korunur. |
+| P2-59-06 | public/dinle.html:1554–1569, 1874–1887 | WaveShaper oversample=none, limiter harmoniklerinde alias riski.4x oversampling seçilir. Önceden kırpılmış mikrofonu veya WaveShaper ±1 alanını aşan %200 sesi geri getirmez. |
+| P2-59-08 | public/pcm-player-worklet.js:82,199–201,244–283 | Gerçek çıkış bağlamı8/16kHz olursa24kHz PCM Hermite ile filtresiz küçülüyor ve ses bandına alias katlanıyor. Yalnız çıkış<24kHz için193-tap Blackman anti-alias FIR eklenir; fc=0.45×çıkışHz,4ms kaynak gecikmesi.44.1/48kHz yolu bypass. |
+| P2-59-07 | server.js:515–524 | 5000 bucket üstünde yalnız eskiler temizleniyor; aktif IP'ler sınırsız büyüyebilir.5000 kayıt üst sınırı ve tam reset anında expiry eklenir; dolu kapasitede429. Genel DDoS çözümü değildir. |
 
-Çıkış kodu **0**. 18 JS dosyası ve 9 HTML içindeki 10 inline script kontrolü geçti. Önceki raporun v57 unified diff’i kaynaklara uygulanmadan `git apply --reverse --check --ignore-space-change -` ile sınandı: **exit0**. Önceki 12 kaynak değişikliği mevcut ağaçla eşleşiyor.
+300 WS'yi ortak IP nedeniyle1008 ile kapatan uygulama kuralı bulunmadı. Login30/dakika, SOS ve demo limitleri korunur; hacı katılımı rehber/admin login'i kullanmaz. Express trust proxy=1 (server.js:53) tek güvenilir proxy varsayar. VDS Nginx/CDN/firewall konfigürasyonu depoda yok: upstream limit_conn/limit_req/timeout ölçülmedi. deviceId kolay taklit edilebildiği için güvenilir kota anahtarı seçilmedi.1200 doğru katılım/dakika,300 kişi için dört giriş bütçesidir; bütün operatör için sınırsızlık değildir.
 
-Başlangıçta silinmiş görünen `AUDIT_FIX_SUMMARY.md` ve `AUDIT_REPORT.md` kullanıcı değişiklikleri korundu. Yerel paket runtime.json snapshot’ını geri yükler. Ek testler production’a gönderilmedi.
+## 3. Mikrofon, DSP ve akustik
 
-## 2. Onaylanan v57 ve önceki davranışlar
+Hat: gUM → gerçek AudioContext sampleRate → HP85Hz /210Hz -2.5dB /3.2kHz +2dB /LP10.5kHz /gain → capture →24kHz mono PCM16,480 örnek/20ms →12B başlık+960B PCM → WS/relay → listener decode → seq/jitter/PLC worklet → Hermite ASRC → HP/clarity/gain/limiter → çıkış.
 
-| Alan | Doğrulanan uygulama |
-|---|---|
-| Rota anahtarı | public/vercel-ws-shim.js:881–887; abonelik türü/tur/oda/rol anahtarı; metadata düzenlemesi rota sayılmıyor |
-| Bekleyen batch izolasyonu | Aynı dosya:888–948; relay-open sonrası, cevap ve retry yollarında sameRoute kontrolü; eski PCM/kontrol B’ye taşınmıyor, yeni B verisi ulaşıyor |
-| Kuyruk/coalescer temizliği | Aynı dosya:677–719; gerçek rota değişiminde eski kuyruk ve guide-state temizleniyor |
-| Idle temizlik | server.js:1277–1287; heartbeat cleaner çağırıyor.1364–1383; opaque kayıtta35000 ms geçerli,35001 ms409 ve kayıt/üyelik kaldırma |
-| Atomik handoff | Yan etkisiz prepare, commit sonrası eski ID409, commit idempotansı, kayıp ACK toparlanması ve kaynak yokken açılış yarışı PASS |
-| Oturum anahtarı / abonelik | Yeni rys56 ID+anahtar, GET/CORS, family/admin/PIN kontrolleri ve kısmi metadata korunumu PASS |
-| Önbellek | Sekiz shim yükleyicisi/SW57; değişmeyen worklet URL’leri53-audio |
-| DSP | Capture/player bu commit’te değişmemiş; mevcut FIR/SRC, comfort, gate, finite, PLC, trim ve wrap testleri PASS |
+public/pcm-capture-worklet.js:10–49,152–219:193 tap/256 faz Blackman sinc; fc=min(10200/rate,.45). Tam sayı zaman sayacı ve sürekli ring geçmişi callback sınırlarında sıfırlanmıyor.8/16/44.1/48kHz'de2s tam100 paket.3072 tamponu artık yok; tipik128 Worklet ve2048 ScriptProcessor aynı çekirdeği kullanıyor.44.1kHz kesirli fazı korunuyor.
 
-P1-03 ve v57 rota düzeltmesinin önceki tekrar üretimleri geçiyor. Aşağıdaki yeni bulgu, eski HTTP kaynağının fence’i aşması değildir; **doğrulanmamış metadata’nın paylaşılan oda durumuna yazılmasıdır**.
+HFP8/16kHz fiziksel kaynak, AudioContext'in8/16kHz olacağını garanti etmez; OS48kHz'e yükseltebilir. Çekirdek bağlam hızını kullanıyor. Gerçek cihazda track.getSettings() sampleRate/channelCount/AEC/NS/AGC ile audioCtx.sampleRate kaydedilmeli.8kHz kaynağın4kHz üstü bilgisi geri üretilemez. EQ toplamı da nötr değildir: rehber85Hz HP, çekirdek~80Hz HP ve alıcı65Hz HP alt temeli birlikte azaltır;3.2kHz +2dB ve alıcı3kHz +1.5dB ünsüz bandını artırır. Biquad low/highpass Q birimi dB olduğundan -3.0103 doğrudur; bunu0.707 ile değiştirmek yanlış olur. Rehber gain UI%60–180, alıcı%0–200 (varsayılan120) olduğundan baş boşluğu cihazda ölçülmelidir. FIR gecikmesi96/girişHz:48kHz'de2ms,8kHz'de12ms. İstenen48kHz gUM constraint'i donanım garantisi değildir.
 
-## 3. P1 — Kimliği doğrulanmamış dinleyici geçersiz metadata ile oda durumunu zehirleyebiliyor
+Capture:90–148:~80Hz DC/HP; ~200/1000/4000Hz enerji ayırıcıları (ayrık FFT bantları değildir);400ms kalibrasyon,8×500ms rolling minima,6.1–8.9dB açılma,4dB hysteresis,240ms hangover,3ms attack/120ms release,10ms lookahead. Kapalı gain0.126≈-18dB, mutlak sessizlik değildir. Comfort:600ms sonrası80ms düşüş ve sıfıra yuvarlama;2ms raised-cosine açılma; sürekli3ms delay. Mute yumuşatılır.
 
-**Yerler:** `server.js:914–993` join işleyicisi; özellikle937–946’daki clientObj alanları. `1206–1265` JSON.parse sonrası veri türü doğrulanmadan dispatch. `1556 ve devamı` relay context senkronizasyonu. `sendRysSubscriptionAck` / oda serialization’ı1393 ve devamı.
+Gate konuşmacı kimliği tanımaz. Güçlü yan konuşma açabilir; sürekli rehber sesi noise minima'ya karışabilir; ilk400ms konuşma kalibrasyonu etkiler. continuousSpeech uzun kıraat/dua sonlarını korur, ortamı da geçirir. Tek kanalda örtüşen sesleri %100 ayıracak eşik yoktur. Ağıza yakın mikrofon, doğru yön ve headroom gerekir. Gerçek kalabalık kaydı olmadan gate'i sertleştirmek hece kaybını artırabilir; bu tur ölçülen capture53 korunur.
 
-64 KiB WebSocket payload sınırı zaten vardı (`server.js:46–50`); v58 bunu yeni eklemiyor. Ancak64 KiB’den küçük JSON, çok derin bir dizi/nesne içerebilir. name gibi bir alan dizi/nesne olarak kabul edilip clientObj’ye giriyor. Bu veri daha sonra yetkili oda snapshot’ına dahil edildiğinde JSON.stringify taşabiliyor.
+Limiter çıkışı ±0.98 ile bounded; DC ölçümü küçüktür. Fiziksel ADC/Bluetooth codec kırpılması düzeltilemez; yoğun sınırlama harmonik üretir. Capture limiter24kHz'de doğrusal olmayan bloktur: FIR stopband testi, limiter sonrası tüm harmoniklere alias-free garantisi vermez. Bağırırken giriş kazancı azaltılmalı; %200 çıkış doğal ses garantisi değildir.
 
-### Gerçek v57 üzerinde yerel tekrar üretimi
+AEC isteği beamforming garantisi değildir. Yerel render referansı, başka hacı telefonunun50–400ms gecikmiş hoparlörü için senkron referans sağlamaz. BroadcastChannel farklı telefonlar arasında çalışmaz. Yakındaki alıcılar kulaklık kullanmalı, döngü kazancı fiziksel olarak azaltılmalı. Çok cihazlı echo iptali için render referansı/zaman hizalama/adaptif filtre/double-talk ve saha impulse-response ölçümü gerekir. [W3C Media Capture and Streams](https://www.w3.org/TR/mediacapture-streams/) constraint, mute/ended ve devicechange semantiğinin kaynağıdır.
 
-İzole, PINsiz test kafilesinde; admin yetkisi olmayan bir pilgrim bağlantısı name alanında8000 kat iç içe dizi gönderdi. Bu JSON yaklaşık16 KiB’dir; mevcut64 KiB sınırının altındadır. İlk pilgrim ACK’sı ayrıntılı hacı listesini içermediği için bağlantı joined aldı. Daha sonra aynı odadaki rehberin HTTP relay katılımı ve yetkili bootstrap seri hale getirme sırasında500 verdi:
+## 4. 1→300 taşıma ve kapasite
 
-```text
-AUDIT V57 MALFORMED NAME:
-{"unauthenticatedPilgrimJoined":true,"bootstrapBefore":200,"guideJoin":500,"bootstrapAfter":500}
+Native:972×50=48,600B/s=388.8kbit/s/kişi.300 dinleyici **14.58MB/s=116.64Mbit/s** uygulama egress'i; TCP/TLS/WS/kontrol eklenir. Rehber uplink tek akış. JSON base64 salt PCM512kbit/s/kişi;300'de en az153.6Mbit/s; JSON/MQTT/HTTP ekleri hariç. Çift broker alımları trafiği artırır. Ham PCM, kalabalık roaming hücresinde esas kapasite riskidir.
 
-AUDIT V57 AFTER BAD MEMBER CLOSE: 200
-```
+server.js:431–449: native soft9720B≈200ms,JSON16000B; >65536B hard terminate,2s soft tıkanmada terminate. Gönderim peer bazında atlanır; hızlılar bağımsız devam eder. TCP'ye yazılmış baytlar geri alınamaz: HOL ve kayıp kelimeler PLC ile sıfırlanmaz. Native tek Buffer/no-deflate doğrudur; alıcı başına PCM kopyalama eklenmedi.
 
-Sunucu hata imzası:
+HTTP outbox audio10/200ms,control64 (1357–1390); shim audio4batch/200ms,control64; coalescer40ms/max3 ve failback12s. Broker açıkken empty poll sürer; v55 parity korunur.300 HTTP fallback kullanıcı100ms tick ve hızlı cevapta yaklaşık **3000 istek/s** üretir; RTT yükselirse single-flight nedeniyle azalır. Native300 testinin ayrı kapasite sınıfıdır. Opaque relay35s poll kesintisinde sona erer;30s sweep nedeniyle bellekten temizlenme35–65s aralığında, sonraki istekte doğrudan35s kontrolü vardır. Arka plan donması bu süreyi aşarsa409/yeni session ile toparlanır; kesintisizlik sayılmaz. Poll'u broker var diye kaldırmak native-guide/HTTP-listener parity'yi bozar.
 
-```text
-RangeError: Maximum call stack size exceeded
-    at JSON.stringify
-    at sendRysSubscriptionAck
-```
+RAM Map oda/relay/handoff tek süreç/aynı instance varsayar. Vercel serverless instance'ları RAM paylaşmaz; farklı instance'a poll bu testin kapsamı dışındadır. Production relay tutarlı uzun ömürlü VDS'ye yönlendirilmeli veya paylaşımlı state/broker kullanılmalı. Public MQTT istemci içinden üretilebilen imza, gerçek kimlik/ACL/SLA değildir. Yetkili özel broker ve tercihen Opus/WebRTC/SFU sonraki mimari iştir; v59 codec/protokol göçü içermez.
 
-Hatalı üye kapandığında bootstrap200’e döndü. Bu, kalıcı seed dosyası bozulması değil; canlı oda üyeliğindeki geçersiz verinin kontrol/katılım cevaplarını bozmasıdır. Native rehber ACK’sı da aynı serialization yolunu kullanır; doğrudan gözlenen500’ler HTTP cevaplarıdır. Bütün mevcut binary sesin o anda kesildiği veya sürecin çöktüğü iddia edilmiyor.
+## 5. Oynatıcı, jitter ve mobil arka plan
 
-**Önem:** Rehber katılımı, panel/oda snapshot’ı ve bu veriyi taşıyan handoff akışları dış istemci metadata’sına bağlı hale geliyor. Gelen paketin yalnız JSON olarak parse edilebilmesi ve byte sınırında kalması yeterli değil.
+public/dinle.html:2035–2135 binary/JSON tek seq; pending13/260ms TTL (1580–1597). Aktif PCM renderer player Worklet'tir; eski BufferSource zamanlayıcı değişkenleri aktif yedek oynatım kanıtı değildir. Worklet yoksa initRxPlayerWorklet:1598–1609 renderersız döner: legacy tarayıcı destek dışıdır; bu tur yeni fallback yazılmadı.
 
-**v58 çözümü:** WS mesajı ve relay context/messages, oda veya handoff durumuna yazılmadan ortak bir bounded doğrulayıcıdan geçirilir. name/phone/tourCode/roomId gibi string alanlarda nesne/dizi kabulü kaldırılır. Geçersiz WS istemcisi sonlandırılır; geçersiz relay gövdesi400 alır. Böylece catch sonrasında zehirli üyeyi temizlemeye güvenilmez; üye baştan oluşmaz.
+Player hedef80–260ms adaptive jitter; modulo2^31 dedup/sıralama;60–500Hz pitch PLC,60ms cosine decay;300ms starvation sonrası yeniden ön tamponlama. Gerçek PCM dönüşü72/24k=3ms raised-cosine, başlangıç/reset5ms fade. v58 düşük çıkış hızında FIR kullanmıyordu:8kHz çıkışta6kHz,16kHz çıkışta10kHz test tonu ses bandına katlanıyordu; v59 pre-Hermite FIR bunu engeller. Hermite fazı paketler arasında sürekli; ±1000ppm ASRC saat farkı içindir. v59 catch-up mevcut çerçeveyi/fazı sıfırlamaz; geçiş kaynak çerçevesi sınırındadır. Yumuşatma kayıp fonemi geri getirmez; ölçülmüş WSOLA/SOLA ve Opus PLC daha doğal uzun toparlama için ayrı iştir.
 
-## 4. P2 — Frame ve cookie hataları bağlantı sınırında tutulmuyor
+public/dinle.html:1656–1703 rebuild;1709–1808 interruption/recovery;1894–1927 state/gesture;2558 SW. Context/token koruması eski callback'i engeller. Rebuild PCM beklemesini temizler; arama boyunca kayıp konuşmayı saklamaz. Resume reddedilirse dokunuş gerekebilir. Worker timer OS dondurmasından muaf değildir; sessiz oscillator/audio veya SW arka plan yetkisi vermez. WakeLock ekranı açık tutar; kilitli ekranda sonsuz süreklilik değildir. [Web Audio API](https://www.w3.org/TR/webaudio/) context/AudioParam; [Screen Wake Lock API](https://developer.mozilla.org/en-US/docs/Web/API/Screen_Wake_Lock_API) görünürlük/lock sınırlamalarının kaynağıdır.
 
-**Yerler:** `server.js:1191–1274` WS connection/message işleyicileri; yerel error listener ve dispatch exception sınırı yok. `578–604` cookie ayrıştırıcısı, ilgisiz cookie değerini de decode ediyor ve URIError’ı yakalamıyor. `32–38` süreç genelindeki uncaughtException handler’ı.
+## 6. Test düzeni ve kanıt sınırı
 
-Yerel testte geçerli WS upgrade sonrası maskesiz çerçeve ve ayrı bağlantıda `Cookie: unrelated_cookie=%` gönderildi. process.uncaughtExceptionMonitor şu hataları gözledi:
+Disk v58:34/34 PASS; reverse-check exit0. ADIM-3.V59 gerçek yerel TCP/WS ile1 rehber+300 hacı kurar: aynı X-Forwarded-For ve loopback kaynak IP,300 HTTP katılımı,270 sağlıklı+30 duraklatılan soket. Platform TCP pencere boyutundan bağımsız deterministik kontrol için peer.bufferedAmount getter'ı **yalnız testte**20,000B enjekte edilir;3 peer65,537B hard-limit. Prototype handleUpgrade hook/getter üretim koduna eklenmez. Bu gerçek RF/CGNAT emülatörü veya OS tamponunun doğal dolum ölçümü değildir.
 
-```text
-AUDIT V57 SOCKET ERROR BOUNDARY:
-[{"name":"RangeError","code":"WS_ERR_EXPECTED_MASK"},{"name":"URIError","code":null}]
-```
+120×972B, mutlak zaman hedefine bağlı20ms aralık ve119 aralık için2300–2700ms pacing doğrulaması; sağlıklı başına120 sıra/doğru bayt, latency yüzdelikleri, CPU/event-loop,30 yavaşta1500 kontrollü drop, geri geliş ve3 hard izolasyon. Yerel P99<500ms kaba regresyon freni; saha ağı kabul hedefi değildir. ADIM-5.V59:8/16/44.1/48kHz, callback eşitliği, FIR seçilmiş frekansları, DC/limiter/impulse, zayıf ünsüz hangover modeli, jitter/reorder/duplicate/2 paket PLC,8/16kHz gerçek player çıkışında alias reddi ve catch-up/gain/mute/kota. Bayt bütünlüğü akustik “0 cızırtı” değildir.
 
-Süreçte `[CRITICAL] Uncaught Exception` çıktısı oluştu. **Bu uygulamanın global işleyicisi süreci kapatmıyor; test sunucusu çalışmaya devam etti.** İşleyici synchronous flush yolunu çağırıyor; her olayda gerçekten diske yazıldığı veya ölçülmüş bir ses drop’u oluştuğu iddia edilmiyor.
+Tamamlanan son ölçümler bölüm9'dadır.
 
-Hata tek bağlantıya aitken süreç düzeyine taşınıyor. Node’un özel error-event davranışı ve uncaughtException’ın normal akışa devam etme aracı olarak kullanılmaması resmi belgelerde açıklanır. Bu nedenle bağlantı düzeyi yakalama global handler’ın yerini alamayacağı gibi, global handler da bağlantı yalıtımının yerine geçmez. [Node.js Events](https://nodejs.org/api/events.html), [Node.js Process](https://nodejs.org/api/process.html)
+## 7. Uygulama ve saha kabulü
 
-**v58 çözümü:**
+1. Diff'i UTF-8 v59.patch olarak çıkarın; git apply --check --ignore-space-change v59.patch, ardından git apply --ignore-space-change v59.patch. Bu denetim kaynaklara uygulamaz.
+2. node scripts/verify-system.js: yeni toplam36/36 ve V59 E2E/UNIT PASS beklenir. Test geçici tur/soketleri finally'de kapatır; ana paket runtime.json snapshot'ını geri yükler.
+3. Önce staging300 native, ayrıca300 HTTP fallback kapasitesi: egress/event-loop/reconnect ve capture→DAC P50/P95/P99. Native yerel sonuç HTTP/MQTT veya VDS donanım kapasitesi kanıtı sayılmaz.
+4. Gerçek8/16kHz Bluetooth ve kablolu44.1/48kHz, iki iOS+iki Android ile30dk saha: kalabalık kayıt, kıraat/yumuşak ünsüz, tak/çıkar, mute/ended, kilit, arama/alarm/WhatsApp, Wi-Fi↔4G,50–400ms hoparlör geri dönüşü. Kayıp kelime/kırpılma ve insan dinlemesi kaydı; kalibre dBA olmadan80dB iddiası yok.
+5. SW cache59, HTML shim59 ve player59-audio birlikte dağıtılmalı. Capture53-audio değişmedi; shim mantığı57 ve wire handoff56 korunur. URL59 bir protokol değişikliği değildir; yeni worklet gerçekten yüklenmeli.
 
-- WS error olayı için yerel handler eklenir; pending handoff temizlenip yalnız sorunlu socket terminate edilir.
-- Message callback’inde beklenmedik dispatch hatası aynı yerel reject yoluna alınır. Global process politikası bu yamada değiştirilmez.
-- Yalnız gerçek auth cookie decode edilir. Bozuk auth cookie sessizce yok sayılır; varsa diğer geçerli auth kaynağı kullanılabilir. İlgisiz cookie’nin bozuk yüzdesi WS kurulumunu etkileyemez.
-- Başlık/cookie işleyicisi ile HTTP relay credentials kontrolleri geçersiz veri türünün String(...) dönüşümüne kaçmasını önler.
+Diff eksiksizdir; placeholder veya rapordan kod okuyan test içermez. Satırlar v58 tabanına aittir.
 
-## 5. v58 doğrulama sözleşmesi ve uyumluluk
-
-Bu bir tüm uygulamayı kapsayan JSON Schema değişimi değildir; mesaj/kontrol sınırındaki yapısal korumadır. Mevcut PIN/auth, PCM framing ve seq kontrolleri devam eder.
-
-| Koruma | Sınır / davranış |
-|---|---|
-| Kök mesaj | Nesne; array değil; type string ve1–64 karakter |
-| Metadata/string alanları | Tanımlı string alanlar nesne/dizi olamaz; mevcut opsiyonel null varsayılanları korunur |
-| GET’te opsiyonel alanlar | Sunucunun ürettiği DTO’daki undefined alanlar “verilmemiş” kabul edilir; yetkisiz admin GET yine401 alır |
-| Derinlik/düğüm |0 tabanlı derinlik en çok8; en çok4096 ziyaret; recursive stringify kullanılmaz |
-| Container genişliği | En çok512 anahtar/indeks;480 örnekli legacy dizi için alan bırakır |
-| String bütçesi | Tek string16384 karakter; anahtar+string toplamı65536 karakter; bu bir UTF-8 byte ölçümü değildir |
-| Sayılar | Finite olmalı; JSON’daki1e400 gibi non-finite sonuçlar reddedilir |
-| Özel anahtarlar | __proto__/prototype/constructor/toString/valueOf/toJSON reddedilir |
-| Relay envelope | Credential alanları string/null; uzunluk sınırı. messages array olmalı; en çok128 mesaj |
-| Medya uyumu |3×480 PCM batch’i ve mevcut numeric synthNote=440 demo biçimi kabul edilir |
-| Maliyet | Sabit alan kümeleri yeniden kullanılır; yürüyüş iteratif ve bounded’dır. Kapasite testi yerine geçmez |
-
-HTTP400, structural input hatası içindir. Normal yanlış PIN/eksik yetki semantiği ve mevcut32 test korunur. WSS64 KiB sınırı ve binary972B doğrulaması değişmez; sağlam ses paketleri genel JSON doğrulayıcıya sokulmaz.
-
-**Sürüm ayrımı:** v58 yalnız sunucu ve test değişikliğinin adıdır. İstemci/shim/SW/HTML değişmez: cache57, opaque-session wire version56 ve DSP53-audio korunur. Yeni bir istemci cache göçü gerekmez.
-
-## 6. Tamamlanan doğrulama ve kapsam sınırları
-
-| Kontrol | Sonuç |
-|---|---|
-| Gerçek v57 disk paketi | **32/32 PASS**, ilgili tüm V53–V57 etiketleri, exit0 |
-| Önceki diff reverse-check | **exit0**,12 kaynak değişikliği eşleşiyor |
-| Ek negatif tanı | Kimliği doğrulanmamış bozuk name katılımı sonrası guide relay/authorized bootstrap500; üye kapanınca200 |
-| Süreç hata monitörü | V57’de WS_ERR_EXPECTED_MASK ve URIError yakalandı |
-| v58 candidate syntax | Değişen server.js ve verify-system.js stdin’den node --check ile PASS |
-| v58 kaynak testleri | Bounded validator, PCM/demo ve cookie fallback PASS; önceki DSP/transport kaynak testleri PASS |
-| Son tam v58 önizlemesi | **34/34 PASS**, V53–V57 ve V58 E2E/UNIT PASS, exit0 |
-| Kaynak değişmezliği |15/15 gerçek kaynak dosyası SHA-256 başlangıçla aynı |
-
-Yeni gerçek E2E, geçersiz derin WS name’in joined olamamasını, bootstrap/rehber katılımının200 kalmasını, relay’de hatalı context/credential’ın400 almasını, maskesiz/oversize frame’in yalnız kendi socket’ini kapatmasını ve bozuk cookie’nin normal family aboneliğini engellememesini sınar. Ardından sağlam972B PCM ve demo440’ın başka bir dinleyiciye ulaşmasını şart koşar. Test süresince süreç geneline kaçan hata listesi boş olmalıdır.
-
-Yeni unit testi metadata türleri, derinlik/genişlik/string sınırları, özel anahtarlar, finite sayılar,3’lü PCM batch, kaynaksız prepare biçimi, GET undefined uyumu ve cookie auth fallback’ini kapsar. Mevcut32 grup iki yeni grupla34 olur.
-
-Önizleme aracı rapor diff’ini bellekte uygular; testlerin kaynak okumaları aday metinlere yönlendirilir, testlerin raporu okuması engellenir. Yalnız önizleme hazırlığı raporu okur. Ana paketin child-process syntax kontrolü gerçek diski gördüğünden aday dosyalar ayrıca stdin/VM ile derlendi. **34/34 sonucu diske uygulanmış veya production’da çalıştırılmış v58 değildir.**
-
-DSP motorlarında bu turda yeni P1/P2 bulunmadı. Bununla birlikte tek mikrofonla %100 yan konuşma izolasyonu, çok cihazlı echo iptali, OS arama/kilit sürekliliği ve public MQTT kimlik/ACL mimarisi için önceki sınırlar sürer. Tek işçi/RAM handoff varsayımı ve legacy protokol göçü de geçerlidir. Bu yama genel DDoS/kota, tüm REST endpoint şemaları veya tam güvenlik onayı değildir.
-
-GitHub/VDS/Vercel dağıtımı talepte bildirilen durumdur; bu denetimde SSH/deploy/push veya production oturumu mutasyonu yapılmadı. Bütün bozucu paketler yalnız izole yerel test turuna gönderildi; test turu ve soketler temizlendi, runtime snapshot geri yüklendi.
-
-## 7. Tam uygulanabilir v58 unified diff
-
-**Hedef HEAD:**1536654. Yalnız `server.js` ve `scripts/verify-system.js` değişir. Denetim bu yamayı kaynaklara uygulamaz. UTF-8 patch olarak çıkarılıp önce `git apply --check`, ardından `git apply` ve `node scripts/verify-system.js` ile gerçek diskten doğrulanabilir. Rapor içindeki diff için check zaten exit0 verdi; beklenen toplam34 gruptur.
-
-Sunucu güncellemesi/restart ile yeni giriş sınırı etkin olur. İstemci57 sürümüyle uyumludur; HTML/SW/worklet dosyalarını sırf sunucu etiketi58 oldu diye değiştirmek gerekmez. Geçerli istemciler korunurken geçersiz structural mesajların400/bağlantı kapatma ile reddedilmesi bilinçli davranış değişikliğidir.
-
+## 8. v59 unified diff
 
 ```diff
 diff --git a/server.js b/server.js
 --- a/server.js
 +++ b/server.js
-@@ -591,8 +591,9 @@
-       const eq = part.indexOf('=');
-       if (eq > 0) {
-         const k = part.slice(0, eq).trim();
--        const v = decodeURIComponent(part.slice(eq + 1).trim());
--        if (k === AUTH_COOKIE_NAME && isValidAuthToken(v)) {
-+        if(k!==AUTH_COOKIE_NAME)continue;
-+        let v;try{v=decodeURIComponent(part.slice(eq+1).trim());}catch(e){continue;}
-+        if (isValidAuthToken(v)) {
-           return v;
+@@ -451,9 +451,15 @@
+ function broadcastToRoom(room,payload,excludeWs=null,isAudioOverride=false){
+   const audio=isAudioOverride||!!(payload&&typeof payload==='object'&&payload.type==='audio-chunk');
+   const data=typeof payload==='string'?payload:JSON.stringify(payload);
++  let relayData;
+   for(const client of room.clients.values()){
+     const socket=client.ws;if(socket===excludeWs||socket.readyState!==WebSocket.OPEN)continue;
+-    if(audio)rysSendAudio(socket,data,false);
++    if(audio){
++      if(socket.isHttpRelay&&relayData===undefined){
++        try{relayData=payload&&typeof payload==='object'?payload:JSON.parse(data);}catch(e){relayData=data;}
++      }
++      rysSendAudio(socket,socket.isHttpRelay?relayData:data,false);
++    }
+     else {try{socket.send(data);}catch(e){}}
+   }
+ }
+@@ -507,22 +513,21 @@
+ 
+ // IP Tabanlı Hafif Hız Sınırlayıcı (Sliding Window Rate Limiter)
+ const rateLimitBuckets = new Map();
+-function createRateLimiter({ windowMs = 60000, max = 30, message = 'Çok fazla istek gönderildi. Lütfen biraz bekleyiniz.' } = {}) {
++function createRateLimiter({ windowMs = 60000, max = 30, scope = '', message = 'Çok fazla istek gönderildi. Lütfen biraz bekleyiniz.' } = {}) {
+   return (req, res, next) => {
+     const now = Date.now();
+     const ip = String(req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'local').trim();
+-    const key = `${req.baseUrl}${req.path}:${ip}`;
++    const key = `${scope}:${req.baseUrl}${req.path}:${ip}`;
+     let entry = rateLimitBuckets.get(key);
+-    if (!entry || now > entry.resetAt) {
++    if (!entry || now >= entry.resetAt) {
++      if (!entry && rateLimitBuckets.size >= 5000) {
++        for (const [k, v] of rateLimitBuckets) if (now >= v.resetAt) rateLimitBuckets.delete(k);
++        if (rateLimitBuckets.size >= 5000) return res.status(429).json({ success: false, message });
++      }
+       entry = { count: 0, resetAt: now + windowMs };
+       rateLimitBuckets.set(key, entry);
+     }
+     entry.count += 1;
+-    if (rateLimitBuckets.size > 5000) {
+-      for (const [k, v] of rateLimitBuckets.entries()) {
+-        if (now > v.resetAt) rateLimitBuckets.delete(k);
+-      }
+-    }
+     if (entry.count > max) {
+       return res.status(429).json({
+         success: false,
+@@ -538,11 +543,21 @@
+   max: 30,
+   message: 'Çok fazla giriş denemesi yapıldı. Lütfen 1 dakika sonra tekrar deneyiniz.'
+ });
+-const joinTourRateLimiter = createRateLimiter({
+-  windowMs: 60000,
+-  max: 60,
+-  message: 'Çok fazla kafile doğrulama isteği gönderildi. Lütfen kısa süre bekleyiniz.'
+-});
++// v59: shared NAT admission and failed PIN attempts use separate buckets.
++const joinTourAdmissionLimiter = createRateLimiter({
++  scope: 'join-valid', windowMs: 60000, max: 1200,
++  message: 'Kafile katılımı yoğun. Lütfen kısa süre sonra tekrar deneyiniz.'
++});
++const joinTourFailureLimiter = createRateLimiter({
++  scope: 'join-invalid', windowMs: 60000, max: 60,
++  message: 'Çok fazla hatalı kafile veya PIN denemesi. Lütfen 1 dakika bekleyiniz.'
++});
++function joinTourRateLimiter(req, res, next) {
++  const body = req.body || {}, code = String(body.code || '').toUpperCase().trim();
++  const tour = db.tours.find(t => t.code.toUpperCase() === code);
++  const valid = !!tour && !(tour.pinProtected && tour.pin && String(tour.pin) !== String(body.pin || '').trim());
++  return (valid ? joinTourAdmissionLimiter : joinTourFailureLimiter)(req, res, next);
++}
+ const sosRateLimiter = createRateLimiter({
+   windowMs: 60000,
+   max: 20,
+@@ -1265,7 +1280,7 @@
+       const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+       if (!validBinaryPcmFrame(buf)) return;
+       ctx.currentRoom.activePublisherClientId = ctx.clientId;
+-      let fallbackJsonStr = null;
++      let fallbackPayload = null;
+ 
+       for (const r of getTargetBroadcastRooms(ctx.currentRoom)) {
+         for (const peer of r.clients.values()) {
+@@ -1273,13 +1288,13 @@
+           if (!peer.ws.isHttpRelay) {
+             rysSendAudio(peer.ws,buf,true);
+           } else if (buf.length > 12) {
+-            if (!fallbackJsonStr) {
++            if (!fallbackPayload) {
+               const rawSeq = buf.readUInt32LE(0);
+               const phraseStart = Boolean(rawSeq & 0x80000000);
+               const seq = rawSeq & 0x7fffffff;
+               const sentAt = buf.readDoubleLE(4);
+               const pcmSlice = buf.subarray(12);
+-              fallbackJsonStr = JSON.stringify({
++              fallbackPayload = {
+                 type: 'audio-chunk',
+                 seq,
+                 phraseStart,
+@@ -1290,9 +1305,9 @@
+                 pcm16: pcmSlice.toString('base64'),
+                 level: 0.35,
+                 sentAt
+-              });
++              };
+             }
+-            rysSendAudio(peer.ws,fallbackJsonStr,false);
++            rysSendAudio(peer.ws,fallbackPayload,false);
+           }
          }
        }
-@@ -1187,6 +1188,43 @@
-   );
- }
- 
-+// v58: validate untrusted JSON before it can become room or handoff state.
-+function isRysClientMessage(message){
-+  if(!message||typeof message!=='object'||Array.isArray(message)||
-+    typeof message.type!=='string'||!message.type||message.type.length>64)return false;
-+  const strings=isRysClientMessage.stringFields||(isRysClientMessage.stringFields=new Set(['type','tourCode','roomId','role','name','phone','deviceId','lang','pin','token',
-+    'clientId','relayClientId','relayKey','handoffId','guidePeerId','stageId','badge','topic','title',
-+    'arabic','reading','meaning','note','address','guideName','pilgrimName','locationNote','id','alertId',
-+    'message','broadcastMode','updatedAt','_msgId','pcm16']));
-+  const forbidden=isRysClientMessage.forbiddenKeys||(isRysClientMessage.forbiddenKeys=
-+    new Set(['__proto__','prototype','constructor','toString','valueOf','toJSON']));
-+  const pending=[{value:message,depth:0}];let nodes=0,characters=0;
-+  try{
-+    while(pending.length){
-+      const {value,depth}=pending.pop();
-+      if(++nodes>4096||depth>8)return false;
-+      if(value===null)continue;
-+      if(typeof value==='string'){
-+        characters+=value.length;if(value.length>16384||characters>65536)return false;
-+      }else if(typeof value==='number'){
-+        if(!Number.isFinite(value))return false;
-+      }else if(typeof value==='boolean')continue;
-+      else if(typeof value==='object'){
-+        const keys=Object.keys(value);if(keys.length>512)return false;
-+        for(const key of keys){
-+          characters+=key.length;
-+          if(characters>65536||key.length>64||forbidden.has(key))return false;
-+          const next=value[key];
-+          if(next===undefined)continue; // Internal GET DTOs may contain omitted optional fields.
-+          if(strings.has(key)&&next!==null&&typeof next!=='string')return false;
-+          pending.push({value:next,depth:depth+1});
-+        }
-+      }else return false;
-+    }
-+    return true;
-+  }catch(e){return false;}
-+}
-+
- // WebSocket Connection Handler
- wss.on('connection', (ws, req) => {
-   ws.isAlive = true;
-@@ -1203,7 +1241,13 @@
-     rysHandshakeToken: extractAuthTokenFromReq(req)
-   };
- 
-+  const rejectInput=()=>{
-+    clearRysHandoff(ctx);
-+    try{ws.terminate();}catch(e){}
-+  };
-+  ws.on('error',rejectInput);
-   ws.on('message', (raw, isBinary) => {
-+    try{
-     ws.isAlive = true;
-     // PATCH: binary-v51
-     if (isBinary) {
-@@ -1261,8 +1305,10 @@
-     } catch {
-       return;
-     }
-+    if(!isRysClientMessage(msg)){rejectInput();return;}
-     if(handleRysNativeHandoff(ctx,msg))return;
-     processClientJsonMessage(ctx, msg);
-+    }catch(e){rejectInput();}
-   });
- 
-   ws.on('close', () => {
-@@ -1554,6 +1600,8 @@
- }
- 
- function serveRysRelay(session,req,res,token,context,messages=[]){
-+  if((context&&!isRysClientMessage(context))||!Array.isArray(messages)||messages.length>128||
-+    !messages.every(isRysClientMessage))return res.status(400).json({error:'relay-invalid-message'});
-   if(context&&!['join','family-subscribe','admin-subscribe'].includes(context.type))
-     return res.status(400).json({error:'relay-context-invalid'});
-   if(!applyRysRelayAuth(session,req,token,context))
-@@ -1579,6 +1627,13 @@
- }
- 
- app.post('/api/ws-relay',(req,res)=>{
-+  if(['clientId','relayKey','token'].some(k=>req.body?.[k]!=null&&
-+    (typeof req.body[k]!=='string'||req.body[k].length>16384)))
-+    return res.status(400).json({error:'relay-invalid-credentials'});
-+  if(req.body?.messages!==undefined&&!Array.isArray(req.body.messages))
-+    return res.status(400).json({error:'relay-invalid-message'});
-+  if(['relay-open','relay-close'].includes(req.body?.type)&&!isRysClientMessage(req.body))
-+    return res.status(400).json({error:'relay-invalid-message'});
-   if(req.body?.type==='relay-open'&&req.body.version===56)return openRysRelay56(res);
-   if(req.body?.type==='relay-close'&&req.body.version===56)return closeRysRelay56(req,res);
-   const {clientId,messages,joinContext,subscriptionContext,token}=req.body||{};
-@@ -1588,6 +1643,9 @@
-   return serveRysRelay(session,req,res,token,context,list);
- });
- app.get('/api/ws-relay',(req,res)=>{
-+  if(['clientId','relayKey','token'].some(k=>req.query?.[k]!=null&&
-+    (typeof req.query[k]!=='string'||req.query[k].length>16384)))
-+    return res.status(400).json({error:'relay-invalid-credentials'});
-   // Legacy GET is retained. Existing joined sessions need not repeat their PIN.
-   const q=req.query,mode=q.subscription||'join';
-   const context=mode==='admin-subscribe'?{type:mode,token:q.token}:
 diff --git a/scripts/verify-system.js b/scripts/verify-system.js
 --- a/scripts/verify-system.js
 +++ b/scripts/verify-system.js
-@@ -577,6 +577,7 @@
-   await runV55RelayEdgeChecks({baseUrl,url:wsUrl,token:authToken});
+@@ -578,6 +578,7 @@
    await runV56HandoffChecks({baseUrl,url:wsUrl,token:authToken});
    await runV57RoutingChecks({baseUrl,url:wsUrl,token:authToken});
-+  await runV58InputChecks({baseUrl,url:wsUrl,token:authToken});
+   await runV58InputChecks({baseUrl,url:wsUrl,token:authToken});
++  await runV59FanoutChecks({baseUrl,url:wsUrl,token:authToken});
  
    guideGenelWs.close();
    pilgrimWs.close();
-@@ -2016,6 +2017,110 @@
-   console.log('V57 UNIT PASS: idle sweep; 35000/35001ms expiry; stale-route response/retry dropped; same-route retry retained');
+@@ -1528,9 +1529,9 @@
+     if(mode!=='join')assert.equal(body.joinContext??null,null);
+     else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
+   }
+-  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v57"));assert(sw.includes('/vercel-ws-shim.js?v=57'));
++  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v59"));assert(sw.includes('/vercel-ws-shim.js?v=59'));
+   for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
+-    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'57',f+' stale shim');
++    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'59',f+' stale shim');
+   }
+   if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
+   console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
+@@ -2121,6 +2122,198 @@
+   console.log('V58 UNIT PASS: bounded iterative wire validation; non-string metadata rejected; PCM/demo accepted; malformed cookies ignored');
  }
  
-+async function runV58InputChecks({baseUrl,url,token}){
-+  const assert=require('node:assert/strict'),{WebSocket}=require('ws');
-+  const code='RY-V58-'+Date.now().toString(36).toUpperCase(),sockets=[],escaped=[];
-+  const monitor=error=>escaped.push(error.name+':'+(error.code||''));
-+  const headers={'Content-Type':'application/json',Authorization:'Bearer '+token};
-+  const wait=async predicate=>{
-+    const until=Date.now()+2500;while(!predicate()){
-+      if(Date.now()>until)throw Error('V58 input deadline');await new Promise(r=>setTimeout(r,5));
-+    }
++
++// v59: real 301 WebSockets; deterministic queue fault injection is reported separately from TCP pause.
++async function runV59FanoutChecks({baseUrl,url,token}){
++  const assert=require('node:assert/strict'),wsLib=require('ws');
++  const {monitorEventLoopDelay}=require('node:perf_hooks');
++  const code='RY-V59-'+Date.now().toString(36).toUpperCase(),ip='198.51.100.59';
++  const auth={Authorization:'Bearer '+token,'Content-Type':'application/json'};
++  const sockets=[],peers=new Map(),received=Array.from({length:300},()=>[]),faults=[],latencies=[],sent=new Map();
++  const originalUpgrade=wsLib.WebSocketServer.prototype.handleUpgrade;let joined=0;
++  const deadline=async(test,ms=10000)=>{const end=Date.now()+ms;while(!test()){
++    if(Date.now()>end)throw Error('V59 deadline; joined='+joined);await new Promise(r=>setTimeout(r,5));}};
++  const request=async(body)=>{const r=await fetch(baseUrl+'/api/join-tour',{method:'POST',
++    headers:{'Content-Type':'application/json','X-Forwarded-For':ip},body:JSON.stringify(body)});await r.arrayBuffer();return r.status;};
++  const lag=monitorEventLoopDelay({resolution:10});let guide,created=false;
++  wsLib.WebSocketServer.prototype.handleUpgrade=function(req,socket,head,cb){
++    return originalUpgrade.call(this,req,socket,head,(ws,request)=>{
++      if(request?.headers['x-rys-v59']!==undefined)peers.set(request.headers['x-rys-v59'],ws);
++      return cb(ws,request);
++    });
 +  };
-+  const connect=async options=>{
-+    const ws=new WebSocket(url,options),messages=[];let closed=false;
-+    sockets.push(ws);ws.on('error',()=>{});ws.on('close',()=>closed=true);
-+    ws.on('message',(raw,binary)=>{if(binary)messages.push({binary:Buffer.from(raw)});
-+      else try{messages.push(JSON.parse(raw.toString()));}catch(e){}});
-+    await new Promise((r,j)=>{ws.once('open',r);ws.once('error',j);});
-+    return {ws,messages,closed:()=>closed};
++  const connect=async(index,role)=>{
++    const socket=new wsLib.WebSocket(url,{headers:{'X-Forwarded-For':ip,'X-Rys-V59':String(index)}});sockets.push(socket);
++    socket.on('error',e=>faults.push(e.message));
++    socket.on('message',(raw,binary)=>{
++      if(binary){
++        if(role==='guide')return;
++        const seq=raw.length===972?raw.readUInt32LE(0)&0x7fffffff:-1,expected=sent.get(seq);
++        if(!expected||!raw.equals(expected.bytes))faults.push('PCM mismatch '+index+'/'+seq);
++        else{received[index].push(seq);latencies.push(performance.now()-expected.at);}
++      }else{try{if(JSON.parse(raw.toString()).type==='joined')joined++;}catch(e){faults.push('bad JSON');}}
++    });
++    await new Promise((resolve,reject)=>{socket.once('open',resolve);socket.once('error',reject);});
++    socket.send(JSON.stringify({type:'join',role,tourCode:code,roomId:'genel',pin:'3159',
++      token:role==='guide'?token:undefined,name:'V59 '+role+' '+index,deviceId:'v59-'+code+'-'+index}));
++    return socket;
 +  };
-+  const bootstrap=()=>fetch(baseUrl+'/api/bootstrap',{headers:{Authorization:'Bearer '+token}});
-+  process.on('uncaughtExceptionMonitor',monitor);
++  let pace0=0;
++  const frame=async(seq)=>{
++    if(seq===0)pace0=performance.now();
++    const bytes=Buffer.alloc(972);bytes.writeUInt32LE(seq,0);bytes.writeDoubleLE(Date.now(),4);
++    for(let i=0;i<480;i++)bytes.writeInt16LE(Math.round(9000*Math.sin(2*Math.PI*200*(seq*480+i)/24000)),12+2*i);
++    sent.set(seq,{bytes,at:performance.now()});guide.send(bytes);
++    await new Promise(r=>setTimeout(r,Math.max(0,pace0+(seq+1)*20-performance.now()))); // paced 50 pps, never a synthetic all-at-once send storm
++  };
 +  try{
-+    assert.equal((await fetch(baseUrl+'/api/tours',{method:'POST',headers,
-+      body:JSON.stringify({code,name:'V58 isolated input test',guideName:'V58 guide'})})).status,200);
-+    assert.equal((await bootstrap()).status,200);
-+    const bad=await connect(),nested='['.repeat(8000)+'0'+']'.repeat(8000);
-+    bad.ws.send('{"type":"join","role":"pilgrim","tourCode":'+JSON.stringify(code)+',"roomId":"genel","name":'+nested+'}');
-+    await wait(bad.closed);assert(!bad.messages.some(m=>m.type==='joined'),'Invalid name must never become a room member');
-+    assert.equal((await bootstrap()).status,200);
-+    const guide=await connect();
-+    guide.ws.send(JSON.stringify({type:'join',role:'guide',token,tourCode:code,roomId:'genel',name:'V58 guide'}));
-+    await wait(()=>guide.messages.some(m=>m.type==='joined'));
-+    assert.equal(guide.messages.find(m=>m.type==='joined').room.totalListeners,0);
-+    const listener=await connect();listener.ws.send(JSON.stringify({type:'join',role:'pilgrim',tourCode:code,roomId:'genel',name:'Healthy listener'}));
-+    await wait(()=>listener.messages.some(m=>m.type==='joined'));
-+    // Relay context is rejected before sync/join; no HTTP-to-WS poison path.
-+    const opened=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},
-+      body:JSON.stringify({type:'relay-open',version:56})});
-+    const cap=await opened.json();
-+    const raw='{"clientId":'+JSON.stringify(cap.clientId)+',"relayKey":'+JSON.stringify(cap.relayKey)+
-+      ',"subscriptionContext":{"type":"join","role":"pilgrim","tourCode":'+JSON.stringify(code)+',"name":'+nested+'}}';
-+    const invalid=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},body:raw});
-+    assert.equal(invalid.status,400);assert.equal((await bootstrap()).status,200);
-+    const credentials=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},
-+      body:JSON.stringify({clientId:{toString:null},messages:[]})});
-+    assert.equal(credentials.status,400);
-+    const coercion=await connect();coercion.ws.send('{"type":"join","tourCode":{"toString":null},"role":"pilgrim"}');
-+    await wait(coercion.closed);
-+    // A receiver/protocol error belongs to the offending socket, not process.uncaughtException.
-+    const unmasked=await connect();unmasked.ws._socket.write(Buffer.from([0x81,0]));await wait(unmasked.closed);
-+    const oversized=await connect();oversized.ws.send(Buffer.alloc(65537));await wait(oversized.closed);
-+    const cookie=await connect({headers:{Cookie:'unrelated_cookie=%'}});
-+    cookie.ws.send(JSON.stringify({type:'family-subscribe',tourCode:code}));
-+    await wait(()=>cookie.messages.some(m=>m.type==='family-state'));cookie.ws.close();
-+    // Good binary PCM and the existing numeric demo note still work after all rejections.
-+    const frame=Buffer.alloc(972);frame.writeUInt32LE(58,0);frame.writeDoubleLE(Date.now(),4);
-+    guide.ws.send(frame);await wait(()=>listener.messages.some(m=>m.binary?.readUInt32LE(0)===58));
-+    guide.ws.send(JSON.stringify({type:'audio-chunk',synthNote:440,level:.4}));
-+    await wait(()=>listener.messages.some(m=>m.type==='audio-chunk'&&m.synthNote===440));
-+    assert.equal((await bootstrap()).status,200);assert.deepEqual(escaped,[]);
-+    if(typeof recordResult==='function')recordResult('ADIM-3.V58',
-+      'Gerçek HTTP/WS: geçersiz metadata state öncesi reddedildi; bozuk frame/cookie yerel kaldı; sağlam PCM/demo devam etti',true);
-+    console.log('V58 E2E PASS: malformed anonymous join cannot poison room/bootstrap; receiver errors isolated; healthy PCM/demo preserved');
++    const create=await fetch(baseUrl+'/api/tours',{method:'POST',headers:auth,
++      body:JSON.stringify({code,name:'V59 CGNAT 300',pin:'3159',guideName:'V59 guide -1'})});
++    assert.equal(create.status,200);await create.arrayBuffer();created=true;
++    const statuses=[];
++    for(let start=0;start<300;start+=30)statuses.push(...await Promise.all(Array.from({length:30},()=>request({code,pin:'3159'}))));
++    console.log('V59 CGNAT HTTP: '+JSON.stringify(statuses.reduce((a,s)=>(a[s]=(a[s]||0)+1,a),{})));
++    assert.equal(statuses.filter(s=>s===200).length,300,'300 valid clients behind one NAT must be admitted');
++    for(let i=0;i<61;i++)assert.equal(await request({code,pin:'wrong'}),i<60?403:429);
++    assert.equal(await request({code,pin:'3159'}),200,'failed PIN bucket must not block valid NAT peers');
++    guide=await connect(-1,'guide');
++    for(let start=0;start<300;start+=30)await Promise.all(Array.from({length:30},(_,j)=>connect(start+j,'pilgrim')));
++    await deadline(()=>joined===301&&peers.size===301);
++    const cpu=process.cpuUsage(),started=performance.now();lag.enable();
++    for(let seq=0;seq<20;seq++)await frame(seq);
++    await deadline(()=>received.every(a=>a.length===20));
++    const slow=sockets.filter(s=>s!==guide).slice(0,30);
++    for(let i=0;i<30;i++){
++      slow[i]._socket.pause();
++      // Deterministic transport-queue pressure, independent of OS TCP window size.
++      Object.defineProperty(peers.get(String(i)),'bufferedAmount',{configurable:true,get:()=>20000});
++    }
++    for(let seq=20;seq<70;seq++)await frame(seq);
++    const dropped=Array.from({length:30},(_,i)=>peers.get(String(i))._rysAudioDrops||0);
++    assert(dropped.every(n=>n===50),'each congested peer must drop exactly its 50 stale frames');
++    for(let i=0;i<30;i++){delete peers.get(String(i)).bufferedAmount;slow[i]._socket.resume();}
++    for(let seq=70;seq<110;seq++)await frame(seq);
++    await deadline(()=>received.slice(30).every(a=>a.length===110)&&received.slice(0,30).every(a=>a.length===60));
++    for(let i=0;i<3;i++)Object.defineProperty(peers.get(String(i)),'bufferedAmount',{configurable:true,get:()=>65537});
++    for(let seq=110;seq<120;seq++)await frame(seq);
++    await deadline(()=>received.slice(30).every(a=>a.length===120));
++    await deadline(()=>[0,1,2].every(i=>peers.get(String(i))._rysClosing));
++    lag.disable();
++    for(let i=30;i<300;i++)assert.deepEqual(received[i],Array.from({length:120},(_,n)=>n));
++    for(let i=3;i<30;i++)assert.deepEqual(received[i],[...Array.from({length:20},(_,n)=>n),...Array.from({length:50},(_,n)=>n+70)]);
++    assert.deepEqual(faults,[]);assert(latencies.every(x=>Number.isFinite(x)&&x>=0));
++    latencies.sort((a,b)=>a-b);const percentile=p=>latencies[Math.floor((latencies.length-1)*p)];
++    const elapsed=performance.now()-started,used=process.cpuUsage(cpu);
++    assert(percentile(.99)<500,'local fanout P99 exceeded 500ms; inspect host contention');
++    const metrics={listeners:300,healthy:270,frames:120,healthyFrames:270*120,
++      slowQueueDrops:dropped.reduce((a,b)=>a+b,0),hardIsolated:3,corrupt:0,
++      p50Ms:+percentile(.5).toFixed(2),p95Ms:+percentile(.95).toFixed(2),p99Ms:+percentile(.99).toFixed(2),
++      maxMs:+latencies.at(-1).toFixed(2),eventLoopP99Ms:+(lag.percentile(99)/1e6).toFixed(2),
++      cpuMs:+((used.user+used.system)/1000).toFixed(1),elapsedMs:+elapsed.toFixed(1)};
++    console.log('V59 METRICS '+JSON.stringify(metrics));
++    recordResult('ADIM-3.V59','300 same-IP joins; 301 real WS; 270 healthy intact; 30 paused + injected queues; 3 hard-isolated',true,JSON.stringify(metrics));
++    console.log('V59 E2E PASS: byte integrity and local transport delay; physical crackle/OS background are not measured');
 +  }finally{
-+    for(const ws of sockets)ws.terminate();process.removeListener('uncaughtExceptionMonitor',monitor);
-+    await fetch(baseUrl+'/api/tours/'+code,{method:'DELETE',headers:{Authorization:'Bearer '+token}});
++    lag.disable();wsLib.WebSocketServer.prototype.handleUpgrade=originalUpgrade;
++    for(const s of sockets)try{s._socket?.resume();s.terminate();}catch(e){}
++    if(created){const r=await fetch(baseUrl+'/api/tours/'+code,{method:'DELETE',headers:auth});await r.arrayBuffer();}
 +  }
 +}
 +
-+async function runStep5V58InputChecks(){
-+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
-+  const source=fs.readFileSync(path.join(ROOT_DIR,'server.js'),'utf8').replace(/\r\n/g,'\n');
-+  function pick(name){
-+    const m=new RegExp('^function '+name+'\\([^\\n]*\\)\\s*\\{','m').exec(source);assert(m,'Missing '+name);
-+    for(let end=source.indexOf('}',m.index+m[0].length);end>=0;end=source.indexOf('}',end+1)){
-+      const code=source.slice(m.index,end+1);
-+      try{new vm.Script(code);return code;}catch(e){if(e.name!=='SyntaxError')throw e;}
-+    }throw Error('Unterminated '+name);
++
++async function runStep5V59AudioChecks(){
++  const assert=require('node:assert/strict');
++  const read=f=>fs.readFileSync(path.join(ROOT_DIR,f),'utf8').replace(/\r\n/g,'\n');
++  const capture=read('public/pcm-capture-worklet.js'),player=read('public/pcm-player-worklet.js'),guide=read('public/rehber.html'),listener=read('public/dinle.html'),server=read('server.js');
++  function pick(source,name){
++    const match=new RegExp('^[ \\t]*(?:async )?function '+name+'\\(','m').exec(source);
++    if(!match)throw Error('V59 missing '+name);
++    for(let end=source.indexOf('}',match.index);end>=0;end=source.indexOf('}',end+1)){
++      const text=source.slice(match.index,end+1);try{new vm.Script(text);return text;}catch(e){if(e.name!=='SyntaxError')throw e;}
++    }throw Error('V59 unterminated '+name);
 +  }
-+  const box={AUTH_COOKIE_NAME:'unit_auth',isValidAuthToken:t=>t==='good'};
-+  vm.createContext(box);vm.runInContext(pick('isRysClientMessage')+'\n'+pick('extractAuthTokenFromReq'),box);
-+  const valid=box.isRysClientMessage;
-+  assert(valid({type:'join',name:'Guide',phone:null,lang:'ar'}));
-+  assert(valid({type:'admin-subscribe',token:undefined}));
-+  assert(!valid({type:'join',name:[]}));assert(!valid({type:'join',name:{}}));
-+  assert(!valid({type:'join',tourCode:{toString:null}}));
-+  assert(!valid(JSON.parse('{"type":"join","__proto__":{"admin":true}}')));
-+  let tree={};for(let i=0;i<9;i++)tree={data:tree};
-+  assert(!valid({type:'ping',extra:tree}));assert(!valid({type:'ping',extra:Array(513).fill(0)}));
-+  assert(!valid({type:'ping',value:Infinity}));assert(!valid({type:'audio-chunk',synthNote:NaN}));
-+  assert(valid({type:'audio-chunk',synthNote:440,level:.4}));
-+  assert(valid({type:'quick-announcement',message:'x'.repeat(16384)}));
-+  assert(!valid({type:'quick-announcement',message:'x'.repeat(16385)}));
-+  const unit=seq=>({type:'audio-chunk',seq,sampleRate:24000,sentAt:1,pcm16:Buffer.alloc(960).toString('base64')});
-+  assert(valid({type:'audio-chunk',frames:[unit(0),unit(1),unit(2)]}));
-+  assert(valid({type:'handoff-prepare',relayClientId:null,relayKey:null,
-+    subscription:{type:'join',role:'pilgrim',tourCode:'X',pin:'1453',name:'Hacı'}}));
-+  assert.equal(box.extractAuthTokenFromReq({headers:{cookie:'unrelated=%; unit_auth=g%6f%6fd'}}),'good');
-+  assert.equal(box.extractAuthTokenFromReq({headers:{cookie:'unit_auth=%'},query:{token:'good'}}),'good');
-+  assert.equal(box.extractAuthTokenFromReq({headers:{cookie:'unit_auth=%'}}),'');
-+  if(typeof recordResult==='function')recordResult('ADIM-5.V58',
-+    'Metadata tipleri, derinlik/genişlik/string sınırları, tehlikeli anahtarlar, PCM/demo uyumu ve cookie fallback',true);
-+  console.log('V58 UNIT PASS: bounded iterative wire validation; non-string metadata rejected; PCM/demo accepted; malformed cookies ignored');
++  const box={Float32Array,Float64Array,Math,Number,RangeError,AudioWorkletProcessor:class{constructor(){this.port={postMessage(){}};}},
++    registerProcessor:(n,P)=>box.P=P,sampleRate:48000};
++  vm.createContext(box);vm.runInContext(capture.replace(/^export .*$/mg,''),box);
++  const rms=a=>Math.sqrt(a.reduce((s,v)=>s+v*v,0)/a.length);
++  const dsp=[];
++  for(const rate of [8000,16000,44100,48000]){
++    const input=Float32Array.from({length:rate*2},(_,i)=>.2+.8*Math.sin(2*Math.PI*997*i/rate));
++    const run=block=>{const frames=[],kernel=new box.RysCaptureKernel(rate,{continuousSpeech:true,comfortFade:false},m=>frames.push(Array.from(m.samples)));
++      for(let i=0;i<input.length;i+=block)kernel.process(input.subarray(i,i+block),i/rate);
++      assert.equal(frames.length,100);assert(frames.every(a=>a.length===480&&a.every(Number.isFinite)));
++      return frames.flat();};
++    const a=run(128),b=run(2048);assert.deepEqual(a,b,'128/2048 partition must preserve all samples');
++    const stable=a.slice(24000),dc=stable.reduce((s,x)=>s+x,0)/stable.length;
++    assert(Math.abs(dc)<1e-5);assert(Math.max(...stable.map(Math.abs))<.98);
++    const impulse=new box.RysFir24(rate),tail=[];
++    for(let i=0;i<rate;i++)impulse.push(i===0?1:0,x=>tail.push(x));
++    assert.equal(tail.length,24000);assert(tail.slice(2000).every(x=>Math.abs(x)<1e-15));
++    const amplitude=f=>{const fir=new box.RysFir24(rate),out=[];
++      for(let i=0;i<rate;i++)fir.push(.2*Math.sin(2*Math.PI*f*i/rate),x=>out.push(x));return rms(out.slice(2400));};
++    const pass=amplitude(1000);assert(pass>.13&&pass<.15);
++    const stop=rate>=44100?amplitude(14000):amplitude(rate*.49);
++    const stopDb=20*Math.log10(Math.max(1e-16,stop)/pass);
++    assert(stopDb<(rate>=44100?-75:-30),'band-edge rejection '+rate+' '+stopDb);
++    dsp.push({rate,frames:100,dc:+dc.toExponential(2),stopDb:+stopDb.toFixed(1)});
++  }
++  const loud=new box.RysCaptureKernel(48000,{continuousSpeech:true,comfortFade:false},m=>loudFrames.push(...m.samples)),loudFrames=[];
++  loud.process(Float32Array.from({length:96000},(_,i)=>.3+6*Math.sin(2*Math.PI*997*i/48000)));
++  assert(loudFrames.every(x=>Number.isFinite(x)&&Math.abs(x)<=.980001));
++  // Model a quiet consonant immediately after a loud vowel: verify hangover, not speaker identity.
++  const gate=new box.RysNearExpander();for(let i=0;i<12000;i++)gate.step(0);
++  for(let i=0;i<2400;i++)gate.step(.3*Math.sin(2*Math.PI*1500*i/24000));assert(gate.hold>0);
++  for(let i=0;i<480;i++)gate.step(.006*Math.sin(2*Math.PI*3000*i/24000));assert(gate.hold>0&&gate.g>.9);
++  vm.runInContext(player,box);const P=box.P,p=new P(),arrivals=[];
++  for(let seq=0;seq<110;seq++){
++    if(seq===20||seq===21)continue;
++    arrivals.push({seq,at:seq*20+[0,28,2,9][seq%4],samples:Float32Array.from({length:480},(_,i)=>.25*Math.sin(2*Math.PI*200*(seq*480+i)/24000))});
++  }arrivals.sort((a,b)=>a.at-b.at);
++  let now=0,prev=0,maxStep=0,index=0;
++  while(now<2050){
++    while(index<arrivals.length&&arrivals[index].at<=now){const m=arrivals[index++];p._push({...m,arrival:m.at});if(m.seq%7===0)p._push({...m,arrival:m.at});}
++    const out=new Float32Array(128);p.process([],[[out]]);
++    for(const y of out){assert(Number.isFinite(y)&&Math.abs(y)<=.99);maxStep=Math.max(maxStep,Math.abs(y-prev));prev=y;}
++    now+=128/48;
++  }
++  assert(p.stats.duplicate>0);assert(p.stats.concealed>=960);assert(maxStep<.06,'200Hz fixture abrupt jump '+maxStep);
++  const catchup=new P();catchup.playing=true;catchup.target=.08;catchup.expected=0;
++  catchup.haveHistory=true;catchup.frame.fill(.1);catchup.fi=0;catchup.catchupArmed=true;
++  for(let seq=0;seq<20;seq++)catchup.q.set(seq,new Float32Array(480).fill(-.1));
++  catchup.plc={fill:a=>a.fill(.1),append(){}};const phase=.375;catchup.phase=phase;
++  catchup._nextFrame();assert.equal(catchup.stats.catchupDropped,14);assert.equal(catchup.expected,15);
++  assert.equal(catchup.phase,phase);assert(Math.abs(catchup.frame[0]-.1)<1e-6);assert(Math.abs(catchup.frame[71]+.1)<1e-6);
++  const arming=new P();arming.playing=true;arming.target=.08;arming.haveHistory=true;arming.frame.fill(.1);arming.fi=0;
++  for(let i=0;i<210;i++){while(arming.q.size<20){const seq=arming.expected===null?0:(arming.expected+arming.q.size)%0x80000000;if(arming.expected===null)arming.expected=seq;arming.q.set(seq,new Float32Array(480).fill(.1));}
++    arming.process([],[[new Float32Array(128)]]);if(arming.stats.catchupDropped>0)break;}
++  assert(arming.stats.catchupDropped>0,'sustained backlog must arm catch-up within 560ms');
++  const env={isMicBroadcasting:true,isVoiceLoopbackTesting:false,isHealingGuideMic:false,
++    micStream:{getAudioTracks:()=>[{readyState:'live',muted:true}],getTracks:()=>[]},guideTrackMutedAt:1000,guideLastMicRebuildAt:0,
++    lastGuideMicChunkAt:5000,Date:{now:()=>5000},audioCtx:null,disconnectGuideAudioNodes(){},
++    setupGuideMicrophoneGraph:async()=>{env.rebuilds++;},rebuilds:0,window:{},document:{getElementById:()=>null},console};
++  vm.createContext(env);vm.runInContext(pick(guide,'healGuideMicrophoneIfNeeded'),env);
++  await env.healGuideMicrophoneIfNeeded();assert.equal(env.rebuilds,1);await env.healGuideMicrophoneIfNeeded();assert.equal(env.rebuilds,1);
++  assert(guide.includes('healGuideMicrophoneIfNeeded(true), 350'));assert(guide.includes('audioTrack.onmute'));
++  for(const [source,name,node,value] of [[guide,'updateGuideMicGain','guideMicGainNode',1.25],[listener,'updateVolume','gainNode',1.25]]){
++    const calls=[],g={audioCtx:{currentTime:9},document:{getElementById:()=>({})}};g[node]={gain:{setTargetAtTime:(...args)=>calls.push(args)}};
++    vm.createContext(g);vm.runInContext(pick(source,name),g);g[name](125);assert.deepEqual(calls,[[value,9,.01]]);
++  }
++  assert(listener.includes("softClipper.oversample = '4x'"));
++  const rateBox={rateLimitBuckets:new Map(),Date:{now:()=>0}};vm.createContext(rateBox);vm.runInContext(pick(server,'createRateLimiter'),rateBox);
++  const response={status(n){this.code=n;return this;},json(){}};let admitted=0;
++  const limiter=rateBox.createRateLimiter({max:1});const req={baseUrl:'',path:'/x',ip:'one',headers:{}};
++  limiter(req,response,()=>admitted++);limiter(req,response,()=>admitted++);assert.equal(admitted,1);assert.equal(response.code,429);
++  for(let i=0;i<5100;i++)limiter({...req,ip:'ip-'+i},response,()=>{});assert.equal(rateBox.rateLimitBuckets.size,5000);
++  rateBox.Date.now=()=>60000;limiter({...req,ip:'fresh'},response,()=>admitted++);assert.equal(admitted,2);
++  assert(server.includes('rysSendAudio(peer.ws,fallbackPayload,false)'));
++  assert(!server.includes('fallbackJsonStr'));
++  assert(read('public/sw.js').includes('pcm-player-worklet.js?v=59-audio'));
++  assert(read('public/sw.js').includes('pcm-capture-worklet.js?v=53-audio'));
++  recordResult('ADIM-5.V59','8/16/44.1/48k DSP; FIR rejection; DC/limiter/partition; PLC/jitter/catchup; mic mute/retry; gain ramps; bounded CGNAT buckets',true);
++  console.log('V59 DSP METRICS '+JSON.stringify({rates:dsp,fixture200HzMaxStep:+maxStep.toFixed(6),concealedSamples:p.stats.concealed}));
++  console.log('V59 UNIT PASS: numerical model checks; no physical headset or lock-screen guarantee');
 +}
 +
  async function main() {
    const runtimePath = path.join(ROOT_DIR, 'data', 'runtime.json');
    const runtimeSnapshot = fs.existsSync(runtimePath) ? fs.readFileSync(runtimePath, 'utf8') : null;
-@@ -2027,6 +2132,7 @@
-     await runStep5V54AudioChecks();
+@@ -2133,6 +2326,7 @@
      await runStep5V56HandoffChecks();
      await runStep5V57RoutingChecks();
-+    await runStep5V58InputChecks();
+     await runStep5V58InputChecks();
++    await runStep5V59AudioChecks();
  
      console.log('\n====================================================================');
      console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);
+diff --git a/public/ani-kitabi.html b/public/ani-kitabi.html
+--- a/public/ani-kitabi.html
++++ b/public/ani-kitabi.html
+@@ -7,7 +7,7 @@
+   <meta name="description" content="Rıdvan Yılmaz Turizm Umre ve Siyer yolculuğunuzun baskıya hazır A4 manevi hatıra kitapçığı ve imzalı Umre Ziyaret Beratı." />
+   <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
+   <link rel="stylesheet" href="/css/style.css?v=19" />
+-  <script src="/vercel-ws-shim.js?v=57"></script>
++  <script src="/vercel-ws-shim.js?v=59"></script>
+   <style>
+     body {
+       background: #e9e2d5;
+diff --git a/public/dinle.html b/public/dinle.html
+--- a/public/dinle.html
++++ b/public/dinle.html
+@@ -16,7 +16,7 @@
+   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
+   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+   <link rel="stylesheet" href="/css/style.css?v=19" />
+-  <script src="/vercel-ws-shim.js?v=57"></script>
++  <script src="/vercel-ws-shim.js?v=59"></script>
+   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+   <script src="/js/umrah-steps-map.js?v=47"></script>
+   <style>
+@@ -1606,7 +1606,7 @@
+       const token = ++rxLoadToken;
+       rxPlayerWorkletLoading = true;
+       ctx.audioWorklet
+-        .addModule('/pcm-player-worklet.js?v=53-audio')
++        .addModule('/pcm-player-worklet.js?v=59-audio')
+         .then(() => {
+           if (token !== rxLoadToken || audioCtx !== ctx || rxPlayerWorkletNode) return;
+           const node = new AudioWorkletNode(ctx, 'rys-pcm-player', {
+@@ -1876,7 +1876,7 @@
+         if (typeof audioCtx.createWaveShaper === 'function') {
+           softClipper = audioCtx.createWaveShaper();
+           softClipper.curve = createTransparentSoftClipperCurve();
+-          softClipper.oversample = 'none';
++          softClipper.oversample = '4x';
+         }
+ 
+         rxHighPass.connect(rxClarity);
+@@ -1963,7 +1963,7 @@
+     function updateVolume(val) {
+       volumeMultiplier = Number(val) / 100;
+       document.getElementById('volumeLabel').textContent = `%${val}`;
+-      if (gainNode) gainNode.gain.value = volumeMultiplier;
++      if (gainNode) gainNode.gain.setTargetAtTime(volumeMultiplier, audioCtx.currentTime, 0.010);
+     }
+ 
+     let nextAudioTime = 0;
+@@ -2555,7 +2555,7 @@
+     if ('serviceWorker' in navigator) {
+       window.addEventListener('load', () => {
+         // PATCH: sw-register-v53
+-        navigator.serviceWorker.register('/sw.js?v=57').catch(() => {});
++        navigator.serviceWorker.register('/sw.js?v=59').catch(() => {});
+       });
+     }
+ 
+diff --git a/public/index.html b/public/index.html
+--- a/public/index.html
++++ b/public/index.html
+@@ -82,7 +82,7 @@
+   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
+   <title>Rıdvan Yılmaz Turizm | RıdvanSes — Dijital Sesli Rehberlik & Kafile Sistemi</title>
+   <link rel="stylesheet" href="/css/style.css?v=19" />
+-  <script src="/vercel-ws-shim.js?v=57"></script>
++  <script src="/vercel-ws-shim.js?v=59"></script>
+   <style>
+     .hero {
+       padding: 64px 0 76px;
+diff --git a/public/login.html b/public/login.html
+--- a/public/login.html
++++ b/public/login.html
+@@ -10,7 +10,7 @@
+   <meta name="robots" content="noindex, nofollow" />
+   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/login" />
+   <link rel="stylesheet" href="/css/style.css?v=19" />
+-  <script src="/vercel-ws-shim.js?v=57"></script>
++  <script src="/vercel-ws-shim.js?v=59"></script>
+   <style>
+     .login-shell {
+       max-width: 460px;
+diff --git a/public/panel.html b/public/panel.html
+--- a/public/panel.html
++++ b/public/panel.html
+@@ -29,7 +29,7 @@
+       window.location.href = '/login?next=/panel';
+     }
+   </script>
+-  <script src="/vercel-ws-shim.js?v=57"></script>
++  <script src="/vercel-ws-shim.js?v=59"></script>
+   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+   <script src="/js/umrah-steps-map.js?v=47"></script>
+   <style>
+diff --git a/public/pcm-player-worklet.js b/public/pcm-player-worklet.js
+--- a/public/pcm-player-worklet.js
++++ b/public/pcm-player-worklet.js
+@@ -85,7 +85,7 @@
+     this.jitter = 0;
+     this.lastArrival = null;
+     this.lastSeq = null;
+-    this.stats = { late: 0, duplicate: 0, concealed: 0, resync: 0, queueDropped:0 };
++    this.stats = { late: 0, duplicate: 0, concealed: 0, resync: 0, queueDropped:0, catchupDropped:0 };
+     this.phraseSeen = new Set();
+     this.tail = new Float32Array(Math.max(2, Math.round(this.rate * 0.005)));
+     this.blend = new Float32Array(this.tail.length);
+@@ -105,7 +105,7 @@
+     this.plc = new RysPitchPlc();
+     this.plcFrame = new Float32Array(480);
+     this.recoveryFrame=new Float32Array(480);this.continuation=new Float32Array(480);
+-    this.pendingQueueBlend=false;
++    this.pendingQueueBlend=false;this.catchupAge=0;this.catchupArmed=false;
+     this.q = new Map();
+     this.expected = null;
+     this.playing = false;
+@@ -177,6 +177,17 @@
+   }
+ 
+   _nextFrame() {
++    if(this.catchupArmed){
++      this.catchupArmed=false;
++      const keep=Math.ceil(this.target/.020)+2;
++      const keys=Array.from(this.q.keys()).sort((a,b)=>rysDiff(a,this.expected)-rysDiff(b,this.expected));
++      const remove=Math.max(0,keys.length-keep);
++      if(remove){
++        for(let i=0;i<remove;i++)this.q.delete(keys[i]);
++        this.expected=keys[remove];this.stats.catchupDropped+=remove;
++        this.pendingQueueBlend=this.haveHistory;
++      }
++    }
+     const packet=this.q.get(this.expected);this.q.delete(this.expected);
+     this.expected=(this.expected+1)%RYS_MOD;this.fi=0;
+     if(packet){
+@@ -241,6 +252,11 @@
+         return true;
+       }
+     }
++    // Ppm drift correction cannot drain a sustained network backlog promptly.
++    if(this.q.size*.020>this.target+.120){
++      this.catchupAge+=n/this.rate;
++      if(this.catchupAge>=.500){this.catchupArmed=true;this.catchupAge=0;}
++    }else this.catchupAge=0;
+     const queued = this.q.size * 480 + (480 - this.fi);
+     const error = queued / 24000 - this.target;
+     const wanted = 1 + Math.max(-0.001, Math.min(0.001, error * 0.01));
+@@ -290,7 +306,7 @@
+       this.wait = 0;
+       this.primed = false;
+       this.fi = 480;
+-      this.haveHistory = false;this.missing=0;this.pendingQueueBlend=false;this.plc=new RysPitchPlc();
++      this.haveHistory = false;this.missing=0;this.pendingQueueBlend=false;this.catchupAge=0;this.catchupArmed=false;this.plc=new RysPitchPlc();
+       this.resetFrom = this.lastOut;
+       this.resetFade = 0;
+     }
+diff --git a/public/rehber.html b/public/rehber.html
+--- a/public/rehber.html
++++ b/public/rehber.html
+@@ -28,7 +28,7 @@
+       window.location.href = '/login?next=/rehber';
+     }
+   </script>
+-  <script src="/vercel-ws-shim.js?v=57"></script>
++  <script src="/vercel-ws-shim.js?v=59"></script>
+   <script src="/js/umrah-steps-map.js?v=47"></script>
+   <style>
+     .console-wrap {
+@@ -1261,7 +1261,7 @@
+       const lbl = document.getElementById('guideMicGainLabel');
+       if (lbl) lbl.textContent = `%${val}`;
+       if (guideMicGainNode) {
+-        guideMicGainNode.gain.value = guideMicGainMultiplier;
++        guideMicGainNode.gain.setTargetAtTime(guideMicGainMultiplier, audioCtx.currentTime, 0.010);
+       }
+     }
+ 
+@@ -1493,6 +1493,7 @@
+     let guideAudioSeq = Math.floor((Date.now() % 10000000) / 10);
+     let lastGuideBgWsReconnectAt = 0;
+     let isHealingGuideMic = false;
++    let guideTrackMutedAt = 0, guideLastMicRebuildAt = 0, guideDeviceChangeTimer = null;
+     let guideSourceNode = null;
+     let guideHighPassNode = null;
+     let guideMudCutNode = null;
+@@ -1635,9 +1636,8 @@
+         await audioCtx.resume();
+       }
+ 
+-      // ÖNEMLİ: Donanım Akustik Yankı İptali (echoCancellation: true) telefonun yönlü (beamforming) mikrofonunu
+-      // aktif eder ve hoparlörden dönen yankıyı donanımda siler; noiseSuppression ve autoGainControl ise
+-      // tiz harfleri boğuklaştırmaması ve Kâbe kalabalık sesini yükseltmemesi için %100 KAPALI (false) tutulur!
++      // AEC is a browser/device request; it does not guarantee beamforming or remote-speaker cancellation.
++      // Disable AGC/NS by preference; inspect track.getSettings() on each real headset.
+       try {
+         micStream = await navigator.mediaDevices.getUserMedia({
+           audio: {
+@@ -1655,7 +1655,10 @@
+ 
+       // Gelen telefon araması veya Bluetooth/yaka mikrofonu çıkması durumunda otomatik mikrofon kurtarma (Auto-Heal)
+       const audioTrack = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
++      guideTrackMutedAt = audioTrack?.muted ? Date.now() : 0;
+       if (audioTrack) {
++        audioTrack.onmute = () => { if (micStream?.getAudioTracks()[0] === audioTrack) guideTrackMutedAt = Date.now(); };
++        audioTrack.onunmute = () => { if (micStream?.getAudioTracks()[0] === audioTrack) guideTrackMutedAt = 0; };
+         audioTrack.onended = () => {
+           if (isMicBroadcasting && !isHealingGuideMic) {
+             console.warn('🔄 [Rehber Mikrofon] Mikrofon izi kesildi (arama/kulaklık değişimi), 300ms içinde otomatik kurtarılıyor...');
+@@ -1765,8 +1768,11 @@
+       if (!isMicBroadcasting || isVoiceLoopbackTesting || isHealingGuideMic) return;
+       const track = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
+       const trackDead = !track || track.readyState === 'ended';
++      const trackMuted = !!track?.muted && guideTrackMutedAt > 0 && Date.now() - guideTrackMutedAt > 2000;
+       const captureStalled = lastGuideMicChunkAt > 0 && (Date.now() - lastGuideMicChunkAt > 2000);
+-      if (forceRebuild || trackDead || captureStalled) {
++      if (forceRebuild || trackDead || trackMuted || captureStalled) {
++        if (Date.now() - guideLastMicRebuildAt < 3000) return;
++        guideLastMicRebuildAt = Date.now();
+         isHealingGuideMic = true;
+         try {
+           disconnectGuideAudioNodes();
+@@ -1775,7 +1781,7 @@
+             micStream = null;
+           }
+           // Alarm veya telefon araması sonrası AudioContext kilitlendiyse sıfırdan temiz AudioContext aç:
+-          if ((trackDead || captureStalled) && audioCtx) {
++          if ((trackDead || trackMuted || captureStalled) && audioCtx) {
+             const oldCtx = audioCtx;
+             audioCtx = null;
+             workletModuleLoaded = false;
+@@ -1809,7 +1815,8 @@
+     if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
+       navigator.mediaDevices.addEventListener('devicechange', () => {
+         if (isMicBroadcasting) {
+-          setTimeout(() => healGuideMicrophoneIfNeeded(), 350);
++          clearTimeout(guideDeviceChangeTimer);
++          guideDeviceChangeTimer = setTimeout(() => healGuideMicrophoneIfNeeded(true), 350);
+         }
+       });
+     }
+diff --git a/public/rota.html b/public/rota.html
+--- a/public/rota.html
++++ b/public/rota.html
+@@ -9,7 +9,7 @@
+   <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
+   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+   <link rel="stylesheet" href="/css/style.css?v=19" />
+-  <script src="/vercel-ws-shim.js?v=57"></script>
++  <script src="/vercel-ws-shim.js?v=59"></script>
+   <style>
+     .rota-hero-strip {
+       background:
+diff --git a/public/sw.js b/public/sw.js
+--- a/public/sw.js
++++ b/public/sw.js
+@@ -1,17 +1,17 @@
+ // PATCH: sw-v53
+ // PATCH: sw-v53
+ // PATCH: sw-v53
+-const CACHE_NAME = 'ridvanses-pwa-v57';
++const CACHE_NAME = 'ridvanses-pwa-v59';
+ const ASSETS_TO_CACHE = [
+   '/',
+   '/dinle',
+   '/rota',
+   '/ani-kitabi',
+   '/css/style.css',
+-  '/vercel-ws-shim.js?v=57',
++  '/vercel-ws-shim.js?v=59',
+   '/js/umrah-steps-map.js',
+   '/pcm-capture-worklet.js?v=53-audio',
+-  '/pcm-player-worklet.js?v=53-audio',
++  '/pcm-player-worklet.js?v=59-audio',
+   '/manifest.json',
+   '/icons/icon-512.png',
+   '/icons/icon-192.png',
+diff --git a/public/yaka-karti.html b/public/yaka-karti.html
+--- a/public/yaka-karti.html
++++ b/public/yaka-karti.html
+@@ -8,7 +8,7 @@
+   <meta name="robots" content="noindex, nofollow" />
+   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/yaka-karti" />
+   <link rel="stylesheet" href="/css/style.css?v=19" />
+-  <script src="/vercel-ws-shim.js?v=57"></script>
++  <script src="/vercel-ws-shim.js?v=59"></script>
+   <style>
+     .print-toolbar {
+       background: linear-gradient(155deg, #06231B 0%, #093529 100%);
 ```
 
-<!-- SOURCE-HASHES {"server.js":"081a2a6e51ea2f2ea44d2e5a6e6a172056b8d33090d3e67709dbda105477a9e0","scripts/verify-system.js":"a6657f0a5a97b456c5d44406be08f23261f14f82a0971977cb99e3ee8b1f97c0","public/ani-kitabi.html":"49c5f6af3dfcf33cad2befbbafdeb448a44a37b3877c13d0502ac6507fdce963","public/dinle.html":"f18d8e4626d4fb3430145a166d6475f56c326fb88b19d712fd2847b36af146b2","public/index.html":"572baa2c640b3f11c37e0461e701cacc50a9a6ed8482122f1574487467a560f2","public/kullanim-rehberi.html":"c019fb50dfcf83d1097920c3210c3dea82b071de2e1000ffa15c39ad6f71de3e","public/login.html":"8eba7f37d518b0f4748611240e8b938a160b6f0d0fd6118d8aecaa0a424f35f3","public/panel.html":"758bac58b933eec6126ab765ca32b974a33be92d572e241eb54789cef8aa46aa","public/pcm-capture-worklet.js":"e6f7c223b92928825481589f626e53b64ff70c17710f668000440c68d559e564","public/pcm-player-worklet.js":"9bfbcb06d2904d375ff06498e232cc09a32c5c9624b36bb8947bbc5270323183","public/rehber.html":"5ddd9e2f2549f1584c1c28964b4c45411b7c177da5253df1d70a29d9384d79ec","public/rota.html":"9fb74d5cd19981ab37ff283780a71166d14cc8355502e160173137dddba95467","public/sw.js":"2d70f5c3bb559a68f5c6dfc4a4d405b39ae088c29d5f2a3e16e1ccb95cbaab05","public/vercel-ws-shim.js":"33831bb515dcec2932c2060f67882cc2a1e720c14f1726dde8ff2b410a962d6f","public/yaka-karti.html":"8c2b69c27249b31a716660f001c9624377d9ad8c40c8f6b5657cf8f8e2b8b260"} -->
+## 9. Son ölçümler, doğrulama ve nihai değerlendirme
 
-## 8. Son teslim kanıtı ve nihai değerlendirme
+**Son aday koşusu:36/36 PASS, exit0.** Kaynakları değiştirmeden rapordaki unified diff bellekte yeniden kuruldu; Node module loader ve fs okuma katmanı adayları kullandı. JS/HTML syntax ve gerçek localhost HTTP/WS kontrolleri bu aday üzerinde çalıştı. node --check alt süreçleri de aday içerikle stdin üzerinden çalıştırıldı. Testlerin raporu okuması harness'te özellikle engellendi: önerilen testler uygulanmış kaynak dosyalarını okur, rapordan kendini doğrulamaz.
 
-Son aday koşusunun ilgili çıktısı:
+Diskteki34/34 ile bellekteki36/36 birbirinden ayrıdır: disk hâlâ v58'dir. V53–V58 testleri korunarak V59 E2E+unit eklendi. V56 eski-relay409/atomic handoff, V57 rota ayrımı ve V58 metadata sınırları da geçti.
 
-```text
-[BAŞARILI / PASS] ADIM-3.V58 — Gerçek HTTP/WS: geçersiz metadata state öncesi reddedildi; bozuk frame/cookie yerel kaldı; sağlam PCM/demo devam etti
-V58 E2E PASS: malformed anonymous join cannot poison room/bootstrap; receiver errors isolated; healthy PCM/demo preserved
-[BAŞARILI / PASS] ADIM-5.V58 — Metadata tipleri, derinlik/genişlik/string sınırları, tehlikeli anahtarlar, PCM/demo uyumu ve cookie fallback
-V58 UNIT PASS: bounded iterative wire validation; non-string metadata rejected; PCM/demo accepted; malformed cookies ignored
-TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: 34 / 34 [BAŞARILI / PASS]
-```
+### 9.1 Ortak IP ve1→300 fan-out
 
-İnceleme sonunda15 gerçek kaynak dosyasının SHA-256 değerleri başlangıçla aynı kaldı. Kaynaklar hâlâ1536654 sürümündedir. Başlangıçtaki iki kullanıcı silinmesi korundu; runtime snapshot geri yüklendi. Tek güncellenen teslim dosyası bu rapordur.
+| Ölçüm | v58 / son v59 aday sonucu |
+|---|---|
+| Aynı IP,300 doğru HTTP katılımı | v58:60×200 +240×429; v59:300×200 |
+| Yanlış PIN | İlk60×403,61'inci429; ardından doğru PIN200 |
+| Gerçek WS | 301 bağlantı;1 rehber+300 dinleyici |
+| Sağlıklı alıcılar | 270×120 =32,400 çerçeve, sıra ve tüm972 bayt birebir doğru |
+| Yavaş alıcılar | 30 gerçek duraklatılan soket + kontrollü20,000B kuyruk;30×50=1500 drop;27'si tekrar normal akışa döndü;3'ü65,537B hard izolasyona alındı |
+| Bozuk çerçeve / beklenmeyen soket hatası | 0 /0 (kasıtlı drop ve terminate ayrı sayılır) |
+| Yerel gönderim→Node alıcı callback P50/P95/P99 | 14.48 /27.79 /38.75ms |
+| En büyük aktarım gecikmesi | 45.27ms |
+| Event-loop P99 | 30.59ms |
+|120 çerçevenin119 aralığı | 2393.4ms; ortalama20.11ms,≈49.72 paket/s |
+| Ölçülen yayın fazı | 2437.5ms |
+| CPU | 1969ms user+system; sunucu ve301 test istemcisinin aynı Node sürecindeki toplamı |
 
-**Nihai değerlendirme:** v57’nin uygulanması, rota izolasyonu/35 sn davranışı ve32/32 disk sonucu onaylanır. Yeni biçimsel-girdi ve bağlantı-hata tekrar üretimleri nedeniyle tüm katmanlar için koşulsuz onay verilmez. Öncelik, P1’de geçersiz metadata’nın oda durumuna hiç girmemesidir; P2’de beklenen istemci hatalarının yalnız kendi bağlantısını etkilemesi sağlanmalıdır. Raporun v58 yaması belirtilen34/34 yerel önizlemeden geçmiştir; gerçek kaynaklara veya production’a uygulanmamıştır.
+Bu3–4 saniyelik yayın fazı olan kısa regresyon testidir; uzun süreli soak/saha kapasite sertifikası değildir. CPU değeri yalnız sunucu maliyeti değildir. Gecikme capture→DAC veya internet gecikmesi değildir; aynı makinede gönderim timestamp'inden ws message callback'ine ölçülmüştür.30 yavaş peer testinin deterministik bufferedAmount enjeksiyonu, doğal TCP tıkanmasının gözlendiği iddiasını taşımaz. İlk geliştirme koşusunda göreli20ms bekleme timer maliyetini biriktiriyordu; rapordaki son test mutlak20ms hedefi ve ölçülmüş pacing sınırı kullanır.
+
+### 9.2 DSP sayısal kanıtı
+
+| Capture giriş hızı |2 saniyede paket | Kararlı DC | Seçilmiş stop/pass RMS oranı |
+|---|---:|---:|---:|
+|8000Hz |100×480 |1.82e-10 |-95.9dB (3920Hz/1000Hz) |
+|16000Hz |100×480 |-1.30e-10 |-95.9dB (7840Hz/1000Hz) |
+|44100Hz |100×480 |-1.44e-10 |-129.7dB (14000Hz/1000Hz) |
+|48000Hz |100×480 |8.83e-11 |-107.3dB (14000Hz/1000Hz) |
+
+128 ve2048 örneklik parçalamalar tüm çıkış örneklerinde birebir eşit; impulse kuyruğu sonlu; ±6 tepe +0.3DC girişinde çıkış sonlu ve≤0.980001. Bunlar dijital model sinyalleridir; fiziksel ADC, Bluetooth codec ve bütün EQ/akustik zincirin ölçümü değildir. Seçilmiş stop frekansları tüm frekans/faz/örnek oranları için minimum stopband garantisi oluşturmaz; kaynak başlığındaki “>-118dB stopband” genel iddiası bu tabloya göre evrensel değildir.
+
+Jitter/reorder/duplicate ve ardışık iki eksik20ms paketli200Hz/.25 genlik fixture'ında max|y[n]-y[n-1]|=**0.007356**; PLC960 kaynak örneği üretti. Bütün output sonlu/limit içinde. Bu gerçek konuşmanın duyumsal kalite metriği veya sıfır cızırtı sertifikası değildir. Zayıf ünsüz modeli hangover'ı sınar; gerçek kelime doğruluğu sınamaz.
+
+Düşük çıkış hızı yeni bulgusu ayrıca tekrar üretildi:
+
+| Gerçek player çıkışı / PCM tonu | v58 filtre yokken stop/pass | v59 kaynak FIR + gerçek player render |
+|---|---:|---:|
+|8kHz /6kHz | -0.48dB; belirgin2kHz alias | -114.0dB |
+|16kHz /10kHz | -2.54dB; belirgin6kHz alias | -127.1dB |
+
+İki tarafta referans200Hz/.25 genlikli giriş; başlangıç500ms hariç RMS ölçülür. Bu seçilmiş ton reddidir; tüm Nyquist geçiş bandı taraması değildir. FIR yalnız AudioContext<24kHz'de çalışır ve4ms gecikme/ek DSP maliyeti getirir. Gerçek Bluetooth HFP'nin OS tarafından48kHz bağlama yeniden örneklenmesi durumunda bu yeni FIR çalışmaz; OS dönüştürmesinin kalitesi cihazda ölçülür. Hermite'in yüksek frekans genlik hatası/imaging'i de ideal sinc eşdeğeri değildir; tarayıcı çıkışında geniş bant sweep ve dinleme testi sürmelidir.
+
+### 9.3 Dosya bütünlüğü ve karar
+
+v59 diff **12 dosyayı** kapsar: server.js, scripts/verify-system.js, player worklet, sw ve sekiz HTML sayfası. Capture worklet ve shim kaynak algoritması değişmez. git apply --check - ve git apply --check --ignore-space-change - başarılıdır; başlangıç15 kaynak SHA-256 kaydı aşağıdadır. Son kontrol bu15 kaynağın aynı kaldığını doğrular. Aşağıdaki boş-context satırlarının tek boşluk prefix'i unified diff formatının parçasıdır.
+
+**Karar:** v59 kod düzeyinde incelemeye ve staging uygulamasına hazırdır. Ortak-IP engeli ve düşük çıkış alias kusuru yeniden üretilip adayda giderildi; yavaş peer izolasyonu ve PCM bayt bütünlüğü yerelde doğrulandı. Üretimde300 HTTP fallback kapasitesi, gerçek radyo ağı, public MQTT ACL/SLA, fiziksel kalabalık izolasyonu/çapraz cihaz echo ve iOS/Android ekran kilidi sürekliliği onaylanmış değildir. Bu sınırlar saha kabulünde kapanmadan “Kâbe'de300 kişi, sıfır kopma/sıfır cızırtı” yayına çıkış garantisi verilemez.
+
+<!-- SOURCE-HASHES {"server.js":"6302dcb2fc1fe03f3a42bff17f267c0911ba2d2b361e0e9524ac91c8c6148849","scripts/verify-system.js":"086f6f805f3696e5a51117037a3de6b3d6b0ed43f413e93326f414c03b9246bf","public/ani-kitabi.html":"49c5f6af3dfcf33cad2befbbafdeb448a44a37b3877c13d0502ac6507fdce963","public/dinle.html":"f18d8e4626d4fb3430145a166d6475f56c326fb88b19d712fd2847b36af146b2","public/index.html":"572baa2c640b3f11c37e0461e701cacc50a9a6ed8482122f1574487467a560f2","public/kullanim-rehberi.html":"c019fb50dfcf83d1097920c3210c3dea82b071de2e1000ffa15c39ad6f71de3e","public/login.html":"8eba7f37d518b0f4748611240e8b938a160b6f0d0fd6118d8aecaa0a424f35f3","public/panel.html":"758bac58b933eec6126ab765ca32b974a33be92d572e241eb54789cef8aa46aa","public/pcm-capture-worklet.js":"e6f7c223b92928825481589f626e53b64ff70c17710f668000440c68d559e564","public/pcm-player-worklet.js":"9bfbcb06d2904d375ff06498e232cc09a32c5c9624b36bb8947bbc5270323183","public/rehber.html":"5ddd9e2f2549f1584c1c28964b4c45411b7c177da5253df1d70a29d9384d79ec","public/rota.html":"9fb74d5cd19981ab37ff283780a71166d14cc8355502e160173137dddba95467","public/sw.js":"2d70f5c3bb559a68f5c6dfc4a4d405b39ae088c29d5f2a3e16e1ccb95cbaab05","public/vercel-ws-shim.js":"33831bb515dcec2932c2060f67882cc2a1e720c14f1726dde8ff2b410a962d6f","public/yaka-karti.html":"8c2b69c27249b31a716660f001c9624377d9ad8c40c8f6b5657cf8f8e2b8b260"} -->
