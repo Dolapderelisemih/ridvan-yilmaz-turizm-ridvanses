@@ -273,99 +273,75 @@
       }
     }
 
-    _activateCloudRelay() {
-      if (this._isRelay) return;
-      this._isRelay = true;
-      this._opened = true;
-      try {
-        if (this._native) {
-          this._native.onopen = null;
-          this._native.onmessage = null;
-          this._native.onerror = null;
-          this._native.onclose = null;
-          this._native.close();
+    // PATCH: transport-v53
+    _activateCloudRelay(){
+      if(this._isRelay||this._closedExplicitly)return;
+      this._isRelay=true;this._opened=true;
+      this._httpEpoch=(this._httpEpoch||0)+1;this._relayAbort?.abort();this._inFlight=false;
+      try{if(this._native){this._native.onopen=null;this._native.onmessage=null;
+        this._native.onerror=null;this._native.onclose=null;this._native.close();}}catch(e){}
+      this.readyState=1;
+      if(this._joinContext)this._initMqttBus(this._joinContext,false);
+      else if(this._isAdmin)this._initMqttBus(null,true);
+      if(typeof this.onopen==='function')this.onopen({type:'open',relay:true});
+      this._audioCoalescer?.flush();
+      if(this._pollTimer)clearInterval(this._pollTimer);
+      this._pollTimer=setInterval(()=>this._flushAndPoll(),100);
+      if(!this.url.includes('.vercel.app/ws')&&!this._vdsFailbackTimer)
+        this._vdsFailbackTimer=setInterval(()=>this._tryNativeFailback(),12000);
+    }
+    _tryNativeFailback(){
+      if(!this._isRelay||this.readyState!==1||this._closedExplicitly||this._failbackProbe)return;
+      const join=this._joinContext,generation=this._transportGeneration||0;
+      const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join');
+      let request,ackType;
+      if(mode==='admin-subscribe'){
+        request={type:mode,token:(localStorage.getItem('ry_auth_token')||'').trim()};ackType='admin-rooms-update';
+      }else if(mode==='family-subscribe'){
+        if(!join)return;request={type:mode,tourCode:join.tourCode};ackType='family-state';
+      }else{if(!join)return;request={...join};ackType='joined';}
+      let probe;try{probe=new NativeWebSocket(this.url);probe.binaryType='arraybuffer';}catch(e){return;}
+      this._failbackProbe=probe;let finished=false;
+      const cancel=()=>{
+        if(finished)return;finished=true;clearTimeout(timer);
+        if(this._failbackProbe===probe)this._failbackProbe=null;
+        if(this._cancelNativeProbe===cancel)this._cancelNativeProbe=null;
+        probe.onopen=null;probe.onmessage=null;probe.onerror=null;probe.onclose=null;
+        try{probe.close();}catch(e){}
+      };
+      const timer=setTimeout(cancel,3000);this._cancelNativeProbe=cancel;
+      probe.onerror=cancel;probe.onclose=cancel;
+      probe.onopen=()=>{
+        if(this._closedExplicitly||!this._isRelay||(this._transportGeneration||0)!==generation){cancel();return;}
+        try{probe.send(JSON.stringify(request));}catch(e){cancel();}
+      };
+      probe.onmessage=ev=>{
+        let msg;try{msg=JSON.parse(ev.data);}catch(e){return;}
+        if(msg.type==='auth-error'||msg.type==='pin-error'){cancel();return;}
+        if(msg.type!==ackType)return;
+        if(this._closedExplicitly||!this._isRelay||(this._transportGeneration||0)!==generation){cancel();return;}
+        if(mode==='join'&&(!msg.room||String(msg.room.tourCode).toUpperCase().trim()!==String(join.tourCode||'RY-KASIM').toUpperCase().trim()||
+          String(msg.room.roomId)!==String(join.roomId||'genel').trim())){cancel();return;}
+        finished=true;clearTimeout(timer);this._failbackProbe=null;this._cancelNativeProbe=null;
+        this._native=probe;this._isRelay=false;this._opened=true;
+        this._httpEpoch=(this._httpEpoch||0)+1;this._relayAbort?.abort();this._relayAbort=null;this._inFlight=false;
+        if(this._pollTimer){clearInterval(this._pollTimer);this._pollTimer=null;}
+        if(this._vdsFailbackTimer){clearInterval(this._vdsFailbackTimer);this._vdsFailbackTimer=null;}
+        probe.onmessage=e=>{if(!this._isRelay&&this.readyState===1)this.onmessage?.(e);};
+        probe.onerror=e=>this.onerror?.(e);
+        probe.onclose=e=>{if(!this._isRelay){this.readyState=3;this.onclose?.(e);}};
+        // Re-send current join/live metadata through the application's existing open handler.
+        if(typeof this.onopen==='function')this.onopen({type:'open',failback:true});
+        const pending=this._sendQueue.splice(0),now=Date.now();
+        for(const m of pending){
+          if(m.type==='join'||m.type==='family-subscribe'||m.type==='admin-subscribe'||m.type==='guide-stream-state')continue;
+          if(m.type==='audio-chunk'&&(!Number.isFinite(m._queuedAt)||now-m._queuedAt>200))continue;
+          try{this.send(JSON.stringify(m));}catch(e){this.onerror?.(e);}
         }
-      } catch {}
-
-      this.readyState = 1; // OPEN
-      if (this._joinContext) {
-        this._initMqttBus(this._joinContext, false);
-      } else if (this._isAdmin) {
-        this._initMqttBus(null, true);
-      }
-      if (typeof this.onopen === 'function') {
-        this.onopen({ type: 'open', relay: true });
-      }
-
-      // PATCH: poll-v51
-      this._pollTimer = setInterval(() => this._flushAndPoll(), 100);
-
-      // Birincil VDS sunucusu tekrar ayağa kalktığında MQTT yedek rölesinden kayıpsız geri dönüş (Zero-Drop Failback)
-      const isServerlessHost = typeof this.url === 'string' && this.url.includes('.vercel.app/ws');
-      if (!isServerlessHost && !this._vdsFailbackTimer) {
-        this._vdsFailbackTimer = setInterval(() => {
-          if (!this._isRelay || this.readyState !== 1) {
-            clearInterval(this._vdsFailbackTimer);
-            this._vdsFailbackTimer = null;
-            return;
-          }
-          let probe;
-          try {
-            probe = new NativeWebSocket(this.url);
-            probe.binaryType = 'arraybuffer';
-          } catch {
-            return;
-          }
-          const probeTimeout = setTimeout(() => {
-            try {
-              probe.onopen = null;
-              probe.close();
-            } catch {}
-          }, 3000);
-          probe.onopen = () => {
-            clearTimeout(probeTimeout);
-            if (!this._isRelay || this.readyState !== 1) {
-              try { probe.close(); } catch {}
-              return;
-            }
-            if (this._vdsFailbackTimer) {
-              clearInterval(this._vdsFailbackTimer);
-              this._vdsFailbackTimer = null;
-            }
-            if (this._pollTimer) {
-              clearInterval(this._pollTimer);
-              this._pollTimer = null;
-            }
-            this._closeMqttClients();
-            window.__ryConsecutiveVdsFailures = 0;
-            this._isRelay = false;
-            this._opened = true;
-            this._native = probe;
-            probe.onmessage = (ev) => {
-              if (this._isRelay) return;
-              if (typeof this.onmessage === 'function') this.onmessage(ev);
-            };
-            probe.onerror = (err) => {
-              if (typeof this.onerror === 'function') this.onerror(err);
-            };
-            probe.onclose = (ev) => {
-              if (!this._isRelay) {
-                this.readyState = 3;
-                if (typeof this.onclose === 'function') this.onclose(ev);
-              }
-            };
-            if (this._joinContext) {
-              try {
-                probe.send(JSON.stringify(this._joinContext));
-              } catch {}
-            }
-            console.log('⚡ [RıdvanSes] Birincil VDS WebSocket normale döndü — MQTT Rölesinden kayıpsız geçiş yapıldı.');
-          };
-          probe.onerror = () => {
-            clearTimeout(probeTimeout);
-          };
-        }, 12000);
-      }
+        this._audioCoalescer?.flush();
+        this._closeMqttClients();window.__ryConsecutiveVdsFailures=0;
+        this.onmessage?.(ev);
+      };
     }
 
     _sanitizeCode(str) {
@@ -641,6 +617,7 @@
       }
     }
 
+    // PATCH: shim-send-v53
     send(data) {
       if (
         (typeof ArrayBuffer !== 'undefined' && data instanceof ArrayBuffer) ||
@@ -662,9 +639,15 @@
           parsed._msgId = 'm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
         }
         if (parsed.type === 'join') {
+          const old=this._joinContext;
+          if(old&&(old.tourCode!==parsed.tourCode||old.roomId!==parsed.roomId||old.role!==parsed.role)){
+            this._audioCoalescer?.clear();this._sendQueue=this._sendQueue.filter(m=>m.type!=='audio-chunk');
+          }
+          this._subscriptionType='join';this._transportGeneration=(this._transportGeneration||0)+1;
           this._joinContext = parsed;
           if (this._isRelay) this._initMqttBus(parsed, false);
         } else if (parsed.type === 'family-subscribe') {
+          this._subscriptionType='family-subscribe';this._transportGeneration=(this._transportGeneration||0)+1;
           this._joinContext = {
             type: 'join',
             role: 'pilgrim',
@@ -674,6 +657,7 @@
           };
           if (this._isRelay) this._initMqttBus(this._joinContext, false);
         } else if (parsed.type === 'admin-subscribe') {
+          this._subscriptionType='admin-subscribe';this._transportGeneration=(this._transportGeneration||0)+1;
           this._isAdmin = true;
           if (this._isRelay) this._initMqttBus(null, true);
         }
@@ -875,8 +859,9 @@
       }
     }
 
-    // PATCH: shim-close-v52
+    // PATCH: shim-close-v53
     close() {
+      this._closedExplicitly=true;this._cancelNativeProbe?.();
       this.readyState = 3;
       this._httpEpoch=(this._httpEpoch||0)+1;
       this._relayAbort?.abort();this._relayAbort=null;

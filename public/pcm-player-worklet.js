@@ -1,3 +1,4 @@
+// PATCH: player-v53
 // PATCH: player-v52
 // PATCH: player-v51
 // PATCH: player-v50
@@ -162,7 +163,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
       for(let i=0;i<remove;i++)this.q.delete(keys[i]);
       this.expected=keys[remove];this.stats.queueDropped+=remove;
       // Preserve current frame/phase. Blend at the next source frame boundary.
-      this.pendingQueueBlend=true;
+      this.pendingQueueBlend=this.playing&&this.haveHistory;
     }
   }
 
@@ -179,7 +180,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     const packet=this.q.get(this.expected);this.q.delete(this.expected);
     this.expected=(this.expected+1)%RYS_MOD;this.fi=0;
     if(packet){
-      const recovery=this.missing>0||this.pendingQueueBlend;this.pendingQueueBlend=false;
+      const recovery=this.haveHistory&&(this.missing>0||this.pendingQueueBlend);this.pendingQueueBlend=false;
       if(recovery){
         // Predict the next PLC samples before replacing its state with real media.
         this.plc.fill(this.continuation);this.recoveryFrame.set(packet);
@@ -289,7 +290,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
       this.wait = 0;
       this.primed = false;
       this.fi = 480;
-      this.haveHistory = false;
+      this.haveHistory = false;this.missing=0;this.pendingQueueBlend=false;this.plc=new RysPitchPlc();
       this.resetFrom = this.lastOut;
       this.resetFade = 0;
     }

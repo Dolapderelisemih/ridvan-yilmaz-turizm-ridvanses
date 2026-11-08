@@ -572,6 +572,7 @@ async function runStep2And3LiveServerAndWsTests() {
   );
 
   await runV51TransportRoundTrip({url:wsUrl,token:authToken});
+  await runV53RelayRoundTrip({baseUrl,token:authToken});
 
   guideGenelWs.close();
   pilgrimWs.close();
@@ -612,6 +613,29 @@ async function runV51TransportRoundTrip({url,token}){
   }finally{
     for(const s of [guide,listener]){s.removeAllListeners();try{s.terminate();}catch(e){}}
   }
+}
+
+// PATCH: relay-e2e-v53
+async function runV53RelayRoundTrip({baseUrl,token}){
+  const assert=require('node:assert/strict');const stamp=Date.now().toString(36);
+  const a='v53a-'+stamp,b='v53b-'+stamp,guideId='v53g-'+stamp;
+  const ca='v53ca-'+stamp,cb='v53cb-'+stamp;
+  const join=(role,roomId)=>({type:'join',role,tourCode:'RY-KASIM',roomId,name:'V53 relay test'});
+  const post=async body=>{const r=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    return {status:r.status,body:await r.json()};};
+  const get=async id=>{const r=await fetch(baseUrl+'/api/ws-relay?'+new URLSearchParams({clientId:id}));return r.json();};
+  const unit=seq=>({type:'audio-chunk',seq,sentAt:Date.now(),sampleRate:24000,pcm16:Buffer.alloc(960).toString('base64')});
+  assert.equal((await post({clientId:ca,joinContext:join('pilgrim',a)})).status,200);
+  assert.equal((await post({clientId:cb,joinContext:join('pilgrim',b)})).status,200);
+  assert.equal((await post({clientId:guideId,token,joinContext:join('guide',a),messages:[{type:'audio-chunk',frames:[unit(0),unit(1),unit(2)]}]})).status,200);
+  const audioA=(await get(ca)).messages.filter(m=>m.type==='audio-chunk');assert.deepEqual(audioA.map(m=>m.seq),[0,1,2]);
+  const moved=await post({clientId:guideId,token,joinContext:join('guide',b),messages:[{type:'audio-chunk',frames:[unit(3),unit(4),unit(5)]}]});
+  assert(moved.body.messages.some(m=>m.type==='joined'&&m.room.roomId===b));
+  const audioB=(await get(cb)).messages.filter(m=>m.type==='audio-chunk');assert.deepEqual(audioB.map(m=>m.seq),[3,4,5]);
+  const denied=await post({clientId:guideId,token:'invalid',joinContext:join('guide',b),messages:[unit(6)]});assert.equal(denied.status,401);
+  assert(!(await get(cb)).messages.some(m=>m.type==='audio-chunk'&&m.seq===6));
+  assert.equal((await post({clientId:guideId,token,joinContext:join('guide',b),messages:[]})).status,200);
+  if(typeof recordResult==='function')recordResult('ADIM-3.V53','Gerçek HTTP relay: batch, header-only oda değişimi ve yetki yenileme doğrulandı',true);
 }
 
 async function runStep4FrontendPwaAndAtomicWriteChecks() {
@@ -1054,8 +1078,8 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
   );
 }
 
-// PATCH: verify-v52
-async function runStep5V52AudioChecks(){
+// PATCH: verify-v53
+async function runStep5V53AudioChecks(){
   const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
   const assert=require('node:assert/strict');
   const root=typeof ROOT_DIR==='string'?ROOT_DIR:process.cwd();
@@ -1145,7 +1169,7 @@ async function runStep5V52AudioChecks(){
   for(let i=0;i<33;i++)p._push({type:'push',samples:new Float32Array(480).fill(.1),seq:i,arrival:i*20});
   assert.equal(p.q.size,24);assert.equal(p.expected,9);assert.equal(p.stats.queueDropped,9);
   assert(p.q.has(32));assert.equal(p.stats.resync,0);assert(p.playing);assert.equal(p.fi,120);assert.equal(p.phase,.25);
-  const recovery=new P();recovery.expected=7;recovery.missing=1;
+  const recovery=new P();recovery.expected=7;recovery.missing=1;recovery.haveHistory=true;
   recovery.plc={fill(a){a.fill(.2);},append(){}};recovery.q.set(7,new Float32Array(480).fill(-.2));recovery._nextFrame();
   assert(Math.abs(recovery.frame[0]-.2)<1e-6);assert(Math.abs(recovery.frame[71]+.2)<1e-6);
   const seq=new P();const push=(n,phrase=false)=>seq._push({samples:new Float32Array(480).fill(.1),seq:n,phraseStart:phrase,arrival:n*20});
@@ -1226,8 +1250,97 @@ async function runStep5V52AudioChecks(){
     document:{getElementById:()=>null},MediaMetadata:class{},navigator:{mediaSession:{setActionHandler(n,f){actions[n]=f;}}},
     toggleAudioPlayback(){paused++;},forceResurrectPilgrimAudio(){}}).c;
   mc.updateMediaSessionMetadata();actions.pause();assert.equal(paused,1);
-  if(typeof recordResult==='function')recordResult('ADIM-5.V52','Kaynak dosyalarından DSP, profil, sıra, fanout ve relay davranışları doğrulandı',true);
-  console.log('V52 PASS: source-only DSP/SRC/comfort/profile, queue/PLC/seq, binary+JSON dedup, coalescer, congestion, HTTP single-flight/drain/close, gesture/wake/pause');
+
+  // Isolate comfort gain from VAD: controlled activity has exactly 10 ms waveform lookahead.
+  const first=[];const ck=new cap.K(24000,{},m=>first.push(...m.samples));
+  const delay=new Float32Array(240);let dp=0;
+  ck.gate={ready:true,hold:0,continuousSpeech:false,step(x){const y=delay[dp];delay[dp]=x;dp=(dp+1)%240;return y;}};
+  for(let i=0;i<60000;i++)ck.accept(0);first.length=0;ck.gate.hold=24;
+  for(let i=0;i<480;i++)ck.accept(.2);
+  const firstIndex=first.findIndex(x=>x!==0);
+  assert.equal(firstIndex,312);assert(Math.abs(first[firstIndex]-.2)<1e-6);assert.equal(ck.comfortGain,1);
+  const initial=new P();for(let i=0;i<33;i++)initial._push({samples:new Float32Array(480).fill(.2),seq:i,arrival:i*20});
+  assert(!initial.pendingQueueBlend);initial.plc.fill=()=>{throw Error('PLC history does not exist');};
+  initial._nextFrame();assert(Math.abs(initial.frame[0]-.2)<1e-6);
+  const histless=new P();histless.expected=0;histless.missing=1;
+  histless.plc.fill=()=>{throw Error('Invalid history recovery');};histless.q.set(0,new Float32Array(480).fill(.1));
+  histless._nextFrame();assert(Math.abs(histless.frame[0]-.1)<1e-6);
+  const exhausted=new P();for(let i=0;i<8;i++)exhausted._push({samples:new Float32Array(480).fill(.1),seq:i,arrival:i*20});
+  for(let i=0;i<600;i++)exhausted.process([],[[new Float32Array(128)]]);
+  assert(!exhausted.haveHistory);assert.equal(exhausted.plc.used,0);assert.equal(exhausted.missing,0);
+  assert(!guide.includes('processGuideFloatChunkDsp'));assert(!guide.includes('guideGateEnv'));
+  let profileMessage;const profileKernel=new cap.K(24000,{continuousSpeech:true,comfortFade:false});
+  const central=box(['syncGuideAudioProfile','updateGuideSideVoiceReject','resetGuideVoiceLock'].map(n=>pick(guide,n)).join('\n'),'',{
+    guideContinuousSpeech:true,guideComfortFade:false,guideSideVoiceRejectLevel:.5,
+    document:{getElementById:()=>({style:{}})},scriptProcessor:{port:{postMessage(m){profileMessage=m;profileKernel.control(m);}}}
+  }).c;
+  central.updateGuideSideVoiceReject(68);central.resetGuideVoiceLock();
+  assert(profileMessage.resetLock);assert(profileKernel.gate.continuousSpeech);assert(!profileKernel.comfortFade);
+  let posts=[];const pending=[{type:'push',seq:1,samples:new Float32Array(480),arrival:100},
+    {type:'push',seq:2,samples:new Float32Array(480),arrival:200}];
+  const pendingBox=box(pick(listener,'flushPendingRxFrames'),'',{pendingRxFrames:pending,
+    rxPlayerWorkletNode:null,audioCtx:{state:'running'},performance:{now:()=>400}}).c;
+  pendingBox.flushPendingRxFrames();assert.equal(pending.length,2);
+  pendingBox.rxPlayerWorkletNode={port:{postMessage:m=>posts.push(m)}};
+  pendingBox.flushPendingRxFrames();assert.equal(posts.length,1);assert.equal(posts[0].seq,2);
+  let resolveOld,resolveNew,created=0;
+  const oldCtx={audioWorklet:{addModule:()=>new Promise(r=>resolveOld=r)}},newCtx={audioWorklet:{addModule:()=>new Promise(r=>resolveNew=r)}};
+  class RxNode{constructor(context){this.context=context;created++;this.port={};}connect(){}}
+  const loading=box(pick(listener,'initRxPlayerWorklet'),'',{audioCtx:oldCtx,rxPlayerWorkletNode:null,
+    rxPlayerWorkletLoading:false,rxPlayerWorkletAlive:false,rxLoadToken:0,
+    window:{AudioWorkletNode:RxNode},AudioWorkletNode:RxNode,rxInputNode:{},gainNode:{},
+    activeScheduledSources:[],flushPendingRxFrames(){}}).c;
+  loading.initRxPlayerWorklet();loading.audioCtx=newCtx;loading.rxLoadToken++;loading.rxPlayerWorkletLoading=false;
+  loading.initRxPlayerWorklet();resolveOld();await new Promise(r=>setImmediate(r));
+  assert.equal(created,0);assert(loading.rxPlayerWorkletLoading);
+  resolveNew();await new Promise(r=>setImmediate(r));assert.equal(created,1);assert.equal(loading.rxPlayerWorkletNode.context,newCtx);
+  const probes=[];let closedMqtt=0,opened=0;
+  class Native{constructor(url){this.url=url;this.readyState=1;this.sent=[];probes.push(this);}send(data){this.sent.push(JSON.parse(data));}close(){this.closed=true;this.readyState=3;}}
+  const transportCode=helpers+'\n'+pick(shim,'RysAudioCoalescer','class')+'\n'+pick(shim,'installRysCoalescing')+'\n'+pick(shim,'SmartWebSocket','class');
+  const transport=box(transportCode,'globalThis.S=SmartWebSocket;globalThis.install=installRysCoalescing;',{
+    NativeWebSocket:Native,window:{},Date:{now:()=>100},localStorage:{getItem:()=>''},
+    setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},sessionStorage:{}}).c;
+  const makeRelay=()=>{
+    const s=Object.create(transport.S.prototype);
+    Object.assign(s,{url:'wss://local/ws',readyState:1,_isRelay:true,_httpEpoch:0,_transportGeneration:0,
+      _subscriptionType:'join',_joinContext:{type:'join',role:'guide',tourCode:'RY-KASIM',roomId:'a',token:'good'},
+      _sendQueue:[],_isAdmin:false,_inFlight:true,_busConnected:()=>true,_publishMqtt(){},_initMqttBus(){},
+      _closeMqttClients(){closedMqtt++;},onmessage(){},onerror(){},
+      onopen(){opened++;s.send(JSON.stringify({...s._joinContext}));s.send(JSON.stringify({type:'guide-stream-state',isLive:true,broadcastMode:'mic'}));}});
+    transport.install(s);s._audioCoalescer.push(unit(10));s._audioCoalescer.push(unit(11));return s;
+  };
+  const fail=makeRelay();fail._tryNativeFailback();let probe=probes.at(-1);probe.onopen();
+  probe.onmessage({data:JSON.stringify({type:'auth-error'})});assert(fail._isRelay);assert.equal(fail._audioCoalescer.frames.length,2);
+  const wrong=makeRelay();wrong._tryNativeFailback();probe=probes.at(-1);probe.onopen();
+  probe.onmessage({data:JSON.stringify({type:'joined',room:{tourCode:'RY-KASIM',roomId:'wrong'}})});assert(wrong._isRelay);
+  const stale=makeRelay();stale._tryNativeFailback();probe=probes.at(-1);probe.onopen();stale._transportGeneration++;
+  probe.onmessage({data:JSON.stringify({type:'joined',room:{tourCode:'RY-KASIM',roomId:'a'}})});assert(stale._isRelay);
+  const success=makeRelay();success._tryNativeFailback();probe=probes.at(-1);probe.onopen();
+  assert(success._isRelay);assert.equal(closedMqtt,0);
+  probe.onmessage({data:JSON.stringify({type:'joined',room:{tourCode:'RY-KASIM',roomId:'a'}})});
+  assert(!success._isRelay);assert.equal(opened,1);assert.equal(closedMqtt,1);
+  const batch=probe.sent.find(m=>Array.isArray(m.frames));assert(batch);assert.deepEqual(Array.from(batch.frames,m=>m.seq),[10,11]);
+  assert(probe.sent.some(m=>m.type==='guide-stream-state'&&m.isLive));
+  success.close();success._activateCloudRelay();assert.equal(success.readyState,3);assert.equal(opened,1);
+  const roomChange=makeRelay();roomChange._sendQueue=[{type:'audio-chunk',frames:[unit(5)],_queuedAt:100}];
+  roomChange.send(JSON.stringify({...roomChange._joinContext,roomId:'b'}));
+  assert.equal(roomChange._audioCoalescer.frames.length,0);assert(!roomChange._sendQueue.some(m=>m.type==='audio-chunk'));
+  const auth=box(pick(server,'applyRysRelayAuth')+'\n'+pick(server,'syncRysRelayJoin'),'',{
+    isRequestAuthenticated:req=>!!req.auth,isValidAuthToken:token=>token==='good',
+    processClientJsonMessage(session,join){if(join.pin==='right')session.currentRoom={tourCode:join.tourCode,roomId:join.roomId,
+      clients:new Map([[session.clientId,{role:join.role}]])};}
+  }).c;
+  const session={clientId:'unit',isAuthenticated:true,ws:{isAuthenticated:true},currentRoom:{tourCode:'RY-KASIM',roomId:'a',
+    clients:new Map([['unit',{role:'guide'}]])}};
+  assert(!auth.applyRysRelayAuth(session,{},'bad',null));assert(!session.isAuthenticated);assert(!session.ws.isAuthenticated);
+  assert(auth.applyRysRelayAuth(session,{},'good',null));
+  assert(!auth.syncRysRelayJoin(session,{type:'join',role:'guide',tourCode:'RY-KASIM',roomId:'b',pin:'wrong'}));
+  assert.equal(session.currentRoom.roomId,'a');
+  assert(auth.syncRysRelayJoin(session,{type:'join',role:'guide',tourCode:'RY-KASIM',roomId:'b',pin:'right'}));
+  console.log('V53 DETAILS: isolated comfort firstSample='+firstIndex+', gain=1; warmup/history guards; ACK/generation/partial-frame handoff; HTTP auth refreshed');
+
+  if(typeof recordResult==='function')recordResult('ADIM-5.V53','Kaynak dosyalarından DSP, profil, sıra, fanout ve relay davranışları doğrulandı',true);
+  console.log('V53 PASS: source-only DSP/SRC/comfort/profile, queue/PLC/seq, binary+JSON dedup, coalescer, congestion, HTTP single-flight/drain/close, gesture/wake/pause');
 }
 
 async function main() {
@@ -1237,7 +1350,7 @@ async function main() {
     await runStep1StaticAndSyntaxChecks();
     await runStep2And3LiveServerAndWsTests();
     await runStep4FrontendPwaAndAtomicWriteChecks();
-    await runStep5V52AudioChecks();
+    await runStep5V53AudioChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);

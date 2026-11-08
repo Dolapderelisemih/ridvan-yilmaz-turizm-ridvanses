@@ -1341,44 +1341,42 @@ function drainRysRelaySession(sess) {
     .map((e) => e.message);
 }
 
-app.post('/api/ws-relay', (req, res) => {
-  const { clientId, messages, joinContext, token } = req.body || {};
-  const session = getOrCreateRelaySession(clientId);
-  if (isRequestAuthenticated(req) || isValidAuthToken(token) || isValidAuthToken(joinContext?.token)) {
-    session.isAuthenticated = true;
-    session.ws.isAuthenticated = true;
-  }
-  if (!session.currentRoom && joinContext && joinContext.type === 'join') {
-    processClientJsonMessage(session, joinContext);
-  }
-  const list = Array.isArray(messages) ? messages : req.body?.message ? [req.body.message] : [];
-  for (const msg of list) {
-    if (msg && typeof msg === 'object') {
-      processClientJsonMessage(session, msg);
-    }
-  }
-  const drained = drainRysRelaySession(session);
-  return res.json({ clientId: session.clientId, messages: drained });
-});
+// PATCH: relay-auth-v53
+function applyRysRelayAuth(session,req,token,joinContext){
+  const authenticated=!!(isRequestAuthenticated(req)||isValidAuthToken(token)||isValidAuthToken(joinContext?.token));
+  const client=session.currentRoom?.clients.get(session.clientId);
+  session.isAuthenticated=authenticated;session.ws.isAuthenticated=authenticated;
+  return authenticated||!(client?.role==='guide'||session.ws.isAdmin||joinContext?.role==='guide');
+}
+function syncRysRelayJoin(session,joinContext){
+  if(!joinContext||joinContext.type!=='join')return true;
+  const code=String(joinContext.tourCode||'RY-KASIM').toUpperCase().trim();
+  const room=String(joinContext.roomId||'genel').trim(),role=joinContext.role==='guide'?'guide':'pilgrim';
+  const matches=()=>session.currentRoom?.tourCode===code&&session.currentRoom?.roomId===room&&
+    session.currentRoom.clients.get(session.clientId)?.role===role;
+  if(!matches())processClientJsonMessage(session,joinContext);
+  return !!matches();
+}
 
-app.get('/api/ws-relay', (req, res) => {
-  const session = getOrCreateRelaySession(req.query.clientId);
-  if (isRequestAuthenticated(req) || isValidAuthToken(req.query.token)) {
-    session.isAuthenticated = true;
-    session.ws.isAuthenticated = true;
-  }
-  if (!session.currentRoom && req.query.tourCode) {
-    processClientJsonMessage(session, {
-      type: 'join',
-      tourCode: req.query.tourCode,
-      roomId: req.query.roomId || 'genel',
-      role: req.query.role || 'pilgrim',
-      name: req.query.name || '',
-      token: req.query.token || ''
-    });
-  }
-  const drained = drainRysRelaySession(session);
-  return res.json({ clientId: session.clientId, messages: drained });
+// PATCH: relay-routes-v53
+app.post('/api/ws-relay',(req,res)=>{
+  const {clientId,messages,joinContext,token}=req.body||{};
+  const session=getOrCreateRelaySession(clientId);
+  if(!applyRysRelayAuth(session,req,token,joinContext))return res.status(401).json({error:'relay-auth-required'});
+  if(!syncRysRelayJoin(session,joinContext))return res.json({clientId:session.clientId,
+    messages:[{type:'pin-error',message:'Kafile/oda katılımı reddedildi; PIN ve yetkiyi kontrol edin.'}]});
+  const list=Array.isArray(messages)?messages:req.body?.message?[req.body.message]:[];
+  for(const m of list)if(m&&typeof m==='object')processClientJsonMessage(session,m);
+  return res.json({clientId:session.clientId,messages:drainRysRelaySession(session)});
+});
+app.get('/api/ws-relay',(req,res)=>{
+  const session=getOrCreateRelaySession(req.query.clientId);
+  const join=req.query.tourCode?{type:'join',tourCode:req.query.tourCode,roomId:req.query.roomId||'genel',
+    role:req.query.role||'pilgrim',name:req.query.name||'',pin:req.query.pin||'',token:req.query.token}:null;
+  if(!applyRysRelayAuth(session,req,req.query.token,join))return res.status(401).json({error:'relay-auth-required'});
+  if(!syncRysRelayJoin(session,join))return res.json({clientId:session.clientId,
+    messages:[{type:'pin-error',message:'Kafile/oda katılımı reddedildi; PIN ve yetkiyi kontrol edin.'}]});
+  return res.json({clientId:session.clientId,messages:drainRysRelaySession(session)});
 });
 
 // ======================== REST API ENDPOINTS ========================

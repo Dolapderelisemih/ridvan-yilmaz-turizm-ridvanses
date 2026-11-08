@@ -1,75 +1,67 @@
-# AUDIO EXCELLENCE REPORT — v51 denetimi ve v52 önerileri
+# AUDIO EXCELLENCE REPORT — v52 doğrulama ve v53 ince ayar denetimi
 
-7 Kasım 2026. İncelenen Git HEAD: `35dd2b0eb898a61546d728ca07ec957e42ac83b9`. Kaynak dosyalar değiştirilmedi; yalnız bu rapor oluşturuldu. Aşağıdaki yamalar diske uygulanmadı.
+8 Kasım 2026. Git HEAD `3d33d09b43a733309d8d882efaa9137c254340e6`. Mevcut kaynaklar değiştirilmedi; tek çıktı bu rapordur. Kod yamaları öneridir, uygulanmış sayılmaz.
 
-## 1. v51 doğrulama özeti
+## 1. Doğrulanan v52 durumu
 
-**İstenen `node scripts/verify-system.js` çalıştırıldı: exit 1.** Önceki 23 kontrol PASS oldu, fakat Step5 `AUDIO_EXCELLENCE_REPORT.md` için ENOENT ile durdu. Başlangıçta rapor Git'te silinmiş görünüyordu. Bu koşulda “23/23 + V51 PASS yeniden doğrulandı” veya “sıfır hatayla entegrasyon” denemez. Test kendi runtime snapshot'ını geri yazdı; kaynak dosyalara müdahale edilmedi.
+**İstenen komut doğrudan diskte çalıştırıldı: 24/24 PASS + V52 PASS, exit 0.** Test rapor metnini okumadan çalışıyor. Canlı localhost Express/ws, binary/JSON seq=0 ve batch/bozuk frame kontrolü dahil önceki testler geçti. Test runtime snapshot'ını geri yazdı.
 
-| Yama | Disk / test durumu |
-|---|---|
-| capture-v51 | Finite giriş sınırı, FIR, continuousSpeech ve mute state var. 4 s minima + varsayılan kapı duruyor. |
-| player-v51 | 72 kaynak örnek/3 ms PLC continuation overlap mevcut; q Map, seq mod 2^31. |
-| coalescer / poll | 3×20 ms, 40 ms timer, generation koruması, oldest _queuedAt ve 100 ms poll mevcut. |
-| fanout/binary/seq | Kısa kuyrukta terminate politikası, binary/JSON ortak send helper, seq=0 korunması mevcut. |
-| rehber UI/graph | continuousSpeech kullanıcı kontrolü yok; processorOptions/fallback seçeneklerine aktarılmıyor. |
-| receiver / mobile | Worklet tek medya yolu, context token ve WakeLock single-flight mevcut. Gerçek telefon deneyi yapılmadı. |
-| SW | v51 ve sürümlü worklet cache girdileri mevcut; atomik dağıtım garantisi değildir. |
-| Step1–4 / transport | 18 JS, 9 HTML içindeki 10 script; gerçek WS binary/JSON seq0, batch ve bozuk frame reddi dahil 23 PASS. |
-| Step5 | Rapor metnine bağımlı; eksik raporda hata, bazı parçalar gerçek kaynaktan okunmuyor. v52'de kaldırılmalı. |
-
-## 2. Bulgular, matematik ve kararlar
-
-| Öncelik | Dosya:satır | Kök neden / sonuç |
+| Hat | Doğrulama | Sınır |
 |---|---|---|
-| P1 | scripts/verify-system.js:1058–1188 | Step5 raporu/parçalarını okuyor. Testin öneri metnini test etmesi gerçek entegrasyon kusurunu gizleyebilir; rapor silinince test çalışmıyor. |
-| P1 | public/rehber.html:1225–1286,1909–1937 | continuousSpeech yalnız çekirdekte. UI ve kurulum parametreleri yok; yeniden mikrofon kurulumunda manuel port tercihi kaybolur. |
-| P1 | public/rehber.html:1728,1937 | playbackTime gelecekteki çıkış zamanı; currentTime−capturedAt negatifse 180 ms yaş filtresi onu taze kabul eder. Bu bir numeric crash değil, yakalama yaşı semantiği hatasıdır. |
-| P1 | public/pcm-player-worklet.js:164–187 | q>=32 halinde bütün kuyruk reset. 33 ardışık frame simülasyonunda 1 frame kalır; q tutarak drop politikasına geçilebilir. |
-| P1 | server.js:432–439 | 9720 byte (~10 frame/200 ms) v51'in 9600 eşiğini aşar ve terminate tetikler. Kısa takılmada TCP/TLS/oda katılımı maliyeti yaratır. |
-| P1 | public/vercel-ws-shim.js:819–822 | Tek 16 mesaj kuyruğu dolunca shift ses/kontrol ayrımı yapmadan en eskisini atar. inFlight süresince yeni mesaj kaybolmaz ama bu sınır/TTL yüzünden atılabilir. |
-| P2 | public/vercel-ws-shim.js:827–875 | İşlem sürerken poll no-op. Başarılı POST sonrası yeni kuyruk ancak yeni send veya bir sonraki 100 ms tick ile boşalır. close/failback sonrasında eski fetch cevabı teslim edilebilir. |
-| P2 | public/pcm-capture-worklet.js:137–144 | Adaptif kapı kapalıyken gain .126 ≈ -17.99 dB; zayıflatılmış ortam sürekli taşınır. Bu comfort noise sentezi değildir. |
-| P2 | public/dinle.html:2054–2132 | Binary ve JSON aynı Worklet yoluna gider. Konuşma için AudioBufferSourceNode fallback kalmamış; eski resampler/scheduled-source alanları ölü kalıntı. Modül yüklenmezse sessizlik var, otomatik ikinci playout yok. |
+| Yakalama | 193 tap SRC, finite korumalar, 480 örnek, 128==2048 kernel, UI profili aktarımı | Gerçek fonem/SPL/çift konuşma ayrıştırma kanıtı değil |
+| Oynatım | 32→24 budama, seq wrap/reorder/dedup, 72 kaynak örneklik continuation overlap | İlk oynatım öncesi geçmişsiz blend ayrı incelendi |
+| Relay/fanout | 100 ms poll, yerel 200 ms TTL, ayrı queue sınırları, kısa drop/ağır terminate | WAN/broker/roaming sürekliliği garantisi değil |
+| İstemci yaşam döngüsü | Context token, pending TTL, gesture/WakeLock/pause testleri | Gerçek iOS/Android arama/kilit testi değil |
+| Bağımsız test | Step5 gerçek disk kaynak sembollerini okuyor | Test kapsamı dışında hata bulunamayacağı anlamına gelmez |
 
-### 2.1 Uzun dua: hangi çözüm gerçekçi?
+**Sıfır-hata onayı verilmiyor:** aşağıdaki yeni karşı örnekler mevcut testlerin kapsamadığı koşullardır. 85–95 dB SPL'yi mikrofon kalibrasyonu olmadan dBFS'ye çevirmek veya tek kanallı VAD ile üst üste konuşmaları %100 ayırmak mümkün değildir. Yakın boom mikrofon/rüzgarlık ve hacılarda kulaklık temel önlemdir.
 
-Harmonik/pitch/spectral flux ile otomatik rehber kimliği ayrımı mevcut değil. Sürekli tonal konuşma 4 s pencere sonunda noise'a öğrenilebilir. Pitch periodicity, aynı anda konuşan yan kişiyi de bulur; sessiz s/ş/f ve reverb altında güvenilir kaynak kimliği sağlamaz. Bu nedenle v52 otomatik “kusursuz konuşmacı ayırıcı” eklemez. Açık kullanıcı tercihi olan uzun okuma kontrolü ekler, mikrofon yeniden kurulurken taşır. Uzun okuma modunda ortamın da geçebileceği UI'de açıklanır. Sessizlik/fade kararları bu modda devre dışı bırakılır.
+## 2. Bulgular ve soruların doğrudan yanıtları
 
-85–95 dB SPL dBFS değildir; kalibre mikrofon/mesafe bilinmeden sabit dijital eşik önerisi saha garantisi olmaz. Boom mikrofon, rüzgarlık, hacıda kulaklık ve doğrulanmış denoiser/Opus medya altyapısı hâlâ gereklidir.
+| Önem | Kaynak | Bulgular |
+|---|---|---|
+| P1 | public/pcm-capture-worklet.js:157–173 | Comfort attack 3 ms üstel; 10 ms sonra 1 değil ~.9643. VAD 10 ms hop ve enerji EMA nedeniyle ilk foneme kalan ön süre daha az olabilir. |
+| P1 | public/pcm-player-worklet.js:159–166,177–194 | Ön tamponda history yokken pendingQueueBlend=true kalır; sıfır continuation ilk 72 örneği ayrıca zayıflatır. Standart 5 ms startup fade de vardır. |
+| P1 | public/pcm-player-worklet.js:286–296 | Uzun açlık sonrası haveHistory=false yapılırken eski PLC r/used geçmişi kalıyor; tekrar başlangıçta eski pitch geçmişi kullanılabilir. |
+| P1 | public/vercel-ws-shim.js:325–362 | Failback TCP open anında yapılır; room/auth ACK beklenmez. Kısmi batch daha sonra native JSON yoluna gidebilir; doğrudan her zaman kayboluyor demek yanlış, fakat geçiş güvencesi yok. App onopen çağrılmadığı için live metadata/admin/family aboneliği yenilenmeyebilir. |
+| P1 | server.js:1344–1379 | Relay auth flag'leri yalnız true'ya set ediliyor; mevcut guide HTTP session'ı sonraki geçersiz/yok token isteğinde yetkili kalabilir. joinContext, mevcut currentRoom varsa değişik odaya uygulanmıyor. |
+| P2 | public/rehber.html:1268–1297 | Kısmi set-profile bayrakları **sıfırlamıyor**. Ancak gönderimin tek merkezden yapılması reset/UI tutarlılığı için daha iyi. reset açıklaması 400 ms susma kalibrasyonuyla çelişiyor. |
+| P2 | public/rehber.html:1571–1745 | Eski processGuideFloatChunkDsp ve RMS-AES state ölü. Aktif graph/reset içindeki eski state referansları birlikte temizlenmeli. |
+| P2 | public/dinle.html:1583–1696 | Bekleyen veri rebuild'de bilinçli olarak atılır; seq sender'da sürer ama player yeniden anchor/prebuffer yapar. Kesintisiz korunuyor denemez; bayat sesi saklamak da doğru çözüm değil. |
 
-### 2.2 Fallback zamanı
+### 2.1 Comfort-fade matematiği
 
-Worklet currentTime, render quantum başlangıcının context zamanıdır. ScriptProcessor playbackTime çıkış tamponunun oynatılacağı zamanı gösterir; gerçek ADC örnek saatinin yerine geçmez. Örneğin currentTime=10.000, playbackTime=10.043 ise yaş=-43 ms; 180 ms filtresi yakalamaz. [Web Audio API](https://www.w3.org/TR/webaudio/) zaman alanlarının birincil dayanağıdır.
+Kapalı durumdan açılmada g(t)=1−exp(−t/3ms): 3 ms'de .6321, 6 ms'de .8647, 10 ms'de .9643 (-.315 dB). İç expander .126'dan aynı τ ile açılıyorsa 10 ms'de .9688, ikisinin çarpımı yaklaşık .9342 (-.59 dB). Bu değerler **VAD açılma anından itibaren**; VAD ilk 10 ms hop sonunda karar verirse 10 ms lookahead'in tamamı attack'a kalmayabilir. İlk hecenin doğal ünsüz enerjisi ve VAD gecikmesi ayrı test edilmelidir.
 
-Yama fallback için callback context zamanı−inputDuration ile **tahmini blok başlangıcı**, kernel içinde örnek başına zaman artışı kullanır. Bu normal 2048@48k bloğu yaklaşık 0–42.67 ms yaş aralığına getirir. Ana thread uzun süre askıda kaldığında tarayıcının girdi tamponunun gerçek yaşını tam ölçtüğü iddia edilmez. ScriptProcessor geri dönüşü Worklet ile yaşam döngüsü/güvenilirlik açısından eşit değildir.
+V53 yalnız comfort katmanında 48 örnek/2 ms sonlu raised-cosine açılma ve her zaman etkin 72 örnek/3 ms ek waveform gecikmesi kullanır. İki profil arasında gecikme değiştirilmez. Koşul: VAD ile waveform arasında en az 2 ms ön süre varsa comfort gain tam 1 olur. Ek gecikme +3 ms'dir; iç expander'ın kendi attack'ı ve yanlış/çok geç VAD kararı çözülmüş sayılmaz. [Web Audio](https://www.w3.org/TR/webaudio/) zaman/render API sözleşmesidir; fonem anlaşılabilirliği sertifikası değildir.
 
-### 2.3 Comfort-Fade ve DTX ayrımı
+### 2.2 Profil, temizleme ve kurtarma
 
--18 dB taban bir izolasyon garantisi değildir. V52 adaptif modda kapı kapandıktan 600 ms sonra 80 ms zaman sabitli dip ses fade'i ekler; tekrar açılma 3 ms, mevcut 10 ms lookahead korunur. Eşik VAD yanlış kapanırsa fade hedef konuşmayı da azaltabilir; kullanıcı bu kontrolü kapatabilir. Uzun okuma bunu bypass eder.
+setProfile yalnız verilen reject/continuousSpeech alanlarını değiştirir; kernel comfortFade için de undefined kontrolü yapar. reject/reset çağrısı mevcut iki tercihi korur; buna karşı bir sıfırlama hatası raporlanmıyor. V53 syncGuideAudioProfile(resetLock) üzerinden tam profil gönderir. Reset kalibrasyonu 400 ms boyunca konuşmadan beklemeyi açıkça anlatır.
 
-**v52 paket DTX'i açmaz.** 480 örnek/20 ms ve seq sürekli kalır, sessizlik sıfır PCM olarak gider. Böylece kulağa dip hışırtısı azaltılır, ağ trafiği azaltılmaz: mono PCM payload 384 kbit/s + başlık ≈388.8 kbit/s, Base64 daha yüksek. Ağ tasarrufu için açık DTX/CNG/gap+stream-id+media timestamp müzakeresi veya [Opus](https://www.rfc-editor.org/rfc/rfc6716.html) gerekir. Sıfır frame'leri sessizce göndermemek önceki timeline sorunlarını geri getirir.
+Eski DSP bölümü yalnız tanımdır; canlı handler frame nesnesini alır. Temizlikte o bölgedeki guideWasIdlePaused/lastGuideMicChunkAt ve canlı BroadcastChannel referansı korunur. Eski graph reset atamaları kaldırılır. Receiver rebuild, pendingRxFrames ve worklet queue'yu bilerek temizler; yeni kaynaklardan gelen ilk seq anchor olur. rxLoadToken eski promise'in yeni context'i ele geçirmesini önler. 13 frame/260 ms pending sınırı canlı sesin başlangıcını kaybettirebilir; bu sınırlı gecikme politikasıdır. Arama sırasında erişilemeyen gerçek kelimeler geri üretilemez.
 
-### 2.4 Kuyruk taşması
+### 2.3 Coalescing ve failback
 
-32×20=640 ms **medya süresi**; tüm frame'lerin konuşma olduğu anlamına gelmez. Eski birkaç frame'i atmak bütün kelimeleri korumaz; atılan medyanın içeriği yine kaybolur. Öneri 33 frame'den en yeni 24'ü saklar, 9 frame/180 ms atlar; mevcut çalan frame/ASRC phase korunur ve sonraki kaynak frame sınırında 3 ms PLC-continuation overlap yapılır. Başlangıç simülasyonunda 24 frame saklanır, 1'e düşmez. Kalan 480 ms gecikme bilinçli bir üst sınırdır; hedef 80–260 ms'ye anında inildiği söylenmez. WSOLA/opus zaman ölçekleme ayrı kapsamdır. Çok büyük seq sıçraması/ayrı kaynakta tam reset hâlâ gerekir; v1 stream-id taşımadığı için kaynak değişimi kesin ayırt edilemez.
+Native başlangıçta JSON PCM biriktirilmediğinden ilk native→relay geçişinde normalde kısmi coalescer yoktur. Relay→native failback'te 1–2 frame varsa v52 timer sonradan native send'e düşebilir; fakat öncesinde join/auth ACK alınmış değildir ve metadata yenilenmez. V53 eski yolu ACK'e kadar korur, doğru oda/abonelik ACK'i alınca app onopen ile join/live state'i yeniler, yalnız taze kuyruk/kısmi batch'i yeni native yoluna aktarır, sonra MQTT'yi kapatır. >120 ms partial veya >200 ms queued medya yine bilinçli atılır. Kaynak/oda değişmişse eski odaya ait ses yeni odaya taşınmaz.
 
-### 2.5 Backpressure ve inFlight
+Buna rağmen “kayıpsız failback” garantisi verilmez. Probe/ACK gecikirken eski yol da çökmüş olabilir; mevcut v1 frame stream-id/media timestamp taşımıyor. In-flight kontrolün sonucu belirsizse replay çift etki yapabilir; kalıcı kontrol ACK/idempotency sistemi ayrı gereksinimdir. Callback, closed flag ve generation korumaları geçiş yarışını sınırlar.
 
-Soft eşikte yeni frame düşürmek, zaten TCP'ye verilmiş bayat sesi silmez; geçici stall'da yeniden handshake'i önler. V52 binary soft=9720, JSON soft=16000 byte; hard=65536 byte veya soft üstünde kesintisiz 2 s. Drop/resync/terminate ölçülür. Tek kötü dinleyiciye ek ses yığılmaz; ortak event loop/CPU/egress maliyeti diğerlerini yine etkileyebilir. `bufferedAmount` işletim sistemi/radyo uçtan uca kuyruk yaşı değildir. [ws belgeleri](https://github.com/websockets/ws/blob/master/doc/ws.md) send/bufferedAmount/terminate sözleşmesini açıklar.
+### 2.4 HTTP session, batch ve yetki
 
-İşlem sürerken yeni mesajlar _sendQueue'da kalır, 100 ms timer ikinci fetch açmaz. V52 başarı sonrası yeni kuyruğu microtask ile boşaltır; hata halinde hızlı retry döngüsü kurmaz. Kontrol ve ses için ayrı sayısal sınırlar, 200 ms yerel medya TTL, close sırasında AbortController ve eski cevap guard'ı eklenir. HTTP RTT+zamanlayıcı askısı TTL'yi aşarsa kayıp sürer; 100 ms poll düşük gecikme garantisi değildir. Çok sayıda dinleyici için persistent medya yolu gerekir.
+Coalesced frames mevcut wrapper tarafından 1–3 ayrı 480 örnek frame'e ayrılır; outbox tekil frame tutar, drain yerel 200 ms TTL uygular. Bu doğru. V53 batch biçimini değiştirmez. Fakat auth her HTTP isteğinde yeniden hesaplanmalı; guide/admin session'ı geçersiz token ile kullanılamamalı. Oda değişikliği header joinContext ile gelirse önce yeni odaya katılım/PIN doğrulanmalı; başarısızsa audio eski odada işlenmemeli. Yeni helper ve POST/GET blokları bu sınırı ekler. Bu, native açık WS oturumlarının token iptali veya public broker ACL sorunlarını da çözdüğü anlamına gelmez. Herkese açık relay clientId tam bir erişim denetimi tasarımı değildir.
 
-## 3. Eksiksiz v52 yamaları
+## 3. Tam v53 yamaları
 
-Yamalar burada sunulmuştur, mevcut dosyalara yazılmamıştır. Header 12 bayt/480 örnek sözleşmesi korunur. HTML ve iki worklet/shim/SW release sürümleri birlikte geçirilmelidir. Aşağıdaki kodlar gövde atlayan yer tutucu içermez.
+Aşağıdaki kodlar mevcut v52 API'sini korur; gerçek paket DTX, yeni codec veya stream-id eklemez. [Opus RFC 6716](https://www.rfc-editor.org/rfc/rfc6716.html) üretim codec/PLC/FEC için ayrı mimari referanstır. Kaybolan konuşmayı “sıfır kopma” diye yeniden adlandırmak yerine drop/conceal/rebuffer ölçülmelidir.
 
 
-### public/pcm-capture-worklet.js — dosyanın tamamı
+### public/pcm-capture-worklet.js — tamamı
 
-Comfort fade tüm PCM frame’leri üretmeye devam eder; gerçek DTX değildir. continuousSpeech=true iken fade bypass olur.
+Yeni 3 ms delay comfortFade kapalıyken de korunur; profil değişiminde faz/zaman sıçraması yaratılmaz.
 
 ```js
+// PATCH: capture-v53
 // PATCH: capture-v52
 // PATCH: capture-v51
 // PATCH: capture-v50
@@ -227,7 +219,8 @@ class RysCaptureKernel {
     this.muted = Boolean(o.muted);
     this.mg = this.muted ? 0 : 1;
     this.comfortFade=o.comfortFade!==false;this.comfortGain=1;this.quietSamples=0;
-    this.comfortAttack=1-Math.exp(-1/(24000*.003));
+    this.comfortDelay=new Float32Array(72);this.comfortDelayPos=0;
+    this.comfortRiseLength=48;this.comfortRisePos=48;this.comfortRiseFrom=1;this.comfortTarget=1;
     this.comfortRelease=1-Math.exp(-1/(24000*.080));
     this.frame = new Float32Array(480);
     this.offset = 0;
@@ -240,9 +233,21 @@ class RysCaptureKernel {
       const active=this.gate.ready&&(this.gate.hold>0||this.gate.continuousSpeech);
       this.quietSamples=active?0:this.quietSamples+1;
       const want=(!this.comfortFade||active||this.quietSamples<=14400)?1:0;
-      this.comfortGain+=(want-this.comfortGain)*(want>this.comfortGain?this.comfortAttack:this.comfortRelease);
+      if(want!==this.comfortTarget){
+        this.comfortTarget=want;
+        if(want===1){this.comfortRiseFrom=this.comfortGain;this.comfortRisePos=0;}
+      }
+      if(want===1){
+        if(this.comfortRisePos<this.comfortRiseLength){
+          const w=.5-.5*Math.cos(Math.PI*(++this.comfortRisePos)/this.comfortRiseLength);
+          this.comfortGain=this.comfortRiseFrom+(1-this.comfortRiseFrom)*w;
+        }else this.comfortGain=1;
+      }else this.comfortGain+=(0-this.comfortGain)*this.comfortRelease;
       if(want===0&&this.comfortGain<1e-6)this.comfortGain=0;
-      const y = v * this.mg * this.comfortGain;
+      const delayed=this.comfortDelay[this.comfortDelayPos];
+      this.comfortDelay[this.comfortDelayPos]=v;
+      this.comfortDelayPos=(this.comfortDelayPos+1)%this.comfortDelay.length;
+      const y = delayed * this.mg * this.comfortGain;
       this.frame[this.offset++] = y;
       this.sq += y * y;
       if (this.offset === 480) {
@@ -310,210 +315,12 @@ export { RysFir24, RysNearExpander, RysCaptureKernel };
 ```
 
 
-### public/rehber.html — kullanıcı kontrolü
+### public/pcm-player-worklet.js — tamamı
 
-guideSpectrum div satırının hemen sonrasına bu tam HTML bloğunu ekleyin.
-
-```html
-<div style="margin:12px 0;color:#CBD5E1;">
-  <label><input id="guideContinuousSpeech" type="checkbox" onchange="setGuideContinuousSpeech(this.checked)" />
-    Kesintisiz uzun dua / okuma</label>
-  <p style="font-size:.8rem;">Uzun okumada ses kapısı kapanmaz; çevredeki konuşmalar da duyulabilir.</p>
-  <label><input id="guideComfortFade" type="checkbox" checked onchange="setGuideComfortFade(this.checked)" />
-    Cümle sonrasında dip sesi yumuşat</label>
-  <p id="guideProfileStatus" role="status" style="font-size:.8rem;">Dengeli ses profili</p>
-</div>
-```
-
-
-### public/rehber.html — yeni profil state ve fonksiyonları
-
-let zeroGainNode tanımından önce bir kez ekleyin. Tercih sayfa oturumu boyunca saklanır; mikrofon iyileştirmesinde korunur; sayfa reload varsayılana döner.
+Geçmişsiz warmup blend’i atlanır; gerçek PLC recovery aynı 72 örnek continuation yöntemini korur. Uzun açlıkta PLC history yeniden başlatılır.
 
 ```js
-// PATCH: guide-profile-v52
-let guideContinuousSpeech=false;
-let guideComfortFade=true;
-function syncGuideAudioProfile(){
-  const speech=document.getElementById('guideContinuousSpeech');
-  const comfort=document.getElementById('guideComfortFade');
-  const status=document.getElementById('guideProfileStatus');
-  if(speech)speech.checked=guideContinuousSpeech;if(comfort)comfort.checked=guideComfortFade;
-  if(status)status.textContent=guideContinuousSpeech?'Uzun okuma açık; çevre sesi de geçebilir.':
-    (guideComfortFade?'Dengeli profil; cümle sonrası dip ses yumuşar.':'Dengeli profil; ortam tabanı korunur.');
-  try{scriptProcessor?.port?.postMessage({type:'set-profile',reject:guideSideVoiceRejectLevel,
-    continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade});}catch(e){console.warn('Ses profili sonraki mikrofon kurulumunda uygulanacak',e);}
-}
-function setGuideContinuousSpeech(enabled){guideContinuousSpeech=!!enabled;syncGuideAudioProfile();}
-function setGuideComfortFade(enabled){guideComfortFade=!!enabled;syncGuideAudioProfile();}
-```
-
-
-### public/rehber.html — setupGuideMicrophoneGraph tamamı
-
-
-
-```js
-// PATCH: guide-graph-v52
-async function setupGuideMicrophoneGraph() {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (!audioCtx) {
-        try {
-          audioCtx = new AudioContextClass({ latencyHint: 'interactive', sampleRate: 48000 });
-        } catch {
-          audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
-        }
-        audioCtx.onstatechange = () => {
-          if ((isMicBroadcasting || isVoiceLoopbackTesting) && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
-            audioCtx.resume().catch(() => {});
-          }
-        };
-      }
-      if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
-        await audioCtx.resume();
-      }
-
-      // ÖNEMLİ: Donanım Akustik Yankı İptali (echoCancellation: true) telefonun yönlü (beamforming) mikrofonunu
-      // aktif eder ve hoparlörden dönen yankıyı donanımda siler; noiseSuppression ve autoGainControl ise
-      // tiz harfleri boğuklaştırmaması ve Kâbe kalabalık sesini yükseltmemesi için %100 KAPALI (false) tutulur!
-      try {
-        micStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: false,
-            autoGainControl: false,
-            channelCount: 1,
-            sampleRate: 48000
-          }
-        });
-      } catch (strictErr) {
-        console.warn('Gelişmiş mikrofon ayarı kabul edilmedi, temel ses kullanılıyor:', strictErr);
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      }
-
-      // Gelen telefon araması veya Bluetooth/yaka mikrofonu çıkması durumunda otomatik mikrofon kurtarma (Auto-Heal)
-      const audioTrack = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
-      if (audioTrack) {
-        audioTrack.onended = () => {
-          if (isMicBroadcasting && !isHealingGuideMic) {
-            console.warn('🔄 [Rehber Mikrofon] Mikrofon izi kesildi (arama/kulaklık değişimi), 300ms içinde otomatik kurtarılıyor...');
-            setTimeout(() => healGuideMicrophoneIfNeeded(), 300);
-          }
-        };
-      }
-
-      disconnectGuideAudioNodes();
-      const source = audioCtx.createMediaStreamSource(micStream);
-      guideSourceNode = source;
-
-      // 1. Rüzgar ve Mekanik Dip Uğultu Kesici (85 Hz Butterworth High-Pass — Web Audio Q birimi dB: -3.0103)
-      const highPass = audioCtx.createBiquadFilter();
-      highPass.type = 'highpass';
-      highPass.frequency.value = 85;
-      highPass.Q.value = -3.0103;
-      guideHighPassNode = highPass;
-
-      // 2. Yakın Mikrofon Boğukluk / Kutu Sesi Giderici (210 Hz -2.5 dB Mud Cut — Sesteki boğukluğu temizler)
-      const mudCut = audioCtx.createBiquadFilter();
-      mudCut.type = 'peaking';
-      mudCut.frequency.value = 210;
-      mudCut.Q.value = 1.2;
-      mudCut.gain.value = -2.5;
-      guideMudCutNode = mudCut;
-
-      // 3. Stüdyo Konuşma ve Ünsüz Harf Netleştirici (3200 Hz +2.0 dB Presence — Yankı döngü kazancını şişirmeden harfleri netleştirir)
-      const presence = audioCtx.createBiquadFilter();
-      presence.type = 'peaking';
-      presence.frequency.value = 3200;
-      presence.Q.value = 0.85;
-      presence.gain.value = 2.0;
-      guidePresenceNode = presence;
-
-      // 4. Geniş-Bant Kristal HD Tiz Sınırı (10500 Hz Butterworth Low-Pass — Web Audio Q birimi dB: -3.0103)
-      const lowPass = audioCtx.createBiquadFilter();
-      lowPass.type = 'lowpass';
-      lowPass.frequency.value = 10500;
-      lowPass.Q.value = -3.0103;
-      guideLowPassNode = lowPass;
-
-      // 5. Rehber Mikrofon Kazancı (Gain — Varsayılan %100 / 1.0 Doğal Gür Ses)
-      guideMicGainNode = audioCtx.createGain();
-      guideMicGainNode.gain.value = guideMicGainMultiplier;
-
-      zeroGainNode = audioCtx.createGain();
-      zeroGainNode.gain.value = 0;
-
-      source.connect(highPass);
-      highPass.connect(mudCut);
-      mudCut.connect(presence);
-      presence.connect(lowPass);
-      lowPass.connect(guideMicGainNode);
-
-      guideGateEnv = 0;
-      guideGateGain = 1.0;
-      guideNoiseFloor = 0.0012;
-      guideVoiceRefEnv = 0.045;
-      guideSpeechHoldSamples = 0;
-      guideDirectPauseSeen = false;
-      guideTxRmsRing.fill(0);
-      guideSilentChunksCount = 0;
-      guideWasIdlePaused = true;
-
-      lastGuideMicChunkAt = Date.now();
-      const ctx = audioCtx;
-      const url = "/pcm-capture-worklet.js?v=52-audio";
-      if (ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
-        try {
-          await ctx.audioWorklet.addModule(url);
-          if (audioCtx !== ctx) throw Error('Eski bağlam');
-          scriptProcessor = new AudioWorkletNode(ctx, 'rys-pcm-capture', {
-            numberOfInputs: 1,
-            numberOfOutputs: 1,
-            outputChannelCount: [1],
-            processorOptions: {
-              muted: isGuideMicMuted,
-              reject: guideSideVoiceRejectLevel,
-              continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade
-            }
-          });
-          scriptProcessor.port.onmessage = (e) => {
-            if (audioCtx === ctx) handleGuideMicFloatChunk(e.data);
-          };
-        } catch (e) {
-          console.warn(e);
-          scriptProcessor = null;
-        }
-      }
-      if (!scriptProcessor) {
-        const { RysCaptureKernel } = await import(url);
-        if (audioCtx !== ctx) throw Error('Eski bağlam');
-        const k = new RysCaptureKernel(
-          ctx.sampleRate,
-          { muted: isGuideMicMuted, reject: guideSideVoiceRejectLevel,continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade },
-          handleGuideMicFloatChunk
-        );
-        scriptProcessor = ctx.createScriptProcessor(2048, 1, 1);
-        scriptProcessor.port = { postMessage: (m) => k.control(m) };
-        scriptProcessor.onaudioprocess = (e) => {
-          if(audioCtx!==ctx)return;
-          const data=e.inputBuffer.getChannelData(0);
-          const estimatedStart=Math.max(0,ctx.currentTime-data.length/ctx.sampleRate);
-          k.process(data,estimatedStart);
-        };
-      }
-      guideMicGainNode.connect(scriptProcessor);
-      scriptProcessor.connect(zeroGainNode);
-      zeroGainNode.connect(ctx.destination);
-      syncGuideAudioProfile();
-    }
-```
-
-
-### public/pcm-player-worklet.js — dosyanın tamamı
-
-
-
-```js
+// PATCH: player-v53
 // PATCH: player-v52
 // PATCH: player-v51
 // PATCH: player-v50
@@ -678,7 +485,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
       for(let i=0;i<remove;i++)this.q.delete(keys[i]);
       this.expected=keys[remove];this.stats.queueDropped+=remove;
       // Preserve current frame/phase. Blend at the next source frame boundary.
-      this.pendingQueueBlend=true;
+      this.pendingQueueBlend=this.playing&&this.haveHistory;
     }
   }
 
@@ -695,7 +502,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     const packet=this.q.get(this.expected);this.q.delete(this.expected);
     this.expected=(this.expected+1)%RYS_MOD;this.fi=0;
     if(packet){
-      const recovery=this.missing>0||this.pendingQueueBlend;this.pendingQueueBlend=false;
+      const recovery=this.haveHistory&&(this.missing>0||this.pendingQueueBlend);this.pendingQueueBlend=false;
       if(recovery){
         // Predict the next PLC samples before replacing its state with real media.
         this.plc.fill(this.continuation);this.recoveryFrame.set(packet);
@@ -805,7 +612,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
       this.wait = 0;
       this.primed = false;
       this.fi = 480;
-      this.haveHistory = false;
+      this.haveHistory = false;this.missing=0;this.pendingQueueBlend=false;this.plc=new RysPitchPlc();
       this.resetFrom = this.lastOut;
       this.resetFade = 0;
     }
@@ -819,41 +626,207 @@ registerProcessor('rys-pcm-player', RysPcmPlayerProcessor);
 ```
 
 
-### server.js — rysSendAudio tamamı
+### public/rehber.html — sync/reject/reset tam fonksiyonları
 
-Mevcut helper yerine geçer; broadcastToRoom ve binary fanout çağrıları değişmez. now opsiyonel parametresi yalnız deterministik test içindir.
+Mevcut bu üç fonksiyonu değiştirin. guideContinuousSpeech/guideComfortFade değişkenleri ve setGuideContinuousSpeech/setGuideComfortFade fonksiyonları kalır.
 
 ```js
-// PATCH: fanout-v52
-function rysSendAudio(socket,data,binary=false,now=Date.now()){
-  if(socket.readyState!==WebSocket.OPEN||socket._rysClosing)return false;
-  const stop=()=>{socket._rysClosing=true;try{socket.terminate?.();}catch(e){}};
-  const queued=Number(socket.bufferedAmount)||0,soft=binary?9720:16000;
-  if(!socket.isHttpRelay){
-    if(queued>65536){stop();return false;}
-    if(queued>soft){
-      socket._rysAudioDrops=(socket._rysAudioDrops||0)+1;
-      if(socket._rysCongestedAt==null)socket._rysCongestedAt=now;
-      if(now-socket._rysCongestedAt>=2000)stop();
-      return false;
-    }
-    socket._rysCongestedAt=null;
-  }
-  try{
-    if(socket.isHttpRelay)socket.send(data);
-    else socket.send(data,{binary},err=>{if(err)stop();});
-    return true;
-  }catch(e){socket._rysAudioErrors=(socket._rysAudioErrors||0)+1;return false;}
+// PATCH: guide-profile-v53
+function syncGuideAudioProfile(resetLock=false){
+  const speech=document.getElementById('guideContinuousSpeech'),comfort=document.getElementById('guideComfortFade');
+  const status=document.getElementById('guideProfileStatus');
+  if(speech)speech.checked=guideContinuousSpeech;if(comfort)comfort.checked=guideComfortFade;
+  if(status)status.textContent=guideContinuousSpeech?'Uzun okuma açık; çevre sesi de geçebilir.':
+    (guideComfortFade?'Dengeli profil; cümle sonrası dip ses yumuşar.':'Dengeli profil; ortam tabanı korunur.');
+  try{scriptProcessor?.port?.postMessage({type:'set-profile',reject:guideSideVoiceRejectLevel,
+    continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade,resetLock:!!resetLock});}
+  catch(e){console.warn('Profil sonraki mikrofon kurulumunda uygulanacak',e);}
 }
+function updateGuideSideVoiceReject(val){
+  const num=Math.max(15,Math.min(85,Number(val)||50));guideSideVoiceRejectLevel=num/100;
+  const label=document.getElementById('guideSideVoiceRejectLabel');
+  if(label)label.textContent='%'+num+' ('+(num>=70?'Güçlü':num<=30?'Hafif':'Dengeli')+')';
+  syncGuideAudioProfile();
+}
+function resetGuideVoiceLock(){
+  syncGuideAudioProfile(true);
+  const box=document.getElementById('voiceTestStatusBox');
+  if(box){box.style.display='block';box.textContent='Ortam yeniden ölçülüyor: ilk 400 ms konuşmadan bekleyin. Uzun okuma ve dip ses tercihleri korunur.';}
+}
+```
+
+
+### public/rehber.html — ölü DSP/state yerine tam blok
+
+let guideGateEnv tanımından başlayıp guide-handler-v51 yorumunun hemen öncesine kadar bölümü bununla değiştirin. Aşağıdaki graph yaması ve reset fonksiyonu birlikte uygulanmalı; kalan eski ad referansı olmamalı.
+
+```js
+// PATCH: guide-state-v53
+let guideWasIdlePaused=true;
+let lastGuideMicChunkAt=0;
+let guideAudioGuardChannel=null;
+try{if(typeof BroadcastChannel!=='undefined')guideAudioGuardChannel=new BroadcastChannel('ridvanses_audio_guard');}catch(e){}
+```
+
+
+### public/rehber.html — setupGuideMicrophoneGraph tamamı
+
+
+
+```js
+// PATCH: guide-graph-v53
+async function setupGuideMicrophoneGraph() {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!audioCtx) {
+        try {
+          audioCtx = new AudioContextClass({ latencyHint: 'interactive', sampleRate: 48000 });
+        } catch {
+          audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
+        }
+        audioCtx.onstatechange = () => {
+          if ((isMicBroadcasting || isVoiceLoopbackTesting) && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+            audioCtx.resume().catch(() => {});
+          }
+        };
+      }
+      if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+        await audioCtx.resume();
+      }
+
+      // ÖNEMLİ: Donanım Akustik Yankı İptali (echoCancellation: true) telefonun yönlü (beamforming) mikrofonunu
+      // aktif eder ve hoparlörden dönen yankıyı donanımda siler; noiseSuppression ve autoGainControl ise
+      // tiz harfleri boğuklaştırmaması ve Kâbe kalabalık sesini yükseltmemesi için %100 KAPALI (false) tutulur!
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: 1,
+            sampleRate: 48000
+          }
+        });
+      } catch (strictErr) {
+        console.warn('Gelişmiş mikrofon ayarı kabul edilmedi, temel ses kullanılıyor:', strictErr);
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+
+      // Gelen telefon araması veya Bluetooth/yaka mikrofonu çıkması durumunda otomatik mikrofon kurtarma (Auto-Heal)
+      const audioTrack = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
+      if (audioTrack) {
+        audioTrack.onended = () => {
+          if (isMicBroadcasting && !isHealingGuideMic) {
+            console.warn('🔄 [Rehber Mikrofon] Mikrofon izi kesildi (arama/kulaklık değişimi), 300ms içinde otomatik kurtarılıyor...');
+            setTimeout(() => healGuideMicrophoneIfNeeded(), 300);
+          }
+        };
+      }
+
+      disconnectGuideAudioNodes();
+      const source = audioCtx.createMediaStreamSource(micStream);
+      guideSourceNode = source;
+
+      // 1. Rüzgar ve Mekanik Dip Uğultu Kesici (85 Hz Butterworth High-Pass — Web Audio Q birimi dB: -3.0103)
+      const highPass = audioCtx.createBiquadFilter();
+      highPass.type = 'highpass';
+      highPass.frequency.value = 85;
+      highPass.Q.value = -3.0103;
+      guideHighPassNode = highPass;
+
+      // 2. Yakın Mikrofon Boğukluk / Kutu Sesi Giderici (210 Hz -2.5 dB Mud Cut — Sesteki boğukluğu temizler)
+      const mudCut = audioCtx.createBiquadFilter();
+      mudCut.type = 'peaking';
+      mudCut.frequency.value = 210;
+      mudCut.Q.value = 1.2;
+      mudCut.gain.value = -2.5;
+      guideMudCutNode = mudCut;
+
+      // 3. Stüdyo Konuşma ve Ünsüz Harf Netleştirici (3200 Hz +2.0 dB Presence — Yankı döngü kazancını şişirmeden harfleri netleştirir)
+      const presence = audioCtx.createBiquadFilter();
+      presence.type = 'peaking';
+      presence.frequency.value = 3200;
+      presence.Q.value = 0.85;
+      presence.gain.value = 2.0;
+      guidePresenceNode = presence;
+
+      // 4. Geniş-Bant Kristal HD Tiz Sınırı (10500 Hz Butterworth Low-Pass — Web Audio Q birimi dB: -3.0103)
+      const lowPass = audioCtx.createBiquadFilter();
+      lowPass.type = 'lowpass';
+      lowPass.frequency.value = 10500;
+      lowPass.Q.value = -3.0103;
+      guideLowPassNode = lowPass;
+
+      // 5. Rehber Mikrofon Kazancı (Gain — Varsayılan %100 / 1.0 Doğal Gür Ses)
+      guideMicGainNode = audioCtx.createGain();
+      guideMicGainNode.gain.value = guideMicGainMultiplier;
+
+      zeroGainNode = audioCtx.createGain();
+      zeroGainNode.gain.value = 0;
+
+      source.connect(highPass);
+      highPass.connect(mudCut);
+      mudCut.connect(presence);
+      presence.connect(lowPass);
+      lowPass.connect(guideMicGainNode);
+
+      guideWasIdlePaused = true;
+
+      lastGuideMicChunkAt = Date.now();
+      const ctx = audioCtx;
+      const url = "/pcm-capture-worklet.js?v=53-audio";
+      if (ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
+        try {
+          await ctx.audioWorklet.addModule(url);
+          if (audioCtx !== ctx) throw Error('Eski bağlam');
+          scriptProcessor = new AudioWorkletNode(ctx, 'rys-pcm-capture', {
+            numberOfInputs: 1,
+            numberOfOutputs: 1,
+            outputChannelCount: [1],
+            processorOptions: {
+              muted: isGuideMicMuted,
+              reject: guideSideVoiceRejectLevel,
+              continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade
+            }
+          });
+          scriptProcessor.port.onmessage = (e) => {
+            if (audioCtx === ctx) handleGuideMicFloatChunk(e.data);
+          };
+        } catch (e) {
+          console.warn(e);
+          scriptProcessor = null;
+        }
+      }
+      if (!scriptProcessor) {
+        const { RysCaptureKernel } = await import(url);
+        if (audioCtx !== ctx) throw Error('Eski bağlam');
+        const k = new RysCaptureKernel(
+          ctx.sampleRate,
+          { muted: isGuideMicMuted, reject: guideSideVoiceRejectLevel,continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade },
+          handleGuideMicFloatChunk
+        );
+        scriptProcessor = ctx.createScriptProcessor(2048, 1, 1);
+        scriptProcessor.port = { postMessage: (m) => k.control(m) };
+        scriptProcessor.onaudioprocess = (e) => {
+          if(audioCtx!==ctx)return;
+          const data=e.inputBuffer.getChannelData(0);
+          const estimatedStart=Math.max(0,ctx.currentTime-data.length/ctx.sampleRate);
+          k.process(data,estimatedStart);
+        };
+      }
+      guideMicGainNode.connect(scriptProcessor);
+      scriptProcessor.connect(zeroGainNode);
+      zeroGainNode.connect(ctx.destination);
+      syncGuideAudioProfile();
+    }
 ```
 
 
 ### public/vercel-ws-shim.js — send tamamı
 
-SmartWebSocket sınıfı içindeki mevcut send metodunun yerine koyun; kurucudaki installRysCoalescing çağrısı korunur.
+Join/abonelik generation kaydedilir; farklı odaya geçişte eski medyanın yeni odaya sızması engellenir.
 
 ```js
-// PATCH: shim-send-v52
+// PATCH: shim-send-v53
 send(data) {
       if (
         (typeof ArrayBuffer !== 'undefined' && data instanceof ArrayBuffer) ||
@@ -875,9 +848,15 @@ send(data) {
           parsed._msgId = 'm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
         }
         if (parsed.type === 'join') {
+          const old=this._joinContext;
+          if(old&&(old.tourCode!==parsed.tourCode||old.roomId!==parsed.roomId||old.role!==parsed.role)){
+            this._audioCoalescer?.clear();this._sendQueue=this._sendQueue.filter(m=>m.type!=='audio-chunk');
+          }
+          this._subscriptionType='join';this._transportGeneration=(this._transportGeneration||0)+1;
           this._joinContext = parsed;
           if (this._isRelay) this._initMqttBus(parsed, false);
         } else if (parsed.type === 'family-subscribe') {
+          this._subscriptionType='family-subscribe';this._transportGeneration=(this._transportGeneration||0)+1;
           this._joinContext = {
             type: 'join',
             role: 'pilgrim',
@@ -887,6 +866,7 @@ send(data) {
           };
           if (this._isRelay) this._initMqttBus(this._joinContext, false);
         } else if (parsed.type === 'admin-subscribe') {
+          this._subscriptionType='admin-subscribe';this._transportGeneration=(this._transportGeneration||0)+1;
           this._isAdmin = true;
           if (this._isRelay) this._initMqttBus(null, true);
         }
@@ -1037,69 +1017,80 @@ send(data) {
 ```
 
 
-### public/vercel-ws-shim.js — yeni enqueue metodu
+### public/vercel-ws-shim.js — activate ve yeni failback metodu
 
-SmartWebSocket sınıfına _flushAndPoll öncesinde ekleyin. Ses en fazla 4 batch, kontrol en fazla 64; kontrol taşmasında yeni kontrol reddedilip sayaç artırılır. ACK/kalıcı outbox teslimat garantisi ayrıca gerekir.
+Mevcut _activateCloudRelay yerine ilk metodu koyun; _tryNativeFailback aynı SmartWebSocket sınıfına yeni metottur. NativeWebSocket IIFE içindeki mevcut referanstır.
 
 ```js
-// PATCH: shim-queue-v52
-_enqueueRelayMessage(message){
-  const now=Date.now();
-  this._sendQueue=this._sendQueue.filter(m=>m.type!=='audio-chunk'||
-    (Number.isFinite(m._queuedAt)&&now-m._queuedAt<=200));
-  const audio=message.type==='audio-chunk';
-  const matches=this._sendQueue.filter(m=>(m.type==='audio-chunk')===audio).length;
-  const limit=audio?4:64;
-  if(matches>=limit){
-    this._relayQueueDrops=(this._relayQueueDrops||0)+1;
-    if(!audio)return false;
-    const oldest=this._sendQueue.findIndex(m=>m.type==='audio-chunk');this._sendQueue.splice(oldest,1);
-  }
-  this._sendQueue.push(message);return true;
+// PATCH: transport-v53
+_activateCloudRelay(){
+  if(this._isRelay||this._closedExplicitly)return;
+  this._isRelay=true;this._opened=true;
+  this._httpEpoch=(this._httpEpoch||0)+1;this._relayAbort?.abort();this._inFlight=false;
+  try{if(this._native){this._native.onopen=null;this._native.onmessage=null;
+    this._native.onerror=null;this._native.onclose=null;this._native.close();}}catch(e){}
+  this.readyState=1;
+  if(this._joinContext)this._initMqttBus(this._joinContext,false);
+  else if(this._isAdmin)this._initMqttBus(null,true);
+  if(typeof this.onopen==='function')this.onopen({type:'open',relay:true});
+  this._audioCoalescer?.flush();
+  if(this._pollTimer)clearInterval(this._pollTimer);
+  this._pollTimer=setInterval(()=>this._flushAndPoll(),100);
+  if(!this.url.includes('.vercel.app/ws')&&!this._vdsFailbackTimer)
+    this._vdsFailbackTimer=setInterval(()=>this._tryNativeFailback(),12000);
 }
-```
-
-
-### public/vercel-ws-shim.js — _flushAndPoll tamamı
-
-
-
-```js
-// PATCH: shim-http-v52
-async _flushAndPoll(){
-  if(this.readyState!==1||!this._isRelay)return;
-  if(this._inFlight)return;
-  const epoch=this._httpEpoch||0;
-  const batch=this._sendQueue.splice(0).filter(m=>m.type!=='audio-chunk'||
-    (Number.isFinite(m._queuedAt)&&Date.now()-m._queuedAt<=200));
-  if(!batch.length&&this._busConnected())return;
-  this._inFlight=true;const ac=new AbortController();this._relayAbort=ac;
-  const timer=setTimeout(()=>ac.abort(),3000);let success=false;
-  try{
-    const token=(localStorage.getItem('ry_auth_token')||'').trim();let res;
-    if(batch.length)res=await fetch('/api/ws-relay',{method:'POST',signal:ac.signal,
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:this._clientId,
-        token,joinContext:this._joinContext,messages:batch})});
-    else{
-      const jc=this._joinContext||{},q=new URLSearchParams({clientId:this._clientId,
-        tourCode:jc.tourCode||'',roomId:jc.roomId||'genel',role:jc.role||'pilgrim',name:jc.name||''});
-      if(token)q.set('token',token);res=await fetch('/api/ws-relay?'+q,{signal:ac.signal});
+_tryNativeFailback(){
+  if(!this._isRelay||this.readyState!==1||this._closedExplicitly||this._failbackProbe)return;
+  const join=this._joinContext,generation=this._transportGeneration||0;
+  const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join');
+  let request,ackType;
+  if(mode==='admin-subscribe'){
+    request={type:mode,token:(localStorage.getItem('ry_auth_token')||'').trim()};ackType='admin-rooms-update';
+  }else if(mode==='family-subscribe'){
+    if(!join)return;request={type:mode,tourCode:join.tourCode};ackType='family-state';
+  }else{if(!join)return;request={...join};ackType='joined';}
+  let probe;try{probe=new NativeWebSocket(this.url);probe.binaryType='arraybuffer';}catch(e){return;}
+  this._failbackProbe=probe;let finished=false;
+  const cancel=()=>{
+    if(finished)return;finished=true;clearTimeout(timer);
+    if(this._failbackProbe===probe)this._failbackProbe=null;
+    if(this._cancelNativeProbe===cancel)this._cancelNativeProbe=null;
+    probe.onopen=null;probe.onmessage=null;probe.onerror=null;probe.onclose=null;
+    try{probe.close();}catch(e){}
+  };
+  const timer=setTimeout(cancel,3000);this._cancelNativeProbe=cancel;
+  probe.onerror=cancel;probe.onclose=cancel;
+  probe.onopen=()=>{
+    if(this._closedExplicitly||!this._isRelay||(this._transportGeneration||0)!==generation){cancel();return;}
+    try{probe.send(JSON.stringify(request));}catch(e){cancel();}
+  };
+  probe.onmessage=ev=>{
+    let msg;try{msg=JSON.parse(ev.data);}catch(e){return;}
+    if(msg.type==='auth-error'||msg.type==='pin-error'){cancel();return;}
+    if(msg.type!==ackType)return;
+    if(this._closedExplicitly||!this._isRelay||(this._transportGeneration||0)!==generation){cancel();return;}
+    if(mode==='join'&&(!msg.room||String(msg.room.tourCode).toUpperCase().trim()!==String(join.tourCode||'RY-KASIM').toUpperCase().trim()||
+      String(msg.room.roomId)!==String(join.roomId||'genel').trim())){cancel();return;}
+    finished=true;clearTimeout(timer);this._failbackProbe=null;this._cancelNativeProbe=null;
+    this._native=probe;this._isRelay=false;this._opened=true;
+    this._httpEpoch=(this._httpEpoch||0)+1;this._relayAbort?.abort();this._relayAbort=null;this._inFlight=false;
+    if(this._pollTimer){clearInterval(this._pollTimer);this._pollTimer=null;}
+    if(this._vdsFailbackTimer){clearInterval(this._vdsFailbackTimer);this._vdsFailbackTimer=null;}
+    probe.onmessage=e=>{if(!this._isRelay&&this.readyState===1)this.onmessage?.(e);};
+    probe.onerror=e=>this.onerror?.(e);
+    probe.onclose=e=>{if(!this._isRelay){this.readyState=3;this.onclose?.(e);}};
+    // Re-send current join/live metadata through the application's existing open handler.
+    if(typeof this.onopen==='function')this.onopen({type:'open',failback:true});
+    const pending=this._sendQueue.splice(0),now=Date.now();
+    for(const m of pending){
+      if(m.type==='join'||m.type==='family-subscribe'||m.type==='admin-subscribe'||m.type==='guide-stream-state')continue;
+      if(m.type==='audio-chunk'&&(!Number.isFinite(m._queuedAt)||now-m._queuedAt>200))continue;
+      try{this.send(JSON.stringify(m));}catch(e){this.onerror?.(e);}
     }
-    if(!res.ok)throw Error('Relay HTTP '+res.status);
-    const payload=await res.json();
-    if(this.readyState!==1||!this._isRelay||(this._httpEpoch||0)!==epoch)return;
-    if(Array.isArray(payload.messages))for(const m of payload.messages)this._deliverIncomingMessage(m);
-    success=true;
-  }catch(e){
-    if(this.readyState===1&&this._isRelay&&(this._httpEpoch||0)===epoch)
-      for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
-  }finally{
-    clearTimeout(timer);
-    if(this._relayAbort===ac)this._relayAbort=null;
-    if((this._httpEpoch||0)===epoch)this._inFlight=false;
-    if(success&&this.readyState===1&&this._isRelay&&this._sendQueue.length)
-      queueMicrotask(()=>{if(this.readyState===1&&this._isRelay)this._flushAndPoll();});
-  }
+    this._audioCoalescer?.flush();
+    this._closeMqttClients();window.__ryConsecutiveVdsFailures=0;
+    this.onmessage?.(ev);
+  };
 }
 ```
 
@@ -1109,8 +1100,9 @@ async _flushAndPoll(){
 
 
 ```js
-// PATCH: shim-close-v52
+// PATCH: shim-close-v53
 close() {
+      this._closedExplicitly=true;this._cancelNativeProbe?.();
       this.readyState = 3;
       this._httpEpoch=(this._httpEpoch||0)+1;
       this._relayAbort?.abort();this._relayAbort=null;
@@ -1131,15 +1123,67 @@ close() {
 ```
 
 
-<!-- SOURCE-HASHES {"public/pcm-capture-worklet.js": "5f2516a46d3d12e798260616de8df158f321ef683d8911e6c79e2d0726a86f01", "public/pcm-player-worklet.js": "00ae9d286965d13bb2a03f28f2e5708d8a98e7a24407147251d5ac6dad4d109f", "public/rehber.html": "d227bf53e9618e4f8cbce5475990e91aa03b16a4f33ad1286b224870351479f7", "public/dinle.html": "0ad06a902e428be825530e5b4902b5c22e62fecb4de2b95704c7f4c612ae4ed4", "public/vercel-ws-shim.js": "37639df3bca4df8125f2b09c2fe688553149d1f5610cfcf0963b8e532c0af0c1", "server.js": "6b990c64bc770bed71728ce0025db43c5b272a4a18502a6f3290c75e2dbf444c", "public/sw.js": "45e5cadbc48538777b114c513a14c0f9ffea1b6d862afd6971d14144f468a36f", "scripts/verify-system.js": "c745eb4d9661fed4cd235bc0612da5435dd9b859902d86b0ce1c755d0bdb50be"} -->
+### server.js — yeni auth/join yardımcıları
 
-## 4. Rapor metninden bağımsız v52 doğrulaması
-
-`scripts/verify-system.js` içindeki `runStep5V51AudioChecks` fonksiyonunun **tamamını** aşağıdakiyle değiştirin. `main()` içindeki `await runStep5V51AudioChecks();` satırını `await runStep5V52AudioChecks();` yapın. Step1–4 ve gerçek `runV51TransportRoundTrip` korunur. Yeni Step5 yalnız hedef kaynak dosyalarını okur; rapor/patch etiketi/hash manifesti/parça kataloğu aramaz. Raporu silmek testin çalışmasına engel olmaz.
+POST/GET route’larından önce ekleyin. isRequestAuthenticated/isValidAuthToken mevcut sunucu yardımcılarıdır.
 
 ```js
-// PATCH: verify-v52
-async function runStep5V52AudioChecks(){
+// PATCH: relay-auth-v53
+function applyRysRelayAuth(session,req,token,joinContext){
+  const authenticated=!!(isRequestAuthenticated(req)||isValidAuthToken(token)||isValidAuthToken(joinContext?.token));
+  const client=session.currentRoom?.clients.get(session.clientId);
+  session.isAuthenticated=authenticated;session.ws.isAuthenticated=authenticated;
+  return authenticated||!(client?.role==='guide'||session.ws.isAdmin||joinContext?.role==='guide');
+}
+function syncRysRelayJoin(session,joinContext){
+  if(!joinContext||joinContext.type!=='join')return true;
+  const code=String(joinContext.tourCode||'RY-KASIM').toUpperCase().trim();
+  const room=String(joinContext.roomId||'genel').trim(),role=joinContext.role==='guide'?'guide':'pilgrim';
+  const matches=()=>session.currentRoom?.tourCode===code&&session.currentRoom?.roomId===room&&
+    session.currentRoom.clients.get(session.clientId)?.role===role;
+  if(!matches())processClientJsonMessage(session,joinContext);
+  return !!matches();
+}
+```
+
+
+### server.js — POST ve GET relay route bloklarının tamamı
+
+Mevcut iki route kaydını değiştirin; eski kayıtları ayrıca bırakmayın. PIN reddinde medya işlenmez; guide/admin yetki yoksa 401.
+
+```js
+// PATCH: relay-routes-v53
+app.post('/api/ws-relay',(req,res)=>{
+  const {clientId,messages,joinContext,token}=req.body||{};
+  const session=getOrCreateRelaySession(clientId);
+  if(!applyRysRelayAuth(session,req,token,joinContext))return res.status(401).json({error:'relay-auth-required'});
+  if(!syncRysRelayJoin(session,joinContext))return res.json({clientId:session.clientId,
+    messages:[{type:'pin-error',message:'Kafile/oda katılımı reddedildi; PIN ve yetkiyi kontrol edin.'}]});
+  const list=Array.isArray(messages)?messages:req.body?.message?[req.body.message]:[];
+  for(const m of list)if(m&&typeof m==='object')processClientJsonMessage(session,m);
+  return res.json({clientId:session.clientId,messages:drainRysRelaySession(session)});
+});
+app.get('/api/ws-relay',(req,res)=>{
+  const session=getOrCreateRelaySession(req.query.clientId);
+  const join=req.query.tourCode?{type:'join',tourCode:req.query.tourCode,roomId:req.query.roomId||'genel',
+    role:req.query.role||'pilgrim',name:req.query.name||'',pin:req.query.pin||'',token:req.query.token}:null;
+  if(!applyRysRelayAuth(session,req,req.query.token,join))return res.status(401).json({error:'relay-auth-required'});
+  if(!syncRysRelayJoin(session,join))return res.json({clientId:session.clientId,
+    messages:[{type:'pin-error',message:'Kafile/oda katılımı reddedildi; PIN ve yetkiyi kontrol edin.'}]});
+  return res.json({clientId:session.clientId,messages:drainRysRelaySession(session)});
+});
+```
+
+
+<!-- SOURCE-HASHES {"public/pcm-capture-worklet.js": "15a3921558baf5af836a20737dadcc0e86f583ecab54d2863fb4a00eee535f28", "public/pcm-player-worklet.js": "f9f5ba0d6fa2ab0dc98c4539a5f18417132514b39983779ea8a9dd486f7d924c", "public/rehber.html": "2418a681445c6cba1d8c84f7d38ab3d6021c2c6f855feb5b64298cca5c972c93", "public/dinle.html": "cf269e98cf183984e78736430aad8b411aaa78a1983977c742b49159a3896974", "public/vercel-ws-shim.js": "77b52d0ec502a1909c79330fc1e6d65b8bb02317cf09b18a22281e662220fe6a", "server.js": "bd799cc29bd42f47e1bbbf878f038b1001c910791d85f8d20d1e7b0a09720bd5", "public/sw.js": "1f6adc3d3cd31809debbf2217ae6a6881274b34803451e3e7cf799b7c72fb1cb", "scripts/verify-system.js": "fd255a30d8ead467bf383ccce18d3fbc77440a083ae42b5d60a72975806d16c2"} -->
+
+## 4. Gerçek kaynakları okuyan, rapordan bağımsız doğrulama
+
+Testler gerçek kaynak dosyalarını okumaya devam eder; rapordan kod çekmez. Mevcut `runStep5V52AudioChecks` fonksiyonunun tamamını aşağıdakiyle değiştirip main içindeki çağrıyı **`await runStep5V53AudioChecks();`** yapın. Receiver gerçek-history PLC fixture'ında haveHistory=true eklenmiştir: geçmişsiz başlangıç ile gerçek kurtarma artık ayrı test edilir. Önceki Step1–4/E2E kontrolleri korunur.
+
+```js
+// PATCH: verify-v53
+async function runStep5V53AudioChecks(){
   const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
   const assert=require('node:assert/strict');
   const root=typeof ROOT_DIR==='string'?ROOT_DIR:process.cwd();
@@ -1229,7 +1273,7 @@ async function runStep5V52AudioChecks(){
   for(let i=0;i<33;i++)p._push({type:'push',samples:new Float32Array(480).fill(.1),seq:i,arrival:i*20});
   assert.equal(p.q.size,24);assert.equal(p.expected,9);assert.equal(p.stats.queueDropped,9);
   assert(p.q.has(32));assert.equal(p.stats.resync,0);assert(p.playing);assert.equal(p.fi,120);assert.equal(p.phase,.25);
-  const recovery=new P();recovery.expected=7;recovery.missing=1;
+  const recovery=new P();recovery.expected=7;recovery.missing=1;recovery.haveHistory=true;
   recovery.plc={fill(a){a.fill(.2);},append(){}};recovery.q.set(7,new Float32Array(480).fill(-.2));recovery._nextFrame();
   assert(Math.abs(recovery.frame[0]-.2)<1e-6);assert(Math.abs(recovery.frame[71]+.2)<1e-6);
   const seq=new P();const push=(n,phrase=false)=>seq._push({samples:new Float32Array(480).fill(.1),seq:n,phraseStart:phrase,arrival:n*20});
@@ -1310,19 +1354,133 @@ async function runStep5V52AudioChecks(){
     document:{getElementById:()=>null},MediaMetadata:class{},navigator:{mediaSession:{setActionHandler(n,f){actions[n]=f;}}},
     toggleAudioPlayback(){paused++;},forceResurrectPilgrimAudio(){}}).c;
   mc.updateMediaSessionMetadata();actions.pause();assert.equal(paused,1);
-  if(typeof recordResult==='function')recordResult('ADIM-5.V52','Kaynak dosyalarından DSP, profil, sıra, fanout ve relay davranışları doğrulandı',true);
-  console.log('V52 PASS: source-only DSP/SRC/comfort/profile, queue/PLC/seq, binary+JSON dedup, coalescer, congestion, HTTP single-flight/drain/close, gesture/wake/pause');
+
+  // Isolate comfort gain from VAD: controlled activity has exactly 10 ms waveform lookahead.
+  const first=[];const ck=new cap.K(24000,{},m=>first.push(...m.samples));
+  const delay=new Float32Array(240);let dp=0;
+  ck.gate={ready:true,hold:0,continuousSpeech:false,step(x){const y=delay[dp];delay[dp]=x;dp=(dp+1)%240;return y;}};
+  for(let i=0;i<60000;i++)ck.accept(0);first.length=0;ck.gate.hold=24;
+  for(let i=0;i<480;i++)ck.accept(.2);
+  const firstIndex=first.findIndex(x=>x!==0);
+  assert.equal(firstIndex,312);assert(Math.abs(first[firstIndex]-.2)<1e-6);assert.equal(ck.comfortGain,1);
+  const initial=new P();for(let i=0;i<33;i++)initial._push({samples:new Float32Array(480).fill(.2),seq:i,arrival:i*20});
+  assert(!initial.pendingQueueBlend);initial.plc.fill=()=>{throw Error('PLC history does not exist');};
+  initial._nextFrame();assert(Math.abs(initial.frame[0]-.2)<1e-6);
+  const histless=new P();histless.expected=0;histless.missing=1;
+  histless.plc.fill=()=>{throw Error('Invalid history recovery');};histless.q.set(0,new Float32Array(480).fill(.1));
+  histless._nextFrame();assert(Math.abs(histless.frame[0]-.1)<1e-6);
+  const exhausted=new P();for(let i=0;i<8;i++)exhausted._push({samples:new Float32Array(480).fill(.1),seq:i,arrival:i*20});
+  for(let i=0;i<600;i++)exhausted.process([],[[new Float32Array(128)]]);
+  assert(!exhausted.haveHistory);assert.equal(exhausted.plc.used,0);assert.equal(exhausted.missing,0);
+  assert(!guide.includes('processGuideFloatChunkDsp'));assert(!guide.includes('guideGateEnv'));
+  let profileMessage;const profileKernel=new cap.K(24000,{continuousSpeech:true,comfortFade:false});
+  const central=box(['syncGuideAudioProfile','updateGuideSideVoiceReject','resetGuideVoiceLock'].map(n=>pick(guide,n)).join('\n'),'',{
+    guideContinuousSpeech:true,guideComfortFade:false,guideSideVoiceRejectLevel:.5,
+    document:{getElementById:()=>({style:{}})},scriptProcessor:{port:{postMessage(m){profileMessage=m;profileKernel.control(m);}}}
+  }).c;
+  central.updateGuideSideVoiceReject(68);central.resetGuideVoiceLock();
+  assert(profileMessage.resetLock);assert(profileKernel.gate.continuousSpeech);assert(!profileKernel.comfortFade);
+  let posts=[];const pending=[{type:'push',seq:1,samples:new Float32Array(480),arrival:100},
+    {type:'push',seq:2,samples:new Float32Array(480),arrival:200}];
+  const pendingBox=box(pick(listener,'flushPendingRxFrames'),'',{pendingRxFrames:pending,
+    rxPlayerWorkletNode:null,audioCtx:{state:'running'},performance:{now:()=>400}}).c;
+  pendingBox.flushPendingRxFrames();assert.equal(pending.length,2);
+  pendingBox.rxPlayerWorkletNode={port:{postMessage:m=>posts.push(m)}};
+  pendingBox.flushPendingRxFrames();assert.equal(posts.length,1);assert.equal(posts[0].seq,2);
+  let resolveOld,resolveNew,created=0;
+  const oldCtx={audioWorklet:{addModule:()=>new Promise(r=>resolveOld=r)}},newCtx={audioWorklet:{addModule:()=>new Promise(r=>resolveNew=r)}};
+  class RxNode{constructor(context){this.context=context;created++;this.port={};}connect(){}}
+  const loading=box(pick(listener,'initRxPlayerWorklet'),'',{audioCtx:oldCtx,rxPlayerWorkletNode:null,
+    rxPlayerWorkletLoading:false,rxPlayerWorkletAlive:false,rxLoadToken:0,
+    window:{AudioWorkletNode:RxNode},AudioWorkletNode:RxNode,rxInputNode:{},gainNode:{},
+    activeScheduledSources:[],flushPendingRxFrames(){}}).c;
+  loading.initRxPlayerWorklet();loading.audioCtx=newCtx;loading.rxLoadToken++;loading.rxPlayerWorkletLoading=false;
+  loading.initRxPlayerWorklet();resolveOld();await new Promise(r=>setImmediate(r));
+  assert.equal(created,0);assert(loading.rxPlayerWorkletLoading);
+  resolveNew();await new Promise(r=>setImmediate(r));assert.equal(created,1);assert.equal(loading.rxPlayerWorkletNode.context,newCtx);
+  const probes=[];let closedMqtt=0,opened=0;
+  class Native{constructor(url){this.url=url;this.readyState=1;this.sent=[];probes.push(this);}send(data){this.sent.push(JSON.parse(data));}close(){this.closed=true;this.readyState=3;}}
+  const transportCode=helpers+'\n'+pick(shim,'RysAudioCoalescer','class')+'\n'+pick(shim,'installRysCoalescing')+'\n'+pick(shim,'SmartWebSocket','class');
+  const transport=box(transportCode,'globalThis.S=SmartWebSocket;globalThis.install=installRysCoalescing;',{
+    NativeWebSocket:Native,window:{},Date:{now:()=>100},localStorage:{getItem:()=>''},
+    setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},sessionStorage:{}}).c;
+  const makeRelay=()=>{
+    const s=Object.create(transport.S.prototype);
+    Object.assign(s,{url:'wss://local/ws',readyState:1,_isRelay:true,_httpEpoch:0,_transportGeneration:0,
+      _subscriptionType:'join',_joinContext:{type:'join',role:'guide',tourCode:'RY-KASIM',roomId:'a',token:'good'},
+      _sendQueue:[],_isAdmin:false,_inFlight:true,_busConnected:()=>true,_publishMqtt(){},_initMqttBus(){},
+      _closeMqttClients(){closedMqtt++;},onmessage(){},onerror(){},
+      onopen(){opened++;s.send(JSON.stringify({...s._joinContext}));s.send(JSON.stringify({type:'guide-stream-state',isLive:true,broadcastMode:'mic'}));}});
+    transport.install(s);s._audioCoalescer.push(unit(10));s._audioCoalescer.push(unit(11));return s;
+  };
+  const fail=makeRelay();fail._tryNativeFailback();let probe=probes.at(-1);probe.onopen();
+  probe.onmessage({data:JSON.stringify({type:'auth-error'})});assert(fail._isRelay);assert.equal(fail._audioCoalescer.frames.length,2);
+  const wrong=makeRelay();wrong._tryNativeFailback();probe=probes.at(-1);probe.onopen();
+  probe.onmessage({data:JSON.stringify({type:'joined',room:{tourCode:'RY-KASIM',roomId:'wrong'}})});assert(wrong._isRelay);
+  const stale=makeRelay();stale._tryNativeFailback();probe=probes.at(-1);probe.onopen();stale._transportGeneration++;
+  probe.onmessage({data:JSON.stringify({type:'joined',room:{tourCode:'RY-KASIM',roomId:'a'}})});assert(stale._isRelay);
+  const success=makeRelay();success._tryNativeFailback();probe=probes.at(-1);probe.onopen();
+  assert(success._isRelay);assert.equal(closedMqtt,0);
+  probe.onmessage({data:JSON.stringify({type:'joined',room:{tourCode:'RY-KASIM',roomId:'a'}})});
+  assert(!success._isRelay);assert.equal(opened,1);assert.equal(closedMqtt,1);
+  const batch=probe.sent.find(m=>Array.isArray(m.frames));assert(batch);assert.deepEqual(Array.from(batch.frames,m=>m.seq),[10,11]);
+  assert(probe.sent.some(m=>m.type==='guide-stream-state'&&m.isLive));
+  success.close();success._activateCloudRelay();assert.equal(success.readyState,3);assert.equal(opened,1);
+  const roomChange=makeRelay();roomChange._sendQueue=[{type:'audio-chunk',frames:[unit(5)],_queuedAt:100}];
+  roomChange.send(JSON.stringify({...roomChange._joinContext,roomId:'b'}));
+  assert.equal(roomChange._audioCoalescer.frames.length,0);assert(!roomChange._sendQueue.some(m=>m.type==='audio-chunk'));
+  const auth=box(pick(server,'applyRysRelayAuth')+'\n'+pick(server,'syncRysRelayJoin'),'',{
+    isRequestAuthenticated:req=>!!req.auth,isValidAuthToken:token=>token==='good',
+    processClientJsonMessage(session,join){if(join.pin==='right')session.currentRoom={tourCode:join.tourCode,roomId:join.roomId,
+      clients:new Map([[session.clientId,{role:join.role}]])};}
+  }).c;
+  const session={clientId:'unit',isAuthenticated:true,ws:{isAuthenticated:true},currentRoom:{tourCode:'RY-KASIM',roomId:'a',
+    clients:new Map([['unit',{role:'guide'}]])}};
+  assert(!auth.applyRysRelayAuth(session,{},'bad',null));assert(!session.isAuthenticated);assert(!session.ws.isAuthenticated);
+  assert(auth.applyRysRelayAuth(session,{},'good',null));
+  assert(!auth.syncRysRelayJoin(session,{type:'join',role:'guide',tourCode:'RY-KASIM',roomId:'b',pin:'wrong'}));
+  assert.equal(session.currentRoom.roomId,'a');
+  assert(auth.syncRysRelayJoin(session,{type:'join',role:'guide',tourCode:'RY-KASIM',roomId:'b',pin:'right'}));
+  console.log('V53 DETAILS: isolated comfort firstSample='+firstIndex+', gain=1; warmup/history guards; ACK/generation/partial-frame handoff; HTTP auth refreshed');
+
+  if(typeof recordResult==='function')recordResult('ADIM-5.V53','Kaynak dosyalarından DSP, profil, sıra, fanout ve relay davranışları doğrulandı',true);
+  console.log('V53 PASS: source-only DSP/SRC/comfort/profile, queue/PLC/seq, binary+JSON dedup, coalescer, congestion, HTTP single-flight/drain/close, gesture/wake/pause');
 }
 ```
 
-Testler bağımsızlığını raporu okumayarak sağlar; fonksiyon/sınıf seçicisi gerçek deklarasyonu bulup Node parser ile tamamlanan ilk gövdeyi seçer; tek satırlı gövdeleri de destekler. Sembol bulunamazsa fail eder. Graph testi dynamic import sınırını mock'lar; gerçek tarayıcı modül yükleme/CSP/arka plan davranışını kanıtlamaz. E2E HTTP/WS kısmı Step2–3'te gerçek localhost sunucusunu kullanmaya devam eder. Gerçek radyo/roaming veya 85–95 dB SPL sahası simüle edilmiş sayılmaz.
+### Yeni HTTP relay E2E fonksiyonu
 
-### public/dinle.html — initRxPlayerWorklet tamamı (release sürümü)
-
-Mevcut context token/callback kimliği ve tek oynatıcı davranışı korunur.
+Aşağıdaki fonksiyonu script kapsamına ekleyin. runStep2And3LiveServerAndWsTests içinde mevcut runV51TransportRoundTrip çağrısından sonra **`await runV53RelayRoundTrip({baseUrl,token:authToken});`** çağırın. Token loglanmaz; yalnız localhost test sunucusundaki geçici session/odalar kullanılır. Audio TTL 200 ms olduğundan bu E2E localhost gecikmesini esas alır; WAN testi değildir.
 
 ```js
-// PATCH: rx-init-v52
+// PATCH: relay-e2e-v53
+async function runV53RelayRoundTrip({baseUrl,token}){
+  const assert=require('node:assert/strict');const stamp=Date.now().toString(36);
+  const a='v53a-'+stamp,b='v53b-'+stamp,guideId='v53g-'+stamp;
+  const ca='v53ca-'+stamp,cb='v53cb-'+stamp;
+  const join=(role,roomId)=>({type:'join',role,tourCode:'RY-KASIM',roomId,name:'V53 relay test'});
+  const post=async body=>{const r=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    return {status:r.status,body:await r.json()};};
+  const get=async id=>{const r=await fetch(baseUrl+'/api/ws-relay?'+new URLSearchParams({clientId:id}));return r.json();};
+  const unit=seq=>({type:'audio-chunk',seq,sentAt:Date.now(),sampleRate:24000,pcm16:Buffer.alloc(960).toString('base64')});
+  assert.equal((await post({clientId:ca,joinContext:join('pilgrim',a)})).status,200);
+  assert.equal((await post({clientId:cb,joinContext:join('pilgrim',b)})).status,200);
+  assert.equal((await post({clientId:guideId,token,joinContext:join('guide',a),messages:[{type:'audio-chunk',frames:[unit(0),unit(1),unit(2)]}]})).status,200);
+  const audioA=(await get(ca)).messages.filter(m=>m.type==='audio-chunk');assert.deepEqual(audioA.map(m=>m.seq),[0,1,2]);
+  const moved=await post({clientId:guideId,token,joinContext:join('guide',b),messages:[{type:'audio-chunk',frames:[unit(3),unit(4),unit(5)]}]});
+  assert(moved.body.messages.some(m=>m.type==='joined'&&m.room.roomId===b));
+  const audioB=(await get(cb)).messages.filter(m=>m.type==='audio-chunk');assert.deepEqual(audioB.map(m=>m.seq),[3,4,5]);
+  const denied=await post({clientId:guideId,token:'invalid',joinContext:join('guide',b),messages:[unit(6)]});assert.equal(denied.status,401);
+  assert(!(await get(cb)).messages.some(m=>m.type==='audio-chunk'&&m.seq===6));
+  assert.equal((await post({clientId:guideId,token,joinContext:join('guide',b),messages:[]})).status,200);
+  if(typeof recordResult==='function')recordResult('ADIM-3.V53','Gerçek HTTP relay: batch, header-only oda değişimi ve yetki yenileme doğrulandı',true);
+}
+```
+
+### public/dinle.html — initRxPlayerWorklet tamamı (sürüm)
+
+```js
+// PATCH: rx-init-v53
 function initRxPlayerWorklet() {
       if (rxPlayerWorkletNode && rxPlayerWorkletNode.context !== audioCtx) {
         rxPlayerWorkletNode = null;
@@ -1334,7 +1492,7 @@ function initRxPlayerWorklet() {
       const token = ++rxLoadToken;
       rxPlayerWorkletLoading = true;
       ctx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=52-audio')
+        .addModule('/pcm-player-worklet.js?v=53-audio')
         .then(() => {
           if (token !== rxLoadToken || audioCtx !== ctx || rxPlayerWorkletNode) return;
           const node = new AudioWorkletNode(ctx, 'rys-pcm-player', {
@@ -1382,22 +1540,23 @@ function initRxPlayerWorklet() {
     }
 ```
 
-### public/sw.js — dosyanın tamamı (release sürümü)
+### public/sw.js — tamamı (sürüm)
 
 ```js
-// PATCH: sw-v52
-// PATCH: sw-v52
-const CACHE_NAME = 'ridvanses-pwa-v52';
+// PATCH: sw-v53
+// PATCH: sw-v53
+// PATCH: sw-v53
+const CACHE_NAME = 'ridvanses-pwa-v53';
 const ASSETS_TO_CACHE = [
   '/',
   '/dinle',
   '/rota',
   '/ani-kitabi',
   '/css/style.css',
-  '/vercel-ws-shim.js?v=52',
+  '/vercel-ws-shim.js?v=53',
   '/js/umrah-steps-map.js',
-  '/pcm-capture-worklet.js?v=52-audio',
-  '/pcm-player-worklet.js?v=52-audio',
+  '/pcm-capture-worklet.js?v=53-audio',
+  '/pcm-player-worklet.js?v=53-audio',
   '/manifest.json',
   '/icons/icon-512.png',
   '/icons/icon-192.png',
@@ -1484,41 +1643,40 @@ self.addEventListener('notificationclick', (event) => {
 
 ```
 
-İki HTML'deki shim script etiketini bu tam etiketle değiştirin:
+İki HTML içindeki shim etiketi /vercel-ws-shim.js?v=53 olmalı. Dinle SW register çağrısı /sw.js?v=53 olmalı. Tam değiştirilecek satırlar:
 
 ```html
-<script src="/vercel-ws-shim.js?v=52"></script>
+<script src="/vercel-ws-shim.js?v=53"></script>
 ```
-
-Dinle sayfasındaki mevcut SW register satırının yerine:
 
 ```js
-// PATCH: sw-register-v52
-navigator.serviceWorker.register('/sw.js?v=52').catch(() => {});
+// PATCH: sw-register-v53
+navigator.serviceWorker.register('/sw.js?v=53').catch(() => {});
 ```
 
-Bu sürüm numaraları dağıtım eşlemesi içindir; cache güncellemesini tek başına atomik kabul etmeyin. Eski v51 istemcileriyle 480 örnek/12 bayt sözleşmesi aynı olsa da aktif ses davranışı farklıdır. Gerçek rollout/canary ve geri alma iki HTML, worklet'ler, shim, server/test ve SW sürümünü birlikte yönetmelidir.
+Bunlar sürüm eşlemesidir, atomik dağıtım mekanizmasının yerine geçmez. Canary/geri alma bütün HTML/worklet/shim/server/test/SW sürümünü birlikte yönetmeli. Ağda gerçek paket kaybı, OS ses odağı kesintisi, mikrofon clipping'i ve aynı bantta konuşmacı ayrımı bu mikro yamalarla fiziksel olarak ortadan kaldırılmaz.
 
-## 5. Çalıştırılan kanıtlar ve uygulama durumu
+## 5. Ölçülen sonuçlar ve sınırlar
 
-| Çalıştırma | Gerçek sonuç |
+| Çalıştırma / karşı örnek | Sonuç |
 |---|---|
-| Diskteki v51, istenen node scripts/verify-system.js | 23 kayıt PASS; Step5 eksik rapor nedeniyle ENOENT; exit **1** |
-| v51 33 ardışık frame VM | q.size=1, expected=32, resync=1 |
-| v51 bufferedAmount=9720 byte | terminate sayısı=1 |
-| Fallback zaman örneği | currentTime=10, playbackTime=10.043 → yaş=-43 ms |
-| v52 kaynak adayları bellekte, yeni bağımsız Step5 | **V52 PASS**; testin raporu okuması engellenerek çalıştırıldı |
-| Aynı adaylar bellekten yüklü gerçek localhost HTTP/WS test paketi | **24/24 PASS + V52 PASS, exit 0** |
-| Değişiklik kontrolü | İncelenen 8 kaynak dosyanın SHA-256 değerleri aynı; yalnız bu rapor yazıldı |
+| Diskteki v52, node scripts/verify-system.js | **24/24 PASS + V52 PASS, exit 0** |
+| V52 izole comfort fixture, 240 örnek lookahead | İlk sinyal örneği 240; o örnekte ek comfort gain ≈0.964818 |
+| V52 ön tamponda 33 frame sonrası ilk kaynak frame | frame[0]=0, frame[71]≈0.2; sıfır history ile gereksiz 3 ms karışım |
+| V53 aynı izole fixture | İlk sinyal 312: ek 72 örnek/3 ms; ilk sinyalde comfort gain=1 |
+| V53 kaynak adayları bellekte | DSP/profil/PLC/seq, history/warmup, pending TTL, eski context promise, probe ACK/hata/oda/generation, partial batch ve auth birim testleri geçti |
+| Aynı adaylarla gerçek localhost HTTP/WS paketi | **25/25 PASS + V53 PASS, exit 0** |
 
-Aday doğrulaması şu şekilde yapıldı: yamalar yalnız bellekteki kaynak kopyalarına uygulandı; aday JS ve HTML script blokları derlendi. Node modül yükleyicisi/okuyucusu aday kopyaları sundu; Express/ws localhost üzerinde gerçek HTTP/WS alışverişi yaptı. Diskteki kaynaklar değiştirilmedi. Paket içindeki ilk 18 dosyalık node --check taraması diskteki tabanı tarar; ayrıca aday dosyaların tamamı önceden ayrı syntax kontrolünden geçirildi. Baseline v51 ile aday v52 sonucu birbirine karıştırılmamalıdır.
+Aday testi: kodlar yalnız bellekteki kaynak kopyalarına uygulandı, aday JS/HTML script blokları ayrıca derlendi; Node okuyucu/modül yükleyicisi bu kopyaları sundu. Express/ws localhost'ta gerçek istek/yanıt alışverişi yaptı. Testin rapor dosyasını okuması engellendi. Diskteki Step1 node --check taraması temel kaynakları tarar; ayrıca değişen aday kaynaklar ayrı syntax kontrolünden geçirildi. Kaynak yamaları üretime veya diske uygulanmadı.
 
-Yeni Step5 testinin kendisi yalnız gerçek kaynak yollarını okur. Rapor metninden aday oluşturma işlemi denetim provasıdır ve uygulamanın test kodunun bağımlılığı değildir. Bu raporu silerek bağımsız test çalıştırma, ancak v52 test yaması kaynaklara uygulandıktan sonra mümkündür; diskte kalan eski v51 Step5 hâlâ rapora bağımlıdır.
+Bu başarı gerçek telefon, kalabalık kayıtları, mikrofon doygunluğu, BT/kilit/OS ses odağı, roaming ve kamu MQTT hizmeti üzerinde sıfır kusur sonucu değildir. Failback probe için native WebSocket API'si mocklandı; gerçek yerel E2E ise HTTP batch/oda/yetki ve WS binary/JSON sözleşmesini sınadı. Testin kapsamadığı bir yola başarı etiketi verilmedi.
 
-### Kapsam sınırları ve saha kabulü
+### Uygulama ve saha planı
 
-Hata bulunmadığı veya sıfır akustik kusur garanti edildiği sonucu çıkarılmadı. Yeni UI, DSP ve zaman kontrolleri VM/mocked API ile; auth/oda/taşıma gerçek localhost ile doğrulandı. Gerçek browser CSP/modül yükleme, mobil background, BT/arama, 85–95 dB kalabalık kaydı, mikrofon clipping'i, çok cihaz feedback ve yüzlerce dinleyicinin ortak radyo/egress yükü denenmedi.
+1. Yakalama/player/guide/transport/server/test yamaları birlikte staging'e alınmalı; sürümlü HTML/SW/worklet URL'leri eşleştirilmeli.
+2. Step5 çağrısı V53'e, yeni HTTP relay E2E çağrısı authToken mevcutken eklenmeli; eski testler ayrıca korunmalı. Test rapora bağımlı olmamalı.
+3. Gerçek iPhone Safari/PWA ve düşük/orta Android'de uzun dua, fısıltı ve s/ş/f/t/k başlangıcı; 30 dk kilit, alarm/arama/BT rota değişimi; burst/reorder/200–500 ms boşluk ve 100/500+ dinleyici denenmeli.
+4. ADC→DAC gecikmesi, fonem kaybı, PLC/late/queueDropped/rebuffer, soft-drop/hard-close, relay retry ve failback süreleri ayrı raporlanmalı. Farklı telefonların Date.now farkı gerçek akustik gecikme ölçümü değildir.
+5. Yüksüz tek ton stopband değeri, kalabalık izolasyonu veya fonem kalitesi değildir. Aynı anda konuşan kalabalığı ayırmak ve çapraz cihaz echo'yu azaltmak için fiziksel yakın mikrofon/kulaklık ve doğrulanmış codec/denoiser/medya altyapısı şarttır.
 
-Uygulama sonrasında ayrı testler: 30 dk kilit ekranı, arama/alarm/WhatsApp sonrası kurtarma, düşük Android/iPhone Safari/PWA, 100–500 ms burst, %1–5 ardışık kayıp, 100/500+ alıcı, uzun Arapça okuma, s/ş/f başlangıçları ve cümle sonları. mouth-to-ear p50/p95/p99, late/concealed/queueDropped/resync, socket soft-drop/hard-close, relay retry/queue drops ve fonem kaybı ölçülmeli. Farklı telefonların Date.now farkı tek yönlü akustik gecikme ölçümü değildir.
-
-Öncelik: bağımsız test → UI/profil aktarımı → fallback zaman semantiği → bounded kuyruk budama/backpressure → HTTP close/drain → isteğe bağlı comfort-fade. Comfort-fade hece korunumu ölçümü olmadan zorunlu izolasyon modu olarak pazarlanmamalı. Gerçek DTX, neural ayrıştırma, Opus/SFU ve WSOLA ayrı geliştirmelerdir.
+Bu denetimde eklenen +3 ms gecikme, sonlu comfort açılmasının bedelidir. İstenmeyen faz veya ünsüz etkisi görülürse comfortFade kullanıcı tarafından kapatılabilir; delay profiller arasında sabit kaldığından kapatırken zaman atlaması yapılmaz. VAD hiç açılmayan heceyi bu mekanizma geri yaratmaz.

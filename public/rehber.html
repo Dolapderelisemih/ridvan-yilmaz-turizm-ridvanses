@@ -28,7 +28,7 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=52"></script>
+  <script src="/vercel-ws-shim.js?v=53"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .console-wrap {
@@ -1231,18 +1231,18 @@
     }
 
     // Real Microphone Audio Streaming (24 kHz Saf Stüdyo Kristal HD + Boğukluk Giderici EQ + Cümle Korumalı Ses Kilidi)
-    // PATCH: guide-profile-v52
+    // PATCH: guide-profile-v53
     let guideContinuousSpeech=false;
     let guideComfortFade=true;
-    function syncGuideAudioProfile(){
-      const speech=document.getElementById('guideContinuousSpeech');
-      const comfort=document.getElementById('guideComfortFade');
+    function syncGuideAudioProfile(resetLock=false){
+      const speech=document.getElementById('guideContinuousSpeech'),comfort=document.getElementById('guideComfortFade');
       const status=document.getElementById('guideProfileStatus');
       if(speech)speech.checked=guideContinuousSpeech;if(comfort)comfort.checked=guideComfortFade;
       if(status)status.textContent=guideContinuousSpeech?'Uzun okuma açık; çevre sesi de geçebilir.':
         (guideComfortFade?'Dengeli profil; cümle sonrası dip ses yumuşar.':'Dengeli profil; ortam tabanı korunur.');
       try{scriptProcessor?.port?.postMessage({type:'set-profile',reject:guideSideVoiceRejectLevel,
-        continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade});}catch(e){console.warn('Ses profili sonraki mikrofon kurulumunda uygulanacak',e);}
+        continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade,resetLock:!!resetLock});}
+      catch(e){console.warn('Profil sonraki mikrofon kurulumunda uygulanacak',e);}
     }
     function setGuideContinuousSpeech(enabled){guideContinuousSpeech=!!enabled;syncGuideAudioProfile();}
     function setGuideComfortFade(enabled){guideComfortFade=!!enabled;syncGuideAudioProfile();}
@@ -1265,48 +1265,16 @@
       }
     }
 
-    function updateGuideSideVoiceReject(val) {
-      const num = Math.max(15, Math.min(85, Number(val) || 50));
-      guideSideVoiceRejectLevel = num / 100;
-      const lbl = document.getElementById('guideSideVoiceRejectLabel');
-      if (lbl) {
-        let tag = 'Dengeli';
-        if (num >= 70) tag = 'Güçlü';
-        else if (num <= 30) tag = 'Hafif';
-        lbl.textContent = `%${num} (${tag})`;
-      }
-      if (scriptProcessor && scriptProcessor.port) {
-        try {
-          scriptProcessor.port.postMessage({ type: 'set-profile', reject: guideSideVoiceRejectLevel });
-        } catch {}
-      }
+    function updateGuideSideVoiceReject(val){
+      const num=Math.max(15,Math.min(85,Number(val)||50));guideSideVoiceRejectLevel=num/100;
+      const label=document.getElementById('guideSideVoiceRejectLabel');
+      if(label)label.textContent='%'+num+' ('+(num>=70?'Güçlü':num<=30?'Hafif':'Dengeli')+')';
+      syncGuideAudioProfile();
     }
-
-    function resetGuideVoiceLock() {
-      guideVoiceRefEnv = 0.045;
-      guideNoiseFloor = 0.0012;
-      guideSpeechHoldSamples = 0;
-      guideDirectPauseSeen = false;
-      guideTxRmsRing.fill(0);
-      if (scriptProcessor && scriptProcessor.port) {
-        try {
-          scriptProcessor.port.postMessage({
-            type: 'set-profile',
-            reject: guideSideVoiceRejectLevel,
-            resetLock: true
-          });
-        } catch {}
-      }
-      const statusBox = document.getElementById('voiceTestStatusBox');
-      if (statusBox) {
-        statusBox.style.display = 'block';
-        statusBox.innerHTML = '🎯 <strong>Yakın-Alan Ses Kilidi Sıfırlandı:</strong> Şimdi mikrofona normal mesafenizden (10-15 cm) konuştuğunuzda sistem sadece sizin ses seviyenize kilitlenecek, konuşmanız sırasında sesi %100 kristal netlikte tutup sustuğunuzda yan konuşmaları kesecektir.';
-        setTimeout(() => {
-          if (statusBox.innerHTML.includes('Yakın-Alan Ses Kilidi Sıfırlandı')) {
-            statusBox.style.display = 'none';
-          }
-        }, 4500);
-      }
+    function resetGuideVoiceLock(){
+      syncGuideAudioProfile(true);
+      const box=document.getElementById('voiceTestStatusBox');
+      if(box){box.style.display='block';box.textContent='Ortam yeniden ölçülüyor: ilk 400 ms konuşmadan bekleyin. Uzun okuma ve dip ses tercihleri korunur.';}
     }
 
     function toggleGuideMicMute(forceState) {
@@ -1568,181 +1536,11 @@
         zeroGainNode = null;
       }
     }
-    let guideGateEnv = 0;
-    let guideGateGain = 1.0;
-    let guideNoiseFloor = 0.0012;
-    let guideVoiceRefEnv = 0.045; // Rehberin yakın mikrofon (10-15 cm) konuşma referans zarfı
-    let guideSpeechHoldSamples = 0; // Cümle Koruma Sayacı (Konuşurken kapının asla kapanmamasını ve boğuklaşmamasını sağlar)
-    let guideDirectPauseSeen = false; // Hece/kelime arası duraksama bayrağı (AES yankı tespiti için)
-    const guideTxRmsRing = new Float32Array(8); // Son ~512ms yayınlanan ses enerjisi halkası (Çapraz Cihaz Yankı Bastırıcı - AES)
-    let guideTxRingIdx = 0;
-    let guideSameDeviceSpeakerRms = 0;
-    let guideSameDeviceSpeakerAt = 0;
-    let guideSilentChunksCount = 0;
-    let guideWasIdlePaused = true;
-
-    function processGuideFloatChunkDsp(input, hwSampleRate = 48000) {
-      const outSampleRate = 24000;
-      const step = hwSampleRate > 0 ? hwSampleRate / outSampleRate : 2;
-      const outLen = Math.max(1, Math.round(input.length / step));
-      const downsampled = new Float32Array(outLen);
-
-      // Geçici susturma (Yanımdakiyle Konuş / Mute) aktifse tam sessizlik dön
-      if (isGuideMicMuted) {
-        guideGateGain = 0.0005;
-        guideSpeechHoldSamples = 0;
-        guideDirectPauseSeen = true;
-        guideTxRmsRing[guideTxRingIdx] = 0;
-        guideTxRingIdx = (guideTxRingIdx + 1) & 7;
-        return { downsampled, rms: 0, outSampleRate, gateOpen: false };
-      }
-
-      const reject = Math.max(0.15, Math.min(0.85, guideSideVoiceRejectLevel));
-
-      // 1. Adaptif Ortam Gürültü Tabanı & Paket RMS Analizi
-      let rawSq = 0;
-      let chunkPeak = 0;
-      const inLen = input.length;
-      for (let i = 0; i < inLen; i += 2) {
-        const val = input[i];
-        rawSq += val * val;
-        const a = Math.abs(val);
-        if (a > chunkPeak) chunkPeak = a;
-      }
-      const chunkRawRms = Math.sqrt(rawSq / Math.max(1, Math.ceil(inLen / 2)));
-      if (chunkRawRms < guideNoiseFloor * 1.8) {
-        guideNoiseFloor = Math.max(0.0004, Math.min(0.005, 0.95 * guideNoiseFloor + 0.05 * chunkRawRms));
-      }
-
-      // 2. Akustik Yankı İzleyici (Cross-Device & Same-Device AES):
-      // Son 120ms - 480ms içinde yayınlanan rehber sesinin (veya aynı cihazdaki hoparlörün) tepe enerjisini bul:
-      let recentTxPeak = 0;
-      for (let k = 0; k < 8; k++) {
-        if (guideTxRmsRing[k] > recentTxPeak) recentTxPeak = guideTxRmsRing[k];
-      }
-      if (typeof Date !== 'undefined' && Date.now() - guideSameDeviceSpeakerAt < 450) {
-        if (guideSameDeviceSpeakerRms > recentTxPeak) recentTxPeak = guideSameDeviceSpeakerRms;
-      }
-
-      // 3. Çift Eşikli (Hysteresis) Yakın-Alan Ses Kilidi:
-      // - Kapı kapalıyken (rehber susuyorken) Kâbe'deki yan seslerin açamaması için yüksek giriş eşiği (openThreshold) uygulanır.
-      // - Rehber konuşmaya başladığında ise cümle ortasında yumuşak hecelerin veya kelime sonlarının ASLA kesilmemesi için
-      //   sürdürme eşiği (keepThreshold = openThreshold * 0.50) devreye girer!
-      const minAbsOpen = 0.007 + reject * 0.011;
-      const nearFieldRatio = 0.24 + reject * 0.16;
-      const noiseMultiplier = 3.2 + reject * 2.0;
-      let openThreshold = Math.max(
-        minAbsOpen,
-        guideNoiseFloor * noiseMultiplier,
-        guideVoiceRefEnv * nearFieldRatio
-      );
-
-      // Rehberin kendi sesi doğrudan mikrofona geldiğinde RMS tabanlı referansı güncelle
-      if (chunkRawRms > openThreshold * 1.05 && chunkPeak > 0.024) {
-        const targetRef = Math.min(0.24, chunkRawRms * 1.45);
-        if (targetRef > guideVoiceRefEnv) {
-          guideVoiceRefEnv = 0.80 * guideVoiceRefEnv + 0.20 * targetRef;
-        } else {
-          guideVoiceRefEnv = 0.992 * guideVoiceRefEnv + 0.008 * targetRef;
-        }
-      } else {
-        guideVoiceRefEnv = Math.max(0.042, guideVoiceRefEnv * 0.999);
-      }
-
-      // 4. Akustik Yankı Bastırıcı (AES):
-      // Rehber heceyi bitirip duraksadıktan (guideDirectPauseSeen) hemen sonra (120-480ms içinde) yan telefondaki hoparlörden
-      // zayıflamış yankı dalgası (0.005 < chunkRawRms < recentTxPeak * 0.36) dönerse cümle tutucuyu anında kapat ve yankıyı kes!
-      if (chunkRawRms <= 0.0045) {
-        guideDirectPauseSeen = true;
-      } else if (guideDirectPauseSeen && recentTxPeak > 0.035 && chunkRawRms < recentTxPeak * 0.36) {
-        guideSpeechHoldSamples = 0;
-        openThreshold = Math.max(openThreshold, recentTxPeak * 0.42);
-      } else if (chunkRawRms >= openThreshold) {
-        guideDirectPauseSeen = false;
-      }
-
-      const keepThreshold = Math.min(0.024, openThreshold * 0.38);
-      const expanderExponent = 4.2 + reject * 2.2;
-      const minGateFloor = 0.001;
-
-      let sum = 0;
-      let gateOpenedInChunk = false;
-
-      for (let j = 0; j < outLen; j++) {
-        let sample;
-        if (step === 2) {
-          sample = input[j * 2];
-        } else if (step === 1) {
-          sample = input[j];
-        } else {
-          const srcPos = (j * (inLen - 1)) / Math.max(1, outLen - 1);
-          const idx0 = Math.min(inLen - 1, Math.floor(srcPos));
-          const idx1 = Math.min(inLen - 1, idx0 + 1);
-          const frac = srcPos - idx0;
-          sample = input[idx0] * (1 - frac) + input[idx1] * frac;
-        }
-
-        // Hızlı Açılan Hece Zarf İzleyici (<1ms açılış ile ilk ünsüz harfleri asla yutmaz)
-        const absV = Math.abs(sample);
-        if (absV > guideGateEnv) {
-          guideGateEnv = 0.945 * guideGateEnv + 0.055 * absV;
-        } else {
-          guideGateEnv = 0.99945 * guideGateEnv + 0.00055 * absV;
-        }
-
-        // Çift Eşikli Cümle Koruma Kilidi (Schmitt Trigger Hysteresis + 340ms Hold):
-        // Kapı zaten açıksa (!guideDirectPauseSeen && guideSpeechHoldSamples > 0) düşük keepThreshold ile açık kalmaya devam eder;
-        // böylece rehberin konuşması telefon görüşmesi gibi %100 akıcı ve kesintisiz iletilir!
-        const activeThreshold = (guideSpeechHoldSamples > 0 && !guideDirectPauseSeen) ? keepThreshold : openThreshold;
-        if (guideGateEnv >= activeThreshold) {
-          guideSpeechHoldSamples = Math.round(outSampleRate * 0.34);
-          gateOpenedInChunk = true;
-        } else if (guideSpeechHoldSamples > 0) {
-          guideSpeechHoldSamples--;
-        }
-
-        let targetGain;
-        if (guideSpeechHoldSamples > 0 || guideGateEnv >= activeThreshold) {
-          targetGain = 1.0;
-          gateOpenedInChunk = true;
-        } else {
-          const ratio = guideGateEnv / (openThreshold || 0.01);
-          targetGain = Math.max(minGateFloor, Math.pow(ratio, expanderExponent));
-        }
-
-        const gainSmooth = targetGain > guideGateGain ? 0.045 : 0.006;
-        guideGateGain = (1 - gainSmooth) * guideGateGain + gainSmooth * targetGain;
-        let v = sample * guideGateGain;
-
-        // Şeffaf Tavan Koruyucu (Yalnızca >0.88 ani patlamalarda devreye girer)
-        if (Math.abs(v) > 0.88) {
-          const sign = v < 0 ? -1 : 1;
-          v = sign * (0.88 + 0.11 * Math.tanh((Math.abs(v) - 0.88) / 0.11));
-        }
-
-        sum += v * v;
-        downsampled[j] = v;
-      }
-
-      const rms = Math.sqrt(sum / (outLen || 1));
-      guideTxRmsRing[guideTxRingIdx] = gateOpenedInChunk ? rms : 0;
-      guideTxRingIdx = (guideTxRingIdx + 1) & 7;
-      return { downsampled, rms, outSampleRate, gateOpen: gateOpenedInChunk };
-    }
-
-    let lastGuideMicChunkAt = 0;
-    let guideAudioGuardChannel = null;
-    try {
-      if (typeof BroadcastChannel !== 'undefined') {
-        guideAudioGuardChannel = new BroadcastChannel('ridvanses_audio_guard');
-        guideAudioGuardChannel.onmessage = (ev) => {
-          if (ev && ev.data && ev.data.type === 'pilgrim-speaker-rms') {
-            guideSameDeviceSpeakerRms = Number(ev.data.rms) || 0;
-            guideSameDeviceSpeakerAt = Date.now();
-          }
-        };
-      }
-    } catch {}
+    // PATCH: guide-state-v53
+    let guideWasIdlePaused=true;
+    let lastGuideMicChunkAt=0;
+    let guideAudioGuardChannel=null;
+    try{if(typeof BroadcastChannel!=='undefined')guideAudioGuardChannel=new BroadcastChannel('ridvanses_audio_guard');}catch(e){}
 
     // PATCH: guide-handler-v51
     function handleGuideMicFloatChunk(m) {
@@ -1818,7 +1616,7 @@
       }
     }
 
-    // PATCH: guide-graph-v52
+    // PATCH: guide-graph-v53
     async function setupGuideMicrophoneGraph() {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!audioCtx) {
@@ -1913,19 +1711,11 @@
       presence.connect(lowPass);
       lowPass.connect(guideMicGainNode);
 
-      guideGateEnv = 0;
-      guideGateGain = 1.0;
-      guideNoiseFloor = 0.0012;
-      guideVoiceRefEnv = 0.045;
-      guideSpeechHoldSamples = 0;
-      guideDirectPauseSeen = false;
-      guideTxRmsRing.fill(0);
-      guideSilentChunksCount = 0;
       guideWasIdlePaused = true;
 
       lastGuideMicChunkAt = Date.now();
       const ctx = audioCtx;
-      const url = "/pcm-capture-worklet.js?v=52-audio";
+      const url = "/pcm-capture-worklet.js?v=53-audio";
       if (ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
         try {
           await ctx.audioWorklet.addModule(url);

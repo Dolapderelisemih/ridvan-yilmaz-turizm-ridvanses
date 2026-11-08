@@ -1,3 +1,4 @@
+// PATCH: capture-v53
 // PATCH: capture-v52
 // PATCH: capture-v51
 // PATCH: capture-v50
@@ -155,7 +156,8 @@ class RysCaptureKernel {
     this.muted = Boolean(o.muted);
     this.mg = this.muted ? 0 : 1;
     this.comfortFade=o.comfortFade!==false;this.comfortGain=1;this.quietSamples=0;
-    this.comfortAttack=1-Math.exp(-1/(24000*.003));
+    this.comfortDelay=new Float32Array(72);this.comfortDelayPos=0;
+    this.comfortRiseLength=48;this.comfortRisePos=48;this.comfortRiseFrom=1;this.comfortTarget=1;
     this.comfortRelease=1-Math.exp(-1/(24000*.080));
     this.frame = new Float32Array(480);
     this.offset = 0;
@@ -168,9 +170,21 @@ class RysCaptureKernel {
       const active=this.gate.ready&&(this.gate.hold>0||this.gate.continuousSpeech);
       this.quietSamples=active?0:this.quietSamples+1;
       const want=(!this.comfortFade||active||this.quietSamples<=14400)?1:0;
-      this.comfortGain+=(want-this.comfortGain)*(want>this.comfortGain?this.comfortAttack:this.comfortRelease);
+      if(want!==this.comfortTarget){
+        this.comfortTarget=want;
+        if(want===1){this.comfortRiseFrom=this.comfortGain;this.comfortRisePos=0;}
+      }
+      if(want===1){
+        if(this.comfortRisePos<this.comfortRiseLength){
+          const w=.5-.5*Math.cos(Math.PI*(++this.comfortRisePos)/this.comfortRiseLength);
+          this.comfortGain=this.comfortRiseFrom+(1-this.comfortRiseFrom)*w;
+        }else this.comfortGain=1;
+      }else this.comfortGain+=(0-this.comfortGain)*this.comfortRelease;
       if(want===0&&this.comfortGain<1e-6)this.comfortGain=0;
-      const y = v * this.mg * this.comfortGain;
+      const delayed=this.comfortDelay[this.comfortDelayPos];
+      this.comfortDelay[this.comfortDelayPos]=v;
+      this.comfortDelayPos=(this.comfortDelayPos+1)%this.comfortDelay.length;
+      const y = delayed * this.mg * this.comfortGain;
       this.frame[this.offset++] = y;
       this.sq += y * y;
       if (this.offset === 480) {
