@@ -1003,13 +1003,14 @@ function processClientJsonMessageV49(ctx, msg) {
     case 'guide-stream-state': {
       if (sender.role !== 'guide' || !isAuthedClient) break;
       for (const r of getTargetBroadcastRooms(currentRoom)) {
+        const wasLive = r.isLive;
         r.isLive = Boolean(msg.isLive);
         r.broadcastMode = msg.broadcastMode || (r.isLive ? 'mic' : 'idle');
         if (msg.topic) r.currentTopic = msg.topic;
         if (typeof msg.tawafStage !== 'undefined') r.activeTawafStage = msg.tawafStage || null;
         if (msg.guidePeerId) r.guidePeerId = msg.guidePeerId;
         if (r.isLive) {
-          r.startedAt = Date.now();
+          if (!wasLive || !r.startedAt) r.startedAt = Date.now();
           r.activePublisherClientId = clientId;
         } else if (!r.activePublisherClientId || r.activePublisherClientId === clientId) {
           r.activePublisherClientId = null;
@@ -1342,11 +1343,12 @@ function drainRysRelaySession(sess) {
 }
 
 // PATCH: relay-auth-v53
-function applyRysRelayAuth(session,req,token,joinContext){
-  const authenticated=!!(isRequestAuthenticated(req)||isValidAuthToken(token)||isValidAuthToken(joinContext?.token));
+function applyRysRelayAuth(session,req,token,context){
+  const authenticated=!!(isRequestAuthenticated(req)||isValidAuthToken(token)||isValidAuthToken(context?.token));
   const client=session.currentRoom?.clients.get(session.clientId);
   session.isAuthenticated=authenticated;session.ws.isAuthenticated=authenticated;
-  return authenticated||!(client?.role==='guide'||session.ws.isAdmin||joinContext?.role==='guide');
+  return authenticated||!(client?.role==='guide'||session.ws.isAdmin||
+    context?.role==='guide'||context?.type==='admin-subscribe');
 }
 function syncRysRelayJoin(session,joinContext){
   if(!joinContext||joinContext.type!=='join')return true;
@@ -1354,29 +1356,81 @@ function syncRysRelayJoin(session,joinContext){
   const room=String(joinContext.roomId||'genel').trim(),role=joinContext.role==='guide'?'guide':'pilgrim';
   const matches=()=>session.currentRoom?.tourCode===code&&session.currentRoom?.roomId===room&&
     session.currentRoom.clients.get(session.clientId)?.role===role;
-  if(!matches())processClientJsonMessage(session,joinContext);
-  return !!matches();
+  const metadataMatches=()=>{
+    const c=session.currentRoom?.clients.get(session.clientId);if(!c)return false;
+    if(joinContext.name&&c.name!==joinContext.name)return false;
+    for(const key of ['deviceId','phone','lang']){
+      if(joinContext[key]===undefined)continue;
+      const wanted=key==='lang'?(joinContext.lang||'tr'):
+        key==='deviceId'?String(joinContext.deviceId||'').trim():(joinContext.phone||'');
+      if((c[key]||(key==='lang'?'tr':''))!==wanted)return false;
+    }
+    return true;
+  };
+  if(!matches()||!metadataMatches())processClientJsonMessage(session,joinContext);
+  return !!(matches()&&metadataMatches());
 }
 
-// PATCH: relay-routes-v53
-app.post('/api/ws-relay',(req,res)=>{
-  const {clientId,messages,joinContext,token}=req.body||{};
-  const session=getOrCreateRelaySession(clientId);
-  if(!applyRysRelayAuth(session,req,token,joinContext))return res.status(401).json({error:'relay-auth-required'});
-  if(!syncRysRelayJoin(session,joinContext))return res.json({clientId:session.clientId,
-    messages:[{type:'pin-error',message:'Kafile/oda katılımı reddedildi; PIN ve yetkiyi kontrol edin.'}]});
-  const list=Array.isArray(messages)?messages:req.body?.message?[req.body.message]:[];
-  for(const m of list)if(m&&typeof m==='object')processClientJsonMessage(session,m);
+// v54: actual subscription type, without a fabricated pilgrim join.
+function syncRysRelayContext(session,context){
+  if(!context)return true;
+  if(context.type==='join'){
+    if(!syncRysRelayJoin(session,context))return false;
+    session.ws.isAdmin=false;session.ws.familyTourCode=null;
+    return true;
+  }
+  if(context.type!=='family-subscribe'&&context.type!=='admin-subscribe')return false;
+  if(session.currentRoom){
+    const old=session.currentRoom;session.currentRoom=null;
+    removeClientFromRoom(old,session.clientId,0);
+  }
+  if(context.type==='admin-subscribe'){
+    session.ws.familyTourCode=null;
+    if(!session.ws.isAdmin)processClientJsonMessage(session,context);
+    return !!session.ws.isAdmin;
+  }
+  const code=String(context.tourCode||'RY-KASIM').toUpperCase().trim();
+  session.ws.isAdmin=false;
+  if(session.ws.familyTourCode!==code)processClientJsonMessage(session,{...context,tourCode:code});
+  return session.ws.familyTourCode===code;
+}
+
+function serveRysRelay(session,req,res,token,context,messages=[]){
+  if(context&&!['join','family-subscribe','admin-subscribe'].includes(context.type))
+    return res.status(400).json({error:'relay-context-invalid'});
+  if(!applyRysRelayAuth(session,req,token,context))
+    return res.status(401).json({error:'relay-auth-required'});
+  if(!syncRysRelayContext(session,context)){
+    const errors=drainRysRelaySession(session).filter(m=>m.type==='pin-error'||m.type==='auth-error');
+    return res.json({clientId:session.clientId,messages:errors.length?errors:
+      [{type:'pin-error',message:'Kafile/oda katılımı reddedildi; PIN ve yetkiyi kontrol edin.'}]});
+  }
+  for(const m of messages){
+    if(!m||typeof m!=='object')continue;
+    // Explicit context is the latest subscription. Do not replay stale queued joins.
+    if(context&&['join','family-subscribe','admin-subscribe'].includes(m.type))continue;
+    processClientJsonMessage(session,m);
+  }
   return res.json({clientId:session.clientId,messages:drainRysRelaySession(session)});
+}
+
+app.post('/api/ws-relay',(req,res)=>{
+  const {clientId,messages,joinContext,subscriptionContext,token}=req.body||{};
+  const context=subscriptionContext||joinContext||null;
+  const list=Array.isArray(messages)?messages:req.body?.message?[req.body.message]:[];
+  return serveRysRelay(getOrCreateRelaySession(clientId),req,res,token,context,list);
 });
 app.get('/api/ws-relay',(req,res)=>{
-  const session=getOrCreateRelaySession(req.query.clientId);
-  const join=req.query.tourCode?{type:'join',tourCode:req.query.tourCode,roomId:req.query.roomId||'genel',
-    role:req.query.role||'pilgrim',name:req.query.name||'',pin:req.query.pin||'',token:req.query.token}:null;
-  if(!applyRysRelayAuth(session,req,req.query.token,join))return res.status(401).json({error:'relay-auth-required'});
-  if(!syncRysRelayJoin(session,join))return res.json({clientId:session.clientId,
-    messages:[{type:'pin-error',message:'Kafile/oda katılımı reddedildi; PIN ve yetkiyi kontrol edin.'}]});
-  return res.json({clientId:session.clientId,messages:drainRysRelaySession(session)});
+  // Legacy GET is retained. Existing joined sessions need not repeat their PIN.
+  const q=req.query,mode=q.subscription||'join';
+  const context=mode==='admin-subscribe'?{type:mode,token:q.token}:
+    mode==='family-subscribe'?{type:mode,tourCode:q.tourCode||'RY-KASIM'}:
+    mode!=='join'?{type:mode}:
+    q.tourCode?{type:'join',tourCode:q.tourCode,roomId:q.roomId||'genel',role:q.role||'pilgrim',
+      name:q.name||'',pin:q.pin||'',token:q.token,
+      ...(q.deviceId!==undefined?{deviceId:q.deviceId}:{}),
+      ...(q.phone!==undefined?{phone:q.phone}:{}),...(q.lang!==undefined?{lang:q.lang}:{})}:null;
+  return serveRysRelay(getOrCreateRelaySession(q.clientId),req,res,q.token,context);
 });
 
 // ======================== REST API ENDPOINTS ========================

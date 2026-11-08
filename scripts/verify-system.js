@@ -573,6 +573,7 @@ async function runStep2And3LiveServerAndWsTests() {
 
   await runV51TransportRoundTrip({url:wsUrl,token:authToken});
   await runV53RelayRoundTrip({baseUrl,token:authToken});
+  await runV54RelayRoundTrip({baseUrl,url:wsUrl,token:authToken});
 
   guideGenelWs.close();
   pilgrimWs.close();
@@ -1343,6 +1344,187 @@ async function runStep5V53AudioChecks(){
   console.log('V53 PASS: source-only DSP/SRC/comfort/profile, queue/PLC/seq, binary+JSON dedup, coalescer, congestion, HTTP single-flight/drain/close, gesture/wake/pause');
 }
 
+// v54 source-only real HTTP/WS regression test.
+async function runV54RelayRoundTrip({baseUrl,url,token}){
+  const assert=require('node:assert/strict'),{WebSocket}=require('ws');
+  const stamp=Date.now().toString(36),code='RY-V54-'+stamp.toUpperCase();
+  const headers={'Content-Type':'application/json',Authorization:'Bearer '+token};
+  const post=async body=>{
+    const r=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    return {status:r.status,...await r.json()};
+  };
+  const get=async query=>{const r=await fetch(baseUrl+'/api/ws-relay?'+new URLSearchParams(query));return {status:r.status,...await r.json()};};
+  const family={type:'family-subscribe',tourCode:code},admin={type:'admin-subscribe',token};
+  const join=pin=>({type:'join',role:'pilgrim',tourCode:code,roomId:'genel',name:'V54 listener',pin});
+  const guide={type:'join',role:'guide',tourCode:code,roomId:'genel',name:'V54 guide '+stamp,token};
+  const guideId='v54-guide-'+stamp,listenerId='v54-listener-'+stamp;
+  let socket;
+  try{
+    const created=await fetch(baseUrl+'/api/tours',{method:'POST',headers,
+      body:JSON.stringify({code,name:'V54 isolated regression',pin:'1453',guideName:guide.name})});
+    assert.equal(created.status,200);
+    const fam=await post({clientId:'v54-family-'+stamp,subscriptionContext:family,messages:[family]});
+    assert.equal(fam.messages.filter(m=>m.type==='family-state').length,1);
+    assert(!fam.messages.some(m=>m.type==='joined'||m.type==='pin-error'));
+    const again=await post({clientId:'v54-family-'+stamp,subscriptionContext:family,messages:[]});
+    assert(!again.messages.some(m=>m.type==='family-state'),'Idempotent poll must not repeat ACK');
+    const famGet=await get({clientId:'v54-familyget-'+stamp,subscription:'family-subscribe',tourCode:code});
+    assert(famGet.messages.some(m=>m.type==='family-state'));
+    const a=await post({clientId:'v54-admin-'+stamp,token,subscriptionContext:admin,messages:[admin]});
+    assert.equal(a.messages.filter(m=>m.type==='admin-rooms-update').length,1);
+    assert.equal((await post({clientId:'v54-admin-'+stamp,token:'bad',subscriptionContext:{type:'admin-subscribe'},messages:[]})).status,401);
+    assert.equal((await get({clientId:'v54-adminbad-'+stamp,subscription:'admin-subscribe'})).status,401);
+    const freshAdmin=await get({clientId:'v54-adminget-'+stamp,subscription:'admin-subscribe',token});
+    assert(freshAdmin.messages.some(m=>m.type==='admin-rooms-update'));
+    // Legacy GET: PIN required on first join, omitted on an existing membership.
+    const denied=await get({clientId:listenerId,tourCode:code});
+    assert(denied.messages.some(m=>m.type==='pin-error'));
+    const accepted=await get({clientId:listenerId,tourCode:code,pin:'1453',deviceId:'v54-device-'+stamp,phone:'test',lang:'en'});
+    assert(accepted.messages.some(m=>m.type==='joined'));
+    assert(!(await get({clientId:listenerId,tourCode:code})).messages.some(m=>m.type==='pin-error'));
+    const resumed=await post({clientId:'v54-resumed-'+stamp,joinContext:join('1453'),subscriptionContext:join('1453'),messages:[join('1453')]});
+    assert.equal(resumed.messages.filter(m=>m.type==='joined').length,1);
+    const renamed={...join('1453'),name:'V54 renamed listener'};
+    const edited=await post({clientId:'v54-resumed-'+stamp,subscriptionContext:renamed,messages:[renamed]});
+    assert.equal(edited.messages.filter(m=>m.type==='joined').length,1,'Metadata edit needs exactly one ACK');
+    assert(!(await post({clientId:'v54-resumed-'+stamp,subscriptionContext:renamed,messages:[]})).messages.some(m=>m.type==='joined'));
+    const wrong=await post({clientId:'v54-wrong-'+stamp,subscriptionContext:join('wrong'),messages:[]});
+    assert(wrong.messages.some(m=>m.type==='pin-error'));
+    // A family tracker must not be registered as an audio listener.
+    const g=await post({clientId:guideId,token,subscriptionContext:guide,messages:[guide,{type:'guide-stream-state',isLive:true,broadcastMode:'mic'}]});
+    assert(g.messages.some(m=>m.type==='joined'&&m.room.totalListeners===2));
+    assert(g.messages.find(m=>m.type==='joined').room.connectedPilgrims.some(p=>p.name===renamed.name));
+    guide.name='V54 updated guide '+stamp;
+    const editedGuide=await post({clientId:guideId,token,subscriptionContext:guide,messages:[guide]});
+    assert(editedGuide.messages.some(m=>m.type==='joined'&&m.room.connectedGuides.some(p=>p.name===guide.name)));
+    const view=await get({clientId:'v54-clock1-'+stamp,tourCode:code,pin:'1453'});
+    const startedAt=view.messages.find(m=>m.type==='joined').room.startedAt;
+    await new Promise(r=>setTimeout(r,15));
+    await post({clientId:guideId,token,subscriptionContext:guide,messages:[{type:'guide-stream-state',isLive:true,broadcastMode:'mic',topic:'same session'}]});
+    const view2=await get({clientId:'v54-clock2-'+stamp,tourCode:code,pin:'1453'});
+    assert.equal(view2.messages.find(m=>m.type==='joined').room.startedAt,startedAt);
+    await post({clientId:guideId,token,subscriptionContext:guide,messages:[{type:'guide-stream-state',isLive:false}]});
+    await post({clientId:guideId,token,subscriptionContext:guide,messages:[{type:'guide-stream-state',isLive:true,broadcastMode:'mic'}]});
+    const view3=await get({clientId:'v54-clock3-'+stamp,tourCode:code,pin:'1453'});
+    assert(view3.messages.find(m=>m.type==='joined').room.startedAt>startedAt);
+    // Native family subscription has the same public scope, without audio PIN.
+    const native=[];socket=new WebSocket(url);
+    await new Promise((resolve,reject)=>{socket.once('open',resolve);socket.once('error',reject);});
+    socket.on('message',raw=>{try{native.push(JSON.parse(raw.toString()));}catch(e){}});
+    socket.send(JSON.stringify(family));const until=Date.now()+2000;
+    while(!native.some(m=>m.type==='family-state')&&Date.now()<until)await new Promise(r=>setTimeout(r,10));
+    assert(native.some(m=>m.type==='family-state'));assert(!native.some(m=>m.type==='joined'||m.type==='pin-error'));
+    if(typeof recordResult==='function')recordResult('ADIM-3.V54','Gerçek HTTP/WS: family/admin kapsamı, ilk PIN/yeniden poll, tek ACK ve yayın saati doğrulandı',true);
+  }finally{
+    socket?.close();
+    await fetch(baseUrl+'/api/tours/'+code,{method:'DELETE',headers:{Authorization:'Bearer '+token}});
+  }
+}
+
+// v54: extra behavioral assertions read the source tree only.
+async function runStep5V54AudioChecks(){
+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+  const root=typeof ROOT_DIR==='string'?ROOT_DIR:process.cwd();
+  const read=f=>fs.readFileSync(path.join(root,f),'utf8').replace(/\r\n/g,'\n');
+  function pick(text,name,kind='function'){
+    const head=kind==='class'?'class ':kind==='method'?'(?:async )?':'(?:async )?function ';
+    const re=new RegExp('^([ \\t]*)'+head+name+(kind==='class'?'\\b':'\\([^\\n]*\\)\\s*\\{'),'m'),m=re.exec(text);
+    assert(m,'Missing '+name);
+    for(let e=text.indexOf('}',m.index+m[0].length);e>=0;e=text.indexOf('}',e+1)){
+      const code=text.slice(m.index,e+1).trim();
+      try{new vm.Script(kind==='method'?'class Probe{'+code+'}':code);return code;}catch(x){if(!(x instanceof SyntaxError))throw x;}
+    }
+    throw Error('Unterminated '+name);
+  }
+  function box(code,tail='',extra={}){
+    let P;const c={Float32Array,Float64Array,Math,Number,Boolean,ArrayBuffer,DataView,Buffer,
+      sampleRate:48000,currentTime:0,Date,console,setTimeout,clearTimeout,setInterval,clearInterval,
+      Promise,AbortController,URLSearchParams,queueMicrotask,
+      AudioWorkletProcessor:class{constructor(){this.port={postMessage(){}};}},
+      registerProcessor:(name,K)=>P=K,...extra};
+    vm.createContext(c);vm.runInContext(code.replace(/^export .*$/mg,'')+'\n'+tail,c);return {c,P};
+  }
+  const cap=box(read('public/pcm-capture-worklet.js'),'globalThis.K=RysCaptureKernel;').c;
+  for(const rate of [24000,44100,48000]){
+    const a=[],b=[],ka=new cap.K(rate,{continuousSpeech:true},m=>a.push(...m.samples));
+    const kb=new cap.K(rate,{continuousSpeech:true},m=>b.push(...m.samples));
+    for(let i=0;i<rate;i+=128){
+      const input=Float32Array.from({length:Math.min(128,rate-i)},(_,j)=>i<rate/2?0:.02*Math.sin(2*Math.PI*220*(i+j)/rate));
+      kb.control({type:'set-profile',reject:i%256?.15:.85,comfortFade:!!(i%256)});
+      ka.process(input,i/rate);kb.process(input,i/rate);
+    }
+    assert.deepEqual(a,b,'Fixed latency/profile bypass must preserve samples at '+rate);
+    kb.control({type:'set-profile',resetLock:true,reject:NaN});
+    assert(kb.gate.continuousSpeech);assert(!kb.gate.ready);
+    const finite=[],k=new cap.K(rate,{continuousSpeech:true},m=>finite.push(...m.samples));
+    for(let i=0;i<rate;i+=128)k.process(Float32Array.from({length:Math.min(128,rate-i)},(_,j)=>[NaN,Infinity,-Infinity,3.4e38,-3.4e38,.00001][(i+j)%6]),i/rate);
+    assert(finite.length>0&&finite.every(x=>Number.isFinite(x)&&Math.abs(x)<=.981));
+  }
+  const {P,c:pc}=box(read('public/pcm-player-worklet.js'),'globalThis.diff=rysDiff;');
+  const packet=(seq,arrival=0)=>({samples:new Float32Array(480).fill(.2),seq,arrival});
+  const active=new P();active.playing=true;active.haveHistory=true;active.fi=120;active.phase=.375;
+  for(let i=0;i<33;i++)active._push(packet(i,i*20));
+  assert(active.pendingQueueBlend);assert.equal(active.fi,120);assert.equal(active.phase,.375);
+  active.plc={fill(a){a.fill(-.2);},append(){}};active._nextFrame();
+  assert(Math.abs(active.frame[0]+.2)<1e-6);assert(Math.abs(active.frame[71]-.2)<1e-6);assert(!active.pendingQueueBlend);
+  const exhausted=new P();
+  for(let i=0;i<8;i++)exhausted._push(packet((0x7ffffffc+i)%0x80000000,i*20));
+  for(let i=0;i<600;i++){const out=new Float32Array(128);exhausted.process([],[[out]]);assert(out.every(Number.isFinite));}
+  assert(!exhausted.playing);assert.equal(exhausted.missing,0);assert(!exhausted.haveHistory);
+  assert.equal(exhausted.plc.used,0);assert.equal(exhausted.plc.lost,0);assert(!exhausted.pendingQueueBlend);
+  exhausted._push(packet(0));assert.equal(exhausted.expected,0);
+  assert.equal(pc.diff(0,0x7fffffff),1);assert.equal(pc.diff(0x7fffffff,0),-1);
+  const shim=read('public/vercel-ws-shim.js');
+  const prefix=['validRysAudio','unpackRysAudio','installRysCoalescing'].map(n=>pick(shim,n)).join('\n');
+  let now=100,opened=0,acks=0;const probes=[],jobs=[];
+  class Native{constructor(){this.readyState=1;this.sent=[];probes.push(this);}send(raw){this.sent.push(JSON.parse(raw));}close(){this.readyState=3;}}
+  const t=box(prefix+'\n'+pick(shim,'RysAudioCoalescer','class')+'\n'+pick(shim,'SmartWebSocket','class'),
+    'globalThis.S=SmartWebSocket;globalThis.install=installRysCoalescing;',{
+      NativeWebSocket:Native,window:{},localStorage:{getItem:()=> 'good'},Date:{now:()=>now},
+      setTimeout:f=>{jobs.push(f);return jobs.length;},clearTimeout(){},setInterval:()=>1,clearInterval(){}}).c;
+  const audio=seq=>({type:'audio-chunk',seq,sentAt:100,sampleRate:24000,pcm16:Buffer.alloc(960).toString('base64')});
+  for(const mode of ['join','family-subscribe','admin-subscribe']){
+    const order=[],s=Object.create(t.S.prototype),context={type:'join',role:'guide',tourCode:'RY-KASIM',roomId:'a',token:'good'};
+    Object.assign(s,{url:'wss://local/ws',readyState:1,_isRelay:true,_transportGeneration:0,
+      _subscriptionType:mode,_joinContext:context,_isAdmin:mode==='admin-subscribe',_sendQueue:[{type:'audio-chunk',frames:[audio(8),audio(9)],_queuedAt:100}],
+      _busConnected:()=>true,_initMqttBus(){},_publishMqtt(){},_closeMqttClients(){},onerror(e){throw e;},
+      onmessage(){acks++;order.push('ack');},
+      onopen(){opened++;order.push('open');
+        const request=mode==='join'?context:mode==='family-subscribe'?{type:mode,tourCode:context.tourCode}:{type:mode,token:'good'};
+        s.send(JSON.stringify({...request}));
+        if(mode==='join')s.send(JSON.stringify({type:'guide-stream-state',isLive:true,broadcastMode:'mic'}));
+      }});
+    t.install(s);s._audioCoalescer.push(audio(10));s._audioCoalescer.push(audio(11));
+    const oldJob=jobs.at(-1);s._tryNativeFailback();const probe=probes.at(-1);probe.onopen();assert(s._isRelay);
+    const type=mode==='join'?'joined':mode==='family-subscribe'?'family-state':'admin-rooms-update';
+    probe.onmessage({data:JSON.stringify({type,room:{tourCode:'RY-KASIM',roomId:'a'},tourCode:'RY-KASIM'})});
+    assert(!s._isRelay);assert.deepEqual(order,['ack','open']);
+    assert.equal(probe.sent.filter(m=>m.type===mode).length,1,'Exactly one native subscription for '+mode);
+    const seqs=probe.sent.flatMap(m=>m.frames?m.frames.map(f=>f.seq):[]);
+    assert.deepEqual(seqs,[8,9,10,11]);const count=probe.sent.length;oldJob();assert.equal(probe.sent.length,count);
+    s.close();
+  }
+  assert.equal(opened,3);assert.equal(acks,3);
+  // Empty poll: family/admin never fabricate a pilgrim join; PIN stays in POST.
+  const bodies=[],relay=box('class Relay{'+pick(shim,'_flushAndPoll','method')+'}\nglobalThis.R=Relay;','',{
+    localStorage:{getItem:()=>''},fetch:async(url,opts)=>{assert.equal(url,'/api/ws-relay');assert.equal(opts.method,'POST');
+      bodies.push(JSON.parse(opts.body));return {ok:true,json:async()=>({messages:[]})};}}).c;
+  for(const mode of ['family-subscribe','admin-subscribe','join']){
+    const s=new relay.R();Object.assign(s,{readyState:1,_isRelay:true,_sendQueue:[],_clientId:'unit',
+      _subscriptionType:mode,_joinContext:{type:'join',tourCode:'X',role:'pilgrim',pin:'1453',deviceId:'device'},
+      _busConnected:()=>false,_deliverIncomingMessage(){},_enqueueRelayMessage(){}});
+    await s._flushAndPoll();const body=bodies.at(-1);assert.equal(body.subscriptionContext.type,mode);
+    if(mode!=='join')assert.equal(body.joinContext,null);
+    else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
+  }
+  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v54"));assert(sw.includes('/vercel-ws-shim.js?v=54'));
+  for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
+    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'54',f+' stale shim');
+  }
+  if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
+  console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
+}
+
 async function main() {
   const runtimePath = path.join(ROOT_DIR, 'data', 'runtime.json');
   const runtimeSnapshot = fs.existsSync(runtimePath) ? fs.readFileSync(runtimePath, 'utf8') : null;
@@ -1351,6 +1533,7 @@ async function main() {
     await runStep2And3LiveServerAndWsTests();
     await runStep4FrontendPwaAndAtomicWriteChecks();
     await runStep5V53AudioChecks();
+    await runStep5V54AudioChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);

@@ -330,8 +330,14 @@
         probe.onmessage=e=>{if(!this._isRelay&&this.readyState===1)this.onmessage?.(e);};
         probe.onerror=e=>this.onerror?.(e);
         probe.onclose=e=>{if(!this._isRelay){this.readyState=3;this.onclose?.(e);}};
-        // Re-send current join/live metadata through the application's existing open handler.
-        if(typeof this.onopen==='function')this.onopen({type:'open',failback:true});
+        // Deliver the snapshot before the application's fresh state updates.
+        this.onmessage?.(ev);
+        if(this._closedExplicitly||this.readyState!==1||this._isRelay||this._native!==probe)return;
+        this._failbackSubscription=request;
+        try{this.onopen?.({type:'open',failback:true});}
+        catch(e){this.onerror?.(e);}
+        finally{this._failbackSubscription=null;}
+        if(this._closedExplicitly||this.readyState!==1||this._isRelay||this._native!==probe)return;
         const pending=this._sendQueue.splice(0),now=Date.now();
         for(const m of pending){
           if(m.type==='join'||m.type==='family-subscribe'||m.type==='admin-subscribe'||m.type==='guide-stream-state')continue;
@@ -340,7 +346,6 @@
         }
         this._audioCoalescer?.flush();
         this._closeMqttClients();window.__ryConsecutiveVdsFailures=0;
-        this.onmessage?.(ev);
       };
     }
 
@@ -634,6 +639,14 @@
         parsed = typeof data === 'string' ? JSON.parse(data) : data;
       } catch {}
 
+      // The ACK-gated probe has already subscribed. Suppress only an identical
+      // subscription during the synthetic open; changed UI data must still be sent.
+      if (this._failbackSubscription && parsed && typeof parsed === 'object') {
+        const old = this._failbackSubscription;
+        const keys = new Set([...Object.keys(old), ...Object.keys(parsed)]);
+        keys.delete('_msgId');
+        if ([...keys].every(k => JSON.stringify(old[k]) === JSON.stringify(parsed[k]))) return;
+      }
       if (parsed && typeof parsed === 'object') {
         if (!parsed._msgId) {
           parsed._msgId = 'm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
@@ -643,10 +656,12 @@
           if(old&&(old.tourCode!==parsed.tourCode||old.roomId!==parsed.roomId||old.role!==parsed.role)){
             this._audioCoalescer?.clear();this._sendQueue=this._sendQueue.filter(m=>m.type!=='audio-chunk');
           }
+          this._isAdmin=false;
           this._subscriptionType='join';this._transportGeneration=(this._transportGeneration||0)+1;
           this._joinContext = parsed;
           if (this._isRelay) this._initMqttBus(parsed, false);
         } else if (parsed.type === 'family-subscribe') {
+          this._isAdmin=false;
           this._subscriptionType='family-subscribe';this._transportGeneration=(this._transportGeneration||0)+1;
           this._joinContext = {
             type: 'join',
@@ -659,6 +674,7 @@
         } else if (parsed.type === 'admin-subscribe') {
           this._subscriptionType='admin-subscribe';this._transportGeneration=(this._transportGeneration||0)+1;
           this._isAdmin = true;
+          this._joinContext = null;
           if (this._isRelay) this._initMqttBus(null, true);
         }
       }
@@ -824,8 +840,7 @@
 
     // PATCH: shim-http-v52
     async _flushAndPoll(){
-      if(this.readyState!==1||!this._isRelay)return;
-      if(this._inFlight)return;
+      if(this.readyState!==1||!this._isRelay||this._inFlight)return;
       const epoch=this._httpEpoch||0;
       const batch=this._sendQueue.splice(0).filter(m=>m.type!=='audio-chunk'||
         (Number.isFinite(m._queuedAt)&&Date.now()-m._queuedAt<=200));
@@ -833,15 +848,15 @@
       this._inFlight=true;const ac=new AbortController();this._relayAbort=ac;
       const timer=setTimeout(()=>ac.abort(),3000);let success=false;
       try{
-        const token=(localStorage.getItem('ry_auth_token')||'').trim();let res;
-        if(batch.length)res=await fetch('/api/ws-relay',{method:'POST',signal:ac.signal,
+        const token=(localStorage.getItem('ry_auth_token')||'').trim();
+        const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join');
+        const context=mode==='admin-subscribe'?{type:mode,token}:
+          mode==='family-subscribe'?{type:mode,tourCode:this._joinContext?.tourCode||'RY-KASIM'}:
+          this._joinContext;
+        // POST also for an empty poll: PIN/device/phone/lang stay in the body.
+        const res=await fetch('/api/ws-relay',{method:'POST',signal:ac.signal,
           headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:this._clientId,
-            token,joinContext:this._joinContext,messages:batch})});
-        else{
-          const jc=this._joinContext||{},q=new URLSearchParams({clientId:this._clientId,
-            tourCode:jc.tourCode||'',roomId:jc.roomId||'genel',role:jc.role||'pilgrim',name:jc.name||''});
-          if(token)q.set('token',token);res=await fetch('/api/ws-relay?'+q,{signal:ac.signal});
-        }
+            token,subscriptionContext:context,joinContext:mode==='join'?context:null,messages:batch})});
         if(!res.ok)throw Error('Relay HTTP '+res.status);
         const payload=await res.json();
         if(this.readyState!==1||!this._isRelay||(this._httpEpoch||0)!==epoch)return;
