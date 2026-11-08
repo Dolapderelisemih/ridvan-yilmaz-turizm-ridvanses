@@ -844,7 +844,8 @@
       const epoch=this._httpEpoch||0;
       const batch=this._sendQueue.splice(0).filter(m=>m.type!=='audio-chunk'||
         (Number.isFinite(m._queuedAt)&&Date.now()-m._queuedAt<=200));
-      if(!batch.length&&this._busConnected())return;
+      // Broker connectivity does not prove this room has an MQTT publisher.
+      // Keep HTTP receive/control active; the player deduplicates audio by seq.
       this._inFlight=true;const ac=new AbortController();this._relayAbort=ac;
       const timer=setTimeout(()=>ac.abort(),3000);let success=false;
       try{

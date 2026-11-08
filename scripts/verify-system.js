@@ -574,6 +574,7 @@ async function runStep2And3LiveServerAndWsTests() {
   await runV51TransportRoundTrip({url:wsUrl,token:authToken});
   await runV53RelayRoundTrip({baseUrl,token:authToken});
   await runV54RelayRoundTrip({baseUrl,url:wsUrl,token:authToken});
+  await runV55RelayEdgeChecks({baseUrl,url:wsUrl,token:authToken});
 
   guideGenelWs.close();
   pilgrimWs.close();
@@ -1509,20 +1510,114 @@ async function runStep5V54AudioChecks(){
   const bodies=[],relay=box('class Relay{'+pick(shim,'_flushAndPoll','method')+'}\nglobalThis.R=Relay;','',{
     localStorage:{getItem:()=>''},fetch:async(url,opts)=>{assert.equal(url,'/api/ws-relay');assert.equal(opts.method,'POST');
       bodies.push(JSON.parse(opts.body));return {ok:true,json:async()=>({messages:[]})};}}).c;
-  for(const mode of ['family-subscribe','admin-subscribe','join']){
+  for(const connected of [false,true])for(const mode of ['family-subscribe','admin-subscribe','join']){
     const s=new relay.R();Object.assign(s,{readyState:1,_isRelay:true,_sendQueue:[],_clientId:'unit',
       _subscriptionType:mode,_joinContext:{type:'join',tourCode:'X',role:'pilgrim',pin:'1453',deviceId:'device'},
-      _busConnected:()=>false,_deliverIncomingMessage(){},_enqueueRelayMessage(){}});
-    await s._flushAndPoll();const body=bodies.at(-1);assert.equal(body.subscriptionContext.type,mode);
+      _busConnected:()=>connected,_deliverIncomingMessage(){},_enqueueRelayMessage(){}});
+    const before=bodies.length;await s._flushAndPoll();
+    assert.equal(bodies.length,before+1,'Broker connectivity must not suppress empty polling');
+    const body=bodies.at(-1);assert.equal(body.subscriptionContext.type,mode);
     if(mode!=='join')assert.equal(body.joinContext,null);
     else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
   }
-  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v54"));assert(sw.includes('/vercel-ws-shim.js?v=54'));
+  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v55"));assert(sw.includes('/vercel-ws-shim.js?v=55'));
   for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
-    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'54',f+' stale shim');
+    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'55',f+' stale shim');
   }
   if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
   console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
+}
+
+// v55: partial identity update and mixed native/HTTP while MQTT is connected.
+async function runV55RelayEdgeChecks({baseUrl,url,token}){
+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+  const assert=require('node:assert/strict'),{WebSocket}=require('ws');
+  const stamp=Date.now().toString(36),code='RY-V55-'+stamp.toUpperCase();
+  const cid='v55-listener-'+stamp,deviceId='v55-device-'+stamp;
+  const headers={'Content-Type':'application/json',Authorization:'Bearer '+token};
+  const post=async body=>{
+    const r=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    assert.equal(r.status,200);return r.json();
+  };
+  const wait=async fn=>{
+    const until=Date.now()+2000;
+    while(!fn()){if(Date.now()>until)throw Error('V55 deadline');await new Promise(r=>setTimeout(r,5));}
+  };
+  const connect=async join=>{
+    const s=new WebSocket(url),messages=[];
+    s.on('message',(raw,binary)=>{if(!binary)try{messages.push(JSON.parse(raw.toString()));}catch(e){}});
+    await new Promise((resolve,reject)=>{s.once('open',resolve);s.once('error',reject);});
+    s.send(JSON.stringify(join));await wait(()=>messages.some(m=>m.type==='joined'));
+    return {s,messages};
+  };
+  let guide,secondListener;
+  try{
+    const created=await fetch(baseUrl+'/api/tours',{method:'POST',headers,
+      body:JSON.stringify({code,name:'V55 relay regression',pin:'1453',guideName:'V55 guide '+stamp})});
+    assert.equal(created.status,200);
+    const initial={type:'join',role:'pilgrim',tourCode:code,roomId:'genel',pin:'1453',
+      name:'Initial name',phone:'audit-phone',deviceId,lang:'ar'};
+    await post({clientId:cid,subscriptionContext:initial,messages:[initial]});
+    const partial={type:'join',role:'pilgrim',tourCode:code,roomId:'genel',pin:'1453',name:'Updated name'};
+    await post({clientId:cid,subscriptionContext:partial,messages:[partial]});
+    const guideJoin={type:'join',role:'guide',token,tourCode:code,roomId:'genel',name:'V55 guide '+stamp};
+    guide=await connect(guideJoin);
+    const observed=guide.messages.find(m=>m.type==='joined').room.connectedPilgrims.find(p=>p.id===cid);
+    assert.equal(observed.name,'Updated name');assert.equal(observed.phone,'audit-phone');
+    assert.equal(observed.lang,'ar','Partial rename must preserve language');
+    // A phone-only edit must preserve the already updated name and stable device.
+    const phoneOnly={type:'join',role:'pilgrim',tourCode:code,roomId:'genel',pin:'1453',phone:'updated-phone'};
+    await post({clientId:cid,subscriptionContext:phoneOnly,messages:[phoneOnly]});
+    const joinedCount=guide.messages.filter(m=>m.type==='joined').length;
+    guide.s.send(JSON.stringify(guideJoin));
+    await wait(()=>guide.messages.filter(m=>m.type==='joined').length>joinedCount);
+    const afterPhone=guide.messages.filter(m=>m.type==='joined').at(-1).room.connectedPilgrims.find(p=>p.id===cid);
+    assert.equal(afterPhone.name,'Updated name');assert.equal(afterPhone.phone,'updated-phone');assert.equal(afterPhone.lang,'ar');
+    await post({clientId:cid,subscriptionContext:phoneOnly,messages:[]});
+    const source=fs.readFileSync(path.join(ROOT_DIR,'public/vercel-ws-shim.js'),'utf8').replace(/\r\n/g,'\n');
+    const begin=source.indexOf('    async _flushAndPoll(){');
+    const end=source.indexOf('\n    // PATCH: shim-close',begin);
+    assert(begin>=0&&end>begin);
+    let browserToken='',fetchCount=0;
+    const sandbox={AbortController,setTimeout,clearTimeout,queueMicrotask,Date,console,
+      localStorage:{getItem:()=>browserToken},
+      fetch:(route,options)=>{fetchCount++;assert.equal(route,'/api/ws-relay');assert.equal(options.method,'POST');return fetch(baseUrl+route,options);}};
+    vm.createContext(sandbox);
+    vm.runInContext('class Relay{'+source.slice(begin,end)+'}\nglobalThis.R=Relay;',sandbox);
+    const make=(mode,context,id)=>{
+      const r=new sandbox.R(),delivered=[];
+      Object.assign(r,{readyState:1,_isRelay:true,_clientId:id,_subscriptionType:mode,_joinContext:context,
+        _sendQueue:[],_busConnected:()=>true,_deliverIncomingMessage:m=>delivered.push(m),_enqueueRelayMessage(){}});
+      return {r,delivered};
+    };
+    const listener=make('join',phoneOnly,cid);
+    const frame=Buffer.alloc(972);frame.writeUInt32LE(7,0);frame.writeDoubleLE(Date.now(),4);
+    guide.s.send(frame);await new Promise(r=>setTimeout(r,25));
+    await listener.r._flushAndPoll();
+    assert.equal(fetchCount,1,'A connected broker must not suppress an empty HTTP poll');
+    assert(listener.delivered.some(m=>m.type==='audio-chunk'&&m.seq===7),'Native guide PCM must reach the HTTP listener');
+    // Family/admin control messages also need HTTP when their broker has no publisher.
+    const familyContext={type:'family-subscribe',tourCode:code},familyId='v55-family-'+stamp;
+    const adminContext={type:'admin-subscribe',token},adminId='v55-admin-'+stamp;
+    await post({clientId:familyId,subscriptionContext:familyContext,messages:[familyContext]});
+    await post({clientId:adminId,token,subscriptionContext:adminContext,messages:[adminContext]});
+    const family=make('family-subscribe',{tourCode:code},familyId),admin=make('admin-subscribe',null,adminId);
+    guide.s.send(JSON.stringify({type:'guide-stream-state',isLive:true,broadcastMode:'mic'}));
+    await wait(()=>guide.messages.some(m=>m.type==='stream-state'&&m.isLive));
+    await family.r._flushAndPoll();assert(family.delivered.some(m=>m.type==='stream-state'&&m.isLive));
+    browserToken=token;await admin.r._flushAndPoll();browserToken='';
+    assert(admin.delivered.some(m=>m.type==='admin-rooms-update'&&m.rooms.some(r=>r.tourCode===code&&r.isLive)));
+    // Native dedup verifies preservation of deviceId, which is not in serializeRoom.
+    secondListener=await connect({...initial,name:'Replacement device'});
+    const room=secondListener.messages.find(m=>m.type==='joined').room;
+    assert.equal(room.totalListeners,1,'Partial metadata must preserve deviceId for native dedup');
+    if(typeof recordResult==='function')recordResult('ADIM-3.V55',
+      'Kısmi kimlik korunumu; MQTT bağlıyken native PCM ve family/admin HTTP güncellemeleri',true);
+    console.log('V55 PASS: partial name/phone/lang/device preservation; broker-connected empty HTTP poll; mixed native PCM; family/admin deltas');
+  }finally{
+    guide?.s.close();secondListener?.s.close();
+    await fetch(baseUrl+'/api/tours/'+code,{method:'DELETE',headers:{Authorization:'Bearer '+token}});
+  }
 }
 
 async function main() {

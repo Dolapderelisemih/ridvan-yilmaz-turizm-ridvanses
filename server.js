@@ -1367,7 +1367,19 @@ function syncRysRelayJoin(session,joinContext){
     }
     return true;
   };
-  if(!matches()||!metadataMatches())processClientJsonMessage(session,joinContext);
+  if(!matches()||!metadataMatches()){
+    const previous=matches()?session.currentRoom.clients.get(session.clientId):null;
+    // Preserve omitted metadata only for this existing room/role membership.
+    // PIN/token are never inherited, and another room/role gets no old identity.
+    const effective=previous?{
+      ...joinContext,
+      name:joinContext.name||previous.name,
+      deviceId:joinContext.deviceId===undefined?previous.deviceId:joinContext.deviceId,
+      phone:joinContext.phone===undefined?previous.phone:joinContext.phone,
+      lang:joinContext.lang===undefined?previous.lang:joinContext.lang
+    }:joinContext;
+    processClientJsonMessage(session,effective);
+  }
   return !!(matches()&&metadataMatches());
 }
 
