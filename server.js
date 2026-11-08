@@ -591,8 +591,9 @@ function extractAuthTokenFromReq(req) {
       const eq = part.indexOf('=');
       if (eq > 0) {
         const k = part.slice(0, eq).trim();
-        const v = decodeURIComponent(part.slice(eq + 1).trim());
-        if (k === AUTH_COOKIE_NAME && isValidAuthToken(v)) {
+        if(k!==AUTH_COOKIE_NAME)continue;
+        let v;try{v=decodeURIComponent(part.slice(eq+1).trim());}catch(e){continue;}
+        if (isValidAuthToken(v)) {
           return v;
         }
       }
@@ -1187,6 +1188,43 @@ function validBinaryPcmFrame(buf) {
   );
 }
 
+// v58: validate untrusted JSON before it can become room or handoff state.
+function isRysClientMessage(message){
+  if(!message||typeof message!=='object'||Array.isArray(message)||
+    typeof message.type!=='string'||!message.type||message.type.length>64)return false;
+  const strings=isRysClientMessage.stringFields||(isRysClientMessage.stringFields=new Set(['type','tourCode','roomId','role','name','phone','deviceId','lang','pin','token',
+    'clientId','relayClientId','relayKey','handoffId','guidePeerId','stageId','badge','topic','title',
+    'arabic','reading','meaning','note','address','guideName','pilgrimName','locationNote','id','alertId',
+    'message','broadcastMode','updatedAt','_msgId','pcm16']));
+  const forbidden=isRysClientMessage.forbiddenKeys||(isRysClientMessage.forbiddenKeys=
+    new Set(['__proto__','prototype','constructor','toString','valueOf','toJSON']));
+  const pending=[{value:message,depth:0}];let nodes=0,characters=0;
+  try{
+    while(pending.length){
+      const {value,depth}=pending.pop();
+      if(++nodes>4096||depth>8)return false;
+      if(value===null)continue;
+      if(typeof value==='string'){
+        characters+=value.length;if(value.length>16384||characters>65536)return false;
+      }else if(typeof value==='number'){
+        if(!Number.isFinite(value))return false;
+      }else if(typeof value==='boolean')continue;
+      else if(typeof value==='object'){
+        const keys=Object.keys(value);if(keys.length>512)return false;
+        for(const key of keys){
+          characters+=key.length;
+          if(characters>65536||key.length>64||forbidden.has(key))return false;
+          const next=value[key];
+          if(next===undefined)continue; // Internal GET DTOs may contain omitted optional fields.
+          if(strings.has(key)&&next!==null&&typeof next!=='string')return false;
+          pending.push({value:next,depth:depth+1});
+        }
+      }else return false;
+    }
+    return true;
+  }catch(e){return false;}
+}
+
 // WebSocket Connection Handler
 wss.on('connection', (ws, req) => {
   ws.isAlive = true;
@@ -1203,7 +1241,13 @@ wss.on('connection', (ws, req) => {
     rysHandshakeToken: extractAuthTokenFromReq(req)
   };
 
+  const rejectInput=()=>{
+    clearRysHandoff(ctx);
+    try{ws.terminate();}catch(e){}
+  };
+  ws.on('error',rejectInput);
   ws.on('message', (raw, isBinary) => {
+    try{
     ws.isAlive = true;
     // PATCH: binary-v51
     if (isBinary) {
@@ -1261,8 +1305,10 @@ wss.on('connection', (ws, req) => {
     } catch {
       return;
     }
+    if(!isRysClientMessage(msg)){rejectInput();return;}
     if(handleRysNativeHandoff(ctx,msg))return;
     processClientJsonMessage(ctx, msg);
+    }catch(e){rejectInput();}
   });
 
   ws.on('close', () => {
@@ -1554,6 +1600,8 @@ function syncRysRelayContext(session,context){
 }
 
 function serveRysRelay(session,req,res,token,context,messages=[]){
+  if((context&&!isRysClientMessage(context))||!Array.isArray(messages)||messages.length>128||
+    !messages.every(isRysClientMessage))return res.status(400).json({error:'relay-invalid-message'});
   if(context&&!['join','family-subscribe','admin-subscribe'].includes(context.type))
     return res.status(400).json({error:'relay-context-invalid'});
   if(!applyRysRelayAuth(session,req,token,context))
@@ -1579,6 +1627,13 @@ function serveRysRelay(session,req,res,token,context,messages=[]){
 }
 
 app.post('/api/ws-relay',(req,res)=>{
+  if(['clientId','relayKey','token'].some(k=>req.body?.[k]!=null&&
+    (typeof req.body[k]!=='string'||req.body[k].length>16384)))
+    return res.status(400).json({error:'relay-invalid-credentials'});
+  if(req.body?.messages!==undefined&&!Array.isArray(req.body.messages))
+    return res.status(400).json({error:'relay-invalid-message'});
+  if(['relay-open','relay-close'].includes(req.body?.type)&&!isRysClientMessage(req.body))
+    return res.status(400).json({error:'relay-invalid-message'});
   if(req.body?.type==='relay-open'&&req.body.version===56)return openRysRelay56(res);
   if(req.body?.type==='relay-close'&&req.body.version===56)return closeRysRelay56(req,res);
   const {clientId,messages,joinContext,subscriptionContext,token}=req.body||{};
@@ -1588,6 +1643,9 @@ app.post('/api/ws-relay',(req,res)=>{
   return serveRysRelay(session,req,res,token,context,list);
 });
 app.get('/api/ws-relay',(req,res)=>{
+  if(['clientId','relayKey','token'].some(k=>req.query?.[k]!=null&&
+    (typeof req.query[k]!=='string'||req.query[k].length>16384)))
+    return res.status(400).json({error:'relay-invalid-credentials'});
   // Legacy GET is retained. Existing joined sessions need not repeat their PIN.
   const q=req.query,mode=q.subscription||'join';
   const context=mode==='admin-subscribe'?{type:mode,token:q.token}:

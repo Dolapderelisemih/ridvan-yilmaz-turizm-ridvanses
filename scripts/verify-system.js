@@ -577,6 +577,7 @@ async function runStep2And3LiveServerAndWsTests() {
   await runV55RelayEdgeChecks({baseUrl,url:wsUrl,token:authToken});
   await runV56HandoffChecks({baseUrl,url:wsUrl,token:authToken});
   await runV57RoutingChecks({baseUrl,url:wsUrl,token:authToken});
+  await runV58InputChecks({baseUrl,url:wsUrl,token:authToken});
 
   guideGenelWs.close();
   pilgrimWs.close();
@@ -2016,6 +2017,110 @@ async function runStep5V57RoutingChecks(){
   console.log('V57 UNIT PASS: idle sweep; 35000/35001ms expiry; stale-route response/retry dropped; same-route retry retained');
 }
 
+async function runV58InputChecks({baseUrl,url,token}){
+  const assert=require('node:assert/strict'),{WebSocket}=require('ws');
+  const code='RY-V58-'+Date.now().toString(36).toUpperCase(),sockets=[],escaped=[];
+  const monitor=error=>escaped.push(error.name+':'+(error.code||''));
+  const headers={'Content-Type':'application/json',Authorization:'Bearer '+token};
+  const wait=async predicate=>{
+    const until=Date.now()+2500;while(!predicate()){
+      if(Date.now()>until)throw Error('V58 input deadline');await new Promise(r=>setTimeout(r,5));
+    }
+  };
+  const connect=async options=>{
+    const ws=new WebSocket(url,options),messages=[];let closed=false;
+    sockets.push(ws);ws.on('error',()=>{});ws.on('close',()=>closed=true);
+    ws.on('message',(raw,binary)=>{if(binary)messages.push({binary:Buffer.from(raw)});
+      else try{messages.push(JSON.parse(raw.toString()));}catch(e){}});
+    await new Promise((r,j)=>{ws.once('open',r);ws.once('error',j);});
+    return {ws,messages,closed:()=>closed};
+  };
+  const bootstrap=()=>fetch(baseUrl+'/api/bootstrap',{headers:{Authorization:'Bearer '+token}});
+  process.on('uncaughtExceptionMonitor',monitor);
+  try{
+    assert.equal((await fetch(baseUrl+'/api/tours',{method:'POST',headers,
+      body:JSON.stringify({code,name:'V58 isolated input test',guideName:'V58 guide'})})).status,200);
+    assert.equal((await bootstrap()).status,200);
+    const bad=await connect(),nested='['.repeat(8000)+'0'+']'.repeat(8000);
+    bad.ws.send('{"type":"join","role":"pilgrim","tourCode":'+JSON.stringify(code)+',"roomId":"genel","name":'+nested+'}');
+    await wait(bad.closed);assert(!bad.messages.some(m=>m.type==='joined'),'Invalid name must never become a room member');
+    assert.equal((await bootstrap()).status,200);
+    const guide=await connect();
+    guide.ws.send(JSON.stringify({type:'join',role:'guide',token,tourCode:code,roomId:'genel',name:'V58 guide'}));
+    await wait(()=>guide.messages.some(m=>m.type==='joined'));
+    assert.equal(guide.messages.find(m=>m.type==='joined').room.totalListeners,0);
+    const listener=await connect();listener.ws.send(JSON.stringify({type:'join',role:'pilgrim',tourCode:code,roomId:'genel',name:'Healthy listener'}));
+    await wait(()=>listener.messages.some(m=>m.type==='joined'));
+    // Relay context is rejected before sync/join; no HTTP-to-WS poison path.
+    const opened=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:'relay-open',version:56})});
+    const cap=await opened.json();
+    const raw='{"clientId":'+JSON.stringify(cap.clientId)+',"relayKey":'+JSON.stringify(cap.relayKey)+
+      ',"subscriptionContext":{"type":"join","role":"pilgrim","tourCode":'+JSON.stringify(code)+',"name":'+nested+'}}';
+    const invalid=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},body:raw});
+    assert.equal(invalid.status,400);assert.equal((await bootstrap()).status,200);
+    const credentials=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({clientId:{toString:null},messages:[]})});
+    assert.equal(credentials.status,400);
+    const coercion=await connect();coercion.ws.send('{"type":"join","tourCode":{"toString":null},"role":"pilgrim"}');
+    await wait(coercion.closed);
+    // A receiver/protocol error belongs to the offending socket, not process.uncaughtException.
+    const unmasked=await connect();unmasked.ws._socket.write(Buffer.from([0x81,0]));await wait(unmasked.closed);
+    const oversized=await connect();oversized.ws.send(Buffer.alloc(65537));await wait(oversized.closed);
+    const cookie=await connect({headers:{Cookie:'unrelated_cookie=%'}});
+    cookie.ws.send(JSON.stringify({type:'family-subscribe',tourCode:code}));
+    await wait(()=>cookie.messages.some(m=>m.type==='family-state'));cookie.ws.close();
+    // Good binary PCM and the existing numeric demo note still work after all rejections.
+    const frame=Buffer.alloc(972);frame.writeUInt32LE(58,0);frame.writeDoubleLE(Date.now(),4);
+    guide.ws.send(frame);await wait(()=>listener.messages.some(m=>m.binary?.readUInt32LE(0)===58));
+    guide.ws.send(JSON.stringify({type:'audio-chunk',synthNote:440,level:.4}));
+    await wait(()=>listener.messages.some(m=>m.type==='audio-chunk'&&m.synthNote===440));
+    assert.equal((await bootstrap()).status,200);assert.deepEqual(escaped,[]);
+    if(typeof recordResult==='function')recordResult('ADIM-3.V58',
+      'Gerçek HTTP/WS: geçersiz metadata state öncesi reddedildi; bozuk frame/cookie yerel kaldı; sağlam PCM/demo devam etti',true);
+    console.log('V58 E2E PASS: malformed anonymous join cannot poison room/bootstrap; receiver errors isolated; healthy PCM/demo preserved');
+  }finally{
+    for(const ws of sockets)ws.terminate();process.removeListener('uncaughtExceptionMonitor',monitor);
+    await fetch(baseUrl+'/api/tours/'+code,{method:'DELETE',headers:{Authorization:'Bearer '+token}});
+  }
+}
+
+async function runStep5V58InputChecks(){
+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+  const source=fs.readFileSync(path.join(ROOT_DIR,'server.js'),'utf8').replace(/\r\n/g,'\n');
+  function pick(name){
+    const m=new RegExp('^function '+name+'\\([^\\n]*\\)\\s*\\{','m').exec(source);assert(m,'Missing '+name);
+    for(let end=source.indexOf('}',m.index+m[0].length);end>=0;end=source.indexOf('}',end+1)){
+      const code=source.slice(m.index,end+1);
+      try{new vm.Script(code);return code;}catch(e){if(e.name!=='SyntaxError')throw e;}
+    }throw Error('Unterminated '+name);
+  }
+  const box={AUTH_COOKIE_NAME:'unit_auth',isValidAuthToken:t=>t==='good'};
+  vm.createContext(box);vm.runInContext(pick('isRysClientMessage')+'\n'+pick('extractAuthTokenFromReq'),box);
+  const valid=box.isRysClientMessage;
+  assert(valid({type:'join',name:'Guide',phone:null,lang:'ar'}));
+  assert(valid({type:'admin-subscribe',token:undefined}));
+  assert(!valid({type:'join',name:[]}));assert(!valid({type:'join',name:{}}));
+  assert(!valid({type:'join',tourCode:{toString:null}}));
+  assert(!valid(JSON.parse('{"type":"join","__proto__":{"admin":true}}')));
+  let tree={};for(let i=0;i<9;i++)tree={data:tree};
+  assert(!valid({type:'ping',extra:tree}));assert(!valid({type:'ping',extra:Array(513).fill(0)}));
+  assert(!valid({type:'ping',value:Infinity}));assert(!valid({type:'audio-chunk',synthNote:NaN}));
+  assert(valid({type:'audio-chunk',synthNote:440,level:.4}));
+  assert(valid({type:'quick-announcement',message:'x'.repeat(16384)}));
+  assert(!valid({type:'quick-announcement',message:'x'.repeat(16385)}));
+  const unit=seq=>({type:'audio-chunk',seq,sampleRate:24000,sentAt:1,pcm16:Buffer.alloc(960).toString('base64')});
+  assert(valid({type:'audio-chunk',frames:[unit(0),unit(1),unit(2)]}));
+  assert(valid({type:'handoff-prepare',relayClientId:null,relayKey:null,
+    subscription:{type:'join',role:'pilgrim',tourCode:'X',pin:'1453',name:'Hacı'}}));
+  assert.equal(box.extractAuthTokenFromReq({headers:{cookie:'unrelated=%; unit_auth=g%6f%6fd'}}),'good');
+  assert.equal(box.extractAuthTokenFromReq({headers:{cookie:'unit_auth=%'},query:{token:'good'}}),'good');
+  assert.equal(box.extractAuthTokenFromReq({headers:{cookie:'unit_auth=%'}}),'');
+  if(typeof recordResult==='function')recordResult('ADIM-5.V58',
+    'Metadata tipleri, derinlik/genişlik/string sınırları, tehlikeli anahtarlar, PCM/demo uyumu ve cookie fallback',true);
+  console.log('V58 UNIT PASS: bounded iterative wire validation; non-string metadata rejected; PCM/demo accepted; malformed cookies ignored');
+}
+
 async function main() {
   const runtimePath = path.join(ROOT_DIR, 'data', 'runtime.json');
   const runtimeSnapshot = fs.existsSync(runtimePath) ? fs.readFileSync(runtimePath, 'utf8') : null;
@@ -2027,6 +2132,7 @@ async function main() {
     await runStep5V54AudioChecks();
     await runStep5V56HandoffChecks();
     await runStep5V57RoutingChecks();
+    await runStep5V58InputChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);
