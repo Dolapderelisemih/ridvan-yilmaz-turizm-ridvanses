@@ -1275,6 +1275,7 @@ wss.on('connection', (ws, req) => {
 
 // 30-Second Ping/Pong Heartbeat to prune zombie/dropped connections from mobile networks
 const heartbeatTimer = setInterval(() => {
+  cleanupStaleRelaySessions();
   wss.clients.forEach((ws) => {
     if (ws.isAlive === false) {
       return ws.terminate();
@@ -1370,6 +1371,11 @@ function resolveRysRelay(req,res,input){
     if(!/^[0-9a-f]{48}$/.test(supplied)||!/^[0-9a-f]{48}$/.test(expected)||
       !crypto.timingSafeEqual(Buffer.from(supplied),Buffer.from(expected))){
       res.status(401).json({error:'relay-key-required'});return null;
+    }
+    if(Date.now()-s.lastSeen>35000){
+      httpRelaySessions.delete(id);
+      if(s.currentRoom)removeClientFromRoom(s.currentRoom,id);
+      res.status(409).json({error:'relay-session-expired'});return null;
     }
   }else s=s||getOrCreateRelaySession(id);
   if(s.relayRetired){res.status(409).json({error:'relay-session-retired'});return null;}

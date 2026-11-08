@@ -576,6 +576,7 @@ async function runStep2And3LiveServerAndWsTests() {
   await runV54RelayRoundTrip({baseUrl,url:wsUrl,token:authToken});
   await runV55RelayEdgeChecks({baseUrl,url:wsUrl,token:authToken});
   await runV56HandoffChecks({baseUrl,url:wsUrl,token:authToken});
+  await runV57RoutingChecks({baseUrl,url:wsUrl,token:authToken});
 
   guideGenelWs.close();
   pilgrimWs.close();
@@ -1215,7 +1216,7 @@ async function runStep5V53AudioChecks(){
   const good={readyState:1,bufferedAmount:0,send(){fast++;}};
   fan.broadcastToRoom({clients:new Map([[1,{ws:throws}],[2,{ws:good}]])},{type:'audio-chunk'});assert.equal(fast,1);
   let httpJobs=[],fetchCalls=0,resolveFirst,delivered=0,fetchSignal;
-  const relayMethods=['_enqueueRelayMessage','_flushAndPoll','close'].map(n=>pick(shim,n,'method')).join('\n');
+  const relayMethods=['_relayRoutingKey','_enqueueRelayMessage','_flushAndPoll','close'].map(n=>pick(shim,n,'method')).join('\n');
   const hc=box('class Relay{'+relayMethods+'}\nglobalThis.R=Relay;','',{
     Date:{now:()=>0},setTimeout:()=>1,clearTimeout(){},queueMicrotask:f=>httpJobs.push(f),
     localStorage:{getItem:()=>''},fetch:(url,options)=>{
@@ -1513,7 +1514,7 @@ async function runStep5V54AudioChecks(){
   }
   assert.equal(opened,3);assert.equal(acks,3);
   // Empty poll: family/admin never fabricate a pilgrim join; PIN stays in POST.
-  const bodies=[],relay=box('class Relay{'+pick(shim,'_flushAndPoll','method')+'}\nglobalThis.R=Relay;','',{
+  const bodies=[],relay=box('class Relay{'+pick(shim,'_relayRoutingKey','method')+pick(shim,'_flushAndPoll','method')+'}\nglobalThis.R=Relay;','',{
     localStorage:{getItem:()=>''},fetch:async(url,opts)=>{assert.equal(url,'/api/ws-relay');assert.equal(opts.method,'POST');
       bodies.push(JSON.parse(opts.body));return {ok:true,json:async()=>({messages:[]})};}}).c;
   for(const connected of [false,true])for(const mode of ['family-subscribe','admin-subscribe','join']){
@@ -1526,9 +1527,9 @@ async function runStep5V54AudioChecks(){
     if(mode!=='join')assert.equal(body.joinContext??null,null);
     else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
   }
-  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v56"));assert(sw.includes('/vercel-ws-shim.js?v=56'));
+  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v57"));assert(sw.includes('/vercel-ws-shim.js?v=57'));
   for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
-    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'56',f+' stale shim');
+    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'57',f+' stale shim');
   }
   if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
   console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
@@ -1581,7 +1582,7 @@ async function runV55RelayEdgeChecks({baseUrl,url,token}){
     assert.equal(afterPhone.name,'Updated name');assert.equal(afterPhone.phone,'updated-phone');assert.equal(afterPhone.lang,'ar');
     await post({clientId:cid,subscriptionContext:phoneOnly,messages:[]});
     const source=fs.readFileSync(path.join(ROOT_DIR,'public/vercel-ws-shim.js'),'utf8').replace(/\r\n/g,'\n');
-    const begin=source.indexOf('    async _flushAndPoll(){');
+    const begin=source.indexOf('    _relayRoutingKey(){');
     const end=source.indexOf('\n    // PATCH: shim-close',begin);
     assert(begin>=0&&end>begin);
     let browserToken='',fetchCount=0;
@@ -1883,6 +1884,138 @@ async function runStep5V56HandoffChecks(){
   console.log('V56 UNIT PASS: expired/revoked prepare has no side effects; lost ACK recovers with fresh HTTP ID; no source-ID resurrection');
 }
 
+async function runV57RoutingChecks({baseUrl,url,token}){
+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict'),{WebSocket}=require('ws');
+  const stamp=Date.now().toString(36),a='RY-V57-A-'+stamp.toUpperCase(),b='RY-V57-B-'+stamp.toUpperCase();
+  const headers={'Content-Type':'application/json',Authorization:'Bearer '+token};
+  const wait=async predicate=>{
+    const until=Date.now()+2500;while(!predicate()){
+      if(Date.now()>until)throw Error('V57 routing deadline');await new Promise(r=>setTimeout(r,5));
+    }
+  };
+  let listener,socket;
+  try{
+    for(const code of [a,b])assert.equal((await fetch(baseUrl+'/api/tours',{method:'POST',headers,
+      body:JSON.stringify({code,name:'V57 routing regression',guideName:'V57 guide'})})).status,200);
+    listener=new WebSocket(url);const received=[];
+    listener.on('message',(raw,binary)=>{if(!binary)try{received.push(JSON.parse(raw.toString()));}catch(e){}});
+    await new Promise((r,j)=>{listener.once('open',r);listener.once('error',j);});
+    listener.send(JSON.stringify({type:'join',role:'pilgrim',tourCode:b,roomId:'genel',name:'V57 B listener'}));
+    await wait(()=>received.some(m=>m.type==='joined'));
+    const source=fs.readFileSync(path.join(ROOT_DIR,'public/vercel-ws-shim.js'),'utf8').replace(/\r\n/g,'\n');
+    const begin=source.indexOf('  class SmartWebSocket {'),end=source.indexOf('\n  SmartWebSocket.CONNECTING',begin);
+    let release,notify;const opening=new Promise(r=>notify=r);const clock=Date.now();
+    const context={console,Buffer,Date:class extends Date{static now(){return clock;}},AbortController,ArrayBuffer,Float32Array,URLSearchParams,window:{},
+      NativeWebSocket:class{},localStorage:{getItem:()=>token},
+      setTimeout,clearTimeout,setInterval,clearInterval,queueMicrotask,
+      fetch:async(route,options)=>{
+        const body=JSON.parse(options.body),response=await fetch(baseUrl+route,options);
+        if(body.type==='relay-open'){
+          const data=await response.json();notify();await new Promise(r=>release=r);
+          return {ok:true,json:async()=>data};
+        }
+        return response;
+      }};
+    vm.createContext(context);vm.runInContext(source.slice(begin,end)+'\nglobalThis.S=SmartWebSocket;',context);
+    socket=Object.create(context.S.prototype);
+    const joinA={type:'join',role:'guide',tourCode:a,roomId:'genel',name:'V57 guide',token};
+    Object.assign(socket,{readyState:1,_isRelay:true,_httpEpoch:0,_transportGeneration:0,_joinContext:joinA,_subscriptionType:'join',
+      _sendQueue:[],_clientId:'logical-v57',_initMqttBus(){},_closeMqttClients(){},_publishMqtt(){},
+      _busConnected:()=>false,_deliverIncomingMessage(){},_audioCoalescer:{clear(){}}});
+    const unit=seq=>({type:'audio-chunk',seq,sampleRate:24000,sentAt:clock,pcm16:Buffer.alloc(960).toString('base64')});
+    socket._sendQueue.push({type:'audio-chunk',frames:[unit(77)],_queuedAt:clock},
+      {type:'quick-announcement',message:'OLD-A',title:'A only'});
+    const flight=socket._flushAndPoll();await opening;
+    socket.send(JSON.stringify({...joinA,tourCode:b}));
+    socket._enqueueRelayMessage({type:'audio-chunk',frames:[unit(88)],_queuedAt:clock});
+    socket.send(JSON.stringify({type:'quick-announcement',title:'B only',message:'NEW-B'}));
+    release();await flight;
+    await wait(()=>received.some(m=>m.type==='audio-chunk'&&m.seq===88)&&
+      received.some(m=>m.type==='new-announcement'&&m.announcement?.message==='NEW-B'));
+    assert(!received.some(m=>m.type==='audio-chunk'&&m.seq===77),'Old A PCM must not be posted under B context');
+    assert(!received.some(m=>m.type==='new-announcement'&&m.announcement?.message==='OLD-A'),'Old A command must not reach B');
+    if(typeof recordResult==='function')recordResult('ADIM-3.V57',
+      'Gerçek HTTP/WS: relay-open sırasında kafile değişimi eski PCM/kontrolü yeni kafileye taşımadı; yeni ses/kontrol ulaştı',true);
+    console.log('V57 E2E PASS: delayed relay-open + A-to-B switch; old PCM/control dropped; fresh B PCM/control delivered');
+  }finally{
+    socket?.close();listener?.close();
+    for(const code of [a,b])await fetch(baseUrl+'/api/tours/'+code,{method:'DELETE',headers:{Authorization:'Bearer '+token}});
+  }
+}
+
+async function runStep5V57RoutingChecks(){
+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+  const read=f=>fs.readFileSync(path.join(ROOT_DIR,f),'utf8').replace(/\r\n/g,'\n');
+  const server=read('server.js'),shim=read('public/vercel-ws-shim.js');
+  function pick(text,name,kind='function'){
+    const head=kind==='class'?'class ':kind==='method'?'(?:async )?':'(?:async )?function ';
+    const m=new RegExp('^([ \\t]*)'+head+name+(kind==='class'?'\\b':'\\([^\\n]*\\)\\s*\\{'),'m').exec(text);assert(m,'Missing '+name);
+    for(let end=text.indexOf('}',m.index+m[0].length);end>=0;end=text.indexOf('}',end+1)){
+      const code=text.slice(m.index,end+1).trim();
+      try{new vm.Script(kind==='method'?'class Probe{'+code+'}':code);return code;}catch(e){if(e.name!=='SyntaxError')throw e;}
+    }
+    throw Error('Unterminated '+name);
+  }
+  // Run the real periodic callback with no getOrCreate/new-session traffic.
+  const map=new Map(),removed=[];let heartbeat;
+  map.set('rys56-idle',{lastSeen:0,currentRoom:{},relayKey:'b'.repeat(48),ws:{}});
+  map.set('rys56-live',{lastSeen:59000,relayKey:'c'.repeat(48),ws:{}});
+  const sc={httpRelaySessions:map,Date:{now:()=>60000},Buffer,crypto:require('node:crypto'),wss:{clients:new Set()},
+    removeClientFromRoom:(room,id)=>removed.push(id),setInterval(fn,ms){assert.equal(ms,30000);heartbeat=fn;return 1;},
+    getOrCreateRelaySession(){throw Error('Must not create an expired opaque ID');}};
+  vm.createContext(sc);
+  const first=server.indexOf('const heartbeatTimer = setInterval('),last=server.indexOf("\nwss.on('close'",first);
+  vm.runInContext(pick(server,'cleanupStaleRelaySessions')+'\n'+pick(server,'resolveRysRelay')+'\n'+server.slice(first,last),sc);
+  heartbeat();assert(!map.has('rys56-idle'));assert(map.has('rys56-live'));assert.deepEqual(removed,['rys56-idle']);
+  // Requests themselves enforce the 35s boundary, including before the next sweep.
+  const respond=()=>({statusCode:200,status(n){this.statusCode=n;return this;},json(m){this.body=m;return this;}});
+  map.set('rys56-edge',{lastSeen:25000,relayKey:'d'.repeat(48),ws:{}});let response=respond();
+  assert(sc.resolveRysRelay({headers:{},method:'POST'},response,{clientId:'rys56-edge',relayKey:'d'.repeat(48)}));
+  assert.equal(response.statusCode,200); // Exactly 35000ms is still valid, matching cleanup's > comparison.
+  map.set('rys56-expired',{lastSeen:24999,relayKey:'e'.repeat(48),ws:{},currentRoom:{}});
+  response=respond();
+  assert.equal(sc.resolveRysRelay({headers:{},method:'POST'},response,{clientId:'rys56-expired',relayKey:'e'.repeat(48)}),null);
+  assert.equal(response.statusCode,409);assert.equal(response.body.error,'relay-session-expired');assert(!map.has('rys56-expired'));
+  // Client: reject stale responses/retries when the route changed, preserve retries for the same route.
+  let resolveFetch,rejectFetch;const delivered=[],microtasks=[];
+  const cc={console,Buffer,Date,AbortController,ArrayBuffer,Float32Array,URLSearchParams,window:{},NativeWebSocket:class{},
+    localStorage:{getItem:()=>''},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},
+    queueMicrotask:fn=>microtasks.push(fn),
+    fetch:()=>new Promise((resolve,reject)=>{resolveFetch=resolve;rejectFetch=reject;})};
+  const helpers=['validRysAudio','unpackRysAudio','installRysCoalescing'].map(n=>pick(shim,n)).join('\n');
+  vm.createContext(cc);vm.runInContext(helpers+'\n'+pick(shim,'RysAudioCoalescer','class')+'\n'+
+    pick(shim,'SmartWebSocket','class')+'\nglobalThis.S=SmartWebSocket;',cc);
+  const make=()=>{
+    const s=Object.create(cc.S.prototype);
+    Object.assign(s,{readyState:1,_isRelay:true,_relayClientId:'rys56-ready',_relayKey:'b'.repeat(48),
+      _joinContext:{type:'join',role:'guide',tourCode:'A',roomId:'genel'},_subscriptionType:'join',_sendQueue:[],
+      _initMqttBus(){},_publishMqtt(){},_busConnected:()=>false,_audioCoalescer:{clear(){}},
+      _deliverIncomingMessage:m=>delivered.push(m)});
+    return s;
+  };
+  const late=make(),old=late._relayRoutingKey();
+  const flight=late._flushAndPoll();late.send(JSON.stringify({...late._joinContext,tourCode:'B'}));
+  assert.notEqual(late._relayRoutingKey(),old);
+  resolveFetch({ok:true,json:async()=>({messages:[{type:'room-state',room:{tourCode:'A'}}]})});
+  await flight;assert.equal(delivered.length,0,'Old route response must not update B');
+  const fail=make();fail._sendQueue=[{type:'quick-announcement',message:'OLD-A'}];
+  const failed=fail._flushAndPoll();fail.send(JSON.stringify({...fail._joinContext,tourCode:'B'}));
+  rejectFetch(Error('network'));await failed;
+  assert(!fail._sendQueue.some(m=>m.message==='OLD-A'),'A retry must not be replayed in B');
+  const same=make();same._sendQueue=[{type:'quick-announcement',message:'KEEP-A'}];
+  const retry=same._flushAndPoll();rejectFetch(Error('network'));await retry;
+  assert(same._sendQueue.some(m=>m.message==='KEEP-A'),'Unchanged-route controls retain existing retry behavior');
+  const metadata=make(),key=metadata._relayRoutingKey();metadata._joinContext.name='Changed name';
+  assert.equal(metadata._relayRoutingKey(),key,'Metadata edit is not a routing change');
+  const modes=make();modes._sendQueue=[{type:'quick-announcement',message:'guide only'}];
+  modes._inFlight=true;
+  modes.send(JSON.stringify({type:'family-subscribe',tourCode:'A'}));
+  assert(!modes._sendQueue.some(m=>m.message==='guide only'));
+  if(typeof recordResult==='function')recordResult('ADIM-5.V57',
+    'Periyodik relay temizliği, 35s sınırı, rota sonrası eski cevap/retry engeli ve aynı-rota retry korunumu',true);
+  console.log('V57 UNIT PASS: idle sweep; 35000/35001ms expiry; stale-route response/retry dropped; same-route retry retained');
+}
+
 async function main() {
   const runtimePath = path.join(ROOT_DIR, 'data', 'runtime.json');
   const runtimeSnapshot = fs.existsSync(runtimePath) ? fs.readFileSync(runtimePath, 'utf8') : null;
@@ -1893,6 +2026,7 @@ async function main() {
     await runStep5V53AudioChecks();
     await runStep5V54AudioChecks();
     await runStep5V56HandoffChecks();
+    await runStep5V57RoutingChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);

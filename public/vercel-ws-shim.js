@@ -675,6 +675,8 @@
         if ([...keys].every(k => JSON.stringify(old[k]) === JSON.stringify(parsed[k]))) return;
       }
       if (parsed && typeof parsed === 'object') {
+        const subscription=['join','family-subscribe','admin-subscribe'].includes(parsed.type);
+        const previousRoute=subscription?this._relayRoutingKey():null;
         if (!parsed._msgId) {
           parsed._msgId = 'm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
         }
@@ -710,6 +712,9 @@
           this._isAdmin = true;
           this._joinContext = null;
           if (this._isRelay) this._initMqttBus(null, true);
+        }
+        if(subscription&&previousRoute!==this._relayRoutingKey()){
+          this._sendQueue.length=0;this._audioCoalescer?.clear();this._lastGuideState=null;
         }
       }
 
@@ -873,9 +878,17 @@
     }
 
     // PATCH: shim-http-v52
+    _relayRoutingKey(){
+      const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join'),c=this._joinContext||{};
+      if(mode==='admin-subscribe')return JSON.stringify([mode]);
+      const tour=String(c.tourCode||'RY-KASIM').toUpperCase().trim();
+      if(mode==='family-subscribe')return JSON.stringify([mode,tour]);
+      return JSON.stringify([mode,tour,String(c.roomId||'genel').trim(),c.role==='guide'?'guide':'pilgrim']);
+    }
     async _flushAndPoll(){
       if(this.readyState!==1||!this._isRelay||this._inFlight||this._relayFenced)return;
-      const epoch=this._httpEpoch||0;
+      const epoch=this._httpEpoch||0,route=this._relayRoutingKey();
+      const sameRoute=()=>route===this._relayRoutingKey();
       const current=()=>this.readyState===1&&this._isRelay&&(this._httpEpoch||0)===epoch;
       const batch=this._sendQueue.splice(0).filter(m=>m.type!=='audio-chunk'||
         (Number.isFinite(m._queuedAt)&&Date.now()-m._queuedAt<=200));
@@ -890,6 +903,7 @@
           if(!opened.ok||!String(data.clientId||'').startsWith('rys56-')||
             !/^[0-9a-f]{48}$/.test(data.relayKey||''))throw Error('Relay open failed');
           this._relayClientId=data.clientId;this._relayKey=data.relayKey;
+          if(!sameRoute()){success=true;return;}
           if(this._lastGuideState&&this._joinContext?.role==='guide')
             batch.push({...this._lastGuideState});
         }
@@ -908,16 +922,17 @@
           if(res.status===409){
             if(payload.error==='relay-session-retired'&&this._failbackProbe)this._relayFenced=true;
             else{
-              for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
+              if(sameRoute())for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
               batch.length=0;this._cancelNativeProbe?.();this._resetRelaySession();
             }
           }
           throw Error('Relay HTTP '+res.status);
         }
+        if(!sameRoute()){success=true;return;}
         if(Array.isArray(payload.messages))for(const m of payload.messages)this._deliverIncomingMessage(m);
         success=true;
       }catch(e){
-        if(current())for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
+        if(current()&&sameRoute())for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
       }finally{
         clearTimeout(timer);
         if(this._relayAbort===ac)this._relayAbort=null;

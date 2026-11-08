@@ -1,1024 +1,438 @@
-# RıdvanSes v55 uygulama doğrulaması ve v56 atomik handoff yaması
+# RıdvanSes v56 — Uygulama doğrulaması, rota izolasyonu ve oturum temizliği
 
 **Tarih:** 8 Kasım 2026  
-**İncelenen gerçek HEAD:** `7f45ce8240fcd1310c6851d472b0a61096424079`  
-**Teslim:** Yalnız `AUDIO_EXCELLENCE_REPORT.md`. Gerçek kaynaklar değiştirilmedi.
+**İncelenen HEAD:** `3fcb087574d87b0515b5236ece094bf7ee8d3bcd`  
+**Teslim sınırı:** Yalnız `AUDIO_EXCELLENCE_REPORT.md` güncellenir. Kaynak dosyaları değiştirilmez.
 
-**Karar:** v55 unified diff’i eksiksiz uygulanmış; doğrudan disk testi **28/28 PASS + V53 PASS + V54 PASS + V55 PASS, exit0**. P1-01 boş-poll ve P2-02 kısmi metadata düzeltmeleri yeniden doğrulandı. **P1-03 diskteki v55’te açık**: geç gelen eski HTTP isteği native soketi hâlâ terminate edebiliyor. Bu rapor yeni oturum protokolü, prepare/commit devri, eski oturum engellemesi ve hata kurtarmasını birlikte içeren uygulanabilir **v56** diff’i verir. Aday sürüm kaynaklara yazılmadan **30/30 PASS, exit0** ile sınandı.
+**Karar:** v56 yaması önceki raporla birebir eşleşiyor; doğrudan diskten **30/30 PASS + V53/V54/V55 PASS + V56 E2E/UNIT PASS, exit0**. P1-03 atomik devir düzeltmesi yeni protokolün tanımlı kapsamındaki testlerden geçiyor. Bununla birlikte iki ek açık kusur doğrulandı: **P1: HTTP açılışı sırasında kafile değişince eski sesin yeni kafileye yönelmesi**, **P2: v56 oturumlarının sessiz dönemde temizlenmemesi ve süresi aşılmış kaydın yeniden etkinleşmesi**. Bu yüzden tüm aktarım yolları için koşulsuz nihai onay verilmez. Aşağıdaki dar kapsamlı v57 önerisi kaynaklara yazılmadan **32/32 PASS, exit0** ile doğrulandı.
 
-## 1. Diskten v55 ve diff eşliği
+## 1. Disk doğrulaması ve v56 diff eşliği
 
-Çalıştırılan komut:
+Çalıştırıldı:
 
 ```powershell
 node scripts/verify-system.js
 ```
 
-Gözlenen ilgili çıktı:
+Gözlenen ilgili son çıktı:
 
 ```text
-[BAŞARILI / PASS] ADIM-3.V55 — Kısmi kimlik korunumu; MQTT bağlıyken native PCM ve family/admin HTTP güncellemeleri
-V55 PASS: partial name/phone/lang/device preservation; broker-connected empty HTTP poll; mixed native PCM; family/admin deltas
 V53 PASS: source-only DSP/SRC/comfort/profile, queue/PLC/seq, binary+JSON dedup, coalescer, congestion, HTTP single-flight/drain/close, gesture/wake/pause
 V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs
-TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: 28 / 28 [BAŞARILI / PASS]
+V55 PASS: partial name/phone/lang/device preservation; broker-connected empty HTTP poll; mixed native PCM; family/admin deltas
+V56 E2E PASS: prepare has no membership side effect; committed source fenced; late requests cannot kill native
+V56 UNIT PASS: expired/revoked prepare has no side effects; lost ACK recovers with fresh HTTP ID; no source-ID resurrection
+TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: 30 / 30 [BAŞARILI / PASS]
 ```
 
-Süreç çıkışı **0**. 18 JS dosyası ve 9 HTML’de 10 inline script sözdizimi kontrolü geçti. Önceki rapordaki v55 diff’i `git apply --reverse --check --ignore-space-change -` ile, dosyalara uygulamadan sınandı: **exit0**. Önceki 12 kaynak dosyası değişikliği mevcut ağaçla eşleşiyor.
+Çıkış kodu **0**. 18 JS dosyası ve 9 HTML içindeki 10 inline script kontrolü geçti. Önceki raporun v56 unified diff’i kaynaklara uygulanmadan `git apply --reverse --check --ignore-space-change -` ile sınandı: **exit0**. Önceki 12 kaynak değişikliği diskte mevcut; uygulama eksikliği saptanmadı.
 
-| v55 gereksinimi | Gerçek kaynak | Sonuç |
-|---|---|---|
-| MQTT bağlıyken boş HTTP poll | public/vercel-ws-shim.js:842–875; eski847 return’ü kaldırılmış | PASS; gerçek native rehber PCM’i HTTP hacıya ulaşıyor |
-| Kısmi alan korunumu | server.js:1353–1383 | PASS; aynı oda/rolde verilmemiş name/deviceId/phone/lang tamamlanıyor; PIN/token devralınmıyor |
-| v55 E2E | scripts/verify-system.js:577,1532 ve devamı | PASS; kimlik, native dedup, PCM ve family/admin delta |
-|6 boş-poll kombinasyonu | scripts/verify-system.js:1513–1525 | PASS;3 abonelik tipi ×2 broker bağlantı durumu |
-| Cache/HTML | public/sw.js:4,11;8 shim giriş sayfası; dinle SW register |55; değişmeyen DSP worklet URL’leri53-audio, doğru |
-| Capture/player | public/pcm-capture-worklet.js / pcm-player-worklet.js | v55 commit’inde değişmemiş; mevcut DSP/SRC/PLC/wrap testleri PASS |
+İnceleme başında zaten silinmiş görünen `AUDIT_FIX_SUMMARY.md` ve `AUDIT_REPORT.md` korunur. Yerel test paketinin runtime.json değişiklikleri paket sonunda snapshot ile geri alınır.
 
-İnceleme başında silinmiş görünen `AUDIT_FIX_SUMMARY.md` ve `AUDIT_REPORT.md` kullanıcı değişikliklerine dokunulmadı. Yerel test paketi runtime.json snapshot’ını geri yükledi.
+## 2. Onaylanan v56 davranışları
 
-## 2. Diskteki v55 üzerinde ek tekrar üretimi
+| Alan | Gerçek kaynak / doğrulanan sonuç |
+|---|---|
+| Yan etkisiz HTTP açılışı | server.js:1347–1351; relay-open oda üyeliği veya ses/kontrol işlemez |
+| Özel HTTP oturumu | server.js:1363–1376; rys56-ID +192 bit anahtar; yanlış anahtar401, bilinmeyen ID409; anahtar URL’den alınmaz |
+| Prepare/commit | server.js:1409–1482; prepare üyeliği bozmaz; commit kaynak revision/üyelik ve güncel yetki/PIN’i kontrol eder |
+| Eski kaynak engeli | server.js:1455–1476; başarılı commit sonrası eski HTTP409; silinen yeni-biçim ID yeniden yaratılmaz |
+| Commit tekrarı | Cached ACK döner; ikinci join/broadcast yapılmaz |
+| İstemci hata kurtarması | public/vercel-ws-shim.js:294–377; kayıp ACK’de eski ID kullanılmaz, yeni HTTP oturumuyla toparlanır |
+| Açılış/probe yarışı | Kaynak yokken prepare başlarsa eski relay-open iptal edilir; geç açılış cevabı üyelik başlatamaz |
+| MQTT bağımsızlığı | API kapalıyken MQTT ses yolu açık kalır; API gereksinimi MQTT’yi kilitlemez |
+| Kimlik/kontrol eşliği | v55 name/phone/lang/deviceId korunumu,6 boş-poll kombinasyonu, family/admin güncellemeleri PASS |
+| Cache | Sekiz giriş shim56, SW cache56 ve dinle SW register56; değişmeyen worklet URL’leri53-audio |
+| DSP | Capture/player bu commit’te değişmemiş; mevcut SRC, comfort, gate, PLC, seq ve wrap kontrolleri PASS |
 
-Yalnız verify kodunu bellekte genişleten tanı koşusu, **gerçek v55 server ve shim dosyalarını** kullandı. Kaynaklar ve mevcut28 sonuç değiştirilmedi.
+P1-03’ün önceki “gecikmiş eski kaynak native soketi terminate eder” senaryosu yeni handoff/opaque-session kapsamındaki gerçek yerel testte engelleniyor. Aşağıdaki yeni P1, bu engelin aşılması değildir; **istemci batch’inin yanlış abonelik başlığıyla gönderilmesi** ayrı bir kusurdur.
+
+## 3. P1 — Kafile değişiminde bekleyen sesin yanlış kafileye gitmesi
+
+**Kaynaklar:** `public/vercel-ws-shim.js:880–905`; özellikle batch’in splice ile yerel değişkene alınması, relay-open await’i ve sonrasında güncel _joinContext’in okunması. `687–695` oda/rol değişiminde yalnız _sendQueue içindeki sesi temizler; önceden splice edilmiş batch’e ulaşamaz. Sunucu `1550–1571` güncel subscriptionContext’e katılıp batch’i bu odada işler.
+
+### Gerçek v56 üzerinde tekrar üretimi
+
+1. Rehber A kafilesindeyken seq77 JSON PCM batch’i HTTP kuyruğuna girer.
+2. _flushAndPoll batch’i yerel değişkene alır; relay-open cevabı beklenir.
+3. Aynı soketten B kafilesine join gönderilir.
+4. relay-open cevabı serbest bırakılır. Yerel batch hâlâ A sesidir; POST başlığı güncel B bağlamıdır.
+5. B kafilesindeki gerçek native WS dinleyicisi A’nın seq77 paketini alır.
+
+Yerel Express/WS ile, diskteki gerçek SmartWebSocket sınıfı kullanılarak ölçüldü:
 
 ```text
-AUDIT V55 PARTIAL METADATA:
-{"phone":"audit-phone","lang":"ar","name":"Updated name"}
-
-AUDIT V55 CONNECTED MQTT EMPTY POLL:
-{"fetches":1,"deliveredAudio":1,"serverStillHadAudio":[]}
-
-AUDIT V55 STALE RELAY AFTER NATIVE JOIN:
-{"nativeTerminated":true}
+AUDIT V56 ROUTE:
+{"from":"RY-EDGE-A-MW7MHJ2W","to":"RY-EDGE-B-MW7MHJ2W","oldAudioReachedB":true}
 ```
 
-İlk iki çıktı v55’in önceki kusurları giderdiğinin doğrudan teyididir. Son çıktı şu sunucu işleme sırasını üretir:
+Buradaki isimler izole test kafileleridir; production oturumu kullanılmadı. HTTP açılışının tamamlanma sırası fixture ile kontrol edildi. Paket yeni ve200 ms TTL içindeydi; sorun bayat paket filtresinin eksikliği değil, **paketin hangi kafileye ait olduğunun kaybıdır**. Hoparlör/donanım kaydı yapılmadı; yanlış alıcının WS üzerinden PCM aldığı doğrulandı.
 
-1. HTTP rehber tur/oda/deviceId ile katılır.
-2. Aynı kimlikli native soket katılır ve joined alır; eski HTTP üyeliği silinir.
-3. Eski HTTP oturumunun bir isteği daha işlenir.
-4. `syncRysRelayJoin` üyeyi bulamadığı için yeniden join yapar; `server.js:948–965` sameDevice/sameGuide döngüsü native soketi terminate eder.
+Aynı mekanizma eski quick-announcement gibi kontrolleri de yeni kafilede çalıştırabilir. Ayrıca bir eski HTTP cevabı kafile değiştikten sonra UI/audio katmanına teslim edilebilir veya başarısız eski batch yeni kafilede retry kuyruğuna girebilir. v56’nın current() kontrolü yalnız epoch/bağlantıyı doğruluyor; normal abonelik değişimi HTTP epoch’unu değiştirmiyor.
 
-Kritik yerler: `server.js:1370–1383` yeniden katılım, `1433` HTTP oturumu edinimi; `public/vercel-ws-shim.js:293–349` probe join’i. İstemci onopen tekrarını yutmak veya AbortController kullanmak, sunucuda bu sırayı atomik hâle getirmez. Bu koşu fiziksel roaming/abort zamanlamasını ölçmez; gecikmiş isteğin native join’den sonra işlenmesi sırasını gerçek yerel endpoint’lerle doğrular.
+### v57 çözümü
 
-## 3. v56 protokolü: neden yalnız bir ek if yeterli değil?
+- `_relayRoutingKey()` abonelik türü + normalize tur + oda + rol ile kararlı bir rota anahtarı üretir. Admin global kapsamı, family tur kapsamı ayrıdır. İsim/telefon/dil düzenlemesi rota değişimi sayılmaz.
+- Gerçek rota değişiminde bekleyen eski ses **ve kontrol** kuyruğu, kısmi coalescer ve eski guide-state temizlenir. Yeni join bundan sonra yeni kuyrukta yer alır.
+- HTTP işlemi başında rota sabitlenir. Açılış dönerken rota değişmişse açılan boş oturum güvenle tutulur, fakat eski batch POST edilmez; yeni rota kuyruğu drain edilir.
+- Cevap veya ağ hatası döndüğünde rota tekrar kontrol edilir. Eski rota cevabı teslim edilmez, eski kontroller yeni rotaya retry edilmez.
+- Aynı rotadaki ağ hatasında mevcut kontrol retry davranışı korunur. Bu düzeltme bütün hatalarda kuyrukları körlemesine boşaltmaz.
 
-Eski oturuma kısa süreli “retired” bayrağı koyup35 sn sonra kaydı silmek yeterli değildir. Aynı clientId ile getOrCreate yapılırsa geç bir istek eski oturumu tekrar yaratabilir. Ayrıca probe doğrudan join yaptığı sürece hazırlık aşaması bile eski üyeyi düşürebilir.
+Yeni E2E; yalnız eski sesi atmayı değil, **yeni B seq88 sesi ve B kontrolünün gerçekten ulaşmasını** da şart koşar. Böylece “tüm ses kesildiği için sızıntı yok” gibi yanlış bir PASS önlenir.
 
-v56 bu iki sorunu ayırır:
+## 4. P2 — Sessiz v56 oturumları temizlenmiyor, süre aşımı atlanıyor
 
-- **relay-open:** Sunucu rastgele `rys56-…` kimliği ve192 bit `relayKey` verir. Açılış **join, ses veya kontrol mesajı çalıştırmaz**. Geç bir açılış isteği yalnız boş, kullanılmayan bir oturum yaratabilir.
-- **Normal HTTP:** Sunucunun verdiği ID+anahtar gerekir. Bilinmeyen veya temizlenmiş bir `rys56-…` ID **409** alır; getOrCreate ile yeniden yaratılmaz. Yanlış anahtar401. GET’te anahtar yalnız başlıktan alınır; yeni shim yalnız POST kullanır.
-- **handoff-prepare:** Yeni native soket hedef aboneliği ve varsa HTTP kaynak anahtarını sunar. Sunucu yetki/PIN, kaynak bağlam özeti ve revision kontrol eder;128 bit işlem bileti verir. **Odaya katılmaz ve HTTP kaynağını silmez.**
-- **handoff-commit:** Bilet,3 sn ömrü, güncel yetki/PIN, kaynak üyeliği ve revision tekrar kontrol edilir. Üyelik devri ve eski HTTP kaynağının emekliye ayrılması, aynı senkron Node handler’ında yapılır. ACK ancak bundan sonra `handoff-committed` zarfında çıkar.
-- **Commit sonrası:** Eski anahtarlı HTTP istekleri409; temizleme sonrası da bilinmeyen ID409. Aynı commit’in tekrarı cached ACK döndürür, ikinci join/broadcast oluşturmaz.
-- **İptal/hata:** Commit öncesi cancel, close veya timeout HTTP üyeliğini etkilemez. Commit gönderildikten sonra ACK kaybolursa istemci eski ID’yi yeniden kullanmaz; probe’u kapatıp yeni HTTP ID alır. Bu, commit’i geri almak yerine yeni bir oturumla kontrollü toparlanmadır.
-- **relay-close:** Yalnız eski HTTP ID+anahtarını kapatan, tekrar çağrılabilir best-effort temizlik. Native clientId farklı olduğundan geç gelen close yeni native üyeyi silemez. Sunucu35 sn temizleme mekanizması da korunur.
+**Kaynaklar:** `server.js:738–747` cleanup işlevi; `1277–1287` heartbeat; `1295–1296` getOrCreate; `1363–1376` yeni resolve yolu.
 
-```mermaid
-sequenceDiagram
-  participant C as Shim
-  participant H as HTTP oturumu
-  participant N as Native probe
-  participant S as Tek sunucu işçisi
-  C->>S: relay-open
-  S-->>C: Yeni ID + relayKey
-  C->>S: HTTP context + medya/kontrol
-  C->>N: Native bağlantı
-  N->>S: handoff-prepare + kaynak + abonelik
-  S-->>N: handoff-prepared
-  Note over H,S: HTTP kaynağı hâlâ kullanılabilir
-  N->>S: handoff-commit
-  Note over S: Üyelik devri + eski ID engeli
-  S-->>N: handoff-committed + abonelik ACK
-  C->>S: Gecikmiş eski HTTP isteği
-  S-->>C: 409 retired / expired
+cleanupStaleRelaySessions yalnız getOrCreateRelaySession’dan çağrılıyor. v56’nın mevcut-ID istekleri resolveRysRelay ile getOrCreate çağrısını atlıyor; heartbeat sadece WS ping/pong yapıyor. Yeni relay açılışı/legacy oluşturma yoksa susmuş HTTP üyeleri ve retired kayıtları Map’te kalabiliyor. resolve ayrıca35 sn yaş denetimi yapmadan lastSeen’i güncelliyor.
+
+Gerçek resolver ve heartbeat callback’i, kontrollü saat/Map ile yürütüldü; yeni oturum trafiği oluşturulmadı:
+
+```text
+AUDIT V56 CLEANUP:
+{"expiredStillPresentAfterHeartbeat":true,"resolverStatus":200,"refreshedLastSeen":60000}
 ```
 
-**Atomiklik sınırı:** Bir handler’da await olmaması nedeniyle commit ortasına başka HTTP handler’ı girmez. Commit’ten önce işlenen istek eski geçerli kaynaktır; sonrakiler kaynak engeline takılır. Sonradan bilinçli yapılan, yeni kimlikli yetkili bir bağlantı yine normal yayıncı devir kurallarına tabidir. Bu yama bütün yetkili bağlantıların birbirini hiç değiştirememesi gibi bir kural koymaz.
+lastSeen=0 olan kayıt, saat60000 ms’de heartbeat sonrası hâlâ var; sonraki doğru anahtarlı istek200 alıp lastSeen’i60000’e taşıyor. Bu bir gerçek zamanlı60 sn bekleme testi değildir; gerçek kaynak fonksiyonlarının saat fixture’ıyla yürütümüdür.
 
-## 4. Uygulama ayrıntıları ve kurtarma davranışı
+**Etki:** Susmuş üyelerin dinleyici sayıları, aile/admin outbox’ları ve RAM kayıtları gereğinden uzun yaşayabilir. Bu kusur, commit edilmiş retired kaynak engelini aşmaz: retired kontrolü yine409 verir. Etkilenen durum, aktifken susmuş ama emekliye ayrılmamış kaydın ömrüdür.
 
-### Sunucu
+**Test boşluğu:** Mevcut runStep5V56HandoffChecks,1814’te Map kaydını elle silip yeniden yaratılamadığını test ediyor. Bu doğru bir ID engelleme testidir; periyodik temizleyicinin gerçekten çalıştığını veya idle süresini kanıtlamaz.
 
-- prepare ve commit ayrı mesaj tipleri; normal joined/family/admin ACK üretimi küçük `sendRysSubscriptionAck` yardımcısına alınır. İşlem sırasında ACK capture edilir; kaynak engeli kurulduktan sonra iletilir.
-- Kısmi HTTP metadata’sı native’e geçerken tamamlanır. DeviceId boş hacıda bile kaynak üyelik açıkça kaldırılır; heuristik dedup’a bırakılmaz. Son joined snapshot’ı kaynak kaldırıldıktan sonra yeniden hesaplanır.
-- Başka yeni HTTP nesli eski bir v56 üyeyi aynı cihaz/rehber kimliğiyle değiştirirse eski anahtarlı nesil de emekliye ayrılır. Böylece iptal/toparlanma sonrası iki eski neslin birbirini tekrar ele geçirmesi önlenir.
-- Anahtarlar sabit uzunluklu hex olarak doğrulanıp timingSafeEqual ile karşılaştırılır. Unicode48 karakterin48 bayt olmaması nedeniyle karşılaştırmanın istisna atması önlenir.
-- Token/PIN commit’te tekrar doğrulanır; prepare sırasında geçerli olup daha sonra iptal edilen yetki üyeliği taşıyamaz.
-- Bağlam değişirse revision/digest uyuşmaz; commit reddedilir. HTTP bağlam revision’u için ham PIN/token yerine SHA-256 özeti tutulur; commit doğrulamasına gereken istek alanları kısa ömürlü native hazırlık kaydında kalır. Native commit için gerekli sırlar yalnız WSS isteğinde bulunur.
-- Server prepare zaman aşımı3 sn, istemci toplam probe watchdog’u5 sn. Cancel ve ws.close timer’ı temizler. Commit tekrarı frozen JSON ACK ile idempotenttir.
+### v57 çözümü
 
-### İstemci
+- Mevcut30 sn heartbeat callback’ine cleanup çağrısı eklenir; yeni bir timer yaratılmaz. Servis kapanışındaki mevcut clearInterval davranışı korunur.
+- Yeni-biçim v56 kaydına gelen doğru anahtarlı istekte35 sn idle sınırı lastSeen güncellenmeden sınanır. Süresi aşılmış kayıt silinir, eski üyeliği kaldırılır ve409 relay-session-expired döner. Aynı ID yeniden yaratılmaz.
+- Temizleyici tüm HTTP kayıtlarını toplar. Sonraki istekle35 sn denetimi, özel rys56 oturumları içindir; legacy ID uyumluluk davranışı korunur.
+- Sınır mevcut cleaner ile aynıdır:35000 ms geçerli,35001 ms süresi aşılmış. Periyodik arka plan temizliği, normal işleyen event loop’ta yaklaşık35–65 sn aralığında gerçekleşebilir; gelen v56 isteği bir sonraki sweep’i beklemez.
 
-- MQTT’deki `_clientId` değişmez. HTTP’nin özel `_relayClientId / _relayKey` alanları ayrı tutulur; relay anahtarı public MQTT’ye veya sessionStorage’a yazılmaz.
-- HTTP açılışı MQTT’yi bekletmez. API kapalıyken MQTT ses akışı sürdürülebilir; test bu bağımsızlığı doğrular. Yeni HTTP session gerektiğinde fazladan açılış RTT’si vardır.
-- HTTP, native commit ACK’sı beklenirken409 retired alırsa poll geçici durur; aynı anda yeni HTTP oturumu açıp native’i geri itmez.
-- Başarısız/ACK’sı kayıp commit sonrası eski ID temizlenir, yeni ID ile katılım yapılır. Son guide-stream-state yeniden gönderilir; sürekli yayın bayrağı ve konu yeni HTTP nesline taşınır.
-- Epoch/context guards geç gelen relay-open cevabının kapalı veya native’e geçmiş soketi yeniden canlandırmasını önler.
-- Başarılı native commit’ten sonra ACK→onopen sırası korunur; aynı abonelik yeniden gönderilmez. Taze pending ses, sonra kısmi coalescer flush edilir. Eski medya TTL’leri korunur ve HTTP açılışından sonra medya yaşı yeniden süzülür.
-- Abonelik tipi/oda değişiminde eski ses ve stream-state temizlenir. Family/admin’a geçerken rehberin eski ses paketleri yeni kapsama taşınmaz.
+## 5. DSP, atomiklik ve kalan mimari sınırlar
 
-İlk açılış/başarısız devir sırasında bazı örneklerin TTL nedeniyle düşmesi veya yeniden tamponlama mümkündür. P1-03’ün giderilmesi “sıfır sözcük kaybı”, anlık OS kurtarması veya akustik yankı izolasyonu kanıtı değildir.
+Bu turda capture/player için yeni bir sayısal P1/P2 regresyonu saptanmadı. `public/pcm-capture-worklet.js` ve `public/pcm-player-worklet.js` kaynak hash’leri önceki motorlarla aynıdır. Mevcut testler24/44.1/48 kHz örnekleri,128/2048 chunk eşliği, FIR örnek noktaları,72 örnek comfort delay/48 örnek attack, finite örnekler, aktif trim/PLC/starvation ve seq wrap üzerinden geçti.
 
-## 5. Test kapsamı ve tamamlanan sonuçlar
+Bu sonuç saha akustik garantisi değildir: tek mikrofon gate’i aynı anda konuşan kişileri %100 ayıramaz; kısa PLC kaybolan sözcükleri geri üretmez; OS arama/kilit kesintisi JS ile bütünüyle önlenemez. Public MQTT kimlik/ACL ve çok cihazlı AEC sınırları önceki raporlardaki kapsamda devam eder.
 
-| Kontrol | Çalıştırma türü | Sonuç |
-|---|---|---|
-| v55 baseline | Gerçek disk, node scripts/verify-system.js |28/28 PASS, V53/V54/V55 PASS, exit0 |
-| v55 diff eşliği | Önceki diff reverse-check | exit0 |
-| v55 ek tanı | Gerçek yerel server/shim, verify bellekte genişletildi | İki v55 düzeltmesi doğrulandı; eski native-termination yeniden üretildi |
-| v56 diff uygulanabilirliği | git apply --check --ignore-space-change -; uygulama yok | exit0 |
-| Aday sözdizimi | Değişen JS stdin’den node --check; HTML inline VM |14 derleme PASS |
-| v56 E2E grubu | Gerçek Express/WS localhost3999 | PASS |
-| v56 hata/yarış grubu | Gerçek kaynak fonksiyonları; saat/ağ/ACK kontrollü fixture | PASS |
-| Son tam aday paket | Aday server/shim/verify bellekte; gerçek yerel HTTP/WS | **30/30 PASS, V53/V54/V55 ve V56 E2E/UNIT PASS, exit0** |
+v56 prepare/commit atomikliği tek Node işçisindeki RAM oturumlarına dayanır. HTTP ve WS farklı işçilere/instance’lara dağıtılırsa ortak sahiplik/CAS veya uygun yönlendirme gerekir; bu v57 yaması dağıtık oturum mimarisi getirmez. [Node.js Cluster belgeleri](https://nodejs.org/api/cluster.html)
 
-Yeni E2E kontrolü; yan etkisiz open/prepare, prepare sırasında HTTP PCM devamı, cancel, HTTP bağlam değişimi, commit, geç eski isteğin409 alması, native PCM’in devamı, commit tekrarı, private outbox anahtarı, bozuk/Unicode anahtar, boş deviceId hacı, PIN, aile/admin ve MQTT-only başlangıcı kapsar. Yeni HTTP neslinin eski v56 neslini emekliye ayırması da sınanır.
+Legacy ordinary-join/anahtarsız HTTP biçimi uyumluluk için duruyor. v56 atomik devir garantisi, yeni protokole katılan istemci+sunucu ve opaque oturum kapsamındadır; eski açık sekmelerin tamamı bu garantiyi kendiliğinden kazanmaz. Fiziksel cihaz/roaming/yük testi bu çalışmada yapılmadı; GitHub/VDS/Vercel dağıtımı talepte verilen bilgidir, bu denetimde production’a yazılmadı.
 
-Yeni kaynak testi;3 sn prepare süresinin dolmasını saat fixture’ıyla, prepare→commit arasında token iptalini, cancel’ı, silinmiş ID’nin yeniden yaratılmamasını, kayıp commit ACK’sında HTTP409 beklemesini,5 sn client watchdog sonrası yeni ID alımını, geç open cevabını ve API kapalıyken MQTT gönderimini sınar. Bunlar fiziksel ağda paket kaybı ölçümü değildir.
+## 6. Doğrulama sonuçları ve uygulama sırası
 
-Mevcut v53/v54/v55 DSP, seq, PLC, HTTP matris ve kimlik assertion’ları korunur. Eski sahte probe fixture’ları doğrudan joined üretmek yerine gerçek v56 prepared/committed zarflarını üretir; aynı aboneliğin tekrar normal join olarak yollanmadığı ayrıca doğrulanır. Eski HTTP fixture’ları kurulu oturumu temsil edecek şekilde düzenlenir.
+| Kontrol | Sonuç / gerçek kapsam |
+|---|---|
+| Diskteki v56 | **30/30 PASS**, V53/V54/V55/V56 E2E/UNIT PASS, exit0 |
+| Önceki v56 diff reverse-check | **exit0**,12 kaynak değişikliği eşleşiyor |
+| Ek v56 tanı | Yanlış B alıcısına A PCM’i ulaştı; idle kayıt heartbeat sonrası kaldı ve200 ile yenilendi |
+| Yeni unit testi eski v56 üzerinde | Beklenen negatif kontrol: assert(!map.has('rys56-idle')) başarısız; temizlik kusuru yakalandı |
+| Aday v57 sözdizimi |14 JS/inline derlemesi PASS; ayrıca bütün aday modüller tam koşuda derlendi |
+| v57 diff uygulanabilirliği | git apply --check --ignore-space-change -: **exit0**; gerçek kaynaklara uygulanmadı |
+| Son v57 tam önizleme | **32/32 PASS**, V53/V54/V55/V56 ve V57 testleri PASS, exit0 |
 
-Önizleme aracı yalnız rapordaki diff’i bellekte uygular. Testlerin kaynak okumaları aday metinlere yönlendirilir, testlerin raporu okuması engellenir. Ana paketin child-process syntax kontrolleri diski gördüğünden aday syntax ayrı stdin/VM ile sınanmıştır. **30/30, v56 diske uygulanmış veya production’da çalışmış bir sonuç değildir.**
+v57 E2E, gerçek yerel Express/WS sunucusunu ve gerçek SmartWebSocket kaynak sınıfını kullanır; ilk HTTP açılışının cevabı geciktirilir. Paketin taze kalması için istemci saati kontrollüdür. A’nın ses/kontrolünün B’ye gitmemesi, B’nin yeni ses/kontrolünün alınması birlikte doğrulanır.
 
-## 6. Dağıtım ve garanti sınırları
+v57 kaynak testi; yeni oturum oluşturmadan heartbeat temizliği,35000/35001 ms sınırı, rota değiştikten sonra eski cevap/retry engeli, aynı rota retry’sinin korunumu ve yalnız metadata değişiminin rota sayılmamasını kapsar. Mevcut30 grup korunur; iki yeni sonuç grubu toplamı32 yapar.
 
-1. **Önce sunucu:** v56 relay-open/close ve native prepare/commit handler’ları hazır olmalı. Yeni shim eski sunucuyla HTTP oturumu açamaz; MQTT bağımsızlığı bunun yerine HTTP eşliği garantisi vermez.
-2. **Sonra shim/cache:**8 giriş sayfası shim56, SW cache56, dinle SW register56. Değişmeyen capture/player URL’leri53-audio kalır.
-3. **Eski sekmeler:** Açık v55 sekmesi yeni JS’i kendiliğinden kullanmaz. Tam atomik devir değerlendirmesi v56 istemci+sunucu ve yeni `rys56-…` HTTP oturumları içindir. Legacy HTTP/ordinary-join yolu uyumluluk için korunur; protokole girmeyen eski istemcilerin handoff’u atomik hâle gelmiş sayılmaz. Eski legacy ID’nin temizleme sonrası yeniden oluşturulmasını önleyen garanti bu eski biçim için verilmez. Aktif istemcilerin geçişi ayrıca planlanmalıdır.
-4. **Tek işçi / ortak durum:** HTTP oturumu ve native WS aynı Node işçisinde olmalıdır. Uygulama RAM Map’leri kullanıyor. Cluster/çok instance için ortak transactional/CAS store ve yönlendirme gerekir; yalnız bu diff farklı işçileri tek sahiplik alanına dönüştürmez. Node belgeleri cluster worker’larının ayrı süreçler olduğunu ve oturum RAM’ine aşırı bağımlılığın tasarım sınırı olduğunu belirtir. [Node.js Cluster](https://nodejs.org/api/cluster.html)
-5. **Üretim kapsamı:** GitHub/VDS/Vercel dağıtımı kullanıcı beyanıdır; bu çalışmada SSH, deploy, push veya production oturum mutasyonu yapılmadı. Yerel protokol testleri; gerçek roaming, iOS/Android arama/kilit veya binlerce kullanıcı yük testi yerine geçmez.
-6. **Mevcut diğer sınırlar:** Public MQTT kimlik/ACL mimarisi, çok cihazlı AEC, Opus/SFU ölçek planı ve OS arka plan sürekliliği bu yamanın kapsamı değildir. HTTP poll yükü mevcut100 ms düzeyindedir; ilk session açılışı ve best-effort close ek istek getirir. Kontrol mesajları için uçtan uca exactly-once işlem garantisi verilmez.
+Önizleme aracı rapor diff’ini bellekte uygular; testlerin kaynak okumaları aday metinlere yönlendirilir ve testlerin raporu okuması engellenir. Raporu yalnız önizleme hazırlığı okur. Ana paketin child-process syntax kontrolleri diski gördüğü için aday syntax ayrıca stdin/VM üzerinden sınandı. **32/32, v57’nin diske veya production’a uygulandığı anlamına gelmez.**
 
-v55’in P1-01/P2-02 uygulaması onaylanır. Diskteki P1-03 için v56 gereklidir; önerilen çözüm, yukarıdaki yeni protokol ve tek işçi kapsamındaki tanımlı yarışta yerel doğrulamadan geçmiştir. Genel “tüm akustik/şebeke/OS koşullarında kusursuzluk” onayı verilmez.
+Bu yama handoff wire şemasını değiştirmez: `relay-open/close version:56` ve mevcut prepare/commit mesajları korunur. **57 yalnız uygulama/cache sürümüdür.** Yeni ve eski v56 API istemcileri sunucuyla uyumludur. Sunucu temizliği ve istemci rota koruması ayrı düzeltmelerdir; ikisinin tamamlanması için iki taraf da güncellenmelidir. Önce sunucu, sonra shim/cache dağıtımı yapılabilir.
 
-## 7. Tam uygulanabilir v56 unified diff
+Sekiz shim yükleyicisi ve SW cache/register57’ye alınır; değişmeyen worklet’ler53-audio kalır. İlk uygulama sonrasında gerçek diskte `node scripts/verify-system.js` tekrar çalıştırılmalı; ardından özellikle yayın sırasında kafile/oda değiştirme, HTTP cevabı gecikmesi ve35 sn üzeri uyku/sinyal kaybı fiziksel cihazlarla sınanmalıdır.
 
-**Hedef HEAD:**7f45ce8. Bu denetim yamayı kaynaklara uygulamaz. Aşağıdaki diff eksiksiz yeni helper/metot/test kodlarını ve cache sürümlerini içerir. İleride UTF-8 patch olarak çıkarılıp önce `git apply --check`, sonra `git apply` ve `node scripts/verify-system.js` ile gerçek diskten tekrar doğrulanabilir. Rapor hazırlanırken bu check zaten exit0 verdi; beklenen yeni toplam30 sonuç grubudur.
+## 7. Tam uygulanabilir v57 unified diff
+
+**Hedef HEAD:**3fcb087. Aşağıdaki diff tam yardımcı/metot/test kodlarını içerir. Denetim sırasında kaynaklara uygulanmadı. Daha sonra UTF-8 patch olarak çıkarılıp `git apply --check`, `git apply` ve `node scripts/verify-system.js` ile uygulanıp diskten doğrulanabilir. Beklenen sonuç32 gruptur. Kaynak ağaç değişmişse check başarısızlığını dikkate alın.
 
 
 ```diff
 diff --git a/server.js b/server.js
 --- a/server.js
 +++ b/server.js
-@@ -73,7 +73,7 @@
-   ) {
-     res.setHeader('Access-Control-Allow-Origin', origin);
-     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
--    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-RY-Auth');
-+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-RY-Auth, X-Rys-Relay-Key');
-     res.setHeader('Access-Control-Allow-Credentials', 'true');
-   }
-   if (req.method === 'OPTIONS') {
-@@ -882,14 +882,12 @@
-       return;
+@@ -1275,6 +1275,7 @@
+ 
+ // 30-Second Ping/Pong Heartbeat to prune zombie/dropped connections from mobile networks
+ const heartbeatTimer = setInterval(() => {
++  cleanupStaleRelaySessions();
+   wss.clients.forEach((ws) => {
+     if (ws.isAlive === false) {
+       return ws.terminate();
+@@ -1371,6 +1372,11 @@
+       !crypto.timingSafeEqual(Buffer.from(supplied),Buffer.from(expected))){
+       res.status(401).json({error:'relay-key-required'});return null;
      }
-     ws.isAdmin = true;
--    ws.send(
--      JSON.stringify({
-+    sendRysSubscriptionAck(ctx, {
-         type: 'admin-rooms-update',
-         rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true)),
-         sosAlerts: db.sosAlerts,
-         announcements: db.announcements
--      })
--    );
-+      });
-     return;
-   }
- 
-@@ -898,16 +896,14 @@
-     ws.familyTourCode = tourCode;
-     const room = getOrCreateRoom(tourCode, 'genel');
-     const steps = getTourSteps(tourCode);
--    ws.send(
--      JSON.stringify({
-+    sendRysSubscriptionAck(ctx, {
-         type: 'family-state',
-         tourCode,
-         room: serializeRoom(room, false),
-         steps,
-         stats: computeJourneyStats(steps),
-         announcements: db.announcements.filter((a) => a.tourCode === tourCode || a.tourCode === 'ALL')
--      })
--    );
-+      });
-     return;
-   }
- 
-@@ -952,6 +948,10 @@
-         const sameDevice = Boolean(deviceId && existingClient.deviceId && existingClient.deviceId === deviceId);
-         const sameGuide = Boolean(role === 'guide' && existingClient.role === 'guide' && r.roomId === roomId && existingClient.name === clientObj.name);
-         if (sameDevice || sameGuide) {
-+          if(existingClient.ws?.isHttpRelay){
-+            const oldRelay=httpRelaySessions.get(existingId);
-+            if(oldRelay&&(oldRelay.relayKey||ctx.rysAckCapture))oldRelay.relayRetired=true;
-+          }
-           r.clients.delete(existingId);
-           if (r.activePublisherClientId === existingId) {
-             r.activePublisherClientId = clientId;
-@@ -979,8 +979,7 @@
-     }
- 
-     const tourSteps = getTourSteps(tourCode);
--    ws.send(
--      JSON.stringify({
-+    sendRysSubscriptionAck(ctx, {
-         type: 'joined',
-         clientId,
-         room: serializeRoom(ctx.currentRoom, role === 'guide'),
-@@ -988,8 +987,7 @@
-         siyerPoints: db.siyerPoints,
-         steps: tourSteps,
-         stats: computeJourneyStats(tourSteps)
--      })
--    );
-+      });
-     broadcastRoomState(ctx.currentRoom);
-     return;
-   }
-@@ -1201,7 +1199,8 @@
-     clientId: `client-${Date.now()}-${clientSeq++}`,
-     ws,
-     currentRoom: null,
--    isAuthenticated: ws.isAuthenticated
-+    isAuthenticated: ws.isAuthenticated,
-+    rysHandshakeToken: extractAuthTokenFromReq(req)
-   };
- 
-   ws.on('message', (raw, isBinary) => {
-@@ -1262,10 +1261,12 @@
-     } catch {
-       return;
-     }
-+    if(handleRysNativeHandoff(ctx,msg))return;
-     processClientJsonMessage(ctx, msg);
-   });
- 
-   ws.on('close', () => {
-+    clearRysHandoff(ctx);
-     if (ctx.currentRoom) {
-       removeClientFromRoom(ctx.currentRoom, ctx.clientId);
-     }
-@@ -1342,6 +1343,145 @@
-     .map((e) => e.message);
- }
- 
-+// v56: opaque HTTP sessions; opening never joins a room or executes messages.
-+function openRysRelay56(res){
-+  const s=getOrCreateRelaySession('rys56-'+crypto.randomBytes(18).toString('hex'));
-+  s.relayKey=crypto.randomBytes(24).toString('hex');
-+  s.relayRevision=0;s.relayDigest=null;s.relayRetired=false;
-+  return res.json({type:'relay-opened',clientId:s.clientId,relayKey:s.relayKey});
-+}
-+function closeRysRelay56(req,res){
-+  const s=httpRelaySessions.get(String(req.body?.clientId||''));
-+  const a=String(req.body?.relayKey||''),b=String(s?.relayKey||'');
-+  if(!s||!/^[0-9a-f]{48}$/.test(a)||!/^[0-9a-f]{48}$/.test(b)||
-+    !crypto.timingSafeEqual(Buffer.from(a),Buffer.from(b)))
-+    return res.status(401).json({error:'relay-key-required'});
-+  s.relayRetired=true;s.ws.isAdmin=false;s.ws.familyTourCode=null;
-+  if(s.currentRoom?.clients.has(s.clientId))removeClientFromRoom(s.currentRoom,s.clientId,0);
-+  return res.json({closed:true});
-+}
-+function resolveRysRelay(req,res,input){
-+  const id=String(input?.clientId||'');
-+  let s=httpRelaySessions.get(id);
-+  if(id.startsWith('rys56-')){
-+    if(!s){res.status(409).json({error:'relay-session-expired'});return null;}
-+    const supplied=String((req.method==='GET'?null:input?.relayKey)||req.headers?.['x-rys-relay-key']||'');
-+    const expected=String(s.relayKey||'');
-+    if(!/^[0-9a-f]{48}$/.test(supplied)||!/^[0-9a-f]{48}$/.test(expected)||
-+      !crypto.timingSafeEqual(Buffer.from(supplied),Buffer.from(expected))){
-+      res.status(401).json({error:'relay-key-required'});return null;
++    if(Date.now()-s.lastSeen>35000){
++      httpRelaySessions.delete(id);
++      if(s.currentRoom)removeClientFromRoom(s.currentRoom,id);
++      res.status(409).json({error:'relay-session-expired'});return null;
 +    }
-+  }else s=s||getOrCreateRelaySession(id);
-+  if(s.relayRetired){res.status(409).json({error:'relay-session-retired'});return null;}
-+  s.lastSeen=Date.now();return s;
-+}
-+function digestRysSubscription(m){
-+  if(!m)return null;
-+  return crypto.createHash('sha256').update(JSON.stringify([
-+    m.type,String(m.tourCode||'RY-KASIM').toUpperCase().trim(),
-+    String(m.roomId||'genel').trim(),m.role==='guide'?'guide':'pilgrim',
-+    m.name||'',m.deviceId===undefined?null:String(m.deviceId).trim(),
-+    m.phone===undefined?null:m.phone,m.lang===undefined?null:m.lang,
-+    m.pin===undefined?null:String(m.pin),m.token||''
-+  ])).digest('hex');
-+}
-+function sendRysSubscriptionAck(ctx,payload){
-+  if(ctx.rysAckCapture)ctx.rysAckCapture.ack=payload;
-+  else ctx.ws.send(JSON.stringify(payload));
-+}
-+function clearRysHandoff(ctx){
-+  if(ctx.rysHandoff?.timer)clearTimeout(ctx.rysHandoff.timer);
-+  ctx.rysHandoff=null;
-+}
-+function validateRysHandoff(ctx,request){
-+  const authed=!!(isValidAuthToken(request.token)||isValidAuthToken(ctx.rysHandshakeToken));
-+  ctx.isAuthenticated=authed;ctx.ws.isAuthenticated=authed;
-+  if((request.type==='admin-subscribe'||request.type==='join'&&request.role==='guide')&&!authed)
-+    return 'auth-required';
-+  if(request.type==='join'&&request.role!=='guide'&&!authed){
-+    const code=String(request.tourCode||'RY-KASIM').toUpperCase().trim();
-+    const tour=(db.tours||[]).find(t=>String(t.code||'').toUpperCase()===code);
-+    if(tour?.pinProtected&&tour.pin&&String(tour.pin).trim()!==String(request.pin||'').trim())
-+      return 'pin-required';
-+  }
-+  return null;
-+}
-+function handleRysNativeHandoff(ctx,msg){
-+  if(!['handoff-prepare','handoff-commit','handoff-cancel'].includes(msg?.type))return false;
-+  const reply=payload=>ctx.ws.send(JSON.stringify(payload));
-+  const fail=code=>{clearRysHandoff(ctx);reply({type:'handoff-error',code});};
-+  if(msg.type==='handoff-cancel'){clearRysHandoff(ctx);return true;}
-+  if(msg.type==='handoff-prepare'){
-+    if(ctx.currentRoom||ctx.ws.isAdmin||ctx.ws.familyTourCode){fail('probe-already-subscribed');return true;}
-+    const raw=msg.subscription;
-+    if(!raw||!['join','family-subscribe','admin-subscribe'].includes(raw.type)||
-+      JSON.stringify(raw).length>8192){fail('invalid-subscription');return true;}
-+    const request=JSON.parse(JSON.stringify(raw));
-+    const invalid=validateRysHandoff(ctx,request);if(invalid){fail(invalid);return true;}
-+    let source=null;
-+    if(msg.relayClientId){
-+      source=httpRelaySessions.get(String(msg.relayClientId));
-+      const a=String(msg.relayKey||''),b=String(source?.relayKey||'');
-+      if(!source||source.relayRetired||!/^[0-9a-f]{48}$/.test(a)||!/^[0-9a-f]{48}$/.test(b)||
-+        !crypto.timingSafeEqual(Buffer.from(a),Buffer.from(b))){
-+        fail('stale-relay');return true;
-+      }
-+      if(!source.relayDigest||source.relayDigest!==digestRysSubscription(request)){
-+        fail('context-changed');return true;
-+      }
-+      // Transfer optional identity fields from this same existing HTTP membership.
-+      if(request.type==='join'){
-+        const previous=source.currentRoom?.clients.get(source.clientId);
-+        if(!previous){fail('source-not-joined');return true;}
-+        request.name=request.name||previous.name;
-+        for(const key of ['deviceId','phone','lang'])
-+          if(request[key]===undefined)request[key]=previous[key];
-+      }
-+    }
-+    clearRysHandoff(ctx);
-+    const pending={id:crypto.randomBytes(16).toString('hex'),request,source,
-+      revision:source?.relayRevision||0,digest:source?.relayDigest||null,expires:Date.now()+3000};
-+    pending.timer=setTimeout(()=>{
-+      if(ctx.rysHandoff===pending){ctx.rysHandoff=null;reply({type:'handoff-error',code:'prepare-expired'});}
-+    },3000);pending.timer.unref?.();
-+    ctx.rysHandoff=pending;
-+    reply({type:'handoff-prepared',handoffId:pending.id});return true;
-+  }
-+  if(ctx.rysCommittedHandoff?.id===msg.handoffId){
-+    ctx.ws.send(ctx.rysCommittedHandoff.envelope);return true; // Idempotent retry; no second join.
-+  }
-+  const p=ctx.rysHandoff;
-+  if(!p||p.id!==msg.handoffId||Date.now()>p.expires){fail('prepare-expired');return true;}
-+  if(p.source&&(httpRelaySessions.get(p.source.clientId)!==p.source||p.source.relayRetired||
-+    p.source.relayRevision!==p.revision||p.source.relayDigest!==p.digest||
-+    p.request.type==='join'&&!p.source.currentRoom?.clients.has(p.source.clientId))){
-+    fail('context-changed');return true;
-+  }
-+  const invalid=validateRysHandoff(ctx,p.request);if(invalid){fail(invalid);return true;}
-+  const capture={ack:null};ctx.rysAckCapture=capture;
-+  try{
-+    // No await in this transaction: membership transfer and source fencing are one event-loop turn.
-+    processClientJsonMessage(ctx,p.request);
-+    const expected=p.request.type==='join'?'joined':
-+      p.request.type==='family-subscribe'?'family-state':'admin-rooms-update';
-+    if(capture.ack?.type!==expected){fail('subscription-rejected');return true;}
-+    if(p.source){
-+      p.source.relayRetired=true;p.source.ws.isAdmin=false;p.source.ws.familyTourCode=null;
-+      if(p.source.currentRoom?.clients.has(p.source.clientId))
-+        removeClientFromRoom(p.source.currentRoom,p.source.clientId,0);
-+    }
-+    if(p.request.type==='join')capture.ack.room=serializeRoom(ctx.currentRoom,p.request.role==='guide');
-+    const envelope=JSON.stringify({type:'handoff-committed',handoffId:p.id,ack:capture.ack});
-+    ctx.rysCommittedHandoff={id:p.id,envelope};
-+    clearRysHandoff(ctx);ctx.ws.send(envelope);
-+  }catch(e){
-+    clearRysHandoff(ctx);
-+    try{reply({type:'handoff-error',code:'commit-failed'});}catch(ignore){}
-+    try{ctx.ws.close();}catch(ignore){}
-+  }finally{ctx.rysAckCapture=null;}
-+  return true;
-+}
-+
- // PATCH: relay-auth-v53
- function applyRysRelayAuth(session,req,token,context){
-   const authenticated=!!(isRequestAuthenticated(req)||isValidAuthToken(token)||isValidAuthToken(context?.token));
-@@ -1417,6 +1557,12 @@
-     return res.json({clientId:session.clientId,messages:errors.length?errors:
-       [{type:'pin-error',message:'Kafile/oda katılımı reddedildi; PIN ve yetkiyi kontrol edin.'}]});
-   }
-+  if(session.relayKey&&context){
-+    const digest=digestRysSubscription(context);
-+    if(session.relayDigest!==digest){session.relayDigest=digest;session.relayRevision=(session.relayRevision||0)+1;}
-+  }
-+  if(session.relayKey&&!context&&messages.some(m=>['join','family-subscribe','admin-subscribe'].includes(m?.type)))
-+    return res.status(400).json({error:'relay-context-required'});
-   for(const m of messages){
-     if(!m||typeof m!=='object')continue;
-     // Explicit context is the latest subscription. Do not replay stale queued joins.
-@@ -1427,10 +1573,13 @@
- }
- 
- app.post('/api/ws-relay',(req,res)=>{
-+  if(req.body?.type==='relay-open'&&req.body.version===56)return openRysRelay56(res);
-+  if(req.body?.type==='relay-close'&&req.body.version===56)return closeRysRelay56(req,res);
-   const {clientId,messages,joinContext,subscriptionContext,token}=req.body||{};
-   const context=subscriptionContext||joinContext||null;
-   const list=Array.isArray(messages)?messages:req.body?.message?[req.body.message]:[];
--  return serveRysRelay(getOrCreateRelaySession(clientId),req,res,token,context,list);
-+  const session=resolveRysRelay(req,res,req.body||{});if(!session)return;
-+  return serveRysRelay(session,req,res,token,context,list);
- });
- app.get('/api/ws-relay',(req,res)=>{
-   // Legacy GET is retained. Existing joined sessions need not repeat their PIN.
-@@ -1442,7 +1591,8 @@
-       name:q.name||'',pin:q.pin||'',token:q.token,
-       ...(q.deviceId!==undefined?{deviceId:q.deviceId}:{}),
-       ...(q.phone!==undefined?{phone:q.phone}:{}),...(q.lang!==undefined?{lang:q.lang}:{})}:null;
--  return serveRysRelay(getOrCreateRelaySession(q.clientId),req,res,q.token,context);
-+  const session=resolveRysRelay(req,res,q);if(!session)return;
-+  return serveRysRelay(session,req,res,q.token,context);
- });
- 
- // ======================== REST API ENDPOINTS ========================
+   }else s=s||getOrCreateRelaySession(id);
+   if(s.relayRetired){res.status(409).json({error:'relay-session-retired'});return null;}
+   s.lastSeen=Date.now();return s;
 diff --git a/scripts/verify-system.js b/scripts/verify-system.js
 --- a/scripts/verify-system.js
 +++ b/scripts/verify-system.js
-@@ -575,6 +575,7 @@
-   await runV53RelayRoundTrip({baseUrl,token:authToken});
+@@ -576,6 +576,7 @@
    await runV54RelayRoundTrip({baseUrl,url:wsUrl,token:authToken});
    await runV55RelayEdgeChecks({baseUrl,url:wsUrl,token:authToken});
-+  await runV56HandoffChecks({baseUrl,url:wsUrl,token:authToken});
+   await runV56HandoffChecks({baseUrl,url:wsUrl,token:authToken});
++  await runV57RoutingChecks({baseUrl,url:wsUrl,token:authToken});
  
    guideGenelWs.close();
    pilgrimWs.close();
-@@ -1224,7 +1225,7 @@
-     }
-   }).c;
-   const relay=new hc.R();Object.assign(relay,{readyState:1,_isRelay:true,_inFlight:false,_sendQueue:[],
--    _clientId:'unit',_joinContext:{},_busConnected:()=>false,_deliverIncomingMessage(){delivered++;},_closeMqttClients(){}});
-+    _clientId:'unit',_relayClientId:'legacy-unit',_relayKey:'unit',_joinContext:{},_busConnected:()=>false,_deliverIncomingMessage(){delivered++;},_closeMqttClients(){}});
-   relay._enqueueRelayMessage({type:'ping'});const flight=relay._flushAndPoll();
-   relay._enqueueRelayMessage({type:'join'});await relay._flushAndPoll();assert.equal(fetchCalls,1);
-   resolveFirst();await flight;assert.equal(delivered,1);assert.equal(httpJobs.length,1);
-@@ -1314,12 +1315,14 @@
-   const fail=makeRelay();fail._tryNativeFailback();let probe=probes.at(-1);probe.onopen();
-   probe.onmessage({data:JSON.stringify({type:'auth-error'})});assert(fail._isRelay);assert.equal(fail._audioCoalescer.frames.length,2);
-   const wrong=makeRelay();wrong._tryNativeFailback();probe=probes.at(-1);probe.onopen();
--  probe.onmessage({data:JSON.stringify({type:'joined',room:{tourCode:'RY-KASIM',roomId:'wrong'}})});assert(wrong._isRelay);
-+  probe.onmessage({data:JSON.stringify({type:'handoff-prepared',handoffId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'})});
-+  probe.onmessage({data:JSON.stringify({type:'handoff-committed',handoffId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',ack:{type:'joined',room:{tourCode:'RY-KASIM',roomId:'wrong'}}})});assert(wrong._isRelay);
-   const stale=makeRelay();stale._tryNativeFailback();probe=probes.at(-1);probe.onopen();stale._transportGeneration++;
--  probe.onmessage({data:JSON.stringify({type:'joined',room:{tourCode:'RY-KASIM',roomId:'a'}})});assert(stale._isRelay);
-+  probe.onmessage({data:JSON.stringify({type:'handoff-prepared',handoffId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'})});assert(stale._isRelay);
-   const success=makeRelay();success._tryNativeFailback();probe=probes.at(-1);probe.onopen();
-   assert(success._isRelay);assert.equal(closedMqtt,0);
--  probe.onmessage({data:JSON.stringify({type:'joined',room:{tourCode:'RY-KASIM',roomId:'a'}})});
-+  probe.onmessage({data:JSON.stringify({type:'handoff-prepared',handoffId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'})});assert(success._isRelay);
-+  probe.onmessage({data:JSON.stringify({type:'handoff-committed',handoffId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',ack:{type:'joined',room:{tourCode:'RY-KASIM',roomId:'a'}}})});
-   assert(!success._isRelay);assert.equal(opened,1);assert.equal(closedMqtt,1);
-   const batch=probe.sent.find(m=>Array.isArray(m.frames));assert(batch);assert.deepEqual(Array.from(batch.frames,m=>m.seq),[10,11]);
-   assert(probe.sent.some(m=>m.type==='guide-stream-state'&&m.isLive));
-@@ -1498,9 +1501,12 @@
-     t.install(s);s._audioCoalescer.push(audio(10));s._audioCoalescer.push(audio(11));
-     const oldJob=jobs.at(-1);s._tryNativeFailback();const probe=probes.at(-1);probe.onopen();assert(s._isRelay);
-     const type=mode==='join'?'joined':mode==='family-subscribe'?'family-state':'admin-rooms-update';
--    probe.onmessage({data:JSON.stringify({type,room:{tourCode:'RY-KASIM',roomId:'a'},tourCode:'RY-KASIM'})});
-+    probe.onmessage({data:JSON.stringify({type:'handoff-prepared',handoffId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'})});assert(s._isRelay);
-+    probe.onmessage({data:JSON.stringify({type:'handoff-committed',handoffId:'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',ack:{type,room:{tourCode:'RY-KASIM',roomId:'a'},tourCode:'RY-KASIM'}})});
-     assert(!s._isRelay);assert.deepEqual(order,['ack','open']);
--    assert.equal(probe.sent.filter(m=>m.type===mode).length,1,'Exactly one native subscription for '+mode);
-+    assert.equal(probe.sent.filter(m=>m.type==='handoff-prepare'&&m.subscription.type===mode).length,1);
-+    assert.equal(probe.sent.filter(m=>m.type==='handoff-commit').length,1);
-+    assert.equal(probe.sent.filter(m=>m.type===mode).length,0,'No ordinary duplicate subscription for '+mode);
-     const seqs=probe.sent.flatMap(m=>m.frames?m.frames.map(f=>f.seq):[]);
-     assert.deepEqual(seqs,[8,9,10,11]);const count=probe.sent.length;oldJob();assert.equal(probe.sent.length,count);
-     s.close();
-@@ -1511,18 +1517,18 @@
+@@ -1215,7 +1216,7 @@
+   const good={readyState:1,bufferedAmount:0,send(){fast++;}};
+   fan.broadcastToRoom({clients:new Map([[1,{ws:throws}],[2,{ws:good}]])},{type:'audio-chunk'});assert.equal(fast,1);
+   let httpJobs=[],fetchCalls=0,resolveFirst,delivered=0,fetchSignal;
+-  const relayMethods=['_enqueueRelayMessage','_flushAndPoll','close'].map(n=>pick(shim,n,'method')).join('\n');
++  const relayMethods=['_relayRoutingKey','_enqueueRelayMessage','_flushAndPoll','close'].map(n=>pick(shim,n,'method')).join('\n');
+   const hc=box('class Relay{'+relayMethods+'}\nglobalThis.R=Relay;','',{
+     Date:{now:()=>0},setTimeout:()=>1,clearTimeout(){},queueMicrotask:f=>httpJobs.push(f),
+     localStorage:{getItem:()=>''},fetch:(url,options)=>{
+@@ -1513,7 +1514,7 @@
+   }
+   assert.equal(opened,3);assert.equal(acks,3);
+   // Empty poll: family/admin never fabricate a pilgrim join; PIN stays in POST.
+-  const bodies=[],relay=box('class Relay{'+pick(shim,'_flushAndPoll','method')+'}\nglobalThis.R=Relay;','',{
++  const bodies=[],relay=box('class Relay{'+pick(shim,'_relayRoutingKey','method')+pick(shim,'_flushAndPoll','method')+'}\nglobalThis.R=Relay;','',{
      localStorage:{getItem:()=>''},fetch:async(url,opts)=>{assert.equal(url,'/api/ws-relay');assert.equal(opts.method,'POST');
        bodies.push(JSON.parse(opts.body));return {ok:true,json:async()=>({messages:[]})};}}).c;
    for(const connected of [false,true])for(const mode of ['family-subscribe','admin-subscribe','join']){
--    const s=new relay.R();Object.assign(s,{readyState:1,_isRelay:true,_sendQueue:[],_clientId:'unit',
-+    const s=new relay.R();Object.assign(s,{readyState:1,_isRelay:true,_sendQueue:[],_clientId:'unit',_relayClientId:'legacy-unit',_relayKey:'unit',
-       _subscriptionType:mode,_joinContext:{type:'join',tourCode:'X',role:'pilgrim',pin:'1453',deviceId:'device'},
-       _busConnected:()=>connected,_deliverIncomingMessage(){},_enqueueRelayMessage(){}});
-     const before=bodies.length;await s._flushAndPoll();
-     assert.equal(bodies.length,before+1,'Broker connectivity must not suppress empty polling');
-     const body=bodies.at(-1);assert.equal(body.subscriptionContext.type,mode);
--    if(mode!=='join')assert.equal(body.joinContext,null);
-+    if(mode!=='join')assert.equal(body.joinContext??null,null);
+@@ -1526,9 +1527,9 @@
+     if(mode!=='join')assert.equal(body.joinContext??null,null);
      else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
    }
--  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v55"));assert(sw.includes('/vercel-ws-shim.js?v=55'));
-+  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v56"));assert(sw.includes('/vercel-ws-shim.js?v=56'));
+-  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v56"));assert(sw.includes('/vercel-ws-shim.js?v=56'));
++  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v57"));assert(sw.includes('/vercel-ws-shim.js?v=57'));
    for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
--    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'55',f+' stale shim');
-+    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'56',f+' stale shim');
+-    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'56',f+' stale shim');
++    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'57',f+' stale shim');
    }
    if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
    console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
-@@ -1586,7 +1592,7 @@
-     vm.runInContext('class Relay{'+source.slice(begin,end)+'}\nglobalThis.R=Relay;',sandbox);
-     const make=(mode,context,id)=>{
-       const r=new sandbox.R(),delivered=[];
--      Object.assign(r,{readyState:1,_isRelay:true,_clientId:id,_subscriptionType:mode,_joinContext:context,
-+      Object.assign(r,{readyState:1,_isRelay:true,_clientId:id,_relayClientId:id,_relayKey:'unit',_subscriptionType:mode,_joinContext:context,
-         _sendQueue:[],_busConnected:()=>true,_deliverIncomingMessage:m=>delivered.push(m),_enqueueRelayMessage(){}});
-       return {r,delivered};
-     };
-@@ -1620,6 +1626,263 @@
-   }
+@@ -1581,7 +1582,7 @@
+     assert.equal(afterPhone.name,'Updated name');assert.equal(afterPhone.phone,'updated-phone');assert.equal(afterPhone.lang,'ar');
+     await post({clientId:cid,subscriptionContext:phoneOnly,messages:[]});
+     const source=fs.readFileSync(path.join(ROOT_DIR,'public/vercel-ws-shim.js'),'utf8').replace(/\r\n/g,'\n');
+-    const begin=source.indexOf('    async _flushAndPoll(){');
++    const begin=source.indexOf('    _relayRoutingKey(){');
+     const end=source.indexOf('\n    // PATCH: shim-close',begin);
+     assert(begin>=0&&end>begin);
+     let browserToken='',fetchCount=0;
+@@ -1883,6 +1884,138 @@
+   console.log('V56 UNIT PASS: expired/revoked prepare has no side effects; lost ACK recovers with fresh HTTP ID; no source-ID resurrection');
  }
  
-+async function runV56HandoffChecks({baseUrl,url,token}){
-+  const assert=require('node:assert/strict'),{WebSocket}=require('ws');
-+  const stamp=Date.now().toString(36),code='RY-V56-'+stamp.toUpperCase(),sockets=[];
-+  const post=async body=>{
-+    const r=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-+    return {status:r.status,...await r.json()};
-+  };
-+  const open=async extra=>{
-+    const r=await post({type:'relay-open',version:56,...extra});
-+    assert.equal(r.status,200);assert(r.clientId.startsWith('rys56-'));assert(/^[0-9a-f]{48}$/.test(r.relayKey));
-+    return {clientId:r.clientId,relayKey:r.relayKey};
-+  };
++async function runV57RoutingChecks({baseUrl,url,token}){
++  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict'),{WebSocket}=require('ws');
++  const stamp=Date.now().toString(36),a='RY-V57-A-'+stamp.toUpperCase(),b='RY-V57-B-'+stamp.toUpperCase();
++  const headers={'Content-Type':'application/json',Authorization:'Bearer '+token};
 +  const wait=async predicate=>{
 +    const until=Date.now()+2500;while(!predicate()){
-+      if(Date.now()>until)throw Error('V56 WS deadline');await new Promise(r=>setTimeout(r,5));
++      if(Date.now()>until)throw Error('V57 routing deadline');await new Promise(r=>setTimeout(r,5));
 +    }
 +  };
-+  const socket=async()=>{
-+    const ws=new WebSocket(url),messages=[];let closed=false;sockets.push(ws);
-+    ws.on('message',(raw,binary)=>{if(!binary)try{messages.push(JSON.parse(raw.toString()));}catch(e){}});
-+    ws.on('close',()=>closed=true);
-+    await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});
-+    return {ws,messages,closed:()=>closed};
-+  };
-+  const prepare=async(s,source,subscription)=>{
-+    s.ws.send(JSON.stringify({type:'handoff-prepare',relayClientId:source?.clientId||null,
-+      relayKey:source?.relayKey||null,subscription}));
-+    await wait(()=>s.messages.some(m=>m.type==='handoff-prepared'||m.type==='handoff-error'));
-+    const prepared=s.messages.find(m=>m.type==='handoff-prepared');assert(prepared,'Prepare rejected');
-+    return prepared.handoffId;
-+  };
-+  const commit=async(s,id)=>{
-+    s.ws.send(JSON.stringify({type:'handoff-commit',handoffId:id}));
-+    await wait(()=>s.messages.some(m=>m.type==='handoff-committed'||m.type==='handoff-error'));
-+    return s.messages.find(m=>m.type==='handoff-committed');
-+  };
-+  const media=seq=>({type:'audio-chunk',seq,sentAt:Date.now(),sampleRate:24000,pcm16:Buffer.alloc(960).toString('base64')});
-+  const guide={type:'join',role:'guide',tourCode:code,roomId:'genel',name:'V56 guide '+stamp,deviceId:'v56-guide-'+stamp,token};
-+  const pilgrim={type:'join',role:'pilgrim',tourCode:code,roomId:'genel',name:'V56 listener',deviceId:'v56-listener-'+stamp,pin:'1453'};
-+  const headers={'Content-Type':'application/json',Authorization:'Bearer '+token};
++  let listener,socket;
 +  try{
-+    assert.equal((await fetch(baseUrl+'/api/tours',{method:'POST',headers,
-+      body:JSON.stringify({code,name:'V56 handoff regression',pin:'1453',guideName:guide.name})})).status,200);
-+    const source=await open({subscriptionContext:guide,messages:[guide]});
-+    const before=await post({clientId:'v56-family-view-'+stamp,subscriptionContext:{type:'family-subscribe',tourCode:code}});
-+    assert.equal(before.messages.find(m=>m.type==='family-state').room.connectedGuides.length,0,'relay-open must have no join side effect');
-+    assert.equal((await post({...source,token,subscriptionContext:guide,messages:[guide,{type:'guide-stream-state',isLive:true,broadcastMode:'mic'}]})).status,200);
-+    const listener=await open();await post({...listener,subscriptionContext:pilgrim,messages:[pilgrim]});
-+    // Prepare/cancel leaves the old HTTP publisher usable.
-+    const canceled=await socket();await prepare(canceled,source,guide);
-+    await post({...source,token,subscriptionContext:guide,messages:[media(0)]});
-+    assert((await post({...listener,subscriptionContext:pilgrim})).messages.some(m=>m.type==='audio-chunk'&&m.seq===0));
-+    canceled.ws.send(JSON.stringify({type:'handoff-cancel'}));canceled.ws.close();
-+    assert.equal((await post({...source,token,subscriptionContext:guide,messages:[]})).status,200);
-+    // A changed HTTP context invalidates a prepared ticket without moving membership.
-+    const changed=await socket(),changedId=await prepare(changed,source,guide);
-+    const moved={...guide,roomId:'siyer'};
-+    await post({...source,token,subscriptionContext:moved,messages:[]});
-+    assert.equal(await commit(changed,changedId),undefined);
-+    assert(changed.messages.some(m=>m.type==='handoff-error'&&m.code==='context-changed'));changed.ws.close();
-+    await post({...source,token,subscriptionContext:guide,messages:[{type:'guide-stream-state',isLive:true,broadcastMode:'mic'}]});
-+    // Commit is the server's linearization point. Every late old request is fenced.
-+    const native=await socket(),id=await prepare(native,source,guide);
-+    const committed=await commit(native,id);assert.equal(committed?.ack?.type,'joined');
-+    assert.equal(committed.ack.room.connectedGuides.length,1);
-+    for(let n=0;n<3;n++){
-+      const late=await post({...source,token,subscriptionContext:guide,messages:[media(10+n)]});
-+      assert.equal(late.status,409);assert.equal(late.error,'relay-session-retired');
-+    }
-+    const roomEvents=native.messages.filter(m=>m.type==='room-state').length;
-+    native.ws.send(JSON.stringify({type:'handoff-commit',handoffId:id}));
-+    await wait(()=>native.messages.filter(m=>m.type==='handoff-committed').length===2);
-+    assert.equal(native.messages.filter(m=>m.type==='room-state').length,roomEvents,'Commit retry must not rejoin');
-+    assert.equal((await post({type:'relay-close',version:56,...source})).status,200);
-+    const binary=Buffer.alloc(972);binary.writeUInt32LE(3,0);binary.writeDoubleLE(Date.now(),4);
-+    native.ws.send(binary);await new Promise(r=>setTimeout(r,25));
-+    assert((await post({...listener,subscriptionContext:pilgrim})).messages.some(m=>m.type==='audio-chunk'&&m.seq===3));
-+    assert(!native.closed(),'Late relay request must not terminate the native socket');
-+    assert.equal((await post({clientId:source.clientId,relayKey:'g'.repeat(48)})).status,401);
-+    assert.equal((await post({clientId:source.clientId,relayKey:'ğ'.repeat(48)})).status,401);
-+    assert.equal((await post({clientId:'rys56-'+'f'.repeat(36),relayKey:'b'.repeat(48)})).status,409);
-+    const get=await fetch(baseUrl+'/api/ws-relay?'+new URLSearchParams({clientId:listener.clientId}));
-+    assert.equal(get.status,401,'A public clientId alone must not drain a v56 outbox');
-+    const preflight=await fetch(baseUrl+'/api/ws-relay',{method:'OPTIONS',headers:{
-+      Origin:'https://ridvanses.vercel.app','Access-Control-Request-Method':'GET',
-+      'Access-Control-Request-Headers':'x-rys-relay-key'}});
-+    assert((preflight.headers.get('access-control-allow-headers')||'').toLowerCase().includes('x-rys-relay-key'));
-+    const keyedGet=await fetch(baseUrl+'/api/ws-relay?'+new URLSearchParams({clientId:listener.clientId}),
-+      {headers:{'X-Rys-Relay-Key':listener.relayKey}});
-+    assert.equal(keyedGet.status,200);
-+    const urlKey=await fetch(baseUrl+'/api/ws-relay?'+new URLSearchParams({clientId:listener.clientId,relayKey:listener.relayKey}));
-+    assert.equal(urlKey.status,401,'Relay key must not be accepted from a GET URL');
-+    // Pilgrim without deviceId still transfers exactly one membership; PIN is rechecked.
-+    for(const subscription of [
-+      {...pilgrim,deviceId:'',name:'V56 no-device listener',phone:'preserved-phone',lang:'ar'},
-+      {type:'family-subscribe',tourCode:code},
-+      {type:'admin-subscribe',token}
-+    ]){
-+      const old=await open();await post({...old,token:subscription.type==='admin-subscribe'?token:undefined,
-+        subscriptionContext:subscription,messages:[subscription]});
-+      if(subscription.type==='join'){
-+        const wrong=await socket();wrong.ws.send(JSON.stringify({type:'handoff-prepare',relayClientId:old.clientId,relayKey:old.relayKey,
-+          subscription:{...subscription,pin:'wrong'}}));
-+        await wait(()=>wrong.messages.some(m=>m.type==='handoff-error'));
-+        assert(wrong.messages.some(m=>m.code==='pin-required'));wrong.ws.close();
-+        assert.equal((await post({...old,subscriptionContext:subscription})).status,200);
-+      }
-+      const target=await socket(),ticket=await prepare(target,old,subscription);
-+      const done=await commit(target,ticket);assert(done);
-+      assert.equal(done.ack.type,subscription.type==='join'?'joined':subscription.type==='family-subscribe'?'family-state':'admin-rooms-update');
-+      if(subscription.type==='join')assert.equal(done.ack.room.totalListeners,2);
-+      assert.equal((await post({...old,token,subscriptionContext:subscription})).status,409);
-+      target.ws.close();
-+    }
-+    // A fresh HTTP generation replaces and fences an abandoned v56 generation.
-+    const chainJoin={...guide,roomId:'chain',name:'V56 chain '+stamp,deviceId:'chain-'+stamp};
-+    const older=await open(),newer=await open();
-+    await post({...older,token,subscriptionContext:chainJoin});
-+    await post({...newer,token,subscriptionContext:chainJoin});
-+    assert.equal((await post({...older,token,subscriptionContext:chainJoin})).status,409);
-+    const chainNative=await socket(),chainTicket=await prepare(chainNative,newer,chainJoin);
-+    assert(await commit(chainNative,chainTicket));
-+    assert.equal((await post({...older,token,subscriptionContext:chainJoin})).status,409);
-+    chainNative.ws.close();
-+    // MQTT-only source: no HTTP session has joined, so no source fencing is needed.
-+    const lone=await socket(),loneId=await prepare(lone,null,{type:'family-subscribe',tourCode:code});
-+    assert.equal((await commit(lone,loneId)).ack.type,'family-state');lone.ws.close();
-+    if(typeof recordResult==='function')recordResult('ADIM-3.V56',
-+      'Gerçek HTTP/WS: yan etkisiz open/prepare, cancel, revision, commit/idempotans, eski istek409, native PCM, PIN ve3 abonelik',true);
-+    console.log('V56 E2E PASS: prepare has no membership side effect; committed source fenced; late requests cannot kill native');
++    for(const code of [a,b])assert.equal((await fetch(baseUrl+'/api/tours',{method:'POST',headers,
++      body:JSON.stringify({code,name:'V57 routing regression',guideName:'V57 guide'})})).status,200);
++    listener=new WebSocket(url);const received=[];
++    listener.on('message',(raw,binary)=>{if(!binary)try{received.push(JSON.parse(raw.toString()));}catch(e){}});
++    await new Promise((r,j)=>{listener.once('open',r);listener.once('error',j);});
++    listener.send(JSON.stringify({type:'join',role:'pilgrim',tourCode:b,roomId:'genel',name:'V57 B listener'}));
++    await wait(()=>received.some(m=>m.type==='joined'));
++    const source=fs.readFileSync(path.join(ROOT_DIR,'public/vercel-ws-shim.js'),'utf8').replace(/\r\n/g,'\n');
++    const begin=source.indexOf('  class SmartWebSocket {'),end=source.indexOf('\n  SmartWebSocket.CONNECTING',begin);
++    let release,notify;const opening=new Promise(r=>notify=r);const clock=Date.now();
++    const context={console,Buffer,Date:class extends Date{static now(){return clock;}},AbortController,ArrayBuffer,Float32Array,URLSearchParams,window:{},
++      NativeWebSocket:class{},localStorage:{getItem:()=>token},
++      setTimeout,clearTimeout,setInterval,clearInterval,queueMicrotask,
++      fetch:async(route,options)=>{
++        const body=JSON.parse(options.body),response=await fetch(baseUrl+route,options);
++        if(body.type==='relay-open'){
++          const data=await response.json();notify();await new Promise(r=>release=r);
++          return {ok:true,json:async()=>data};
++        }
++        return response;
++      }};
++    vm.createContext(context);vm.runInContext(source.slice(begin,end)+'\nglobalThis.S=SmartWebSocket;',context);
++    socket=Object.create(context.S.prototype);
++    const joinA={type:'join',role:'guide',tourCode:a,roomId:'genel',name:'V57 guide',token};
++    Object.assign(socket,{readyState:1,_isRelay:true,_httpEpoch:0,_transportGeneration:0,_joinContext:joinA,_subscriptionType:'join',
++      _sendQueue:[],_clientId:'logical-v57',_initMqttBus(){},_closeMqttClients(){},_publishMqtt(){},
++      _busConnected:()=>false,_deliverIncomingMessage(){},_audioCoalescer:{clear(){}}});
++    const unit=seq=>({type:'audio-chunk',seq,sampleRate:24000,sentAt:clock,pcm16:Buffer.alloc(960).toString('base64')});
++    socket._sendQueue.push({type:'audio-chunk',frames:[unit(77)],_queuedAt:clock},
++      {type:'quick-announcement',message:'OLD-A',title:'A only'});
++    const flight=socket._flushAndPoll();await opening;
++    socket.send(JSON.stringify({...joinA,tourCode:b}));
++    socket._enqueueRelayMessage({type:'audio-chunk',frames:[unit(88)],_queuedAt:clock});
++    socket.send(JSON.stringify({type:'quick-announcement',title:'B only',message:'NEW-B'}));
++    release();await flight;
++    await wait(()=>received.some(m=>m.type==='audio-chunk'&&m.seq===88)&&
++      received.some(m=>m.type==='new-announcement'&&m.announcement?.message==='NEW-B'));
++    assert(!received.some(m=>m.type==='audio-chunk'&&m.seq===77),'Old A PCM must not be posted under B context');
++    assert(!received.some(m=>m.type==='new-announcement'&&m.announcement?.message==='OLD-A'),'Old A command must not reach B');
++    if(typeof recordResult==='function')recordResult('ADIM-3.V57',
++      'Gerçek HTTP/WS: relay-open sırasında kafile değişimi eski PCM/kontrolü yeni kafileye taşımadı; yeni ses/kontrol ulaştı',true);
++    console.log('V57 E2E PASS: delayed relay-open + A-to-B switch; old PCM/control dropped; fresh B PCM/control delivered');
 +  }finally{
-+    for(const ws of sockets)ws.close();
-+    await fetch(baseUrl+'/api/tours/'+code,{method:'DELETE',headers:{Authorization:'Bearer '+token}});
++    socket?.close();listener?.close();
++    for(const code of [a,b])await fetch(baseUrl+'/api/tours/'+code,{method:'DELETE',headers:{Authorization:'Bearer '+token}});
 +  }
 +}
 +
-+async function runStep5V56HandoffChecks(){
-+  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),crypto=require('node:crypto');
-+  const assert=require('node:assert/strict'),read=f=>fs.readFileSync(path.join(ROOT_DIR,f),'utf8').replace(/\r\n/g,'\n');
++async function runStep5V57RoutingChecks(){
++  const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
++  const read=f=>fs.readFileSync(path.join(ROOT_DIR,f),'utf8').replace(/\r\n/g,'\n');
++  const server=read('server.js'),shim=read('public/vercel-ws-shim.js');
 +  function pick(text,name,kind='function'){
 +    const head=kind==='class'?'class ':kind==='method'?'(?:async )?':'(?:async )?function ';
-+    const m=new RegExp('^([ \\t]*)'+head+name+(kind==='class'?'\\b':'\\([^\\n]*\\)\\s*\\{'),'m').exec(text);
-+    assert(m,'Missing '+name);
++    const m=new RegExp('^([ \\t]*)'+head+name+(kind==='class'?'\\b':'\\([^\\n]*\\)\\s*\\{'),'m').exec(text);assert(m,'Missing '+name);
 +    for(let end=text.indexOf('}',m.index+m[0].length);end>=0;end=text.indexOf('}',end+1)){
 +      const code=text.slice(m.index,end+1).trim();
 +      try{new vm.Script(kind==='method'?'class Probe{'+code+'}':code);return code;}catch(e){if(e.name!=='SyntaxError')throw e;}
 +    }
 +    throw Error('Unterminated '+name);
 +  }
-+  const server=read('server.js'),shim=read('public/vercel-ws-shim.js');
-+  const names=['resolveRysRelay','digestRysSubscription','sendRysSubscriptionAck','clearRysHandoff','validateRysHandoff','handleRysNativeHandoff'];
-+  let now=1000,allowed=true,joins=0,created=0;
-+  const sessions=new Map(),serverJobs=[];
-+  const sc={crypto,Buffer,console,Date:{now:()=>now},httpRelaySessions:sessions,db:{tours:[]},
-+    isValidAuthToken:t=>allowed&&t==='good',
-+    getOrCreateRelaySession(){created++;throw Error('Unknown v56 ID must not be recreated');},
-+    setTimeout(fn){serverJobs.push(fn);return {unref(){}};},clearTimeout(){},
-+    removeClientFromRoom(room,id){room.clients.delete(id);},
-+    serializeRoom:room=>({members:room.clients.size}),
-+    processClientJsonMessage(ctx,request){
-+      joins++;ctx.currentRoom=activeSource.currentRoom;
-+      ctx.currentRoom.clients.set(ctx.clientId,{role:'guide',name:request.name});
-+      sc.sendRysSubscriptionAck(ctx,{type:'joined',room:{members:ctx.currentRoom.clients.size}});
-+    }};
-+  vm.createContext(sc);vm.runInContext(names.map(n=>pick(server,n)).join('\n'),sc);
-+  let activeSource;
-+  const request={type:'join',role:'guide',token:'good',tourCode:'X',roomId:'genel',name:'Guide',deviceId:'d'};
-+  const make=()=>{
-+    const source={clientId:'rys56-unit',relayKey:'b'.repeat(48),relayRevision:1,relayRetired:false,ws:{},
-+      currentRoom:{clients:new Map([['rys56-unit',{role:'guide',name:'Guide',deviceId:'d'}]])}};
-+    source.relayDigest=sc.digestRysSubscription(request);sessions.set(source.clientId,source);activeSource=source;
-+    const sent=[],ctx={clientId:'native',currentRoom:null,ws:{send:s=>sent.push(JSON.parse(s)),close(){}}};
-+    sc.handleRysNativeHandoff(ctx,{type:'handoff-prepare',subscription:request,relayClientId:source.clientId,relayKey:source.relayKey});
-+    const id=sent.find(m=>m.type==='handoff-prepared').handoffId;
-+    return {source,ctx,sent,id};
-+  };
-+  let a=make();assert.equal(joins,0);now+=4000;
-+  sc.handleRysNativeHandoff(a.ctx,{type:'handoff-commit',handoffId:a.id});
-+  assert(a.sent.some(m=>m.code==='prepare-expired'));assert(!a.source.relayRetired);assert.equal(joins,0);
-+  a=make();sc.handleRysNativeHandoff(a.ctx,{type:'handoff-cancel'});assert(!a.ctx.rysHandoff);assert.equal(joins,0);
-+  a=make();allowed=false;sc.handleRysNativeHandoff(a.ctx,{type:'handoff-commit',handoffId:a.id});
-+  assert(a.sent.some(m=>m.code==='auth-required'));assert(!a.source.relayRetired);assert.equal(joins,0);allowed=true;
-+  a=make();sc.handleRysNativeHandoff(a.ctx,{type:'handoff-commit',handoffId:a.id});
-+  assert(a.source.relayRetired);assert.equal(joins,1);assert.equal(a.source.currentRoom.clients.size,1);
-+  sc.handleRysNativeHandoff(a.ctx,{type:'handoff-commit',handoffId:a.id});assert.equal(joins,1);
-+  sessions.delete(a.source.clientId);
-+  let status=200;const res={status(n){status=n;return this;},json(){return this;}};
-+  assert.equal(sc.resolveRysRelay({headers:{},method:'POST'},res,{clientId:a.source.clientId,relayKey:a.source.relayKey}),null);
-+  assert.equal(status,409);assert.equal(created,0,'Cleanup must not let a retired ID be recreated');
-+
-+  // Client: commit was sent, HTTP reports retired, but the commit ACK is lost.
++  // Run the real periodic callback with no getOrCreate/new-session traffic.
++  const map=new Map(),removed=[];let heartbeat;
++  map.set('rys56-idle',{lastSeen:0,currentRoom:{},relayKey:'b'.repeat(48),ws:{}});
++  map.set('rys56-live',{lastSeen:59000,relayKey:'c'.repeat(48),ws:{}});
++  const sc={httpRelaySessions:map,Date:{now:()=>60000},Buffer,crypto:require('node:crypto'),wss:{clients:new Set()},
++    removeClientFromRoom:(room,id)=>removed.push(id),setInterval(fn,ms){assert.equal(ms,30000);heartbeat=fn;return 1;},
++    getOrCreateRelaySession(){throw Error('Must not create an expired opaque ID');}};
++  vm.createContext(sc);
++  const first=server.indexOf('const heartbeatTimer = setInterval('),last=server.indexOf("\nwss.on('close'",first);
++  vm.runInContext(pick(server,'cleanupStaleRelaySessions')+'\n'+pick(server,'resolveRysRelay')+'\n'+server.slice(first,last),sc);
++  heartbeat();assert(!map.has('rys56-idle'));assert(map.has('rys56-live'));assert.deepEqual(removed,['rys56-idle']);
++  // Requests themselves enforce the 35s boundary, including before the next sweep.
++  const respond=()=>({statusCode:200,status(n){this.statusCode=n;return this;},json(m){this.body=m;return this;}});
++  map.set('rys56-edge',{lastSeen:25000,relayKey:'d'.repeat(48),ws:{}});let response=respond();
++  assert(sc.resolveRysRelay({headers:{},method:'POST'},response,{clientId:'rys56-edge',relayKey:'d'.repeat(48)}));
++  assert.equal(response.statusCode,200); // Exactly 35000ms is still valid, matching cleanup's > comparison.
++  map.set('rys56-expired',{lastSeen:24999,relayKey:'e'.repeat(48),ws:{},currentRoom:{}});
++  response=respond();
++  assert.equal(sc.resolveRysRelay({headers:{},method:'POST'},response,{clientId:'rys56-expired',relayKey:'e'.repeat(48)}),null);
++  assert.equal(response.statusCode,409);assert.equal(response.body.error,'relay-session-expired');assert(!map.has('rys56-expired'));
++  // Client: reject stale responses/retries when the route changed, preserve retries for the same route.
++  let resolveFetch,rejectFetch;const delivered=[],microtasks=[];
++  const cc={console,Buffer,Date,AbortController,ArrayBuffer,Float32Array,URLSearchParams,window:{},NativeWebSocket:class{},
++    localStorage:{getItem:()=>''},setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,clearInterval(){},
++    queueMicrotask:fn=>microtasks.push(fn),
++    fetch:()=>new Promise((resolve,reject)=>{resolveFetch=resolve;rejectFetch=reject;})};
 +  const helpers=['validRysAudio','unpackRysAudio','installRysCoalescing'].map(n=>pick(shim,n)).join('\n');
-+  const probes=[],jobs=[];let fetchMode='retired',delivered=0,mqttClosed=0,published=0,resolveOpen;
-+  const bodies=[];
-+  class Native{constructor(){this.readyState=1;this.sent=[];probes.push(this);}send(s){this.sent.push(JSON.parse(s));}close(){this.readyState=3;}}
-+  const cc={console,Buffer,Date:{now:()=>100},AbortController,ArrayBuffer,Float32Array,URLSearchParams,
-+    NativeWebSocket:Native,window:{},localStorage:{getItem:()=>''},
-+    setTimeout(fn,ms){const job={fn,ms};jobs.push(job);return job;},clearTimeout(){},setInterval:()=>1,clearInterval(){},queueMicrotask,
-+    fetch:async(route,options)=>{
-+      const body=JSON.parse(options.body);bodies.push(body);
-+      if(body.type==='relay-close')return {ok:true,json:async()=>({closed:true})};
-+      if(fetchMode==='offline')throw Error('API offline');
-+      if(body.type==='relay-open'){
-+        if(fetchMode==='deferred')return new Promise(r=>resolveOpen=r);
-+        return {ok:true,json:async()=>({clientId:'rys56-new',relayKey:'c'.repeat(48)})};
-+      }
-+      if(fetchMode==='retired')return {ok:false,status:409,json:async()=>({error:'relay-session-retired'})};
-+      return {ok:true,json:async()=>({messages:[{type:'room-state'}]})};
-+    }};
 +  vm.createContext(cc);vm.runInContext(helpers+'\n'+pick(shim,'RysAudioCoalescer','class')+'\n'+
-+    pick(shim,'SmartWebSocket','class')+'\nglobalThis.S=SmartWebSocket;globalThis.install=installRysCoalescing;',cc);
-+  const client=()=>{
++    pick(shim,'SmartWebSocket','class')+'\nglobalThis.S=SmartWebSocket;',cc);
++  const make=()=>{
 +    const s=Object.create(cc.S.prototype);
-+    Object.assign(s,{url:'wss://local/ws',readyState:1,_isRelay:true,_httpEpoch:0,_transportGeneration:0,
-+      _clientId:'stable-mqtt-identity',_relayClientId:'rys56-old',_relayKey:'b'.repeat(48),
-+      _subscriptionType:'join',_joinContext:{...request},_sendQueue:[],
-+      _lastGuideState:{type:'guide-stream-state',isLive:true,broadcastMode:'mic'},
-+      _busConnected:()=>true,_initMqttBus(){},_publishMqtt(){published++;},
-+      _closeMqttClients(){mqttClosed++;},_deliverIncomingMessage(){delivered++;},onmessage(){},onerror(){}});
-+    cc.install(s);return s;
++    Object.assign(s,{readyState:1,_isRelay:true,_relayClientId:'rys56-ready',_relayKey:'b'.repeat(48),
++      _joinContext:{type:'join',role:'guide',tourCode:'A',roomId:'genel'},_subscriptionType:'join',_sendQueue:[],
++      _initMqttBus(){},_publishMqtt(){},_busConnected:()=>false,_audioCoalescer:{clear(){}},
++      _deliverIncomingMessage:m=>delivered.push(m)});
++    return s;
 +  };
-+  const c=client();c._tryNativeFailback();const probe=probes.at(-1);probe.onopen();
-+  const handoffId='a'.repeat(32);probe.onmessage({data:JSON.stringify({type:'handoff-prepared',handoffId})});
-+  assert(probe.sent.some(m=>m.type==='handoff-commit'));
-+  await c._flushAndPoll();assert(c._relayFenced);assert.equal(c._relayClientId,'rys56-old');
-+  const sent=bodies.length;await c._flushAndPoll();assert.equal(bodies.length,sent,'Do not reopen while commit ACK is pending');
-+  jobs.find(j=>j.ms===5000).fn();
-+  assert(c._isRelay);assert.equal(c._relayClientId,null);assert.equal(c._relayKey,null);assert(!c._relayFenced);
-+  assert.equal(mqttClosed,0,'Failed failback must keep MQTT active');
-+  fetchMode='normal';await c._flushAndPoll();
-+  assert.equal(c._relayClientId,'rys56-new');assert.equal(c._clientId,'stable-mqtt-identity');
-+  const normal=bodies.filter(b=>b.subscriptionContext).at(-1);
-+  assert.equal(normal.clientId,'rys56-new');assert(normal.messages.some(m=>m.type==='guide-stream-state'&&m.isLive));
-+  const closing=client();closing._relayClientId=null;closing._relayKey=null;fetchMode='deferred';
-+  const flight=closing._flushAndPoll();closing.close();
-+  resolveOpen({ok:true,json:async()=>({clientId:'rys56-late',relayKey:'d'.repeat(48)})});
-+  await flight;assert.equal(closing.readyState,3);assert.equal(closing._relayClientId,null);
-+  // A source-less prepare must abort an in-flight open and keep new HTTP joins paused.
-+  const opening=client();opening._relayClientId=null;opening._relayKey=null;fetchMode='deferred';
-+  const openingFlight=opening._flushAndPoll();opening._tryNativeFailback();
-+  const sourceLess=probes.at(-1);sourceLess.onopen();
-+  assert(opening._relayFenced);
-+  assert.equal(sourceLess.sent.find(m=>m.type==='handoff-prepare').relayClientId,null);
-+  resolveOpen({ok:true,json:async()=>({clientId:'rys56-too-late',relayKey:'e'.repeat(48)})});
-+  await openingFlight;assert.equal(opening._relayClientId,null);
-+  const requests=bodies.length;await opening._flushAndPoll();assert.equal(bodies.length,requests);
-+  sourceLess.onerror();assert(!opening._relayFenced);assert(opening._isRelay);
-+  fetchMode='offline';const offline=client();offline._relayClientId=null;offline._relayKey=null;
-+  await offline._flushAndPoll();assert(offline._isRelay);
-+  const frame=seq=>({type:'audio-chunk',seq,sampleRate:24000,sentAt:100,pcm16:Buffer.alloc(960).toString('base64')});
-+  for(let i=0;i<3;i++)offline.send(JSON.stringify(frame(i)));
-+  assert(published>0,'MQTT audio must keep working while relay-open is unavailable');
-+  if(typeof recordResult==='function')recordResult('ADIM-5.V56',
-+    'Prepare expiry/revoke/cancel; silinen ID409; ACK kaybı/fencing/yeni oturum; geç open cevabı; MQTT bağımsızlığı',true);
-+  console.log('V56 UNIT PASS: expired/revoked prepare has no side effects; lost ACK recovers with fresh HTTP ID; no source-ID resurrection');
++  const late=make(),old=late._relayRoutingKey();
++  const flight=late._flushAndPoll();late.send(JSON.stringify({...late._joinContext,tourCode:'B'}));
++  assert.notEqual(late._relayRoutingKey(),old);
++  resolveFetch({ok:true,json:async()=>({messages:[{type:'room-state',room:{tourCode:'A'}}]})});
++  await flight;assert.equal(delivered.length,0,'Old route response must not update B');
++  const fail=make();fail._sendQueue=[{type:'quick-announcement',message:'OLD-A'}];
++  const failed=fail._flushAndPoll();fail.send(JSON.stringify({...fail._joinContext,tourCode:'B'}));
++  rejectFetch(Error('network'));await failed;
++  assert(!fail._sendQueue.some(m=>m.message==='OLD-A'),'A retry must not be replayed in B');
++  const same=make();same._sendQueue=[{type:'quick-announcement',message:'KEEP-A'}];
++  const retry=same._flushAndPoll();rejectFetch(Error('network'));await retry;
++  assert(same._sendQueue.some(m=>m.message==='KEEP-A'),'Unchanged-route controls retain existing retry behavior');
++  const metadata=make(),key=metadata._relayRoutingKey();metadata._joinContext.name='Changed name';
++  assert.equal(metadata._relayRoutingKey(),key,'Metadata edit is not a routing change');
++  const modes=make();modes._sendQueue=[{type:'quick-announcement',message:'guide only'}];
++  modes._inFlight=true;
++  modes.send(JSON.stringify({type:'family-subscribe',tourCode:'A'}));
++  assert(!modes._sendQueue.some(m=>m.message==='guide only'));
++  if(typeof recordResult==='function')recordResult('ADIM-5.V57',
++    'Periyodik relay temizliği, 35s sınırı, rota sonrası eski cevap/retry engeli ve aynı-rota retry korunumu',true);
++  console.log('V57 UNIT PASS: idle sweep; 35000/35001ms expiry; stale-route response/retry dropped; same-route retry retained');
 +}
 +
  async function main() {
    const runtimePath = path.join(ROOT_DIR, 'data', 'runtime.json');
    const runtimeSnapshot = fs.existsSync(runtimePath) ? fs.readFileSync(runtimePath, 'utf8') : null;
-@@ -1629,6 +1892,7 @@
-     await runStep4FrontendPwaAndAtomicWriteChecks();
+@@ -1893,6 +2026,7 @@
      await runStep5V53AudioChecks();
      await runStep5V54AudioChecks();
-+    await runStep5V56HandoffChecks();
+     await runStep5V56HandoffChecks();
++    await runStep5V57RoutingChecks();
  
      console.log('\n====================================================================');
      console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);
 diff --git a/public/vercel-ws-shim.js b/public/vercel-ws-shim.js
 --- a/public/vercel-ws-shim.js
 +++ b/public/vercel-ws-shim.js
-@@ -277,6 +277,7 @@
-     _activateCloudRelay(){
-       if(this._isRelay||this._closedExplicitly)return;
-       this._isRelay=true;this._opened=true;
-+      this._resetRelaySession();
-       this._httpEpoch=(this._httpEpoch||0)+1;this._relayAbort?.abort();this._inFlight=false;
-       try{if(this._native){this._native.onopen=null;this._native.onmessage=null;
-         this._native.onerror=null;this._native.onclose=null;this._native.close();}}catch(e){}
-@@ -290,62 +291,88 @@
-       if(!this.url.includes('.vercel.app/ws')&&!this._vdsFailbackTimer)
-         this._vdsFailbackTimer=setInterval(()=>this._tryNativeFailback(),12000);
-     }
-+    _resetRelaySession(){
-+      const clientId=this._relayClientId,relayKey=this._relayKey;
-+      if(clientId&&relayKey){
-+        // Best-effort close is safe even after commit: it names only the old HTTP ID.
-+        try{fetch('/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},
-+          body:JSON.stringify({type:'relay-close',version:56,clientId,relayKey}),keepalive:true}).catch(()=>{});}catch(e){}
-+      }
-+      this._relayClientId=null;this._relayKey=null;this._relayFenced=false;
-+      this._httpEpoch=(this._httpEpoch||0)+1;
-+      this._relayAbort?.abort();this._relayAbort=null;this._inFlight=false;
-+    }
-     _tryNativeFailback(){
-       if(!this._isRelay||this.readyState!==1||this._closedExplicitly||this._failbackProbe)return;
-       const join=this._joinContext,generation=this._transportGeneration||0;
-       const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join');
--      let request,ackType;
--      if(mode==='admin-subscribe'){
--        request={type:mode,token:(localStorage.getItem('ry_auth_token')||'').trim()};ackType='admin-rooms-update';
--      }else if(mode==='family-subscribe'){
--        if(!join)return;request={type:mode,tourCode:join.tourCode};ackType='family-state';
--      }else{if(!join)return;request={...join};ackType='joined';}
-+      const request=mode==='admin-subscribe'?{type:mode,token:(localStorage.getItem('ry_auth_token')||'').trim()}:
-+        mode==='family-subscribe'?(join?{type:mode,tourCode:join.tourCode}:null):join?{...join}:null;
-+      if(!request)return;
-       let probe;try{probe=new NativeWebSocket(this.url);probe.binaryType='arraybuffer';}catch(e){return;}
--      this._failbackProbe=probe;let finished=false;
-+      this._failbackProbe=probe;let finished=false,commitSent=false,handoffId=null;
-+      const valid=()=>!this._closedExplicitly&&this._isRelay&&this.readyState===1&&
-+        (this._transportGeneration||0)===generation;
-       const cancel=()=>{
-         if(finished)return;finished=true;clearTimeout(timer);
-         if(this._failbackProbe===probe)this._failbackProbe=null;
-         if(this._cancelNativeProbe===cancel)this._cancelNativeProbe=null;
-         probe.onopen=null;probe.onmessage=null;probe.onerror=null;probe.onclose=null;
-         try{probe.close();}catch(e){}
-+        // A commit ACK may have been lost. Never reuse a possibly retired source ID.
-+        if(commitSent||this._relayFenced)this._resetRelaySession();
-       };
--      const timer=setTimeout(cancel,3000);this._cancelNativeProbe=cancel;
-+      const timer=setTimeout(cancel,5000);this._cancelNativeProbe=cancel;
-       probe.onerror=cancel;probe.onclose=cancel;
-       probe.onopen=()=>{
--        if(this._closedExplicitly||!this._isRelay||(this._transportGeneration||0)!==generation){cancel();return;}
--        try{probe.send(JSON.stringify(request));}catch(e){cancel();}
-+        if(!valid()){cancel();return;}
-+        // No HTTP source may appear behind a source-less prepare. An old open response is harmless.
-+        if(!this._relayClientId||!this._relayKey){this._resetRelaySession();this._relayFenced=true;}
-+        try{probe.send(JSON.stringify({type:'handoff-prepare',subscription:request,
-+          relayClientId:this._relayClientId||null,relayKey:this._relayKey||null}));}catch(e){cancel();}
-       };
-       probe.onmessage=ev=>{
-         let msg;try{msg=JSON.parse(ev.data);}catch(e){return;}
--        if(msg.type==='auth-error'||msg.type==='pin-error'){cancel();return;}
--        if(msg.type!==ackType)return;
--        if(this._closedExplicitly||!this._isRelay||(this._transportGeneration||0)!==generation){cancel();return;}
--        if(mode==='join'&&(!msg.room||String(msg.room.tourCode).toUpperCase().trim()!==String(join.tourCode||'RY-KASIM').toUpperCase().trim()||
--          String(msg.room.roomId)!==String(join.roomId||'genel').trim())){cancel();return;}
-+        if(!valid()){cancel();return;}
-+        if(msg.type==='handoff-error'||msg.type==='auth-error'||msg.type==='pin-error'){
-+          if(msg.code==='stale-relay')this._resetRelaySession();cancel();return;
-+        }
-+        if(msg.type==='handoff-prepared'){
-+          if(commitSent)return;
-+          if(typeof msg.handoffId!=='string'||!/^[0-9a-f]{32}$/.test(msg.handoffId)){cancel();return;}
-+          handoffId=msg.handoffId;commitSent=true;
-+          try{probe.send(JSON.stringify({type:'handoff-commit',handoffId}));}catch(e){cancel();}
-+          return;
-+        }
-+        if(msg.type!=='handoff-committed'||!commitSent||msg.handoffId!==handoffId)return;
-+        const ack=msg.ack,expected=mode==='join'?'joined':mode==='family-subscribe'?'family-state':'admin-rooms-update';
-+        if(ack?.type!==expected){cancel();return;}
-+        if(mode==='join'&&(!ack.room||String(ack.room.tourCode).toUpperCase().trim()!==
-+          String(join.tourCode||'RY-KASIM').toUpperCase().trim()||
-+          String(ack.room.roomId)!==String(join.roomId||'genel').trim())){cancel();return;}
-+        if(mode==='family-subscribe'&&String(ack.tourCode).toUpperCase().trim()!==
-+          String(join.tourCode||'RY-KASIM').toUpperCase().trim()){cancel();return;}
-         finished=true;clearTimeout(timer);this._failbackProbe=null;this._cancelNativeProbe=null;
-         this._native=probe;this._isRelay=false;this._opened=true;
--        this._httpEpoch=(this._httpEpoch||0)+1;this._relayAbort?.abort();this._relayAbort=null;this._inFlight=false;
-+        this._resetRelaySession();
-         if(this._pollTimer){clearInterval(this._pollTimer);this._pollTimer=null;}
-         if(this._vdsFailbackTimer){clearInterval(this._vdsFailbackTimer);this._vdsFailbackTimer=null;}
-         probe.onmessage=e=>{if(!this._isRelay&&this.readyState===1)this.onmessage?.(e);};
-         probe.onerror=e=>this.onerror?.(e);
-         probe.onclose=e=>{if(!this._isRelay){this.readyState=3;this.onclose?.(e);}};
--        // Deliver the snapshot before the application's fresh state updates.
--        this.onmessage?.(ev);
-+        try{this.onmessage?.({data:JSON.stringify(ack)});}catch(e){this.onerror?.(e);}
-         if(this._closedExplicitly||this.readyState!==1||this._isRelay||this._native!==probe)return;
-         this._failbackSubscription=request;
--        try{this.onopen?.({type:'open',failback:true});}
--        catch(e){this.onerror?.(e);}
-+        try{this.onopen?.({type:'open',failback:true});}catch(e){this.onerror?.(e);}
-         finally{this._failbackSubscription=null;}
-         if(this._closedExplicitly||this.readyState!==1||this._isRelay||this._native!==probe)return;
-         const pending=this._sendQueue.splice(0),now=Date.now();
-         for(const m of pending){
--          if(m.type==='join'||m.type==='family-subscribe'||m.type==='admin-subscribe'||m.type==='guide-stream-state')continue;
-+          if(['join','family-subscribe','admin-subscribe','guide-stream-state'].includes(m.type))continue;
-           if(m.type==='audio-chunk'&&(!Number.isFinite(m._queuedAt)||now-m._queuedAt>200))continue;
-           try{this.send(JSON.stringify(m));}catch(e){this.onerror?.(e);}
-         }
--        this._audioCoalescer?.flush();
--        this._closeMqttClients();window.__ryConsecutiveVdsFailures=0;
-+        this._audioCoalescer?.flush();this._closeMqttClients();window.__ryConsecutiveVdsFailures=0;
-       };
-     }
- 
-@@ -651,9 +678,16 @@
+@@ -675,6 +675,8 @@
+         if ([...keys].every(k => JSON.stringify(old[k]) === JSON.stringify(parsed[k]))) return;
+       }
+       if (parsed && typeof parsed === 'object') {
++        const subscription=['join','family-subscribe','admin-subscribe'].includes(parsed.type);
++        const previousRoute=subscription?this._relayRoutingKey():null;
          if (!parsed._msgId) {
            parsed._msgId = 'm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
          }
-+        if(['join','family-subscribe','admin-subscribe'].includes(parsed.type))this._cancelNativeProbe?.();
-+        if(parsed.type==='guide-stream-state')this._lastGuideState={...parsed};
-+        if(['family-subscribe','admin-subscribe'].includes(parsed.type)){
-+          this._lastGuideState=null;this._audioCoalescer?.clear();
-+          this._sendQueue=this._sendQueue.filter(m=>m.type!=='audio-chunk');
+@@ -710,6 +712,9 @@
+           this._isAdmin = true;
+           this._joinContext = null;
+           if (this._isRelay) this._initMqttBus(null, true);
 +        }
-         if (parsed.type === 'join') {
-           const old=this._joinContext;
-           if(old&&(old.tourCode!==parsed.tourCode||old.roomId!==parsed.roomId||old.role!==parsed.role)){
-+            this._lastGuideState=null;
-             this._audioCoalescer?.clear();this._sendQueue=this._sendQueue.filter(m=>m.type!=='audio-chunk');
-           }
-           this._isAdmin=false;
-@@ -840,44 +874,62 @@
++        if(subscription&&previousRoute!==this._relayRoutingKey()){
++          this._sendQueue.length=0;this._audioCoalescer?.clear();this._lastGuideState=null;
+         }
+       }
+ 
+@@ -873,9 +878,17 @@
+     }
  
      // PATCH: shim-http-v52
++    _relayRoutingKey(){
++      const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join'),c=this._joinContext||{};
++      if(mode==='admin-subscribe')return JSON.stringify([mode]);
++      const tour=String(c.tourCode||'RY-KASIM').toUpperCase().trim();
++      if(mode==='family-subscribe')return JSON.stringify([mode,tour]);
++      return JSON.stringify([mode,tour,String(c.roomId||'genel').trim(),c.role==='guide'?'guide':'pilgrim']);
++    }
      async _flushAndPoll(){
--      if(this.readyState!==1||!this._isRelay||this._inFlight)return;
-+      if(this.readyState!==1||!this._isRelay||this._inFlight||this._relayFenced)return;
-       const epoch=this._httpEpoch||0;
-+      const current=()=>this.readyState===1&&this._isRelay&&(this._httpEpoch||0)===epoch;
+       if(this.readyState!==1||!this._isRelay||this._inFlight||this._relayFenced)return;
+-      const epoch=this._httpEpoch||0;
++      const epoch=this._httpEpoch||0,route=this._relayRoutingKey();
++      const sameRoute=()=>route===this._relayRoutingKey();
+       const current=()=>this.readyState===1&&this._isRelay&&(this._httpEpoch||0)===epoch;
        const batch=this._sendQueue.splice(0).filter(m=>m.type!=='audio-chunk'||
          (Number.isFinite(m._queuedAt)&&Date.now()-m._queuedAt<=200));
--      // Broker connectivity does not prove this room has an MQTT publisher.
--      // Keep HTTP receive/control active; the player deduplicates audio by seq.
-       this._inFlight=true;const ac=new AbortController();this._relayAbort=ac;
-       const timer=setTimeout(()=>ac.abort(),3000);let success=false;
-       try{
-+        if(!this._relayClientId||!this._relayKey){
-+          // Opening has no subscription/media side effect, even if this response is lost.
-+          const opened=await fetch('/api/ws-relay',{method:'POST',signal:ac.signal,
-+            headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'relay-open',version:56})});
-+          const data=await opened.json();if(!current())return;
-+          if(!opened.ok||!String(data.clientId||'').startsWith('rys56-')||
-+            !/^[0-9a-f]{48}$/.test(data.relayKey||''))throw Error('Relay open failed');
-+          this._relayClientId=data.clientId;this._relayKey=data.relayKey;
-+          if(this._lastGuideState&&this._joinContext?.role==='guide')
-+            batch.push({...this._lastGuideState});
-+        }
-         const token=(localStorage.getItem('ry_auth_token')||'').trim();
-         const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join');
-         const context=mode==='admin-subscribe'?{type:mode,token}:
-           mode==='family-subscribe'?{type:mode,tourCode:this._joinContext?.tourCode||'RY-KASIM'}:
-           this._joinContext;
--        // POST also for an empty poll: PIN/device/phone/lang stay in the body.
-+        const fresh=batch.filter(m=>m.type!=='audio-chunk'||
-+          Number.isFinite(m._queuedAt)&&Date.now()-m._queuedAt<=200);
-         const res=await fetch('/api/ws-relay',{method:'POST',signal:ac.signal,
--          headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:this._clientId,
--            token,subscriptionContext:context,joinContext:mode==='join'?context:null,messages:batch})});
--        if(!res.ok)throw Error('Relay HTTP '+res.status);
--        const payload=await res.json();
--        if(this.readyState!==1||!this._isRelay||(this._httpEpoch||0)!==epoch)return;
-+          headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:this._relayClientId,
-+            relayKey:this._relayKey,token,subscriptionContext:context,messages:fresh})});
-+        const payload=await res.json();if(!current())return;
-+        if(!res.ok){
-+          if(res.status===409){
-+            if(payload.error==='relay-session-retired'&&this._failbackProbe)this._relayFenced=true;
-+            else{
-+              for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
-+              batch.length=0;this._cancelNativeProbe?.();this._resetRelaySession();
-+            }
-+          }
-+          throw Error('Relay HTTP '+res.status);
-+        }
+@@ -890,6 +903,7 @@
+           if(!opened.ok||!String(data.clientId||'').startsWith('rys56-')||
+             !/^[0-9a-f]{48}$/.test(data.relayKey||''))throw Error('Relay open failed');
+           this._relayClientId=data.clientId;this._relayKey=data.relayKey;
++          if(!sameRoute()){success=true;return;}
+           if(this._lastGuideState&&this._joinContext?.role==='guide')
+             batch.push({...this._lastGuideState});
+         }
+@@ -908,16 +922,17 @@
+           if(res.status===409){
+             if(payload.error==='relay-session-retired'&&this._failbackProbe)this._relayFenced=true;
+             else{
+-              for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
++              if(sameRoute())for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
+               batch.length=0;this._cancelNativeProbe?.();this._resetRelaySession();
+             }
+           }
+           throw Error('Relay HTTP '+res.status);
+         }
++        if(!sameRoute()){success=true;return;}
          if(Array.isArray(payload.messages))for(const m of payload.messages)this._deliverIncomingMessage(m);
          success=true;
        }catch(e){
--        if(this.readyState===1&&this._isRelay&&(this._httpEpoch||0)===epoch)
--          for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
-+        if(current())for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
+-        if(current())for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
++        if(current()&&sameRoute())for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
        }finally{
          clearTimeout(timer);
          if(this._relayAbort===ac)this._relayAbort=null;
-         if((this._httpEpoch||0)===epoch)this._inFlight=false;
--        if(success&&this.readyState===1&&this._isRelay&&this._sendQueue.length)
--          queueMicrotask(()=>{if(this.readyState===1&&this._isRelay)this._flushAndPoll();});
-+        if(success&&current()&&this._sendQueue.length)
-+          queueMicrotask(()=>{if(current())this._flushAndPoll();});
-       }
-     }
- 
-     // PATCH: shim-close-v53
-     close() {
--      this._closedExplicitly=true;this._cancelNativeProbe?.();
-+      this._closedExplicitly=true;this._cancelNativeProbe?.();this._resetRelaySession?.();
-       this.readyState = 3;
-       this._httpEpoch=(this._httpEpoch||0)+1;
-       this._relayAbort?.abort();this._relayAbort=null;
 diff --git a/public/sw.js b/public/sw.js
 --- a/public/sw.js
 +++ b/public/sw.js
@@ -1026,16 +440,16 @@ diff --git a/public/sw.js b/public/sw.js
  // PATCH: sw-v53
  // PATCH: sw-v53
  // PATCH: sw-v53
--const CACHE_NAME = 'ridvanses-pwa-v55';
-+const CACHE_NAME = 'ridvanses-pwa-v56';
+-const CACHE_NAME = 'ridvanses-pwa-v56';
++const CACHE_NAME = 'ridvanses-pwa-v57';
  const ASSETS_TO_CACHE = [
    '/',
    '/dinle',
    '/rota',
    '/ani-kitabi',
    '/css/style.css',
--  '/vercel-ws-shim.js?v=55',
-+  '/vercel-ws-shim.js?v=56',
+-  '/vercel-ws-shim.js?v=56',
++  '/vercel-ws-shim.js?v=57',
    '/js/umrah-steps-map.js',
    '/pcm-capture-worklet.js?v=53-audio',
    '/pcm-player-worklet.js?v=53-audio',
@@ -1046,8 +460,8 @@ diff --git a/public/ani-kitabi.html b/public/ani-kitabi.html
    <meta name="description" content="Rıdvan Yılmaz Turizm Umre ve Siyer yolculuğunuzun baskıya hazır A4 manevi hatıra kitapçığı ve imzalı Umre Ziyaret Beratı." />
    <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
    <link rel="stylesheet" href="/css/style.css?v=19" />
--  <script src="/vercel-ws-shim.js?v=55"></script>
-+  <script src="/vercel-ws-shim.js?v=56"></script>
+-  <script src="/vercel-ws-shim.js?v=56"></script>
++  <script src="/vercel-ws-shim.js?v=57"></script>
    <style>
      body {
        background: #e9e2d5;
@@ -1058,8 +472,8 @@ diff --git a/public/dinle.html b/public/dinle.html
    <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
    <link rel="stylesheet" href="/css/style.css?v=19" />
--  <script src="/vercel-ws-shim.js?v=55"></script>
-+  <script src="/vercel-ws-shim.js?v=56"></script>
+-  <script src="/vercel-ws-shim.js?v=56"></script>
++  <script src="/vercel-ws-shim.js?v=57"></script>
    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
    <script src="/js/umrah-steps-map.js?v=47"></script>
    <style>
@@ -1067,8 +481,8 @@ diff --git a/public/dinle.html b/public/dinle.html
      if ('serviceWorker' in navigator) {
        window.addEventListener('load', () => {
          // PATCH: sw-register-v53
--        navigator.serviceWorker.register('/sw.js?v=55').catch(() => {});
-+        navigator.serviceWorker.register('/sw.js?v=56').catch(() => {});
+-        navigator.serviceWorker.register('/sw.js?v=56').catch(() => {});
++        navigator.serviceWorker.register('/sw.js?v=57').catch(() => {});
        });
      }
  
@@ -1079,8 +493,8 @@ diff --git a/public/index.html b/public/index.html
    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
    <title>Rıdvan Yılmaz Turizm | RıdvanSes — Dijital Sesli Rehberlik & Kafile Sistemi</title>
    <link rel="stylesheet" href="/css/style.css?v=19" />
--  <script src="/vercel-ws-shim.js?v=55"></script>
-+  <script src="/vercel-ws-shim.js?v=56"></script>
+-  <script src="/vercel-ws-shim.js?v=56"></script>
++  <script src="/vercel-ws-shim.js?v=57"></script>
    <style>
      .hero {
        padding: 64px 0 76px;
@@ -1091,8 +505,8 @@ diff --git a/public/login.html b/public/login.html
    <meta name="robots" content="noindex, nofollow" />
    <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/login" />
    <link rel="stylesheet" href="/css/style.css?v=19" />
--  <script src="/vercel-ws-shim.js?v=55"></script>
-+  <script src="/vercel-ws-shim.js?v=56"></script>
+-  <script src="/vercel-ws-shim.js?v=56"></script>
++  <script src="/vercel-ws-shim.js?v=57"></script>
    <style>
      .login-shell {
        max-width: 460px;
@@ -1103,8 +517,8 @@ diff --git a/public/panel.html b/public/panel.html
        window.location.href = '/login?next=/panel';
      }
    </script>
--  <script src="/vercel-ws-shim.js?v=55"></script>
-+  <script src="/vercel-ws-shim.js?v=56"></script>
+-  <script src="/vercel-ws-shim.js?v=56"></script>
++  <script src="/vercel-ws-shim.js?v=57"></script>
    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
    <script src="/js/umrah-steps-map.js?v=47"></script>
    <style>
@@ -1115,8 +529,8 @@ diff --git a/public/rehber.html b/public/rehber.html
        window.location.href = '/login?next=/rehber';
      }
    </script>
--  <script src="/vercel-ws-shim.js?v=55"></script>
-+  <script src="/vercel-ws-shim.js?v=56"></script>
+-  <script src="/vercel-ws-shim.js?v=56"></script>
++  <script src="/vercel-ws-shim.js?v=57"></script>
    <script src="/js/umrah-steps-map.js?v=47"></script>
    <style>
      .console-wrap {
@@ -1127,8 +541,8 @@ diff --git a/public/rota.html b/public/rota.html
    <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
    <link rel="stylesheet" href="/css/style.css?v=19" />
--  <script src="/vercel-ws-shim.js?v=55"></script>
-+  <script src="/vercel-ws-shim.js?v=56"></script>
+-  <script src="/vercel-ws-shim.js?v=56"></script>
++  <script src="/vercel-ws-shim.js?v=57"></script>
    <style>
      .rota-hero-strip {
        background:
@@ -1139,29 +553,27 @@ diff --git a/public/yaka-karti.html b/public/yaka-karti.html
    <meta name="robots" content="noindex, nofollow" />
    <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/yaka-karti" />
    <link rel="stylesheet" href="/css/style.css?v=19" />
--  <script src="/vercel-ws-shim.js?v=55"></script>
-+  <script src="/vercel-ws-shim.js?v=56"></script>
+-  <script src="/vercel-ws-shim.js?v=56"></script>
++  <script src="/vercel-ws-shim.js?v=57"></script>
    <style>
      .print-toolbar {
        background: linear-gradient(155deg, #06231B 0%, #093529 100%);
 ```
 
-<!-- SOURCE-HASHES {"server.js":"95037446499278e9238d34c669fdbe79aa4ede679a7c0c9cd93c16b94b27c3b2","scripts/verify-system.js":"ee8a788505a6165c1c804d7865f3d5a49828b01c44cdd718b51d99b1e196521f","public/ani-kitabi.html":"4e13e41a2e438812f48144606088f835548dabbcbca18d11afe3d4a34b722f82","public/dinle.html":"a9f6273ab0667fc9167eca4d258113862b9907ef12970cfd203f49946b13f102","public/index.html":"1803f88c59aac1297e07c02c5d9214e15d7f8ed4f766eda834c112f13047060a","public/kullanim-rehberi.html":"c019fb50dfcf83d1097920c3210c3dea82b071de2e1000ffa15c39ad6f71de3e","public/login.html":"7539ec83358bee7e7bb4edd394561232eeede07a597ecfd970640fb7890b6dd6","public/panel.html":"50f14a7d2e24e7c23bbc46eda7fb26da7692870fa5fd60b88f27ccbe60728e3b","public/pcm-capture-worklet.js":"e6f7c223b92928825481589f626e53b64ff70c17710f668000440c68d559e564","public/pcm-player-worklet.js":"9bfbcb06d2904d375ff06498e232cc09a32c5c9624b36bb8947bbc5270323183","public/rehber.html":"7f9816e5df2bce1197974e6176e0f8f8df6926eb4e94657c17f6b0aa8fc1e5bd","public/rota.html":"18b37eea824d0f93894692efebcd725913f308b9e750d8e9ded8d4df0f829536","public/sw.js":"195f5f9c250862dfa2fb229bd79feeec30f8cfaec5dbd70a78f28ae926c6f0fb","public/vercel-ws-shim.js":"46f8a0a21d303f6f0b2bf79af5acb734be18c8efa1a88e4090f495a3d729dae0","public/yaka-karti.html":"e63ccca4f07438e79cb3c887c8b6ba8c0b1e98b48ce03e0a21b87dab2620c958"} -->
+<!-- SOURCE-HASHES {"server.js":"f5579c397a328dc9ab1dea5f9a17038a48e65355bb90bc390abe1b2080d2dffe","scripts/verify-system.js":"db0a1a462fb9edd1f5081a9facb1c20935f8134862c9baf67d3019aaa98b0e39","public/ani-kitabi.html":"913d90b9acd49c4a5b7e2ee3de73bff2be7d461540c8a6f78b29f756aeee65fc","public/dinle.html":"d0d450b79c1df594655caf8c2494b41f43b7792e64b3e72d24037c1477124bf4","public/index.html":"ef8abbf9f1eb01a7d85cacc25aa22a45a1e715e5d31f1fb43dc4736db3769c29","public/kullanim-rehberi.html":"c019fb50dfcf83d1097920c3210c3dea82b071de2e1000ffa15c39ad6f71de3e","public/login.html":"2ee15e21e7b2668595701d0c1704a073ddf227394801f8aa47f62888e38a778e","public/panel.html":"032e2894843c24931c3cbd68c2c71530941043dd3450b546c46fedc1ffcfcc05","public/pcm-capture-worklet.js":"e6f7c223b92928825481589f626e53b64ff70c17710f668000440c68d559e564","public/pcm-player-worklet.js":"9bfbcb06d2904d375ff06498e232cc09a32c5c9624b36bb8947bbc5270323183","public/rehber.html":"ad47655bb15e3c282362e4b0aebcd405d535c38636fc4eecb47690f45b82a518","public/rota.html":"6e72a39a2d411f1b914d8b7bab7823403fa5bd383b59ad482cbfbd4f90acde84","public/sw.js":"d19cf0fe1e51d9618072d1f8b65ee5a1f7ad8fd6799a6c7e0af409bd12f29896","public/vercel-ws-shim.js":"1856fc4a0ed76d9c464cd31c870ca6d306e194ecf1ccfe49560048dad44baca8","public/yaka-karti.html":"fc933eef3869521ca03ed7805cbe01faffdd703ef97c0e23fa33eb22e458584a"} -->
 
-## 8. Son teslim kanıtı ve değerlendirme
+## 8. Teslim kanıtı ve nihai değerlendirme
 
-Son aday koşusunun ilgili sonu:
+Son aday koşusundan:
 
 ```text
-[BAŞARILI / PASS] ADIM-3.V56 — Gerçek HTTP/WS: yan etkisiz open/prepare, cancel, revision, commit/idempotans, eski istek409, native PCM, PIN ve3 abonelik
-V56 E2E PASS: prepare has no membership side effect; committed source fenced; late requests cannot kill native
 [BAŞARILI / PASS] ADIM-5.V56 — Prepare expiry/revoke/cancel; silinen ID409; ACK kaybı/fencing/yeni oturum; geç open cevabı; MQTT bağımsızlığı
 V56 UNIT PASS: expired/revoked prepare has no side effects; lost ACK recovers with fresh HTTP ID; no source-ID resurrection
-TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: 30 / 30 [BAŞARILI / PASS]
+[BAŞARILI / PASS] ADIM-5.V57 — Periyodik relay temizliği, 35s sınırı, rota sonrası eski cevap/retry engeli ve aynı-rota retry korunumu
+V57 UNIT PASS: idle sweep; 35000/35001ms expiry; stale-route response/retry dropped; same-route retry retained
+TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: 32 / 32 [BAŞARILI / PASS]
 ```
 
-Ek açılış yarışı da kaynak testinde sınanır: kaynak kimliği olmayan probe hazırlanırken bekleyen relay-open iptal edilir, HTTP yeni üyelik üretimi probe sonuna kadar durur ve geç açılış cevabı epoch guard ile atılır. Böylece hazırlık “kaynak yok” dedikten sonra arkadan yeni HTTP join’i oluşamaz. MQTT bu bekleme sırasında kapatılmaz. Anahtarlı GET/CORS, başlıksız GET401 ve URL’den relayKey kabul edilmemesi gerçek yerel HTTP testine dahildir.
+Denetim sonunda15 gerçek kaynak dosyasının SHA-256 değeri başlangıçla aynı kaldı. Gerçek kaynaklar hâlâ3fcb087 sürümündedir. Test runtime snapshot’ı geri yüklendi; başlangıçtaki iki kullanıcı silinmesi korundu. Tek güncellenen teslim dosyası bu rapordur.
 
-**Kaynak değişmezliği:** Bu denetimde server, verify, dört public JS ve dokuz HTML olmak üzere15 gerçek kaynak dosyasının SHA-256 değerleri başlangıçla aynı kaldı. Tek değiştirilen teslim dosyası bu rapordur. Test sırasında oluşan geçici runtime.json değişimi paket sonunda snapshot ile geri alındı; kullanıcıya ait iki mevcut dosya silinmesi korunur.
-
-**Sonuç:** v55 uygulaması ve28/28 sonucu onaylanır. P1-03 mevcut diskte yeniden üretilmiştir. Rapor içindeki v56 yaması tanımlı yeni protokol/tek işçi kapsamında30/30 doğrulamadan geçmiş uygulanabilir çözümdür; diske uygulanmış veya production’da doğrulanmış değildir. Eski protokoldeki istemcilerin geçişi, çok işçili dağıtım ve fiziksel saha doğrulaması `6’daki sınırlar çerçevesinde ele alınmalıdır.
+**Nihai değerlendirme:** v56’nın önceki diff’e uygun uygulanması ve30/30 test sonucu onaylanır. Yeni tekrar üretimleri nedeniyle tüm aktarım katmanları için koşulsuz onay verilmez. Öncelik, yanlış kafileye medya/kontrol taşınmasını engelleyen P1 rota koruması; ardından P2 idle temizlik/süre sınırıdır. Rapor içindeki v57 çözümü belirtilen yerel32/32 koşudan geçmiştir; diske veya production’a uygulanmış değildir.
