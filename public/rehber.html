@@ -28,7 +28,7 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=61"></script>
+  <script src="/vercel-ws-shim.js?v=62"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .console-wrap {
@@ -643,6 +643,7 @@
     let scriptProcessor = null;
     let isMicBroadcasting = false;
     let isDemoBroadcasting = false;
+    let guideDemoGeneration=0;
     let demoInterval = null;
     let activeSosAlerts = [];
     let guideAnnouncements = [];
@@ -703,11 +704,11 @@
         name: guideName,
         guidePeerId
       }));
-      if (isMicBroadcasting || isDemoBroadcasting) {
+      {
         ws.send(JSON.stringify({
           type: 'guide-stream-state',
-          isLive: true,
-          broadcastMode: isMicBroadcasting ? 'mic' : 'demo-synth',
+          isLive: Boolean(isMicBroadcasting||isDemoBroadcasting),
+          broadcastMode: isMicBroadcasting ? 'mic' : (isDemoBroadcasting?'demo-synth':'idle'),
           topic: document.getElementById('topicInput')?.value?.trim() || '',
           guidePeerId
         }));
@@ -1624,6 +1625,7 @@
         if (ws.isRelay || ws._isRelay) {
           ws.send(JSON.stringify({
             type: 'audio-chunk',
+            audioSourceId:guideAudioSourceId,
             seq: guideAudioSeq,
             phraseStart,
             sentAt: Date.now(),
@@ -2041,6 +2043,7 @@
         }
       }
       isDemoBroadcasting = !isDemoBroadcasting;
+      const generation=++guideDemoGeneration;
       if (isDemoBroadcasting) {
         startBroadcastClock();
         if (btn) {
@@ -2059,12 +2062,14 @@
         const notes = [440, 493.88, 523.25, 587.33, 659.25, 587.33, 523.25, 493.88];
         let idx = 0;
         demoInterval = setInterval(() => {
+          if(!isDemoBroadcasting||generation!==guideDemoGeneration)return;
           const level = 0.4 + Math.random() * 0.45;
           animateGuideSpectrum(level);
           if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
               type: 'audio-chunk',
               level,
+              audioSourceId:guideAudioSourceId,
               synthNote: notes[idx % notes.length]
             }));
           }

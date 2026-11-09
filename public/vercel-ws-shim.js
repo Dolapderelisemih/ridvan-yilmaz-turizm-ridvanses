@@ -66,6 +66,7 @@
       m.seq <= 0x7fffffff &&
       Number.isFinite(m.sentAt) &&
       m.sentAt > 0 &&
+      (m.audioSourceId==null||(typeof m.audioSourceId==='string'&&m.audioSourceId.length<=128&&/^[a-zA-Z0-9_.-]+$/.test(m.audioSourceId))) &&
       typeof m.pcm16 === 'string' &&
       m.pcm16.length === 1280 &&
       /^[A-Za-z0-9+/]+$/.test(m.pcm16)
@@ -115,8 +116,9 @@
       try {
         m = typeof data === 'string' ? JSON.parse(data) : null;
       } catch (e) {}
+      if(m?.type==='guide-stream-state'&&(!m.isLive||String(m.broadcastMode||'').startsWith('demo')))c.clear();
       if (sock._isRelay && validRysAudio(m)) {
-        c.push(m);
+        c.push({...m,audioSourceId:m.audioSourceId||sock._joinContext?.audioSourceId||null});
         return;
       }
       send(data);
@@ -298,7 +300,7 @@
         try{fetch('/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({type:'relay-close',version:56,clientId,relayKey}),keepalive:true}).catch(()=>{});}catch(e){}
       }
-      this._relayClientId=null;this._relayKey=null;this._relayFenced=false;
+      this._relayClientId=null;this._relayKey=null;this._relayFenced=false;this._relayRequestSeq=0;
       this._httpEpoch=(this._httpEpoch||0)+1;
       this._relayAbort?.abort();this._relayAbort=null;this._inFlight=false;
     }
@@ -683,14 +685,20 @@
           parsed._msgId = 'm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
         }
         if(['join','family-subscribe','admin-subscribe'].includes(parsed.type))this._cancelNativeProbe?.();
-        if(parsed.type==='guide-stream-state')this._lastGuideState={...parsed};
+        if(parsed.type==='guide-stream-state'){
+          this._lastGuideState={...parsed};
+          if(!parsed.isLive||String(parsed.broadcastMode||'').startsWith('demo')){
+            this._audioCoalescer?.clear();this._sendQueue=(this._sendQueue||[]).filter(m=>m.type!=='audio-chunk');
+          }
+        }
         if(['family-subscribe','admin-subscribe'].includes(parsed.type)){
           this._lastGuideState=null;this._audioCoalescer?.clear();
           this._sendQueue=this._sendQueue.filter(m=>m.type!=='audio-chunk');
         }
         if (parsed.type === 'join') {
           const old=this._joinContext;
-          if(old&&(old.tourCode!==parsed.tourCode||old.roomId!==parsed.roomId||old.role!==parsed.role)){
+          if(old&&(old.tourCode!==parsed.tourCode||old.roomId!==parsed.roomId||old.role!==parsed.role||
+            parsed.audioSourceId!==undefined&&old.audioSourceId!==parsed.audioSourceId)){
             this._lastGuideState=null;
             this._audioCoalescer?.clear();this._sendQueue=this._sendQueue.filter(m=>m.type!=='audio-chunk');
           }
@@ -720,6 +728,19 @@
         }
       }
 
+      if(parsed?.type==='audio-chunk'&&this._joinContext?.role==='guide'){
+        const state=this._lastGuideState,pcm=!parsed.synthNote;
+        if(state&&(state.isLive===false||pcm&&String(state.broadcastMode||'').startsWith('demo')))return;
+        const source=this._joinContext.audioSourceId;
+        if(source&&!pcm){if(parsed.audioSourceId&&parsed.audioSourceId!==source)return;parsed={...parsed,audioSourceId:source};}
+        if(pcm&&source){
+          const frames=parsed.frames===undefined?[parsed]:parsed.frames;
+          if(!Array.isArray(frames)||!frames.length||frames.length>3||!frames.every(validRysAudio))return;
+          const kept=frames.filter(f=>!f.audioSourceId||f.audioSourceId===source).map(f=>({...f,audioSourceId:source}));
+          if(!kept.length)return;
+          parsed=parsed.frames===undefined?kept[0]:{...parsed,frames:kept,audioSourceId:source};
+        }
+      }
       if (!this._isRelay) {
         if (this._native && this._native.readyState === 1) {
           this._native.send(typeof parsed === 'object' ? JSON.stringify(parsed) : data);
@@ -866,6 +887,10 @@
 
     // PATCH: shim-queue-v52
     _enqueueRelayMessage(message){
+      if(message.type==='guide-stream-state'){
+        message={...(this._lastGuideState||message)};
+        this._sendQueue=this._sendQueue.filter(m=>m.type!=='guide-stream-state');
+      }
       const now=Date.now();
       this._sendQueue=this._sendQueue.filter(m=>m.type!=='audio-chunk'||
         (Number.isFinite(m._queuedAt)&&now-m._queuedAt<=200));
@@ -886,7 +911,9 @@
       if(mode==='admin-subscribe')return JSON.stringify([mode]);
       const tour=String(c.tourCode||'RY-KASIM').toUpperCase().trim();
       if(mode==='family-subscribe')return JSON.stringify([mode,tour]);
-      return JSON.stringify([mode,tour,String(c.roomId||'genel').trim(),c.role==='guide'?'guide':'pilgrim']);
+      const route=[mode,tour,String(c.roomId||'genel').trim(),c.role==='guide'?'guide':'pilgrim'];
+      if(c.role==='guide'&&c.audioSourceId)route.push(c.audioSourceId);
+      return JSON.stringify(route);
     }
     async _flushAndPoll(){
       if(this.readyState!==1||!this._isRelay||this._inFlight||this._relayFenced)return;
@@ -915,13 +942,21 @@
         const context=mode==='admin-subscribe'?{type:mode,token}:
           mode==='family-subscribe'?{type:mode,tourCode:this._joinContext?.tourCode||'RY-KASIM'}:
           this._joinContext;
-        const fresh=batch.filter(m=>m.type!=='audio-chunk'||
-          Number.isFinite(m._queuedAt)&&Date.now()-m._queuedAt<=200);
+        const fresh=batch.filter(m=>{
+          if(m.type!=='audio-chunk')return true;
+          if(!Number.isFinite(m._queuedAt)||Date.now()-m._queuedAt>200)return false;
+          const state=this._lastGuideState,source=this._joinContext?.audioSourceId;
+          if(this._joinContext?.role==='guide'&&state&&(state.isLive===false||!m.synthNote&&String(state.broadcastMode||'').startsWith('demo')))return false;
+          const frames=Array.isArray(m.frames)?m.frames:[m];
+          return !source||frames.every(f=>!f.audioSourceId||f.audioSourceId===source);
+        });
+        const requestSeq=this._relayRequestSeq=(this._relayRequestSeq||0)+1;
         const res=await fetch('/api/ws-relay',{method:'POST',signal:ac.signal,
           headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:this._relayClientId,
-            relayKey:this._relayKey,token,subscriptionContext:context,messages:fresh})});
+            relayKey:this._relayKey,requestSeq,token,subscriptionContext:context,messages:fresh})});
         const payload=await res.json();if(!current())return;
         if(!res.ok){
+          if(res.status===409&&payload.error==='relay-request-stale'){success=true;return;}
           if(res.status===409){
             if(payload.error==='relay-session-retired'&&this._failbackProbe)this._relayFenced=true;
             else{

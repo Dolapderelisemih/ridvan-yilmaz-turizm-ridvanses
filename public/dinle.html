@@ -16,7 +16,7 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=61"></script>
+  <script src="/vercel-ws-shim.js?v=62"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
@@ -1179,10 +1179,22 @@
 
     function updateRxAudioSource(sourceId){
       if(typeof sourceId!=='string'||!sourceId)return;
-      if(rxAudioSourceId!==null&&rxAudioSourceId!==sourceId){
-        lastReceivedAudioSeq=0;stopAllActiveSources();
+      if(rxAudioSourceId!==sourceId){
+        if(rxAudioSourceId!==null){lastReceivedAudioSeq=0;stopAllActiveSources();}
+        rxStreamActive=null;rxStreamMode=null;
       }
       rxAudioSourceId=sourceId;
+    }
+
+    function acceptRxAudioFrame(sourceId,synth=false){
+      if(rxStreamActive===false)return false;
+      if(!synth&&String(rxStreamMode||'').startsWith('demo')||synth&&rxStreamMode==='mic')return false;
+      if(sourceId!=null){
+        if(typeof sourceId!=='string'||!sourceId||sourceId.length>128||!(/^[a-zA-Z0-9_.-]+$/).test(sourceId))return false;
+        if(rxAudioSourceId!==null&&rxAudioSourceId!==sourceId)return false;
+        if(rxAudioSourceId===null)updateRxAudioSource(sourceId);
+      }
+      return true;
     }
 
     function connectWebSocket(tourCode, roomId, name, phone) {
@@ -1190,7 +1202,7 @@
         clearTimeout(window._ryWsReconnectTimeout);
         window._ryWsReconnectTimeout = null;
       }
-      rxAudioSourceId=null;lastReceivedAudioSeq=0;stopAllActiveSources();
+      rxAudioSourceId=null;rxStreamActive=null;rxStreamMode=null;lastReceivedAudioSeq=0;stopAllActiveSources();
       if (ws) {
         try {
           ws.onopen=null;ws.onmessage=null;
@@ -1235,12 +1247,12 @@
         if(!current())return;
         window.__ryLastServerMsgAt = Date.now();
         if (event.data instanceof ArrayBuffer) {
-          handleBinaryAudioFrame(event.data);
+          if(acceptRxAudioFrame())handleBinaryAudioFrame(event.data);
           return;
         }
         if (typeof Blob !== 'undefined' && event.data instanceof Blob) {
           const epoch=rxAudioDeliveryEpoch;
-          event.data.arrayBuffer().then(buf=>{if(current()&&epoch===rxAudioDeliveryEpoch)handleBinaryAudioFrame(buf);}).catch(()=>{});
+          event.data.arrayBuffer().then(buf=>{if(current()&&epoch===rxAudioDeliveryEpoch&&acceptRxAudioFrame())handleBinaryAudioFrame(buf);}).catch(()=>{});
           return;
         }
         let msg;
@@ -1255,6 +1267,9 @@
           const r = msg.room;
           if (r) {
             updateRxAudioSource(r.audioSourceId);
+            if(r.audioStateKnown===true&&(msg.type==='joined'||rxStreamActive===null)){
+              rxStreamActive=!!r.isLive;rxStreamMode=r.broadcastMode||null;
+            }else if(rxStreamActive===null&&r.isLive===true){rxStreamActive=true;rxStreamMode=r.broadcastMode||null;}
             document.getElementById('liveGuideName').textContent = r.guideName;
             document.getElementById('liveListenerCount').textContent = r.totalListeners;
             document.getElementById('liveTopicText').textContent = r.currentTopic;
@@ -1283,6 +1298,8 @@
 
         if (msg.type === 'stream-state') {
           updateRxAudioSource(msg.audioSourceId);
+          if(typeof msg.isLive==='boolean')rxStreamActive=msg.isLive;
+          if(typeof msg.broadcastMode==='string')rxStreamMode=msg.broadcastMode;
           if (msg.currentTopic) {
             document.getElementById('liveTopicText').textContent = msg.currentTopic;
           }
@@ -1330,6 +1347,7 @@
         }
 
         if (msg.type === 'audio-chunk') {
+          if(!acceptRxAudioFrame(msg.audioSourceId,!!msg.synthNote))return;
           window.__ryPilgrimReconnectAttempts = 0;
           if (window.__ryPilgrimConnState === 'reconnecting') {
             updatePilgrimConnectionUi('connected');
@@ -1347,7 +1365,7 @@
             } else if (msg.samples && msg.samples.length) {
               playPcmSamples(msg.samples, msg.sampleRate || 24000, false, msg.seq || 0, Boolean(msg.phraseStart), isSilentFrame);
             } else if (msg.synthNote) {
-              playGentleHarmonyNote(msg.synthNote);
+              playGentleHarmonyNote(msg.synthNote,true);
             }
           }
         }
@@ -1598,6 +1616,7 @@
     let interruptionRecoveryTimer = null;
     let rxLoadToken = 0;
     let rxAudioDeliveryEpoch=0,rxAudioSourceId=null;
+    let rxStreamActive=null,rxStreamMode=null;
     const pendingRxFrames = [];
 
     function flushPendingRxFrames() {
@@ -1995,10 +2014,24 @@
     let rxHermiteHist = null;
     let rxHermitePos = 0;
     const activeScheduledSources = [];
+    const activeGuideDemoSources=new Map();
 
     function stopAllActiveSources() {
       ++rxAudioDeliveryEpoch;
       pendingRxFrames.length = 0;
+      for(const [source,envelope] of activeGuideDemoSources){
+        activeGuideDemoSources.delete(source);
+        try{
+          const now=source.context?.currentTime??audioCtx?.currentTime??0;
+          if(envelope.gain.cancelAndHoldAtTime)envelope.gain.cancelAndHoldAtTime(now);
+          else{const held=envelope.gain.value;envelope.gain.cancelScheduledValues(now);envelope.gain.setValueAtTime(held,now);}
+          envelope.gain.setTargetAtTime(0,now,.001);source.stop(now+.010);
+        }catch(e){
+          source.onended=null;
+          try{source.stop();}catch(e){}
+          try{source.disconnect();envelope.disconnect();}catch(e){}
+        }
+      }
       if (rxPlayerWorkletNode && rxPlayerWorkletNode.port) {
         try {
           rxPlayerWorkletNode.port.postMessage({ type: 'reset' });
@@ -2156,8 +2189,13 @@
       }
     }
 
-    function playGentleHarmonyNote(freq = 440) {
+    function playGentleHarmonyNote(freq = 440,guideDemo = false) {
       if (!audioCtx || !gainNode) return;
+      if(audioCtx.state!=='running'){
+        if(guideDemo&&isAudioListening)forceResurrectPilgrimAudio('demo-packet');
+        return;
+      }
+      if(guideDemo&&activeGuideDemoSources.size>=4)return;
       const osc = audioCtx.createOscillator();
       const env = audioCtx.createGain();
       osc.type = 'sine';
@@ -2167,6 +2205,8 @@
       env.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
       osc.connect(env);
       env.connect(gainNode);
+      if(guideDemo)activeGuideDemoSources.set(osc,env);
+      osc.onended=()=>{activeGuideDemoSources.delete(osc);try{osc.disconnect();env.disconnect();}catch(e){}};
       osc.start();
       osc.stop(audioCtx.currentTime + 0.36);
     }
@@ -2513,7 +2553,7 @@
     }
 
     function leaveRoom() {
-      intentionalLeave = true;rxAudioSourceId=null;
+      intentionalLeave = true;rxAudioSourceId=null;rxStreamActive=null;rxStreamMode=null;
       if (window._ryWsReconnectTimeout) {
         clearTimeout(window._ryWsReconnectTimeout);
         window._ryWsReconnectTimeout = null;
@@ -2577,7 +2617,7 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         // PATCH: sw-register-v53
-        navigator.serviceWorker.register('/sw.js?v=61').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=62').catch(() => {});
       });
     }
 

@@ -420,6 +420,7 @@ function serializeRoom(room, includePilgrimDetails = true) {
     activeTawafStage: room.activeTawafStage || null,
     guidePeerId: room.guidePeerId || null,
     audioSourceId:room.audioSourceId||null,
+    audioStateKnown:!!room.audioStateKnown,
     guideLocation: room.guideLocation || null,
     connectedPilgrims: pilgrims,
     connectedGuides: guides,
@@ -466,9 +467,14 @@ function broadcastToRoom(room,payload,excludeWs=null,isAudioOverride=false){
 }
 
 // v61: source identity is control metadata; the 972-byte PCM wire format is unchanged.
+function acceptRysAudio(room,sender,clientId,synth=false){
+  const sameSource=room.audioSourceId===(sender.audioSourceId||clientId);
+  return !(sameSource&&room.audioStateKnown&&(!room.isLive||!synth&&String(room.broadcastMode||'').startsWith('demo')));
+}
+
 function setRysAudioSource(room,sourceId){
   if(room.audioSourceId===sourceId)return;
-  room.audioSourceId=sourceId;
+  room.audioSourceId=sourceId;room.audioStateKnown=false;
   broadcastToRoom(room,{type:'audio-source',audioSourceId:sourceId});
 }
 
@@ -688,12 +694,14 @@ function evaluateTourGuidePresence(tourCode) {
       r.guidePeerId = genelRoom.guidePeerId || null;
       r.guideName = genelRoom.guideName;
       setRysAudioSource(r,genelRoom.audioSourceId||null);
+      r.audioStateKnown=!!genelRoom.audioStateKnown;
       broadcastToRoom(r, {
         type: 'stream-state',
         isLive: r.isLive,
         broadcastMode: r.broadcastMode,
         currentTopic: r.currentTopic,
-        guidePeerId: r.guidePeerId || null
+        guidePeerId: r.guidePeerId || null,
+        audioSourceId:r.audioSourceId||null
       });
       continue;
     }
@@ -710,7 +718,8 @@ function evaluateTourGuidePresence(tourCode) {
         isLive: r.isLive,
         broadcastMode: r.broadcastMode,
         currentTopic: r.currentTopic,
-        guidePeerId: r.guidePeerId || null
+        guidePeerId: r.guidePeerId || null,
+        audioSourceId:r.audioSourceId||null
       });
     }
   }
@@ -1029,6 +1038,7 @@ function processClientJsonMessageV49(ctx, msg) {
       if (sender.role !== 'guide' || !isAuthedClient) break;
       for (const r of getTargetBroadcastRooms(currentRoom)) {
         const wasLive = r.isLive;
+        setRysAudioSource(r,sender.audioSourceId||clientId);r.audioStateKnown=true;
         r.isLive = Boolean(msg.isLive);
         r.broadcastMode = msg.broadcastMode || (r.isLive ? 'mic' : 'idle');
         if (msg.topic) r.currentTopic = msg.topic;
@@ -1037,7 +1047,6 @@ function processClientJsonMessageV49(ctx, msg) {
         if (r.isLive) {
           if (!wasLive || !r.startedAt) r.startedAt = Date.now();
           r.activePublisherClientId = clientId;
-          setRysAudioSource(r,sender.audioSourceId||clientId);
         } else if (!r.activePublisherClientId || r.activePublisherClientId === clientId) {
           r.activePublisherClientId = null;
         }
@@ -1046,7 +1055,8 @@ function processClientJsonMessageV49(ctx, msg) {
           isLive: r.isLive,
           broadcastMode: r.broadcastMode,
           currentTopic: r.currentTopic,
-          guidePeerId: r.guidePeerId || null
+          guidePeerId: r.guidePeerId || null,
+        audioSourceId:r.audioSourceId||null
         });
       }
       broadcastToFamilyTrackers(currentRoom.tourCode, {
@@ -1138,6 +1148,8 @@ function processClientJsonMessageV49(ctx, msg) {
       ) {
         break;
       }
+      if(!acceptRysAudio(currentRoom,sender,clientId,!!msg.synthNote))break;
+      if(msg.audioSourceId&&msg.audioSourceId!==(sender.audioSourceId||clientId))break;
       currentRoom.activePublisherClientId = clientId;
       const serializedAudio = JSON.stringify({
         type: 'audio-chunk',
@@ -1145,6 +1157,7 @@ function processClientJsonMessageV49(ctx, msg) {
         seq: msg.seq ?? null,
         phraseStart: Boolean(msg.phraseStart),
         speakerId: clientId,
+        audioSourceId:sender.audioSourceId||clientId,
         speakerName: sender.name,
         speakerRole: sender.role,
         sampleRate: msg.sampleRate || 24000,
@@ -1292,6 +1305,7 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
+      if(!acceptRysAudio(ctx.currentRoom,sender,ctx.clientId))return;
       const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
       if (!validBinaryPcmFrame(buf)) return;
       ctx.currentRoom.activePublisherClientId = ctx.clientId;
@@ -1315,6 +1329,7 @@ wss.on('connection', (ws, req) => {
                 seq,
                 phraseStart,
                 speakerId: ctx.clientId,
+                audioSourceId:sender.audioSourceId||ctx.clientId,
                 speakerName: sender.name,
                 speakerRole: sender.role,
                 sampleRate: 24000,
@@ -1632,11 +1647,26 @@ function syncRysRelayContext(session,context){
   return session.ws.familyTourCode===code;
 }
 
+// v62: an ordered opaque session cannot apply an older HTTP body after a newer one.
+function acceptRysRelayRequestOrder(session,input,res){
+  if(!session.relayKey)return true; // Keep the legacy public-ID protocol compatible.
+  const raw=input?.requestSeq;
+  if(raw===undefined){
+    if(session.lastRequestSeq===undefined)return true;
+    res.status(409).json({error:'relay-request-order-required'});return false;
+  }
+  const seq=typeof raw==='string'&&/^[1-9][0-9]{0,15}$/.test(raw)?Number(raw):raw;
+  if(!Number.isSafeInteger(seq)||seq<1){res.status(400).json({error:'relay-invalid-order'});return false;}
+  if(seq<=(session.lastRequestSeq||0)){res.status(409).json({error:'relay-request-stale'});return false;}
+  session.lastRequestSeq=seq;return true;
+}
+
 function serveRysRelay(session,req,res,token,context,messages=[]){
   if((context&&!isRysClientMessage(context))||!Array.isArray(messages)||messages.length>128||
     !messages.every(isRysClientMessage))return res.status(400).json({error:'relay-invalid-message'});
   if(context&&!['join','family-subscribe','admin-subscribe'].includes(context.type))
     return res.status(400).json({error:'relay-context-invalid'});
+  if(!acceptRysRelayRequestOrder(session,req.method==='GET'?req.query:req.body,res))return;
   if(!applyRysRelayAuth(session,req,token,context))
     return res.status(401).json({error:'relay-auth-required'});
   if(!syncRysRelayContext(session,context)){
