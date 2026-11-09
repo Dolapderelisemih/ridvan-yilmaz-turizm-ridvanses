@@ -419,6 +419,7 @@ function serializeRoom(room, includePilgrimDetails = true) {
     currentTopic: room.currentTopic,
     activeTawafStage: room.activeTawafStage || null,
     guidePeerId: room.guidePeerId || null,
+    audioSourceId:room.audioSourceId||null,
     guideLocation: room.guideLocation || null,
     connectedPilgrims: pilgrims,
     connectedGuides: guides,
@@ -462,6 +463,13 @@ function broadcastToRoom(room,payload,excludeWs=null,isAudioOverride=false){
     }
     else {try{socket.send(data);}catch(e){}}
   }
+}
+
+// v61: source identity is control metadata; the 972-byte PCM wire format is unchanged.
+function setRysAudioSource(room,sourceId){
+  if(room.audioSourceId===sourceId)return;
+  room.audioSourceId=sourceId;
+  broadcastToRoom(room,{type:'audio-source',audioSourceId:sourceId});
 }
 
 function broadcastToGuidesInTour(tourCode, payload) {
@@ -679,6 +687,7 @@ function evaluateTourGuidePresence(tourCode) {
       r.currentTopic = genelRoom.currentTopic;
       r.guidePeerId = genelRoom.guidePeerId || null;
       r.guideName = genelRoom.guideName;
+      setRysAudioSource(r,genelRoom.audioSourceId||null);
       broadcastToRoom(r, {
         type: 'stream-state',
         isLive: r.isLive,
@@ -947,10 +956,12 @@ function processClientJsonMessageV49(ctx, msg) {
     const targetRoom = getOrCreateRoom(tourCode, roomId);
     ctx.currentRoom = targetRoom;
     const deviceId = msg.deviceId ? String(msg.deviceId).trim() : '';
+    const previousSource=prevRoom===targetRoom?targetRoom.clients.get(clientId)?.audioSourceId:null;
     const clientObj = {
       ws,
       id: clientId,
       deviceId,
+      audioSourceId:role==='guide'?(msg.audioSourceId||previousSource||clientId):null,
       role,
       name: msg.name || (role === 'guide' ? 'Ömer Ali Gültekin' : `Hacı Misafir #${clientSeq++}`),
       phone: msg.phone || '',
@@ -1026,6 +1037,7 @@ function processClientJsonMessageV49(ctx, msg) {
         if (r.isLive) {
           if (!wasLive || !r.startedAt) r.startedAt = Date.now();
           r.activePublisherClientId = clientId;
+          setRysAudioSource(r,sender.audioSourceId||clientId);
         } else if (!r.activePublisherClientId || r.activePublisherClientId === clientId) {
           r.activePublisherClientId = null;
         }
@@ -1143,6 +1155,7 @@ function processClientJsonMessageV49(ctx, msg) {
         sentAt: msg.sentAt || Date.now()
       });
       for (const r of getTargetBroadcastRooms(currentRoom)) {
+        setRysAudioSource(r,sender.audioSourceId||clientId);
         broadcastToRoom(r, serializedAudio, ws, true);
       }
       break;
@@ -1232,6 +1245,8 @@ function isRysClientMessage(message){
           const next=value[key];
           if(next===undefined)continue; // Internal GET DTOs may contain omitted optional fields.
           if(strings.has(key)&&next!==null&&typeof next!=='string')return false;
+          if(key==='audioSourceId'&&next!==null&&(typeof next!=='string'||next.length>128||
+            !(/^[a-zA-Z0-9_.-]*$/).test(next)))return false;
           pending.push({value:next,depth:depth+1});
         }
       }else return false;
@@ -1283,6 +1298,7 @@ wss.on('connection', (ws, req) => {
       let fallbackPayload = null;
 
       for (const r of getTargetBroadcastRooms(ctx.currentRoom)) {
+        setRysAudioSource(r,sender.audioSourceId||ctx.clientId);
         for (const peer of r.clients.values()) {
           if (peer.ws === ws || peer.ws.readyState !== WebSocket.OPEN) continue;
           if (!peer.ws.isHttpRelay) {
@@ -1449,7 +1465,7 @@ function digestRysSubscription(m){
     String(m.roomId||'genel').trim(),m.role==='guide'?'guide':'pilgrim',
     m.name||'',m.deviceId===undefined?null:String(m.deviceId).trim(),
     m.phone===undefined?null:m.phone,m.lang===undefined?null:m.lang,
-    m.pin===undefined?null:String(m.pin),m.token||''
+    m.pin===undefined?null:String(m.pin),m.token||'',m.audioSourceId||null
   ])).digest('hex');
 }
 function sendRysSubscriptionAck(ctx,payload){
@@ -1501,7 +1517,7 @@ function handleRysNativeHandoff(ctx,msg){
         const previous=source.currentRoom?.clients.get(source.clientId);
         if(!previous){fail('source-not-joined');return true;}
         request.name=request.name||previous.name;
-        for(const key of ['deviceId','phone','lang'])
+        for(const key of ['deviceId','phone','lang','audioSourceId'])
           if(request[key]===undefined)request[key]=previous[key];
       }
     }
@@ -1566,6 +1582,7 @@ function syncRysRelayJoin(session,joinContext){
   const metadataMatches=()=>{
     const c=session.currentRoom?.clients.get(session.clientId);if(!c)return false;
     if(joinContext.name&&c.name!==joinContext.name)return false;
+    if(role==='guide'&&joinContext.audioSourceId&&c.audioSourceId!==joinContext.audioSourceId)return false;
     for(const key of ['deviceId','phone','lang']){
       if(joinContext[key]===undefined)continue;
       const wanted=key==='lang'?(joinContext.lang||'tr'):
@@ -1583,7 +1600,8 @@ function syncRysRelayJoin(session,joinContext){
       name:joinContext.name||previous.name,
       deviceId:joinContext.deviceId===undefined?previous.deviceId:joinContext.deviceId,
       phone:joinContext.phone===undefined?previous.phone:joinContext.phone,
-      lang:joinContext.lang===undefined?previous.lang:joinContext.lang
+      lang:joinContext.lang===undefined?previous.lang:joinContext.lang,
+      audioSourceId:joinContext.audioSourceId===undefined?previous.audioSourceId:joinContext.audioSourceId
     }:joinContext;
     processClientJsonMessage(session,effective);
   }

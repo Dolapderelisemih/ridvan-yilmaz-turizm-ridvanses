@@ -267,6 +267,9 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
               ? 0.5 + 0.5 * Math.cos((Math.PI * this.resetFade) / (this.fadeN - 1))
               : 0;
           ch[i] = this.resetFrom * w;
+          this.lastOut=ch[i];
+          this.tail[this.tailPos]=ch[i];
+          this.tailPos=(this.tailPos+1)%this.tail.length;
           this.resetFade++;
         }
         for (let c = 1; c < out.length; c++) out[c].set(ch);

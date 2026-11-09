@@ -574,6 +574,7 @@
         }
         if (
           msg.type === 'room-state' ||
+          msg.type === 'audio-source' ||
           msg.type === 'stream-state' ||
           msg.type === 'tawaf-stage' ||
           msg.type === 'new-announcement' ||
@@ -611,6 +612,7 @@
               : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti'),
           activeTawafStage: this._activeTawafStage || null,
           guidePeerId: window.ryGetDynamicChannelId(tourCode, roomId),
+          audioSourceId:this._joinContext.audioSourceId||null,
           guideLocation: this._guideLocation || null,
           connectedPilgrims: pilgrims,
           totalListeners: pilgrims.length,
@@ -785,6 +787,7 @@
             isLive: this._isLive,
             broadcastMode: this._broadcastMode,
             currentTopic: this._currentTopic,
+            audioSourceId:this._joinContext.audioSourceId||null,
             guidePeerId: window.ryGetDynamicChannelId(
               this._joinContext.tourCode || 'RY-KASIM',
               this._joinContext.roomId || 'genel'

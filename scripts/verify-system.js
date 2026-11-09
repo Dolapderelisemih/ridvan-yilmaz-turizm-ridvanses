@@ -580,6 +580,7 @@ async function runStep2And3LiveServerAndWsTests() {
   await runV58InputChecks({baseUrl,url:wsUrl,token:authToken});
   await runV59FanoutChecks({baseUrl,url:wsUrl,token:authToken});
   await runV60AudioRoundTrip({baseUrl,url:wsUrl,token:authToken});
+  await runV61SessionChecks({baseUrl,url:wsUrl,token:authToken});
 
   guideGenelWs.close();
   pilgrimWs.close();
@@ -1531,9 +1532,9 @@ async function runStep5V54AudioChecks(){
     if(mode!=='join')assert.equal(body.joinContext??null,null);
     else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
   }
-  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v60"));assert(sw.includes('/vercel-ws-shim.js?v=60'));
+  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v61"));assert(sw.includes('/vercel-ws-shim.js?v=61'));
   for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
-    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'60',f+' stale shim');
+    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'61',f+' stale shim');
   }
   if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
   console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
@@ -1668,7 +1669,7 @@ async function runV56HandoffChecks({baseUrl,url,token}){
     return s.messages.find(m=>m.type==='handoff-committed');
   };
   const media=seq=>({type:'audio-chunk',seq,sentAt:Date.now(),sampleRate:24000,pcm16:Buffer.alloc(960).toString('base64')});
-  const guide={type:'join',role:'guide',tourCode:code,roomId:'genel',name:'V56 guide '+stamp,deviceId:'v56-guide-'+stamp,token};
+  const guide={type:'join',role:'guide',tourCode:code,roomId:'genel',name:'V56 guide '+stamp,deviceId:'v56-guide-'+stamp,audioSourceId:'v56-page-'+stamp,token};
   const pilgrim={type:'join',role:'pilgrim',tourCode:code,roomId:'genel',name:'V56 listener',deviceId:'v56-listener-'+stamp,pin:'1453'};
   const headers={'Content-Type':'application/json',Authorization:'Bearer '+token};
   try{
@@ -1693,9 +1694,12 @@ async function runV56HandoffChecks({baseUrl,url,token}){
     assert(changed.messages.some(m=>m.type==='handoff-error'&&m.code==='context-changed'));changed.ws.close();
     await post({...source,token,subscriptionContext:guide,messages:[{type:'guide-stream-state',isLive:true,broadcastMode:'mic'}]});
     // Commit is the server's linearization point. Every late old request is fenced.
-    const native=await socket(),id=await prepare(native,source,guide);
+    const partialGuide={...guide};delete partialGuide.audioSourceId;
+    await post({...source,token,subscriptionContext:partialGuide,messages:[]});
+    const native=await socket(),id=await prepare(native,source,partialGuide);
     const committed=await commit(native,id);assert.equal(committed?.ack?.type,'joined');
     assert.equal(committed.ack.room.connectedGuides.length,1);
+    assert.equal(committed.ack.room.audioSourceId,guide.audioSourceId,'Guide page source must survive HTTP/native handoff');
     for(let n=0;n<3;n++){
       const late=await post({...source,token,subscriptionContext:guide,messages:[media(10+n)]});
       assert.equal(late.status,409);assert.equal(late.error,'relay-session-retired');
@@ -1707,7 +1711,10 @@ async function runV56HandoffChecks({baseUrl,url,token}){
     assert.equal((await post({type:'relay-close',version:56,...source})).status,200);
     const binary=Buffer.alloc(972);binary.writeUInt32LE(3,0);binary.writeDoubleLE(Date.now(),4);
     native.ws.send(binary);await new Promise(r=>setTimeout(r,25));
-    assert((await post({...listener,subscriptionContext:pilgrim})).messages.some(m=>m.type==='audio-chunk'&&m.seq===3));
+    const afterHandoff=await post({...listener,subscriptionContext:pilgrim});
+    assert(afterHandoff.messages.some(m=>m.type==='audio-chunk'&&m.seq===3));
+    assert(!afterHandoff.messages.some(m=>m.type==='audio-source'&&m.audioSourceId!==guide.audioSourceId),
+      'Omitted source identity must be inherited from this same HTTP membership at commit');
     assert(!native.closed(),'Late relay request must not terminate the native socket');
     assert.equal((await post({clientId:source.clientId,relayKey:'g'.repeat(48)})).status,401);
     assert.equal((await post({clientId:source.clientId,relayKey:'ğ'.repeat(48)})).status,401);
@@ -2310,7 +2317,7 @@ async function runStep5V59AudioChecks(){
   rateBox.Date.now=()=>60000;limiter({...req,ip:'fresh'},response,()=>admitted++);assert.equal(admitted,2);
   assert(server.includes('rysSendAudio(peer.ws,fallbackPayload,false)'));
   assert(!server.includes('fallbackJsonStr'));
-  assert(read('public/sw.js').includes('pcm-player-worklet.js?v=60-audio'));
+  assert(read('public/sw.js').includes('pcm-player-worklet.js?v=61-audio'));
   assert(read('public/sw.js').includes('pcm-capture-worklet.js?v=60-audio'));
   recordResult('ADIM-5.V59','8/16/44.1/48k DSP; FIR rejection; DC/limiter/partition; PLC/jitter/catchup; mic mute/retry; gain ramps; bounded CGNAT buckets',true);
   console.log('V59 DSP METRICS '+JSON.stringify({rates:dsp,fixture200HzMaxStep:+maxStep.toFixed(6),concealedSamples:p.stats.concealed}));
@@ -2492,9 +2499,9 @@ async function runStep5V60AudioChecks(){
     p.rxFir.r.fill(1);p.playing=true;p.expected=0;p.missing=15;
     p.process([],[[new Float32Array(128)]]);assert(!p.playing);assert(p.rxFir.r.every(x=>x===0));
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v60'));
-  for(const asset of ['pcm-player-worklet.js?v=60-audio','pcm-capture-worklet.js?v=60-audio'])assert(sw.includes(asset));
-  assert(guide.includes('pcm-capture-worklet.js?v=60-audio'));assert(read('public/dinle.html').includes('pcm-player-worklet.js?v=60-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v61'));
+  for(const asset of ['pcm-player-worklet.js?v=61-audio','pcm-capture-worklet.js?v=60-audio'])assert(sw.includes(asset));
+  assert(guide.includes('pcm-capture-worklet.js?v=60-audio'));assert(read('public/dinle.html').includes('pcm-player-worklet.js?v=61-audio'));
   console.log('V60 UNIT METRICS '+JSON.stringify({lifecycleChecks:checks,alias}));
   recordResult('ADIM-5.V60','Low-rate player anti-alias; source/reset/starvation; guide permission/module/preview/heal races; explicit capture shutdown; cache60',true);
   console.log('V60 UNIT PASS');
@@ -2571,6 +2578,221 @@ async function runV60AudioRoundTrip({baseUrl,url,token}){
   }
 }
 
+function createV61ListenerHarness(source,playerSource,SocketClass){
+  const assert=require('node:assert/strict');
+  function pick(name){const m=new RegExp('^[ \\t]*(?:async )?function '+name+'\\(','m').exec(source);if(!m)return '';
+    for(let end=source.indexOf('}',m.index);end>=0;end=source.indexOf('}',end+1)){const text=source.slice(m.index,end+1);
+      try{new vm.Script(text);return text;}catch(e){if(e.name!=='SyntaxError')throw e;}}throw Error('V61 missing '+name);}
+  const box={Float32Array,Float64Array,Math,Number,sampleRate:48000,
+    AudioWorkletProcessor:class{constructor(){this.port={postMessage(){}};}},registerProcessor:(n,P)=>box.P=P};
+  vm.createContext(box);vm.runInContext(playerSource,box);const player=new box.P(),sockets=[],jobs=[],elements=new Map(),ui=[];
+  class FakeSocket{static OPEN=1;static CONNECTING=0;static CLOSED=3;constructor(){this.readyState=0;this.sent=[];sockets.push(this);}send(raw){this.sent.push(raw);}close(){this.readyState=3;}}
+  class DeferredBlob{constructor(){this.promise=new Promise(resolve=>this.resolve=resolve);}arrayBuffer(){return this.promise;}}
+  const element=id=>{if(!elements.has(id))elements.set(id,{value:id==='roomSelect'?'genel':'6061',style:{},classList:{remove(){},add(){},contains(){return true;}}});return elements.get(id);};
+  const noop=()=>{};
+  const g={WebSocket:SocketClass||FakeSocket,ws:null,intentionalLeave:false,isAudioListening:true,
+    currentTour:{code:'A'},currentLang:'tr',pilgrimDeviceId:'v61-device',pendingRxFrames:[],rxAudioDeliveryEpoch:0,rxAudioSourceId:null,
+    rxPlayerWorkletNode:{port:{postMessage:m=>{if(m.type==='reset')player._reset();else if(m.type==='push')player._push(m);}}},
+    audioCtx:{state:'running',currentTime:1,resume:async()=>{}},activeScheduledSources:[],nextAudioTime:0,lastHwEndSample:0,rxHermiteHist:null,rxHermitePos:0,
+    lastReceivedAudioSeq:0,lastPacketReceivedAt:0,lastRawChunkAt:0,lastPacketReceivedAt:0,rxFallbackSubSeq:0,
+    window:{location:{protocol:'http:',host:'localhost'},ryGetDynamicChannelId:(tour,room)=>tour+'/'+room},
+    document:{getElementById:element,querySelector:()=>null},navigator:{geolocation:{clearWatch(){}}},gpsWatchId:null,
+    I18N:{tr:{}},Blob:DeferredBlob,ArrayBuffer,DataView,Float32Array,Math,Number,Boolean,Date,performance,
+    setTimeout:(fn,ms)=>{const j={fn,ms,cancelled:false};jobs.push(j);return j;},clearTimeout:j=>{if(j)j.cancelled=true;},
+    atob:s=>Buffer.from(s,'base64').toString('binary'),console:{error(){},warn(){}},
+    pilgrimAudioGuardChannel:null,pilgrimUmrahMap:null,ensureAudioContext:noop,forceResurrectPilgrimAudio:noop,
+    updatePilgrimConnectionUi:x=>ui.push(x),updateGuideSpeakingIndicator:noop,animateSpectrumFromLevel:noop,
+    renderGuideLiveLocation:noop,renderLiveTawafStage:noop,renderAnnouncements:noop,renderPrayers:noop,renderPilgrimJourney:noop,
+    showAppToast:noop,playGentleHarmonyNote:noop,prependAnnouncement:noop,playNotificationChime:noop,sendServiceWorkerNotification:noop,
+    stopBackgroundKeepAliveAudio:noop,releaseWakeLock:noop};
+  vm.createContext(g);vm.runInContext(['updateRxAudioSource','stopAllActiveSources','flushPendingRxFrames','playPcmSamples',
+    'handleBinaryAudioFrame','connectWebSocket','leaveRoom'].map(pick).join('\n'),g);
+  const packet=(seq,value=.1)=>{const b=new ArrayBuffer(972),v=new DataView(b);v.setUint32(0,seq,true);v.setFloat64(4,Date.now(),true);
+    for(let i=0;i<480;i++)v.setInt16(12+i*2,Math.round(value*32767),true);return b;};
+  const connect=(tour='A',room='genel')=>{g.intentionalLeave=false;g.isAudioListening=true;g.currentTour={code:tour};
+    g.connectWebSocket(tour,room,'V61 listener','');const s=g.ws;if(!SocketClass){s.readyState=1;s.onopen();}return s;};
+  const tick=async()=>{for(let i=0;i<8;i++)await Promise.resolve();};
+  return {g,player,sockets,jobs,ui,packet,connect,tick,DeferredBlob,assert};
+}
+
+
+async function runStep5V61AudioChecks(){
+  const assert=require('node:assert/strict'),read=f=>fs.readFileSync(path.join(ROOT_DIR,f),'utf8').replace(/\r\n/g,'\n');
+  const listener=read('public/dinle.html'),guide=read('public/rehber.html'),player=read('public/pcm-player-worklet.js'),server=read('server.js'),shim=read('public/vercel-ws-shim.js');
+  function pick(source,name,kind='function'){
+    const m=new RegExp('^[ \\t]*'+(kind==='function'?'(?:async )?function ':'(?:async )?')+name+'\\([^\\n]*\\)\\s*\\{','m').exec(source);
+    assert(m,'V61 missing '+name);for(let end=source.indexOf('}',m.index);end>=0;end=source.indexOf('}',end+1)){
+      const text=source.slice(m.index,end+1);try{new vm.Script(kind==='method'?'class Probe{'+text+'}':text);return text;}catch(e){if(e.name!=='SyntaxError')throw e;}
+    }throw Error('V61 unterminated '+name);
+  }
+  const checks=[];
+  {
+    const h=createV61ListenerHarness(listener,player),a=h.connect('A'),oldOpen=a.onopen,oldMessage=a.onmessage,oldClose=a.onclose;
+    const pending=new h.DeferredBlob();a.onmessage({data:pending});h.g.leaveRoom();const b=h.connect('B');b.onmessage({data:h.packet(10)});
+    const epoch=h.g.rxAudioDeliveryEpoch,jobs=h.jobs.length,sends=b.sent.length;
+    oldOpen();oldMessage({data:JSON.stringify({type:'stream-state',isLive:false})});oldClose();pending.resolve(h.packet(9000));await h.tick();
+    assert.deepEqual(Array.from(h.player.q.keys()),[10]);assert.equal(h.player.expected,10);assert.equal(h.player.stats.resync,0);
+    assert.equal(h.g.rxAudioDeliveryEpoch,epoch);assert.equal(h.jobs.length,jobs);assert.equal(b.sent.length,sends);
+    assert.equal(a.onopen,null);assert.equal(a.onmessage,null);checks.push('old-socket-open-message-close-and-Blob-fenced');
+    b.onclose();const timer=h.jobs.at(-1);h.connect('C');const current=h.g.ws;timer.fn();assert.equal(h.g.ws,current);
+    checks.push('queued-reconnect-cannot-close-new-socket');
+  }
+  {
+    const h=createV61ListenerHarness(listener,player),s=h.connect(),pending=new h.DeferredBlob();s.onmessage({data:pending});
+    s.onmessage({data:JSON.stringify({type:'stream-state',isLive:false})});pending.resolve(h.packet(9000));await h.tick();
+    assert.equal(h.player.q.size,0);assert.equal(h.player.expected,null);checks.push('stop-event-invalidates-inflight-Blob');
+    s.onmessage({data:JSON.stringify({type:'stream-state',isLive:true,broadcastMode:'mic'})});s.onmessage({data:h.packet(40)});
+    assert(h.player.q.has(40));
+  }
+  {
+    const h=createV61ListenerHarness(listener,player),s=h.connect();s.onmessage({data:JSON.stringify({type:'audio-source',audioSourceId:'old'})});
+    s.onmessage({data:h.packet(1000)});h.player.playing=true;
+    s.onmessage({data:JSON.stringify({type:'room-state',room:{audioSourceId:'new',guidePeerId:'same-channel'}})});
+    s.onmessage({data:h.packet(10)});assert.deepEqual(Array.from(h.player.q.keys()),[10]);
+    const epoch=h.g.rxAudioDeliveryEpoch;s.onmessage({data:JSON.stringify({type:'audio-source',audioSourceId:'new'})});assert.equal(h.g.rxAudioDeliveryEpoch,epoch);
+    s.onmessage({data:JSON.stringify({type:'audio-source',audioSourceId:'wrap'})});
+    s.onmessage({data:h.packet(0x7fffffff)});s.onmessage({data:h.packet(0)});
+    assert.deepEqual(Array.from(h.player.q.keys()),[0x7fffffff,0]);checks.push('source-handover-lower-seq-idempotence-and-wrap');
+  }
+  {
+    const h=createV61ListenerHarness(listener,player),s=h.connect();s.onmessage({data:h.packet(1000)});h.player.playing=true;
+    const b=h.connect('B');b.onmessage({data:h.packet(10)});assert.deepEqual(Array.from(h.player.q.keys()),[10]);checks.push('connect-discards-old-main-and-worklet-timeline');
+  }
+  {
+    const base=createV61ListenerHarness(listener,player),jobs=[],g={ws:null,guideWsReconnectTimer:null,isMicBroadcasting:true,isDemoBroadcasting:false,
+      window:{location:{protocol:'http:',host:'localhost'}},WebSocket:base.g.WebSocket,Blob:base.DeferredBlob,joined:0,rendered:0,
+      sendGuideJoinAndSync:()=>{g.joined++;g.ws.send('join');},renderRoomState:()=>g.rendered++,
+      setTimeout:fn=>{const job={fn};jobs.push(job);return job;},clearTimeout(){},console:{warn(){},error(){}}};
+    vm.createContext(g);vm.runInContext(pick(guide,'connectGuideWs'),g);g.connectGuideWs();const a=g.ws,open=a.onopen,message=a.onmessage,close=a.onclose;
+    g.connectGuideWs();const b=g.ws;open();message({data:JSON.stringify({type:'room-state',room:{}})});close();
+    assert.equal(g.joined,0);assert.equal(g.rendered,0);assert.equal(jobs.length,0);assert.equal(a.onmessage,null);
+    b.onclose();const timer=jobs.at(-1);g.connectGuideWs();const c=g.ws;timer.fn();assert.equal(g.ws,c);checks.push('guide-socket-and-retry-ownership');
+  }
+  const reset=[];
+  for(const rate of [8000,16000,24000,44100,48000]){
+    const box={Float32Array,Float64Array,Math,Number,sampleRate:rate,
+      AudioWorkletProcessor:class{constructor(){this.port={postMessage(){}};}},registerProcessor:(n,P)=>box.P=P};
+    vm.createContext(box);vm.runInContext(player,box);const p=new box.P();
+    const push=(base,value)=>{for(let i=0;i<12;i++)p._push({seq:base+i,arrival:(base+i)*20,samples:new Float32Array(480).fill(value)});};
+    const render=seconds=>{let last=0,max=0;for(let n=0;n<Math.ceil(rate*seconds/128);n++){
+      const block=new Float32Array(128);p.process([],[[block]]);for(const y of block){assert(Number.isFinite(y));max=Math.max(max,Math.abs(y-last));last=y;}}
+      return {last,max};};
+    push(0,.2);render(.1);p.port.onmessage({data:{type:'reset'}});render(.03);assert(Math.abs(p.lastOut)<1e-8);
+    push(100,-.2);const block=new Float32Array(128);p.process([],[[block]]);const first=Math.abs(block[0]);assert(first<1e-7,'restart must begin at actual silence '+rate+' '+first);
+    let maxStep=0,previous=0;for(const y of block){maxStep=Math.max(maxStep,Math.abs(y-previous));previous=y;}
+    assert(maxStep<.15,'reset fade contains a discontinuity '+rate+' '+maxStep);
+    render(1);assert(!p.playing);assert(Math.abs(p.lastOut)<1e-8);push(1000,.2);const next=new Float32Array(128);p.process([],[[next]]);assert(Math.abs(next[0])<1e-7);
+    reset.push({rate,firstAfterReset:first,maxStep:+maxStep.toFixed(6),firstAfterStarvation:Math.abs(next[0])});
+  }
+  const captureBox={Float32Array,Float64Array,Math,Number};vm.createContext(captureBox);
+  vm.runInContext(read('public/pcm-capture-worklet.js').replace(/^export .*$/mg,''),captureBox);
+  const frames=[],kernel=new captureBox.RysCaptureKernel(24000,{continuousSpeech:true,comfortFade:false},m=>frames.push(m));
+  kernel.process(Float32Array.from({length:48000},(_,i)=>.2+.2*Math.sin(2*Math.PI*997*i/24000)));
+  assert.equal(frames.length,100);assert(frames.every(m=>m.samples.length===480&&m.samples.every(Number.isFinite)));checks.push('24k-input-exact-frames');
+  {
+    const sent=[],room={},g={crypto:require('node:crypto'),broadcastToRoom:(r,m)=>sent.push(m)};vm.createContext(g);
+    vm.runInContext(['setRysAudioSource','isRysClientMessage','digestRysSubscription'].map(n=>pick(server,n)).join('\n'),g);
+    g.setRysAudioSource(room,'page-a');g.setRysAudioSource(room,'page-a');g.setRysAudioSource(room,'page-b');assert.equal(sent.length,2);
+    assert(g.isRysClientMessage({type:'join',audioSourceId:'audio-page-1'}));assert(!g.isRysClientMessage({type:'join',audioSourceId:{}}));
+    assert(!g.isRysClientMessage({type:'join',audioSourceId:'x'.repeat(129)}));
+    assert(!g.isRysClientMessage({type:'handoff-prepare',subscription:{type:'join',audioSourceId:{}}}));
+    assert.notEqual(g.digestRysSubscription({type:'join',audioSourceId:'a'}),g.digestRysSubscription({type:'join',audioSourceId:'b'}));
+    checks.push('source-schema-control-idempotence-and-handoff-digest');
+  }
+  {
+    const methods=['send','_broadcastP2PRoomState'].map(n=>pick(shim,n,'method')).join('\n'),published=[],timers=[];
+    const g={Date,Math,ArrayBuffer,window:{ryGetDynamicChannelId:()=> 'same-channel'},setTimeout:fn=>{timers.push(fn);return 1;}};
+    vm.createContext(g);vm.runInContext('class Probe{'+methods+'}\nglobalThis.P=Probe;',g);
+    const p=new g.P();Object.assign(p,{readyState:1,_isRelay:true,_inFlight:true,_joinContext:{role:'guide',tourCode:'T',roomId:'genel',audioSourceId:'stable-page'},
+      _publishMqtt:m=>published.push(m),_deliverIncomingMessage(){},_enqueueRelayMessage:()=>true,_busConnected:()=>true,_pilgrimMeta:new Map()});
+    p.send(JSON.stringify({type:'guide-stream-state',isLive:true,broadcastMode:'mic'}));timers.at(-1)();
+    assert(published.filter(m=>['room-state','stream-state'].includes(m.type)).every(m=>(m.audioSourceId||m.room?.audioSourceId)==='stable-page'));
+    checks.push('MQTT-room-and-stream-source-parity');
+  }
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v61'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));
+  assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
+  console.log('V61 UNIT METRICS '+JSON.stringify({checks,reset,capture24kFrames:frames.length}));
+  recordResult('ADIM-5.V61','Socket/Blob/retry/source ownership; 5-rate reset/starvation de-click; 24k capture; source schema/digest/MQTT; cache61',true);
+  console.log('V61 UNIT PASS');
+}
+
+
+async function runV61SessionChecks({baseUrl,url,token}){
+  const assert=require('node:assert/strict'),{WebSocket}=require('ws');
+  const code='RY-V61-'+Date.now().toString(36).toUpperCase(),headers={'Content-Type':'application/json',Authorization:'Bearer '+token};
+  const sockets=[],controls=[],received=new Map(),httpMessages=[],errors=[];let h,session,created=false;
+  const until=async(test,timeout=5000)=>{const end=Date.now()+timeout;while(!test()){
+    if(Date.now()>end)throw Error('V61 E2E deadline');await new Promise(r=>setTimeout(r,5));}};
+  const post=async body=>{const r=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers,body:JSON.stringify(body)});assert.equal(r.status,200);return r.json();};
+  const poll=async()=>{const data=await post({...session,subscriptionContext:{type:'join',role:'pilgrim',tourCode:code,roomId:'siyer',pin:'6061',name:'V61 HTTP'}});
+    httpMessages.push(...(data.messages||[]));};
+  const connect=async(key,join)=>{const socket=new WebSocket(url),messages=[];sockets.push(socket);received.set(key,[]);
+    socket.on('error',e=>errors.push(e.message));socket.on('message',(raw,binary)=>{
+      if(binary)received.get(key).push(Buffer.from(raw));else try{messages.push(JSON.parse(raw.toString()));}catch(e){errors.push('bad JSON');}});
+    await new Promise((resolve,reject)=>{socket.once('open',resolve);socket.once('error',reject);});
+    socket.send(JSON.stringify({type:'join',tourCode:code,roomId:'genel',pin:'6061',...join}));
+    await until(()=>messages.some(m=>m.type==='joined'||m.type==='pin-error'));return {socket,messages};};
+  const binary=(seq,value=.1)=>{const b=Buffer.alloc(972);b.writeUInt32LE(seq,0);b.writeDoubleLE(Date.now(),4);
+    for(let i=0;i<480;i++)b.writeInt16LE(Math.round(value*32767),12+i*2);return b;};
+  class Bridge{
+    static OPEN=1;static CONNECTING=0;static CLOSED=3;
+    constructor(address){this.real=new WebSocket(address);sockets.push(this.real);
+      this.real.on('open',()=>this.onopen?.({}));this.real.on('close',()=>this.onclose?.({}));
+      this.real.on('error',e=>{errors.push(e.message);this.onerror?.(e);});
+      this.real.on('message',(raw,isBinary)=>{
+        if(!isBinary)try{controls.push(JSON.parse(raw.toString()));}catch(e){}
+        const data=isBinary?raw.buffer.slice(raw.byteOffset,raw.byteOffset+raw.byteLength):raw.toString();this.onmessage?.({data});
+      });}
+    get readyState(){return this.real.readyState;}send(data){this.real.send(data);}close(){this.real.close();}
+  }
+  const state=(socket,extra={})=>socket.send(JSON.stringify({type:'guide-stream-state',isLive:true,broadcastMode:'mic',guidePeerId:'same-channel',...extra}));
+  const joinG={role:'guide',token,name:'V61 general',deviceId:'v61-general-device',audioSourceId:'page-general'};
+  try{
+    const c=await fetch(baseUrl+'/api/tours',{method:'POST',headers,body:JSON.stringify({code,name:'V61 source/route test',pin:'6061'})});
+    assert.equal(c.status,200);await c.arrayBuffer();created=true;
+    let general=await connect('guide',joinG);
+    for(const room of ['genel','kadinlar','cocuk'])await connect(room,{role:'pilgrim',name:'V61 '+room,deviceId:'v61-'+room,roomId:room});
+    h=createV61ListenerHarness(fs.readFileSync(path.join(ROOT_DIR,'public/dinle.html'),'utf8'),fs.readFileSync(path.join(ROOT_DIR,'public/pcm-player-worklet.js'),'utf8'),Bridge);
+    const address=new URL(url);h.g.window.location={protocol:address.protocol==='wss:'?'https:':'http:',host:address.host};h.connect(code,'siyer');
+    await until(()=>controls.some(m=>m.type==='joined'));
+    const opened=await post({type:'relay-open',version:56});session={clientId:opened.clientId,relayKey:opened.relayKey};await poll();
+    const denied=await connect('bad-pin',{role:'pilgrim',name:'PIN must fail',roomId:'siyer',pin:'wrong'});
+    assert(denied.messages.some(m=>m.type==='pin-error'));
+    state(general.socket,{topic:'General topic'});const first=binary(1000);general.socket.send(first);
+    await until(()=>h.player.q.has(1000)&&['genel','kadinlar','cocuk'].every(r=>received.get(r).length===1));await poll();
+    assert.equal(h.g.rxAudioSourceId,'page-general');
+    const dedicated=await connect('dedicated',{role:'guide',token,name:'V61 dedicated',roomId:'siyer',audioSourceId:'page-dedicated'});
+    state(dedicated.socket,{topic:'Dedicated topic'});dedicated.socket.send(binary(10,-.1));
+    await until(()=>h.player.q.has(10));assert(!h.player.q.has(1000));assert.equal(h.g.rxAudioSourceId,'page-dedicated');await poll();
+    for(const r of ['genel','kadinlar','cocuk'])assert.equal(received.get(r).length,1,'dedicated audio leaked to '+r);
+    const closed=new Promise(resolve=>dedicated.socket.once('close',resolve));dedicated.socket.terminate();await closed;
+    general.socket.send(binary(1001));await until(()=>h.player.q.has(1001)&&h.g.rxAudioSourceId==='page-general');await poll();
+    await until(()=>h.g.document.getElementById('liveTopicText').textContent==='General topic',4000);
+    const epoch=h.g.rxAudioDeliveryEpoch,oldClosed=new Promise(resolve=>general.socket.once('close',resolve));
+    general=await connect('replacement',joinG);await oldClosed;state(general.socket,{topic:'General topic'});general.socket.send(binary(1002));
+    await until(()=>h.player.q.has(1002));assert.equal(h.g.rxAudioDeliveryEpoch,epoch,'same page epoch must survive connection replacement');await poll();
+    general.socket.send(JSON.stringify({type:'join',tourCode:code,roomId:'genel',pin:'6061',...joinG,audioSourceId:'page-wrap'}));
+    state(general.socket);general.socket.send(binary(0x7fffffff));general.socket.send(binary(0));
+    await until(()=>h.player.q.has(0x7fffffff)&&h.player.q.has(0));assert.equal(h.g.rxAudioSourceId,'page-wrap');await poll();
+    general.socket.send(JSON.stringify({type:'guide-stream-state',isLive:false,broadcastMode:'idle'}));await until(()=>h.player.q.size===0);
+    assert.equal(received.get('bad-pin').length,0);assert.deepEqual(errors,[]);
+    const audio=httpMessages.filter(m=>m.type==='audio-chunk');
+    for(const seq of [1000,10,1001,1002,0x7fffffff,0])assert(audio.some(m=>m.seq===seq),'HTTP missing seq '+seq);
+    const expected=new Map([[1000,first],[10,binary(10,-.1)],[1001,binary(1001)],[1002,binary(1002)],[0x7fffffff,binary(0x7fffffff)],[0,binary(0)]]);
+    for(const m of audio)assert(Buffer.from(m.pcm16,'base64').equals(expected.get(m.seq).subarray(12)));
+    const sourceOrder=httpMessages.filter(m=>m.type==='audio-source').map(m=>m.audioSourceId);
+    assert.deepEqual(sourceOrder,['page-general','page-dedicated','page-general','page-wrap']);
+    console.log('V61 E2E METRICS '+JSON.stringify({rooms:4,httpAudioFrames:audio.length,sourceOrder,lowerSeqAccepted:10,
+      stableSourceOnReconnect:true,wrapAccepted:true,stoppedQueue:h.player.q.size,wrongPinAudioFrames:0,pcmEqual:true}));
+    recordResult('ADIM-3.V61','Real native+HTTP: 4 rooms, dedicated/general handover, lower seq, stable page epoch, wrap, stop, PIN and byte parity',true);
+    console.log('V61 E2E PASS');
+  }finally{
+    h?.g.leaveRoom();for(const s of sockets)try{s.terminate();}catch(e){}
+    if(session)try{await post({...session,type:'relay-close'});}catch(e){}
+    if(created){const r=await fetch(baseUrl+'/api/tours/'+code,{method:'DELETE',headers});await r.arrayBuffer();}
+  }
+}
+
 async function main() {
   const runtimePath = path.join(ROOT_DIR, 'data', 'runtime.json');
   const runtimeSnapshot = fs.existsSync(runtimePath) ? fs.readFileSync(runtimePath, 'utf8') : null;
@@ -2585,6 +2807,7 @@ async function main() {
     await runStep5V58InputChecks();
     await runStep5V59AudioChecks();
     await runStep5V60AudioChecks();
+    await runStep5V61AudioChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);

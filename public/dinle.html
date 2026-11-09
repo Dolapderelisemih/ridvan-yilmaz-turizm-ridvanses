@@ -16,7 +16,7 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=60"></script>
+  <script src="/vercel-ws-shim.js?v=61"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
@@ -1177,13 +1177,23 @@
       }
     })();
 
+    function updateRxAudioSource(sourceId){
+      if(typeof sourceId!=='string'||!sourceId)return;
+      if(rxAudioSourceId!==null&&rxAudioSourceId!==sourceId){
+        lastReceivedAudioSeq=0;stopAllActiveSources();
+      }
+      rxAudioSourceId=sourceId;
+    }
+
     function connectWebSocket(tourCode, roomId, name, phone) {
       if (window._ryWsReconnectTimeout) {
         clearTimeout(window._ryWsReconnectTimeout);
         window._ryWsReconnectTimeout = null;
       }
+      rxAudioSourceId=null;lastReceivedAudioSeq=0;stopAllActiveSources();
       if (ws) {
         try {
+          ws.onopen=null;ws.onmessage=null;
           ws.onclose = null;
           ws.onerror = null;
           ws.close();
@@ -1194,7 +1204,8 @@
       const wsHost = window.location.host.includes('vercel.app')
         ? 'ses.ridvanyilmazturizm.com'
         : window.location.host;
-      ws = new WebSocket(`${proto}//${wsHost}/ws`);
+      const socket=new WebSocket(`${proto}//${wsHost}/ws`);ws=socket;
+      const current=()=>ws===socket&&!intentionalLeave;
       ws.binaryType = 'arraybuffer';
 
       window.__ryActiveListenerChannelId =
@@ -1203,10 +1214,11 @@
           : `ridvanses-${String(tourCode || 'RY-KASIM').toLowerCase()}-${String(roomId || 'genel').toLowerCase()}-guide-v26`;
 
       ws.onopen = () => {
+        if(!current())return;
         window.__ryPilgrimReconnectAttempts = 0;
         updatePilgrimConnectionUi('connected');
         const currentPin = (document.getElementById('tourPinInput')?.value || '').trim();
-        ws.send(JSON.stringify({
+        socket.send(JSON.stringify({
           type: 'join',
           role: 'pilgrim',
           deviceId: pilgrimDeviceId,
@@ -1220,13 +1232,15 @@
       };
 
       ws.onmessage = (event) => {
+        if(!current())return;
         window.__ryLastServerMsgAt = Date.now();
         if (event.data instanceof ArrayBuffer) {
           handleBinaryAudioFrame(event.data);
           return;
         }
         if (typeof Blob !== 'undefined' && event.data instanceof Blob) {
-          event.data.arrayBuffer().then((buf) => handleBinaryAudioFrame(buf)).catch(() => {});
+          const epoch=rxAudioDeliveryEpoch;
+          event.data.arrayBuffer().then(buf=>{if(current()&&epoch===rxAudioDeliveryEpoch)handleBinaryAudioFrame(buf);}).catch(()=>{});
           return;
         }
         let msg;
@@ -1236,9 +1250,11 @@
           return;
         }
 
+        if(msg.type==='audio-source'){updateRxAudioSource(msg.audioSourceId);return;}
         if (msg.type === 'joined' || msg.type === 'room-state') {
           const r = msg.room;
           if (r) {
+            updateRxAudioSource(r.audioSourceId);
             document.getElementById('liveGuideName').textContent = r.guideName;
             document.getElementById('liveListenerCount').textContent = r.totalListeners;
             document.getElementById('liveTopicText').textContent = r.currentTopic;
@@ -1266,6 +1282,7 @@
         }
 
         if (msg.type === 'stream-state') {
+          updateRxAudioSource(msg.audioSourceId);
           if (msg.currentTopic) {
             document.getElementById('liveTopicText').textContent = msg.currentTopic;
           }
@@ -1350,6 +1367,7 @@
       };
 
       ws.onclose = () => {
+        if(!current())return;
         if (intentionalLeave) return;
         updatePilgrimConnectionUi('reconnecting');
         if (window._ryWsReconnectTimeout) clearTimeout(window._ryWsReconnectTimeout);
@@ -1357,13 +1375,14 @@
         window.__ryPilgrimReconnectAttempts = attempts + 1;
         const retryDelay = Math.min(2500, Math.round(500 * Math.pow(1.5, attempts)));
         window._ryWsReconnectTimeout = setTimeout(() => {
-          if (!intentionalLeave) {
+          if (current()) {
             connectWebSocket(tourCode, roomId, name, phone);
           }
         }, retryDelay);
       };
 
       ws.onerror = (err) => {
+        if(!current())return;
         console.error('Hacı WebSocket hatası:', err);
       };
     }
@@ -1578,6 +1597,7 @@
     let systemInterruptionStartedAt = 0;
     let interruptionRecoveryTimer = null;
     let rxLoadToken = 0;
+    let rxAudioDeliveryEpoch=0,rxAudioSourceId=null;
     const pendingRxFrames = [];
 
     function flushPendingRxFrames() {
@@ -1606,7 +1626,7 @@
       const token = ++rxLoadToken;
       rxPlayerWorkletLoading = true;
       ctx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=60-audio')
+        .addModule('/pcm-player-worklet.js?v=61-audio')
         .then(() => {
           if (token !== rxLoadToken || audioCtx !== ctx || rxPlayerWorkletNode) return;
           const node = new AudioWorkletNode(ctx, 'rys-pcm-player', {
@@ -1977,6 +1997,7 @@
     const activeScheduledSources = [];
 
     function stopAllActiveSources() {
+      ++rxAudioDeliveryEpoch;
       pendingRxFrames.length = 0;
       if (rxPlayerWorkletNode && rxPlayerWorkletNode.port) {
         try {
@@ -2492,13 +2513,14 @@
     }
 
     function leaveRoom() {
-      intentionalLeave = true;
+      intentionalLeave = true;rxAudioSourceId=null;
       if (window._ryWsReconnectTimeout) {
         clearTimeout(window._ryWsReconnectTimeout);
         window._ryWsReconnectTimeout = null;
       }
       if (ws) {
         try {
+          ws.onopen=null;ws.onmessage=null;
           ws.onclose = null;
           ws.onerror = null;
           ws.close();
@@ -2555,7 +2577,7 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         // PATCH: sw-register-v53
-        navigator.serviceWorker.register('/sw.js?v=60').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=61').catch(() => {});
       });
     }
 
