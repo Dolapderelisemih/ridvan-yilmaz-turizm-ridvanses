@@ -473,6 +473,8 @@ function acceptRysAudio(room,sender,clientId,synth=false,message=null){
   const sameSource=room.audioSourceId===(sender.audioSourceId||clientId);
   if(sameSource&&room.audioStateKnown&&(!room.isLive||!synth&&String(room.broadcastMode||'').startsWith('demo')))return false;
   // Raw binary uses the ordered native socket; JSON must name the active media epoch.
+  if(message?.audioMediaEpoch!=null&&(!sameSource||!room.audioStateKnown||!room.isLive||
+    !Number.isSafeInteger(room.audioMediaEpoch)))return false;
   if(message&&sameSource&&Number.isSafeInteger(room.audioMediaEpoch)&&message.audioMediaEpoch!==room.audioMediaEpoch)return false;
   return true;
 }
@@ -1496,7 +1498,7 @@ function resolveRysRelay(req,res,input){
     }
   }else s=s||getOrCreateRelaySession(id);
   if(s.relayRetired){res.status(409).json({error:'relay-session-retired'});return null;}
-  s.lastSeen=Date.now();return s;
+  return s;
 }
 function digestRysSubscription(m){
   if(!m)return null;
@@ -1686,19 +1688,34 @@ function acceptRysRelayRequestOrder(session,input,res){
   session.lastRequestSeq=seq;return true;
 }
 
+// Only a verified opaque capability may immediately retire a privileged membership.
+// Legacy public IDs must not become an anonymous disconnect primitive.
+function retireRysRelayOnAuthFailure(session){
+  if(!session.relayKey)return;
+  const room=session.currentRoom,member=room?.clients.get(session.clientId);
+  if(member?.role!=='guide'&&!session.ws.isAdmin)return;
+  session.relayRetired=true;session.currentRoom=null;
+  session.ws.isAdmin=false;session.ws.familyTourCode=null;
+  if(Array.isArray(session.outbox))session.outbox.length=0;
+  if(room?.clients.has(session.clientId))removeClientFromRoom(room,session.clientId,0);
+}
+
 function serveRysRelay(session,req,res,token,context,messages=[]){
   if((context&&!isRysClientMessage(context))||!Array.isArray(messages)||messages.length>128||
     !messages.every(isRysClientMessage))return res.status(400).json({error:'relay-invalid-message'});
   if(context&&!['join','family-subscribe','admin-subscribe'].includes(context.type))
     return res.status(400).json({error:'relay-context-invalid'});
   if(!acceptRysRelayRequestOrder(session,req.method==='GET'?req.query:req.body,res))return;
-  if(!applyRysRelayAuth(session,req,token,context))
+  if(!applyRysRelayAuth(session,req,token,context)){
+    retireRysRelayOnAuthFailure(session);
     return res.status(401).json({error:'relay-auth-required'});
+  }
   if(!syncRysRelayContext(session,context)){
     const errors=drainRysRelaySession(session).filter(m=>m.type==='pin-error'||m.type==='auth-error');
     return res.json({clientId:session.clientId,messages:errors.length?errors:
       [{type:'pin-error',message:'Kafile/oda katılımı reddedildi; PIN ve yetkiyi kontrol edin.'}]});
   }
+  session.lastSeen=Date.now();
   if(session.relayKey&&context){
     const digest=digestRysSubscription(context);
     if(session.relayDigest!==digest){session.relayDigest=digest;session.relayRevision=(session.relayRevision||0)+1;}

@@ -584,6 +584,7 @@ async function runStep2And3LiveServerAndWsTests() {
   await runV62StopChecks({baseUrl,url:wsUrl,token:authToken});
   await runV63StateChecks({baseUrl,url:wsUrl,token:authToken});
   await runV64MediaChecks({baseUrl,url:wsUrl,token:authToken});
+  await runV65ReadinessChecks({baseUrl,url:wsUrl,token:authToken});
 
   guideGenelWs.close();
   pilgrimWs.close();
@@ -1535,9 +1536,9 @@ async function runStep5V54AudioChecks(){
     if(mode!=='join')assert.equal(body.joinContext??null,null);
     else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
   }
-  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v64"));assert(sw.includes('/vercel-ws-shim.js?v=64'));
+  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v65"));assert(sw.includes('/vercel-ws-shim.js?v=65'));
   for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
-    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'64',f+' stale shim');
+    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'65',f+' stale shim');
   }
   if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
   console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
@@ -2502,7 +2503,7 @@ async function runStep5V60AudioChecks(){
     p.rxFir.r.fill(1);p.playing=true;p.expected=0;p.missing=15;
     p.process([],[[new Float32Array(128)]]);assert(!p.playing);assert(p.rxFir.r.every(x=>x===0));
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v64'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v65'));
   for(const asset of ['pcm-player-worklet.js?v=61-audio','pcm-capture-worklet.js?v=60-audio'])assert(sw.includes(asset));
   assert(guide.includes('pcm-capture-worklet.js?v=60-audio'));assert(read('public/dinle.html').includes('pcm-player-worklet.js?v=61-audio'));
   console.log('V60 UNIT METRICS '+JSON.stringify({lifecycleChecks:checks,alias}));
@@ -2712,7 +2713,7 @@ async function runStep5V61AudioChecks(){
     assert(published.filter(m=>['room-state','stream-state'].includes(m.type)).every(m=>(m.audioSourceId||m.room?.audioSourceId)==='stable-page'));
     checks.push('MQTT-room-and-stream-source-parity');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v64'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v65'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));
   assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
   console.log('V61 UNIT METRICS '+JSON.stringify({checks,reset,capture24kFrames:frames.length}));
   recordResult('ADIM-5.V61','Socket/Blob/retry/source ownership; 5-rate reset/starvation de-click; 24k capture; source schema/digest/MQTT; cache61',true);
@@ -2951,7 +2952,7 @@ async function runStep5V62AudioChecks(){
     }
     checks.push('failed-poll-retry-keeps-latest-stop-and-resume-only');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v64'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v65'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
   console.log('V62 UNIT METRICS '+JSON.stringify({checks,coalescerPostStopAudio:0,receiverPostStopFrames:0}));
   recordResult('ADIM-5.V62','Stop/mode/source barriers across coalescer, relay, receiver, demo lifecycle and server; idle reconnect; cache62',true);
   console.log('V62 UNIT PASS');
@@ -3136,7 +3137,7 @@ async function runStep5V63AudioChecks(){
     const epoch=h.g.rxAudioDeliveryEpoch;s.onmessage({data:JSON.stringify({type:'room-state',room:{...state(1,true),audioStateKnown:true}})});
     assert(h.player.q.has(1001));assert.equal(h.g.rxAudioDeliveryEpoch,epoch);checks.push('unknown-to-known-live-snapshot-preserves-current-pcm');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v64'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v65'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
   console.log('V63 UNIT METRICS '+JSON.stringify({checks,snapshotRecovered:true,staleStateResets:0,renewalFirstPcmPreserved:true}));
   recordResult('ADIM-5.V63','Ordered state/snapshot recovery; terminal disconnect; source reset; inheritance; MQTT parity; renewal state-before-PCM; cache63',true);
   console.log('V63 UNIT PASS');
@@ -3323,7 +3324,7 @@ async function runStep5V64AudioChecks(){
     deliver(state(12,12,true,'mic'));assert.equal(stopped,1);assert.equal(h.g.activeGuideDemoSources.size,0);
     checks.push('demo-topic-keeps-current-note-and-mode-change-stops-it');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v64'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v65'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
   console.log('V64 UNIT METRICS '+JSON.stringify({checks,postResumeOldFrames:0,capturedOldBatchFrames:0,currentPendingPreserved:true,topicTimelinePreserved:true}));
   recordResult('ADIM-5.V64','Media epoch across PCM/synth/coalescer/server/receiver; topic continuity; Blob fencing; stop-resume during relay-open; pending-media preservation; cache64',true);console.log('V64 UNIT PASS');
 }
@@ -3409,6 +3410,172 @@ async function runV64MediaChecks({baseUrl,url,token}){
   }
 }
 
+async function runStep5V65AudioChecks(){
+  const assert=require('node:assert/strict'),read=f=>fs.readFileSync(path.join(ROOT_DIR,f),'utf8').replace(/\r\n/g,'\n');
+  const shim=read('public/vercel-ws-shim.js'),listener=read('public/dinle.html'),server=read('server.js'),checks=[];
+  function pick(source,name,kind='function'){
+    const m=new RegExp('^[ \\t]*'+(kind==='function'?'(?:async )?function '+name:kind==='class'?'class '+name+'\\b':'(?:async )?'+name)+'(?:\\([^\\n]*\\))?\\s*\\{','m').exec(source);assert(m,'V65 missing '+name);
+    for(let end=source.indexOf('}',m.index);end>=0;end=source.indexOf('}',end+1)){const s=source.slice(m.index,end+1);try{new vm.Script(kind==='method'?'class P{'+s+'}':s);return s;}catch(e){if(e.name!=='SyntaxError')throw e;}}throw Error('V65 unterminated '+name);
+  }
+  const audio=(seq,epoch)=>({type:'audio-chunk',seq,audioSourceId:'page-s',audioMediaEpoch:epoch,sentAt:Date.now(),sampleRate:24000,pcm16:Buffer.alloc(960).toString('base64'),level:.5});
+  const state=(seq,epoch=seq,live=true)=>({type:'stream-state',audioSourceId:'page-s',audioStateSeq:seq,audioMediaEpoch:epoch,isLive:live,broadcastMode:live?'mic':'idle'});
+  {
+    const h=createV61ListenerHarness(listener,read('public/pcm-player-worklet.js')),s=h.connect(),deliver=m=>s.onmessage({data:JSON.stringify(m)});
+    deliver(audio(500,10));assert.equal(h.player.q.size,0);assert.equal(h.g.rxAudioSourceId,null);
+    deliver({...state(10),audioSourceId:null});assert.equal(h.g.rxAudioMediaEpoch,null);
+    deliver({type:'room-state',room:{...state(10)}});assert.equal(h.g.rxAudioMediaEpoch,null);
+    deliver({...state(10),audioStateKnown:false});assert.equal(h.g.rxAudioMediaEpoch,null);
+    deliver({type:'room-state',room:{...state(10),audioStateKnown:true}});
+    for(const source of [null,undefined,'another-page']){deliver({...audio(500,10),audioSourceId:source});assert.equal(h.player.q.size,0);}
+    deliver(audio(501,10));assert(h.player.q.has(501));
+    const epoch=h.g.rxAudioDeliveryEpoch;deliver(state(11,10));assert.equal(h.g.rxAudioDeliveryEpoch,epoch);assert(h.player.q.has(501));
+    deliver(state(12,12,false));deliver(audio(502,12));assert.equal(h.player.q.size,0);deliver(state(13));deliver(audio(503,12));assert.equal(h.player.q.size,0);
+    deliver(audio(504,13));assert(h.player.q.has(504));h.g.leaveRoom();const legacy=h.connect();legacy.onmessage({data:JSON.stringify(audio(1,undefined))});assert(h.player.q.has(1));
+    checks.push('modern-media-waits-for-complete-live-controller-legacy-data-only-preserved');
+  }
+  {
+    const g={};vm.createContext(g);vm.runInContext(pick(server,'acceptRysAudio'),g);const sender={audioSourceId:'page-s'};
+    for(const room of [{},{audioSourceId:'page-s'},{audioSourceId:'page-s',audioStateKnown:false,isLive:true,audioMediaEpoch:10},{audioSourceId:'other',audioStateKnown:true,isLive:true,audioMediaEpoch:10}])assert(!g.acceptRysAudio(room,sender,'c',false,audio(1,10)));
+    const room={audioSourceId:'page-s',audioStateKnown:true,isLive:true,broadcastMode:'mic',audioMediaEpoch:10};assert(g.acceptRysAudio(room,sender,'c',false,audio(1,10)));
+    assert(!g.acceptRysAudio(room,sender,'c',false,audio(1,undefined)));assert(g.acceptRysAudio({},sender,'c',false,audio(1,undefined)));assert(g.acceptRysAudio({},sender,'c'));
+    checks.push('server-modern-epoch-requires-installed-source-known-live-state');
+  }
+  function relay(fetcher){
+    const bodies=[],g={Date,Math,Number,ArrayBuffer,window:{ryGetDynamicChannelId:()=> 'channel'},localStorage:{getItem:()=> 'good'},setTimeout:()=>1,clearTimeout(){},queueMicrotask(){},
+      AbortController:class{constructor(){this.signal={};}abort(){}},fetch:async(u,o)=>{const b=JSON.parse(o.body);bodies.push(b);return fetcher?fetcher(b,bodies.length):{ok:true,json:async()=>({messages:[]})};}};
+    vm.createContext(g);vm.runInContext(pick(shim,'nextRysAudioStateSeq')+'\n'+pick(shim,'validRysAudio')+'\nclass P{'+['send','_enqueueRelayMessage','_flushAndPoll','_resetRelaySession'].map(n=>pick(shim,n,'method')).join('\n')+'}\nglobalThis.P=P;',g);
+    const p=new g.P();Object.assign(p,{readyState:1,_isRelay:true,_inFlight:false,_httpEpoch:0,_relayClientId:'rys56-unit',_relayKey:'a'.repeat(48),_sendQueue:[],
+      _joinContext:{type:'join',role:'guide',audioSourceId:'page-s'},_lastGuideState:{...state(1),type:'guide-stream-state'},_relayRoutingKey:()=> 'route',_publishMqtt(){},_broadcastP2PRoomState(){},_busConnected:()=>false,_deliverIncomingMessage(){}});return {p,g,bodies};
+  }
+  {
+    let reject;const {p,bodies}=relay((b,n)=>n===1?new Promise((a,r)=>reject=r):{ok:true,json:async()=>({messages:[]})});p._sendQueue=[{...state(1),type:'guide-stream-state'}];
+    const flight=p._flushAndPoll();p.send(JSON.stringify({type:'guide-stream-state',isLive:false,broadcastMode:'idle'}));p.send(JSON.stringify({type:'guide-stream-state',isLive:true,broadcastMode:'mic'}));p.send(JSON.stringify(audio(101,3)));
+    reject(Error('injected send failure'));await flight;await p._flushAndPoll();const sent=bodies.at(-1).messages;
+    assert.equal(sent[0].type,'guide-stream-state');assert.equal(sent[0].audioMediaEpoch,3);assert.equal(sent[1].seq,101);assert.equal(p._relayGuideStateAckEpoch,3);
+    checks.push('failed-poll-retry-installs-latest-controller-before-fresh-PCM');
+  }
+  {
+    const {p,bodies}=relay();p._relayGuideStateAckEpoch=1;p._sendQueue=Array.from({length:64},()=>({type:'ping'}));p._inFlight=true;
+    p.send(JSON.stringify({type:'guide-stream-state',isLive:false,broadcastMode:'idle'}));assert.equal(p._sendQueue.length,64);p._inFlight=false;await p._flushAndPoll();
+    assert.equal(bodies.at(-1).messages.length,65);assert.equal(bodies.at(-1).messages[0].isLive,false);assert.equal(p._relayGuideStateAckEpoch,2);
+    await p._flushAndPoll();assert.equal(bodies.at(-1).messages.length,0);p._resetRelaySession();assert.equal(p._relayGuideStateAckEpoch,null);
+    checks.push('full-control-queue-cannot-drop-latched-stop-no-redundant-empty-poll-replay');
+  }
+  {
+    let resolve;const {p,bodies}=relay((b,n)=>n===1?new Promise(r=>resolve=r):{ok:true,json:async()=>({messages:[]})});p._sendQueue=[{...state(1),type:'guide-stream-state'}];
+    const flight=p._flushAndPoll();p.send(JSON.stringify({type:'guide-stream-state',isLive:false,broadcastMode:'idle'}));resolve({ok:true,json:async()=>({messages:[]})});await flight;
+    assert.equal(p._relayGuideStateAckEpoch,1);await p._flushAndPoll();assert.equal(bodies.at(-1).messages[0].audioMediaEpoch,2);assert.equal(p._relayGuideStateAckEpoch,2);
+    const refused=relay(()=>({ok:true,json:async()=>({messages:[{type:'auth-error'}]})}));await refused.p._flushAndPoll();assert.equal(refused.p._relayGuideStateAckEpoch,undefined);
+    checks.push('only-submitted-successful-epoch-acknowledged-late-response-cannot-ack-new-state');
+  }
+  {
+    let now=100;const map=new Map(),removed=[];
+    const g={Date:class extends Date{static now(){return now;}},crypto:require('node:crypto'),Buffer,httpRelaySessions:map,
+      isRequestAuthenticated:r=>r.auth===true,isValidAuthToken:t=>t==='good',syncRysRelayContext:()=>true,processClientJsonMessage(){},
+      drainRysRelaySession:s=>s.outbox.splice(0),getOrCreateRelaySession(){throw Error('unexpected new legacy session');},
+      removeClientFromRoom:(room,id,grace)=>{removed.push({id,grace});room.clients.delete(id);}};
+    vm.createContext(g);vm.runInContext(['isRysClientMessage','acceptRysRelayRequestOrder','applyRysRelayAuth','retireRysRelayOnAuthFailure','serveRysRelay','resolveRysRelay','cleanupStaleRelaySessions','digestRysSubscription'].map(n=>pick(server,n)).join('\n'),g);
+    const response=()=>({status(n){this.code=n;return this;},json(m){this.body=m;}});
+    const member=(id,key,role='guide')=>{const room={clients:new Map([[id,{role}]])},s={clientId:id,relayKey:key,ws:{isAdmin:false,familyTourCode:null},currentRoom:room,lastSeen:0,outbox:[]};map.set(id,s);return s;};
+    const s=member('rys56-key','a'.repeat(48)),res=response();g.serveRysRelay(s,{method:'POST',body:{requestSeq:1}},res,'bad',{type:'join',role:'guide'});
+    assert.equal(res.code,401);assert.equal(s.lastSeen,0);assert.equal(s.relayRetired,true);assert.equal(s.currentRoom,null);assert(removed.some(x=>x.id===s.clientId&&x.grace===0));
+    const stale=response();assert.equal(g.resolveRysRelay({method:'POST',headers:{}},stale,{clientId:s.clientId,relayKey:s.relayKey}),null);assert.equal(stale.code,409);
+    const legacy=member('legacy-public-id',undefined);for(now of [1000,20000,34999]){g.resolveRysRelay({method:'POST',headers:{}},response(),{clientId:legacy.clientId});g.serveRysRelay(legacy,{method:'POST',body:{}},response(),'bad',{type:'join',role:'guide'});}
+    assert.equal(legacy.lastSeen,0);assert(legacy.currentRoom.clients.has(legacy.clientId));now=35001;g.cleanupStaleRelaySessions();assert(!map.has(legacy.clientId));
+    const family={clientId:'rys56-family',relayKey:'b'.repeat(48),ws:{familyTourCode:'T',isAdmin:false},lastSeen:0,outbox:[]};
+    g.serveRysRelay(family,{method:'POST',body:{requestSeq:1}},response(),'bad',{type:'join',role:'guide'});assert(!family.relayRetired);assert.equal(family.ws.familyTourCode,'T');assert.equal(family.lastSeen,0);
+    g.serveRysRelay(family,{method:'POST',body:{requestSeq:2}},response(),undefined,{type:'family-subscribe',tourCode:'T'});assert.equal(family.lastSeen,35001);
+    const good=member('rys56-good','c'.repeat(48));g.serveRysRelay(good,{auth:true,method:'POST',body:{requestSeq:1}},response(),'good',{type:'join',role:'guide'});assert.equal(good.lastSeen,35001);
+    checks.push('auth-failure-retires-verified-privileged-capability-public-ID-cannot-disconnect-legacy-no-failed-lease-renewal');
+  }
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v65'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
+  console.log('V65 UNIT METRICS '+JSON.stringify({checks,unprimedFrames:0,retryFirstPcmPreserved:true,fullQueueStopDelivered:true,failedAuthLeaseExtensions:0}));
+  recordResult('ADIM-5.V65','Controller readiness; retry control-first and latched full-queue stop; submitted-epoch ACK; auth-failure cleanup and lease/public-ID safety; cache65',true);console.log('V65 UNIT PASS');
+}
+
+async function runV65ReadinessChecks({baseUrl,url,token}){
+  const assert=require('node:assert/strict'),{WebSocket}=require('ws'),code='RY-V65-'+Date.now().toString(36).toUpperCase();
+  const headers={'Content-Type':'application/json',Authorization:'Bearer '+token},caps=[],sockets=[],controls=[],jsonAudio=[],httpAudio=[],subAudio=[],requests=[],errors=[];let h,p,created=false,failNext=false,rejectSend;
+  const until=async(test,label)=>{const end=Date.now()+6000;while(!test()){if(Date.now()>end)throw Error('V65 deadline '+label+' '+JSON.stringify({source:h?.g.rxAudioSourceId,live:h?.g.rxStreamActive,epoch:h?.g.rxAudioMediaEpoch,q:h?Array.from(h.player.q.keys()):[]}));await new Promise(r=>setTimeout(r,5));}};
+  const response=body=>fetch(baseUrl+'/api/ws-relay',{method:'POST',headers,body:JSON.stringify(body)});
+  const post=async body=>{const r=await response(body);assert.equal(r.status,200,'V65 relay '+body.type);return r.json();};
+  const open=async()=>{const r=await post({type:'relay-open',version:56}),s={clientId:r.clientId,relayKey:r.relayKey};caps.push(s);return s;};
+  const pcm=Buffer.alloc(960);for(let i=0;i<480;i++)pcm.writeInt16LE(4567,2*i);
+  const audio=(seq,epoch,source='page-main')=>({type:'audio-chunk',seq,audioMediaEpoch:epoch,audioSourceId:source,sentAt:Date.now(),sampleRate:24000,pcm16:pcm.toString('base64'),level:.5});
+  const context={type:'join',role:'guide',tourCode:code,roomId:'genel',name:'V65 main',deviceId:'v65-main-'+code,audioSourceId:'page-main',token};
+  const authContext={...context,name:'V65 auth',deviceId:'v65-auth-'+code,audioSourceId:'page-auth'};
+  class Bridge{static OPEN=1;static CONNECTING=0;static CLOSED=3;
+    constructor(address){this.real=new WebSocket(address);sockets.push(this.real);this.real.on('open',()=>this.onopen?.({}));this.real.on('close',()=>this.onclose?.({}));this.real.on('error',e=>errors.push(e.message));
+      this.real.on('message',(raw,binary)=>{if(!binary){const m=JSON.parse(raw);controls.push(m);if(m.type==='audio-chunk')jsonAudio.push(m);}this.onmessage?.({data:binary?raw.buffer.slice(raw.byteOffset,raw.byteOffset+raw.byteLength):raw.toString()});});}
+    get readyState(){return this.real.readyState;}send(raw){this.real.send(raw);}close(){this.real.close();}}
+  let main,sub;const listener=roomId=>({type:'join',role:'pilgrim',tourCode:code,roomId,name:'V65 HTTP '+roomId,pin:'6065'});
+  const poll=async()=>{for(const [cap,room,out] of [[main,'genel',httpAudio],[sub,'siyer',subAudio]]){const r=await post({...cap,subscriptionContext:listener(room)});out.push(...r.messages.filter(m=>m.type==='audio-chunk'));}};
+  const barrier=async()=>{const ts=Date.now()+Math.random();h.g.ws.send(JSON.stringify({type:'ping',ts}));await until(()=>controls.some(m=>m.type==='pong'&&m.echoTs===ts),'listener pong');};
+  const state=(live,topic='V65')=>({type:'guide-stream-state',isLive:live,broadcastMode:live?'mic':'idle',topic});
+  const tx=async messages=>{p._inFlight=true;for(const m of messages)p.send(JSON.stringify(m));p._inFlight=false;await p._flushAndPoll();};
+  try{
+    const r=await fetch(baseUrl+'/api/tours',{method:'POST',headers,body:JSON.stringify({code,name:'V65 readiness/retry/auth',pin:'6065'})});assert.equal(r.status,200);await r.arrayBuffer();created=true;
+    h=createV61ListenerHarness(fs.readFileSync(path.join(ROOT_DIR,'public/dinle.html'),'utf8'),fs.readFileSync(path.join(ROOT_DIR,'public/pcm-player-worklet.js'),'utf8'),Bridge);
+    const address=new URL(url);h.g.window.location={protocol:address.protocol==='wss:'?'https:':'http:',host:address.host};h.g.document.getElementById('tourPinInput').value='6065';h.connect(code);await until(()=>controls.some(m=>m.type==='joined'),'joined');
+    main=await open();sub=await open();await poll();
+    const shim=fs.readFileSync(path.join(ROOT_DIR,'public/vercel-ws-shim.js'),'utf8');
+    function pick(name,kind='method'){const m=new RegExp('^[ \\t]*'+(kind==='function'?'function ':'(?:async )?')+name+'\\([^\\n]*\\)\\s*\\{','m').exec(shim);assert(m);
+      for(let end=shim.indexOf('}',m.index);end>=0;end=shim.indexOf('}',end+1)){const s=shim.slice(m.index,end+1);try{new vm.Script(kind==='method'?'class P{'+s+'}':s);return s;}catch(e){if(e.name!=='SyntaxError')throw e;}}throw Error('V65 missing '+name);}
+    const g={Date,Math,Number,ArrayBuffer,setTimeout,clearTimeout,queueMicrotask,AbortController,window:{ryGetDynamicChannelId:()=> 'same-channel'},localStorage:{getItem:()=>token},
+      fetch:(route,options)=>{requests.push(JSON.parse(options.body));if(failNext){failNext=false;return new Promise((resolve,reject)=>rejectSend=reject);}return fetch(baseUrl+route,options);}};
+    vm.createContext(g);vm.runInContext(['nextRysAudioStateSeq','validRysAudio','unpackRysAudio'].map(n=>pick(n,'function')).join('\n')+'\nclass P{'+['send','_enqueueRelayMessage','_flushAndPoll','_deliverIncomingMessage'].map(n=>pick(n)).join('\n')+'}\nglobalThis.P=P;',g);
+    const delivery=new g.P();delivery._seenIds=new Set();delivery.onmessage=e=>h.g.ws.onmessage(e);
+    delivery._deliverIncomingMessage({_msgId:'v65-before-controller',...audio(500,10)});assert.equal(h.player.q.size,0);assert.equal(h.g.rxAudioSourceId,null);
+    const auth=await open();await post({...auth,requestSeq:1,subscriptionContext:authContext,messages:[{...state(true),audioStateSeq:10,audioMediaEpoch:10},audio(40,10,'page-auth')]});
+    await until(()=>h.player.q.has(40),'authorized initial PCM');await poll();
+    const denied=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...auth,requestSeq:2,token:'invalid',subscriptionContext:{...authContext,token:'invalid'}})});
+    assert.equal(denied.status,401);assert.equal((await denied.json()).error,'relay-auth-required');
+    const boot=await fetch(baseUrl+'/api/bootstrap',{headers}),snapshot=await boot.json(),room=snapshot.liveRooms.find(r=>r.tourCode===code&&r.roomId==='genel');
+    console.log('V65 AUTH PROBE '+JSON.stringify({guidePresent:room.connectedGuides.some(c=>c.id===auth.clientId),isLive:room.isLive}));
+    assert(!room.connectedGuides.some(c=>c.id===auth.clientId),'Failed reauthentication must remove verified opaque guide membership');assert.equal(room.isLive,false);
+    const retired=await response({...auth,requestSeq:3,subscriptionContext:authContext});assert.equal(retired.status,409);assert.equal((await retired.json()).error,'relay-session-retired');
+    await barrier();assert.equal(h.player.q.size,0);
+    const guide=await open();await post({...guide,requestSeq:1,subscriptionContext:context});await post({...guide,requestSeq:2,subscriptionContext:context,messages:[audio(50,50)]});
+    await barrier();await poll();assert(!httpAudio.some(m=>m.seq===50));assert(!jsonAudio.some(m=>m.seq===50));
+    p=new g.P();Object.assign(p,{readyState:1,_isRelay:true,_inFlight:false,_httpEpoch:0,_relayClientId:guide.clientId,_relayKey:guide.relayKey,_relayRequestSeq:2,_sendQueue:[],_joinContext:context,
+      _seenIds:new Set(),_relayRoutingKey:()=> 'main',_publishMqtt(){},_broadcastP2PRoomState(){},_busConnected:()=>false,_deliverIncomingMessage(){}});
+    await tx([state(true),audio(51)]);await until(()=>h.player.q.has(51),'controller then PCM');await poll();
+    assert.equal(p._relayGuideStateAckEpoch,1);
+    delivery._deliverIncomingMessage({_msgId:'v65-missing-source',...audio(510,1),audioSourceId:null});assert(!h.player.q.has(510));assert(h.player.q.has(51));
+    p._inFlight=true;p.send(JSON.stringify(state(true,'pending topic')));p._inFlight=false;failNext=true;const flight=p._flushAndPoll();
+    p.send(JSON.stringify(state(false)));p.send(JSON.stringify(state(true)));p.send(JSON.stringify(audio(52)));rejectSend(Error('injected request did not reach server'));await flight;
+    await p._flushAndPoll();await barrier();await poll();
+    console.log('V65 RETRY PROBE '+JSON.stringify({order:requests.at(-1).messages.map(m=>m.type),delivered52:httpAudio.some(m=>m.seq===52)}));
+    assert(httpAudio.some(m=>m.seq===52),'First fresh PCM must survive the failed-poll retry');assert(h.player.q.has(52));
+    p._sendQueue=Array.from({length:64},()=>({type:'ping'}));p._inFlight=true;p.send(JSON.stringify(state(false)));p._inFlight=false;await p._flushAndPoll();
+    assert.equal(requests.at(-1).messages.length,65);assert.equal(requests.at(-1).messages[0].isLive,false);await barrier();assert.equal(h.g.rxStreamActive,false);assert.equal(h.player.q.size,0);
+    await tx([state(true),audio(53)]);await until(()=>h.player.q.has(53),'full queue recovery');await poll();await p._flushAndPoll();assert.equal(requests.at(-1).messages.length,0);
+    const native=new WebSocket(url),events=[];sockets.push(native);native.on('error',e=>errors.push(e.message));native.on('message',(raw,binary)=>{if(!binary)events.push(JSON.parse(raw));});
+    await new Promise((resolve,reject)=>{native.once('open',resolve);native.once('error',reject);});native.send(JSON.stringify({type:'handoff-prepare',relayClientId:p._relayClientId,relayKey:p._relayKey,subscription:context}));
+    await until(()=>events.some(m=>m.type==='handoff-prepared'),'prepare');const handoffId=events.find(m=>m.type==='handoff-prepared').handoffId;
+    native.send(JSON.stringify({type:'handoff-commit',handoffId}));await until(()=>events.some(m=>m.type==='handoff-committed'),'commit');const ack=events.find(m=>m.type==='handoff-committed').ack;
+    assert.equal(ack.room.audioMediaEpoch,p._lastGuideState.audioMediaEpoch);
+    const binary=seq=>{const b=Buffer.alloc(972);b.writeUInt32LE(seq,0);b.writeDoubleLE(Date.now(),4);pcm.copy(b,12);return b;};
+    const nativeBarrier=async()=>{const ts=Date.now()+Math.random();native.send(JSON.stringify({type:'ping',ts}));await until(()=>events.some(m=>m.type==='pong'&&m.echoTs===ts),'native pong');await barrier();};
+    native.send(binary(54));await nativeBarrier();await poll();assert(h.player.q.has(54));
+    // A failed guide elevation must not retire an existing public family subscription.
+    const family=await open(),familyContext={type:'family-subscribe',tourCode:code};await post({...family,requestSeq:1,subscriptionContext:familyContext});
+    const familyDenied=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...family,requestSeq:2,token:'invalid',subscriptionContext:{...context,token:'invalid'}})});
+    assert.equal(familyDenied.status,401);await familyDenied.arrayBuffer();const next=p._lastGuideState.audioStateSeq+1;
+    native.send(JSON.stringify({...state(true,'family still bound'),audioStateSeq:next,audioMediaEpoch:p._lastGuideState.audioMediaEpoch}));await nativeBarrier();
+    const familyPoll=await post({...family,requestSeq:3,subscriptionContext:familyContext});assert(familyPoll.messages.some(m=>m.type==='stream-state'&&m.currentTopic==='family still bound'));
+    native.send(JSON.stringify({...state(false),audioStateSeq:next+1,audioMediaEpoch:next+1}));native.send(binary(55));await nativeBarrier();await poll();
+    const expected=[40,51,52,53,54];assert.deepEqual(httpAudio.map(m=>m.seq),expected);assert.deepEqual(subAudio.map(m=>m.seq),expected);
+    for(const m of [...httpAudio,...subAudio])assert(Buffer.from(m.pcm16,'base64').equals(pcm));assert.deepEqual(errors,[]);assert.equal(h.player.q.size,0);
+    console.log('V65 E2E METRICS '+JSON.stringify({mainPcm:httpAudio.map(m=>m.seq),subPcm:subAudio.map(m=>m.seq),unprimedReceiverFrames:0,unprimedServerFrames:0,retryFirstPcm:52,fullQueueStop:true,authFailureGuidePresent:false,oldCapabilityStatus:409,familyPreserved:true,pcmEqual:true}));
+    recordResult('ADIM-3.V65','Real auth-failure cleanup/public-family safety; unknown-controller media rejection; failed request retry preserves first PCM; full-queue stop; native handoff and byte parity',true);console.log('V65 E2E PASS');
+  }finally{
+    h?.g.leaveRoom();for(const s of sockets)try{s.terminate();}catch(e){}
+    for(const cap of caps)try{await post({...cap,type:'relay-close',version:56});}catch(e){}
+    if(created){const r=await fetch(baseUrl+'/api/tours/'+code,{method:'DELETE',headers});await r.arrayBuffer();}
+  }
+}
+
 async function main() {
   const runtimePath = path.join(ROOT_DIR, 'data', 'runtime.json');
   const runtimeSnapshot = fs.existsSync(runtimePath) ? fs.readFileSync(runtimePath, 'utf8') : null;
@@ -3427,6 +3594,7 @@ async function main() {
     await runStep5V62AudioChecks();
     await runStep5V63AudioChecks();
     await runStep5V64AudioChecks();
+    await runStep5V65AudioChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);

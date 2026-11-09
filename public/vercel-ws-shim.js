@@ -310,7 +310,7 @@
         try{fetch('/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({type:'relay-close',version:56,clientId,relayKey}),keepalive:true}).catch(()=>{});}catch(e){}
       }
-      this._relayClientId=null;this._relayKey=null;this._relayFenced=false;this._relayRequestSeq=0;
+      this._relayClientId=null;this._relayKey=null;this._relayFenced=false;this._relayRequestSeq=0;this._relayGuideStateAckEpoch=null;
       this._httpEpoch=(this._httpEpoch||0)+1;
       this._relayAbort?.abort();this._relayAbort=null;this._inFlight=false;
     }
@@ -1011,6 +1011,15 @@
           return frames.every(f=>(!source||!f.audioSourceId||f.audioSourceId===source)&&
             (!Number.isSafeInteger(state?.audioMediaEpoch)||f.audioMediaEpoch===state.audioMediaEpoch));
         });
+        // v65: a failed poll can requeue a control behind fresh PCM. Send the latest
+        // control first, including a latched stop/start that could not enter a full queue.
+        const latest=this._joinContext?.role==='guide'?this._lastGuideState:null;
+        if(latest&&(fresh.some(m=>m.type==='guide-stream-state')||
+          Number.isSafeInteger(latest.audioMediaEpoch)&&this._relayGuideStateAckEpoch!==latest.audioMediaEpoch)){
+          for(let i=fresh.length-1;i>=0;i--)if(fresh[i].type==='guide-stream-state')fresh.splice(i,1);
+          fresh.unshift({...latest});
+        }
+        const submittedGuideEpoch=latest&&fresh[0]?.type==='guide-stream-state'?fresh[0].audioMediaEpoch:null;
         const requestSeq=this._relayRequestSeq=(this._relayRequestSeq||0)+1;
         const res=await fetch('/api/ws-relay',{method:'POST',signal:ac.signal,
           headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:this._relayClientId,
@@ -1028,6 +1037,8 @@
           throw Error('Relay HTTP '+res.status);
         }
         if(!sameRoute()){success=true;return;}
+        if(Number.isSafeInteger(submittedGuideEpoch)&&!payload.messages?.some?.(m=>m.type==='auth-error'||m.type==='pin-error'))
+          this._relayGuideStateAckEpoch=submittedGuideEpoch;
         if(Array.isArray(payload.messages))for(const m of payload.messages)this._deliverIncomingMessage(m);
         success=true;
       }catch(e){
