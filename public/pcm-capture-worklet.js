@@ -228,11 +228,17 @@ class RysPcmCaptureProcessor extends (globalThis.AudioWorkletProcessor || class 
       o?.processorOptions || {},
       (m) => this.port.postMessage(m, [m.samples.buffer])
     );
-    this.port.onmessage = (e) => this.kernel.control(e.data || {});
+    this.stopped=false;
+    this.port.onmessage = (e) => {
+      const message=e.data||{};
+      if(message.type==='stop')this.stopped=true;
+      else if(!this.stopped)this.kernel.control(message);
+    };
   }
 
   process(inputs, outputs) {
     for (const c of outputs[0] || []) c.fill(0);
+    if(this.stopped)return false;
     const ch = inputs[0]?.[0];
     if (ch) this.kernel.process(ch, currentTime);
     return true;

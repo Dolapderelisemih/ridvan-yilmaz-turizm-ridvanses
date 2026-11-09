@@ -1,17 +1,17 @@
 // PATCH: sw-v53
 // PATCH: sw-v53
 // PATCH: sw-v53
-const CACHE_NAME = 'ridvanses-pwa-v59';
+const CACHE_NAME = 'ridvanses-pwa-v60';
 const ASSETS_TO_CACHE = [
   '/',
   '/dinle',
   '/rota',
   '/ani-kitabi',
   '/css/style.css',
-  '/vercel-ws-shim.js?v=59',
+  '/vercel-ws-shim.js?v=60',
   '/js/umrah-steps-map.js',
-  '/pcm-capture-worklet.js?v=53-audio',
-  '/pcm-player-worklet.js?v=59-audio',
+  '/pcm-capture-worklet.js?v=60-audio',
+  '/pcm-player-worklet.js?v=60-audio',
   '/manifest.json',
   '/icons/icon-512.png',
   '/icons/icon-192.png',

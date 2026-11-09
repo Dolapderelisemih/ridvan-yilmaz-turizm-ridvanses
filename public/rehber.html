@@ -28,7 +28,7 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=59"></script>
+  <script src="/vercel-ws-shim.js?v=60"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .console-wrap {
@@ -1494,6 +1494,23 @@
     let lastGuideBgWsReconnectAt = 0;
     let isHealingGuideMic = false;
     let guideTrackMutedAt = 0, guideLastMicRebuildAt = 0, guideDeviceChangeTimer = null;
+    // v60: only the current setup may own the microphone and emit PCM.
+    let guideMicGeneration=0, guideMicStarting=false, guideMicSetupJob=null;
+    let guideMicHealTicket=null, guideDeviceChangePending=false, guideLoopbackSource=null;
+    function stopGuideMicrophoneStream(stream){
+      for(const track of stream?.getTracks?.()||[]){
+        track.onended=null;track.onmute=null;track.onunmute=null;
+        try{track.stop();}catch(e){}
+      }
+    }
+    function disposeGuideCaptureNode(node){
+      if(!node)return;
+      try{node.port?.postMessage({type:'stop'});}catch(e){}
+      if(node.port)node.port.onmessage=null;
+      node.onaudioprocess=null;node.onprocessorerror=null;
+      try{node.disconnect();}catch(e){}
+      try{node.port?.close?.();}catch(e){}
+    }
     let guideSourceNode = null;
     let guideHighPassNode = null;
     let guideMudCutNode = null;
@@ -1502,10 +1519,7 @@
 
     function disconnectGuideAudioNodes() {
       if (scriptProcessor) {
-        try {
-          if (scriptProcessor.port) scriptProcessor.port.onmessage = null;
-          scriptProcessor.disconnect();
-        } catch {}
+        disposeGuideCaptureNode(scriptProcessor);
         scriptProcessor = null;
       }
       if (guideSourceNode) {
@@ -1619,197 +1633,117 @@
 
     // PATCH: guide-graph-v53
     async function setupGuideMicrophoneGraph() {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (!audioCtx) {
-        try {
-          audioCtx = new AudioContextClass({ latencyHint: 'interactive', sampleRate: 48000 });
-        } catch {
-          audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
-        }
-        audioCtx.onstatechange = () => {
-          if ((isMicBroadcasting || isVoiceLoopbackTesting) && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
-            audioCtx.resume().catch(() => {});
-          }
-        };
-      }
-      if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
-        await audioCtx.resume();
-      }
-
-      // AEC is a browser/device request; it does not guarantee beamforming or remote-speaker cancellation.
-      // Disable AGC/NS by preference; inspect track.getSettings() on each real headset.
-      try {
-        micStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: false,
-            autoGainControl: false,
-            channelCount: 1,
-            sampleRate: 48000
-          }
-        });
-      } catch (strictErr) {
-        console.warn('Gelişmiş mikrofon ayarı kabul edilmedi, temel ses kullanılıyor:', strictErr);
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      }
-
-      // Gelen telefon araması veya Bluetooth/yaka mikrofonu çıkması durumunda otomatik mikrofon kurtarma (Auto-Heal)
-      const audioTrack = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
-      guideTrackMutedAt = audioTrack?.muted ? Date.now() : 0;
-      if (audioTrack) {
-        audioTrack.onmute = () => { if (micStream?.getAudioTracks()[0] === audioTrack) guideTrackMutedAt = Date.now(); };
-        audioTrack.onunmute = () => { if (micStream?.getAudioTracks()[0] === audioTrack) guideTrackMutedAt = 0; };
-        audioTrack.onended = () => {
-          if (isMicBroadcasting && !isHealingGuideMic) {
-            console.warn('🔄 [Rehber Mikrofon] Mikrofon izi kesildi (arama/kulaklık değişimi), 300ms içinde otomatik kurtarılıyor...');
-            setTimeout(() => healGuideMicrophoneIfNeeded(), 300);
-          }
-        };
-      }
-
-      disconnectGuideAudioNodes();
-      const source = audioCtx.createMediaStreamSource(micStream);
-      guideSourceNode = source;
-
-      // 1. Rüzgar ve Mekanik Dip Uğultu Kesici (85 Hz Butterworth High-Pass — Web Audio Q birimi dB: -3.0103)
-      const highPass = audioCtx.createBiquadFilter();
-      highPass.type = 'highpass';
-      highPass.frequency.value = 85;
-      highPass.Q.value = -3.0103;
-      guideHighPassNode = highPass;
-
-      // 2. Yakın Mikrofon Boğukluk / Kutu Sesi Giderici (210 Hz -2.5 dB Mud Cut — Sesteki boğukluğu temizler)
-      const mudCut = audioCtx.createBiquadFilter();
-      mudCut.type = 'peaking';
-      mudCut.frequency.value = 210;
-      mudCut.Q.value = 1.2;
-      mudCut.gain.value = -2.5;
-      guideMudCutNode = mudCut;
-
-      // 3. Stüdyo Konuşma ve Ünsüz Harf Netleştirici (3200 Hz +2.0 dB Presence — Yankı döngü kazancını şişirmeden harfleri netleştirir)
-      const presence = audioCtx.createBiquadFilter();
-      presence.type = 'peaking';
-      presence.frequency.value = 3200;
-      presence.Q.value = 0.85;
-      presence.gain.value = 2.0;
-      guidePresenceNode = presence;
-
-      // 4. Geniş-Bant Kristal HD Tiz Sınırı (10500 Hz Butterworth Low-Pass — Web Audio Q birimi dB: -3.0103)
-      const lowPass = audioCtx.createBiquadFilter();
-      lowPass.type = 'lowpass';
-      lowPass.frequency.value = 10500;
-      lowPass.Q.value = -3.0103;
-      guideLowPassNode = lowPass;
-
-      // 5. Rehber Mikrofon Kazancı (Gain — Varsayılan %100 / 1.0 Doğal Gür Ses)
-      guideMicGainNode = audioCtx.createGain();
-      guideMicGainNode.gain.value = guideMicGainMultiplier;
-
-      zeroGainNode = audioCtx.createGain();
-      zeroGainNode.gain.value = 0;
-
-      source.connect(highPass);
-      highPass.connect(mudCut);
-      mudCut.connect(presence);
-      presence.connect(lowPass);
-      lowPass.connect(guideMicGainNode);
-
-      guideWasIdlePaused = true;
-
-      lastGuideMicChunkAt = Date.now();
-      const ctx = audioCtx;
-      const url = "/pcm-capture-worklet.js?v=53-audio";
-      if (ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
-        try {
-          await ctx.audioWorklet.addModule(url);
-          if (audioCtx !== ctx) throw Error('Eski bağlam');
-          scriptProcessor = new AudioWorkletNode(ctx, 'rys-pcm-capture', {
-            numberOfInputs: 1,
-            numberOfOutputs: 1,
-            outputChannelCount: [1],
-            processorOptions: {
-              muted: isGuideMicMuted,
-              reject: guideSideVoiceRejectLevel,
-              continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade
-            }
-          });
-          scriptProcessor.port.onmessage = (e) => {
-            if (audioCtx === ctx) handleGuideMicFloatChunk(e.data);
+      const generation=++guideMicGeneration;
+      guideMicSetupJob?.cancel();
+      let stream=null,processor=null,committed=false;
+      const nodes=[];
+      const job={cancel:()=>{
+        disposeGuideCaptureNode(processor);processor=null;
+        for(const node of nodes)try{node.disconnect();}catch(e){}
+        nodes.length=0;stopGuideMicrophoneStream(stream);stream=null;
+      }};
+      guideMicSetupJob=job;
+      const abort=()=>{const error=new Error('Mikrofon kurulumu iptal edildi');error.name='AbortError';return error;};
+      let ctx;
+      const check=()=>{if(generation!==guideMicGeneration||audioCtx!==ctx||ctx.state==='closed')throw abort();};
+      const current=()=>generation===guideMicGeneration&&audioCtx===ctx&&micStream===stream&&scriptProcessor===processor;
+      const own=node=>(nodes.push(node),node);
+      try{
+        const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+        if(!audioCtx||audioCtx.state==='closed'){
+          try{audioCtx=new AudioContextClass({latencyHint:'interactive',sampleRate:48000});}
+          catch(e){audioCtx=new AudioContextClass({latencyHint:'interactive'});}
+          const created=audioCtx;
+          created.onstatechange=()=>{
+            if(audioCtx===created&&(isMicBroadcasting||isVoiceLoopbackTesting)&&
+              (created.state==='suspended'||created.state==='interrupted'))created.resume().catch(()=>{});
           };
-        } catch (e) {
-          console.warn(e);
-          scriptProcessor = null;
         }
+        ctx=audioCtx;
+        if(ctx.state==='suspended'||ctx.state==='interrupted')await ctx.resume();
+        check();
+        // AEC is a request; it does not guarantee beamforming or remote-speaker cancellation.
+        try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,
+          noiseSuppression:false,autoGainControl:false,channelCount:1,sampleRate:48000}});}
+        catch(error){check();stream=await navigator.mediaDevices.getUserMedia({audio:true});}
+        check();
+        const source=own(ctx.createMediaStreamSource(stream));
+        const highPass=own(ctx.createBiquadFilter());highPass.type='highpass';highPass.frequency.value=85;highPass.Q.value = -3.0103;
+        const mudCut=own(ctx.createBiquadFilter());mudCut.type='peaking';mudCut.frequency.value=210;mudCut.Q.value=1.2;mudCut.gain.value=-2.5;
+        const presence=own(ctx.createBiquadFilter());presence.type='peaking';presence.frequency.value=3200;presence.Q.value=.85;presence.gain.value=2;
+        const lowPass=own(ctx.createBiquadFilter());lowPass.type='lowpass';lowPass.frequency.value=10500;lowPass.Q.value = -3.0103;
+        const gain=own(ctx.createGain());gain.gain.value=guideMicGainMultiplier;
+        const zero=own(ctx.createGain());zero.gain.value=0;
+        source.connect(highPass);highPass.connect(mudCut);mudCut.connect(presence);presence.connect(lowPass);lowPass.connect(gain);
+        const onFrame=message=>{if(current())handleGuideMicFloatChunk(message);};
+        const url='/pcm-capture-worklet.js?v=60-audio';
+        const options=()=>({muted:isGuideMicMuted,reject:guideSideVoiceRejectLevel,
+          continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade});
+        if(ctx.audioWorklet&&typeof AudioWorkletNode!=='undefined'){
+          try{
+            await ctx.audioWorklet.addModule(url);check();
+            processor=new AudioWorkletNode(ctx,'rys-pcm-capture',{numberOfInputs:1,numberOfOutputs:1,
+              outputChannelCount:[1],processorOptions:options()});
+            processor.port.onmessage=e=>onFrame(e.data);
+            processor.onprocessorerror=()=>{if(current()){lastGuideMicChunkAt=1;guideDeviceChangePending=true;}};
+          }catch(error){check();console.warn('Capture worklet fallback:',error);disposeGuideCaptureNode(processor);processor=null;}
+        }
+        if(!processor){
+          const {RysCaptureKernel}=await import(url);check();
+          const kernel=new RysCaptureKernel(ctx.sampleRate,options(),onFrame);
+          processor=ctx.createScriptProcessor(2048,1,1);
+          processor.port={postMessage:message=>kernel.control(message)};
+          processor.onaudioprocess=e=>{
+            if(!current())return;
+            const data=e.inputBuffer.getChannelData(0);
+            kernel.process(data,Math.max(0,ctx.currentTime-data.length/ctx.sampleRate));
+          };
+        }
+        check();gain.connect(processor);processor.connect(zero);zero.connect(ctx.destination);
+        // Commit synchronously; cleanup from an older request can only touch its local resources.
+        disconnectGuideAudioNodes();stopGuideMicrophoneStream(micStream);
+        micStream=stream;scriptProcessor=processor;guideSourceNode=source;guideHighPassNode=highPass;
+        guideMudCutNode=mudCut;guidePresenceNode=presence;guideLowPassNode=lowPass;guideMicGainNode=gain;zeroGainNode=zero;
+        const track=stream.getAudioTracks?.()[0];guideTrackMutedAt=track?.muted?Date.now():0;
+        if(track){
+          track.onmute=()=>{if(current())guideTrackMutedAt=Date.now();};
+          track.onunmute=()=>{if(current())guideTrackMutedAt=0;};
+          track.onended=()=>{if(current()&&isMicBroadcasting)setTimeout(()=>{if(current())healGuideMicrophoneIfNeeded();},300);};
+        }
+        guideWasIdlePaused=true;lastGuideMicChunkAt=Date.now();committed=true;syncGuideAudioProfile();
+        return generation;
+      }finally{
+        if(!committed)job.cancel();
+        if(guideMicSetupJob===job)guideMicSetupJob=null;
       }
-      if (!scriptProcessor) {
-        const { RysCaptureKernel } = await import(url);
-        if (audioCtx !== ctx) throw Error('Eski bağlam');
-        const k = new RysCaptureKernel(
-          ctx.sampleRate,
-          { muted: isGuideMicMuted, reject: guideSideVoiceRejectLevel,continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade },
-          handleGuideMicFloatChunk
-        );
-        scriptProcessor = ctx.createScriptProcessor(2048, 1, 1);
-        scriptProcessor.port = { postMessage: (m) => k.control(m) };
-        scriptProcessor.onaudioprocess = (e) => {
-          if(audioCtx!==ctx)return;
-          const data=e.inputBuffer.getChannelData(0);
-          const estimatedStart=Math.max(0,ctx.currentTime-data.length/ctx.sampleRate);
-          k.process(data,estimatedStart);
-        };
-      }
-      guideMicGainNode.connect(scriptProcessor);
-      scriptProcessor.connect(zeroGainNode);
-      zeroGainNode.connect(ctx.destination);
-      syncGuideAudioProfile();
     }
 
     async function healGuideMicrophoneIfNeeded(forceRebuild = false) {
-      if (!isMicBroadcasting || isVoiceLoopbackTesting || isHealingGuideMic) return;
-      const track = micStream && micStream.getAudioTracks ? micStream.getAudioTracks()[0] : null;
-      const trackDead = !track || track.readyState === 'ended';
-      const trackMuted = !!track?.muted && guideTrackMutedAt > 0 && Date.now() - guideTrackMutedAt > 2000;
-      const captureStalled = lastGuideMicChunkAt > 0 && (Date.now() - lastGuideMicChunkAt > 2000);
-      if (forceRebuild || trackDead || trackMuted || captureStalled) {
-        if (Date.now() - guideLastMicRebuildAt < 3000) return;
-        guideLastMicRebuildAt = Date.now();
-        isHealingGuideMic = true;
-        try {
-          disconnectGuideAudioNodes();
-          if (micStream) {
-            try { micStream.getTracks().forEach((t) => t.stop()); } catch {}
-            micStream = null;
+      if(forceRebuild&&isMicBroadcasting)guideDeviceChangePending=true;
+      if(!isMicBroadcasting||isVoiceLoopbackTesting||guideMicStarting||isHealingGuideMic)return;
+      const track=micStream?.getAudioTracks?.()[0],trackDead=!track||track.readyState==='ended';
+      const trackMuted=!!track?.muted&&guideTrackMutedAt>0&&Date.now()-guideTrackMutedAt>2000;
+      const captureStalled=lastGuideMicChunkAt>0&&Date.now()-lastGuideMicChunkAt>2000;
+      const forced=guideDeviceChangePending;
+      if(forced||trackDead||trackMuted||captureStalled){
+        if(!forced&&Date.now()-guideLastMicRebuildAt<3000)return;
+        guideDeviceChangePending=false;guideLastMicRebuildAt=Date.now();
+        const ticket={};guideMicHealTicket=ticket;isHealingGuideMic=true;
+        try{
+          disconnectGuideAudioNodes();stopGuideMicrophoneStream(micStream);micStream=null;
+          if((trackDead||trackMuted||captureStalled)&&audioCtx){
+            const oldCtx=audioCtx;audioCtx=null;workletModuleLoaded=false;
+            oldCtx.onstatechange=null;try{oldCtx.close().catch(()=>{});}catch(e){}
           }
-          // Alarm veya telefon araması sonrası AudioContext kilitlendiyse sıfırdan temiz AudioContext aç:
-          if ((trackDead || trackMuted || captureStalled) && audioCtx) {
-            const oldCtx = audioCtx;
-            audioCtx = null;
-            workletModuleLoaded = false;
-            try {
-              oldCtx.onstatechange = null;
-              oldCtx.close().catch(() => {});
-            } catch {}
-          }
-          await setupGuideMicrophoneGraph();
-          if (typeof window.ryBroadcastGuideStream === 'function') {
-            const activeTourCode = document.getElementById('guideTourSelect')?.value || 'RY-KASIM';
-            const activeRoomId = document.getElementById('guideRoomSelect')?.value || 'genel';
-            window.ryBroadcastGuideStream(micStream, activeTourCode, activeRoomId);
-          }
-          const lbl = document.getElementById('micSourceLabel');
-          if (lbl) {
-            lbl.textContent = forceRebuild
-              ? 'Yayın Kaynağı: 24 kHz Saf Stüdyo HD (Akustik Mod Güncellendi)'
-              : 'Yayın Kaynağı: 24 kHz Saf Stüdyo HD (Otomatik Kurtarıldı)';
-          }
-        } catch (e) {
-          console.warn('Mikrofon otomatik kurtarma beklemede:', e);
-        } finally {
-          isHealingGuideMic = false;
-        }
-      } else if (audioCtx && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
-        audioCtx.resume().catch(() => {});
-      }
+          const installed=await setupGuideMicrophoneGraph();
+          if(!isMicBroadcasting||installed!==guideMicGeneration||guideMicHealTicket!==ticket)return;
+          if(typeof window.ryBroadcastGuideStream==='function')window.ryBroadcastGuideStream(micStream,
+            document.getElementById('guideTourSelect')?.value||'RY-KASIM',document.getElementById('guideRoomSelect')?.value||'genel');
+          const label=document.getElementById('micSourceLabel');
+          if(label)label.textContent='Yayın Kaynağı: 24 kHz (Mikrofon Yenilendi)';
+        }catch(error){if(error.name!=='AbortError')console.warn('Mikrofon kurtarma beklemede:',error);}
+        finally{if(guideMicHealTicket===ticket){guideMicHealTicket=null;isHealingGuideMic=false;}}
+      }else if(audioCtx&&(audioCtx.state==='suspended'||audioCtx.state==='interrupted'))audioCtx.resume().catch(()=>{});
     }
 
     if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
@@ -1859,17 +1793,19 @@
       const testBtn = document.getElementById('testMyVoiceBtn');
       const statusBox = document.getElementById('voiceTestStatusBox');
       if (isVoiceLoopbackTesting) return;
-      if (isMicBroadcasting) {
+      if (isMicBroadcasting || guideMicStarting) {
         stopMicBroadcast();
       }
       if (isDemoBroadcasting) {
         toggleDemoBroadcast();
       }
 
+      const testVersion=guideMicGeneration+1;
       try {
         loopbackRecordedChunks = [];
         isVoiceLoopbackTesting = true;
-        await setupGuideMicrophoneGraph();
+        const installed=await setupGuideMicrophoneGraph();
+        if(installed!==guideMicGeneration||testVersion!==guideMicGeneration)return;
 
         if (testBtn) {
           testBtn.disabled = true;
@@ -1882,11 +1818,12 @@
 
         await new Promise((r) => setTimeout(r, 4000));
 
+        if(testVersion!==guideMicGeneration)return;
         // Kaydı durdur (hoparlörden çalarken mikrofona geri girmemesi için önce mikrofonu kapatıyoruz!)
         isVoiceLoopbackTesting = false;
         disconnectGuideAudioNodes();
         if (micStream) {
-          micStream.getTracks().forEach((t) => t.stop());
+          stopGuideMicrophoneStream(micStream);
           micStream = null;
         }
 
@@ -1905,62 +1842,48 @@
           offset += c.samples.length;
         }
 
-        // Hacıların telefonundaki 4-Noktalı Kübik Hermite 48 kHz dönüştürücüsünün birebir aynısıyla çal
-        const hwRate = audioCtx.sampleRate || 48000;
-        const step = sr / hwRate;
-        const outLen = Math.floor(merged.length / step);
-        const upsampled = new Float32Array(outLen);
-        for (let i = 0; i < outLen; i++) {
-          const pos = i * step;
-          const idx = Math.floor(pos);
-          const frac = pos - idx;
-          const y0 = merged[Math.max(0, idx - 1)];
-          const y1 = merged[Math.min(merged.length - 1, idx)];
-          const y2 = merged[Math.min(merged.length - 1, idx + 1)];
-          const y3 = merged[Math.min(merged.length - 1, idx + 2)];
-          const c0 = y1;
-          const c1 = 0.5 * (y2 - y0);
-          const c2 = y0 - 2.5 * y1 + 2.0 * y2 - 0.5 * y3;
-          const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
-          upsampled[i] = ((c3 * frac + c2) * frac + c1) * frac + c0;
-        }
-
+        // Keep native 24kHz samples; AudioBufferSource performs context-rate conversion.
         if (testBtn) testBtn.textContent = '🔊 Sesiniz Dinletiliyor...';
         if (statusBox) {
-          statusBox.innerHTML = '🔊 <strong>Kayıt Tamamlandı — Şimdi Dinliyorsunuz:</strong> Hacıların kulaklığında duyacağı 24 kHz → 48 kHz Kübik Hermite Saf Stüdyo HD sesiniz çalınıyor (Lavabo/Robotik ses %0).';
+          statusBox.innerHTML = '🔊 <strong>Kayıt Tamamlandı — Şimdi Dinliyorsunuz:</strong> Bu test yalnız mikrofon kaydınızı dinletir; canlı bağlantı kalitesini ölçmez.';
         }
 
-        const buf = audioCtx.createBuffer(1, upsampled.length, hwRate);
-        buf.copyToChannel(upsampled, 0);
+        const buf = audioCtx.createBuffer(1, merged.length, sr);
+        buf.copyToChannel(merged, 0);
         const src = audioCtx.createBufferSource();
         src.buffer = buf;
         src.connect(audioCtx.destination);
-        src.start();
+        guideLoopbackSource=src;src.start();
         await new Promise((r) => {
           src.onended = r;
           setTimeout(r, 4500);
         });
 
+        if(testVersion!==guideMicGeneration)return;
         if (statusBox) {
-          statusBox.innerHTML = '✅ <strong>Ses Kalitesi Testi Tamamlandı!</strong> Hacıların duyduğu net stüdyo sesini dinlediniz.';
+          statusBox.innerHTML = '✅ <strong>Ses Kalitesi Testi Tamamlandı!</strong> Mikrofon kaydınızı dinlediniz.';
         }
       } catch (err) {
+        if(err.name==='AbortError'||testVersion!==guideMicGeneration)return;
         if (statusBox) {
           statusBox.style.display = 'block';
           statusBox.innerHTML = '⚠️ Mikrofon testi başlatılamadı: ' + (err.message || err.name);
         }
       } finally {
-        isVoiceLoopbackTesting = false;
+        if(testVersion===guideMicGeneration){
+        isVoiceLoopbackTesting = false;loopbackRecordedChunks=[];
+        if(guideLoopbackSource){try{guideLoopbackSource.disconnect();}catch(e){}guideLoopbackSource=null;}
         if (testBtn) {
           testBtn.disabled = false;
           testBtn.textContent = '🎧 Sesimi Test Et (4 Sn Kaydet & Dinle)';
+        }
         }
       }
     }
 
     async function toggleMicBroadcast() {
       const btn = document.getElementById('startMicBtn');
-      if (isMicBroadcasting) {
+      if (isMicBroadcasting || guideMicStarting) {
         stopMicBroadcast();
         btn.textContent = '🎙️ Gerçek Mikrofonla Canlı Yayını Başlat';
         btn.className = 'btn btn-gold';
@@ -1968,13 +1891,17 @@
         return;
       }
 
+      if(isVoiceLoopbackTesting)return;
+
       // Demo ses akışı açıksa otomatik kapat ki gerçek mikrofonun arkasına demo nota sesi karışmasın!
       if (isDemoBroadcasting) {
         toggleDemoBroadcast();
       }
 
+      const startVersion=guideMicGeneration+1;guideMicStarting=true;
       try {
-        await setupGuideMicrophoneGraph();
+        const installed=await setupGuideMicrophoneGraph();
+        if(installed!==guideMicGeneration||startVersion!==guideMicGeneration)return;
 
         const activeTourCode = document.getElementById('guideTourSelect').value || 'RY-KASIM';
         const activeRoomId = document.getElementById('guideRoomSelect')?.value || 'genel';
@@ -2007,6 +1934,8 @@
           }));
         }
       } catch (err) {
+        if(err.name==='AbortError'||startVersion!==guideMicGeneration)return;
+        stopMicBroadcast();
         console.error('Mikrofon başlatma hatası:', err);
         let errorMsg = 'Mikrofon başlatılamadı: ' + (err.message || err.name);
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -2017,7 +1946,7 @@
           errorMsg = 'Mikrofon şu anda başka bir program (Zoom, Discord vb.) tarafından kullanılıyor.';
         }
         alert(errorMsg);
-      }
+      }finally{if(startVersion===guideMicGeneration)guideMicStarting=false;}
     }
 
     let broadcastStartedAtTs = 0;
@@ -2072,30 +2001,25 @@
     }
 
     function stopMicBroadcast() {
-      isMicBroadcasting = false;
-      toggleGuideMicMute(false);
-      stopBroadcastClock();
-      disableGuideKeepAlive();
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'guide-stream-state',
-          isLive: false,
-          broadcastMode: 'idle',
-          topic: document.getElementById('topicInput')?.value || ''
-        }));
-      }
-      if (typeof window.ryBroadcastGuideStream === 'function') {
-        window.ryBroadcastGuideStream(null);
-      }
-      disconnectGuideAudioNodes();
-      if (micStream) {
-        micStream.getTracks().forEach((t) => t.stop());
-        micStream = null;
-      }
+      ++guideMicGeneration;guideMicSetupJob?.cancel();guideMicSetupJob=null;
+      guideMicStarting=false;guideMicHealTicket=null;isHealingGuideMic=false;isVoiceLoopbackTesting=false;
+      clearTimeout(guideDeviceChangeTimer);guideDeviceChangeTimer=null;guideDeviceChangePending=false;
+      if(guideLoopbackSource){try{guideLoopbackSource.stop();guideLoopbackSource.disconnect();}catch(e){}guideLoopbackSource=null;}
+      isMicBroadcasting=false;
+      // Release hardware before optional UI/transport hooks can fail.
+      disconnectGuideAudioNodes();const stream=micStream;micStream=null;stopGuideMicrophoneStream(stream);
+      const testButton=document.getElementById('testMyVoiceBtn');
+      if(testButton){testButton.disabled=false;testButton.textContent='🎧 Sesimi Test Et (4 Sn Kaydet & Dinle)';}
+      toggleGuideMicMute(false);stopBroadcastClock();disableGuideKeepAlive();
+      try{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'guide-stream-state',isLive:false,
+        broadcastMode:'idle',topic:document.getElementById('topicInput')?.value||''}));}catch(e){}
+      try{if(typeof window.ryBroadcastGuideStream==='function')window.ryBroadcastGuideStream(null);}catch(e){}
     }
 
     // Demo Audio Broadcast (Works without physical mic)
     function toggleDemoBroadcast() {
+      if(isVoiceLoopbackTesting)return;
+      if(guideMicStarting)stopMicBroadcast();
       const btn = document.getElementById('startDemoStreamBtn');
       const micBtn = document.getElementById('startMicBtn');
       const srcLabel = document.getElementById('micSourceLabel');

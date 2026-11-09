@@ -8,6 +8,25 @@ function rysDiff(a, b) {
   return ((a - b + 0x40000000) & 0x7fffffff) - 0x40000000;
 }
 
+// v60: anti-alias the 24kHz source before rendering below 24kHz.
+class RysOutputFir {
+  constructor(rate){
+    this.r=new Float32Array(256);this.h=new Float64Array(193);this.pos=0;
+    const fc=.45*rate/24000;let sum=0;
+    for(let k=0;k<193;k++){
+      const d=k-96,w=.42-.5*Math.cos(2*Math.PI*k/192)+.08*Math.cos(4*Math.PI*k/192);
+      const h=(d===0?2*fc:Math.sin(2*Math.PI*fc*d)/(Math.PI*d))*w;
+      this.h[k]=h;sum+=h;
+    }
+    for(let k=0;k<193;k++)this.h[k]/=sum;
+  }
+  step(x){
+    this.r[this.pos]=x;let y=0;
+    for(let k=0;k<193;k++)y+=this.h[k]*this.r[(this.pos-k+256)&255];
+    this.pos=(this.pos+1)&255;return y;
+  }
+}
+
 class RysPitchPlc {
   constructor() {
     this.r = new Float32Array(2048);
@@ -102,6 +121,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
   }
 
   _reset() {
+    this.rxFir=this.rate<24000?new RysOutputFir(this.rate):null;
     this.plc = new RysPitchPlc();
     this.plcFrame = new Float32Array(480);
     this.recoveryFrame=new Float32Array(480);this.continuation=new Float32Array(480);
@@ -209,7 +229,8 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
 
   _pull() {
     if (this.fi >= 480) this._nextFrame();
-    return this.frame[this.fi++];
+    const x=this.frame[this.fi++];
+    return this.rxFir?this.rxFir.step(x):x;
   }
 
   process(inputs, outputs) {
@@ -307,6 +328,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
       this.primed = false;
       this.fi = 480;
       this.haveHistory = false;this.missing=0;this.pendingQueueBlend=false;this.catchupAge=0;this.catchupArmed=false;this.plc=new RysPitchPlc();
+      this.rxFir=this.rate<24000?new RysOutputFir(this.rate):null;
       this.resetFrom = this.lastOut;
       this.resetFade = 0;
     }

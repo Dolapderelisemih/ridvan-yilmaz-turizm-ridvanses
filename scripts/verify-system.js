@@ -579,6 +579,7 @@ async function runStep2And3LiveServerAndWsTests() {
   await runV57RoutingChecks({baseUrl,url:wsUrl,token:authToken});
   await runV58InputChecks({baseUrl,url:wsUrl,token:authToken});
   await runV59FanoutChecks({baseUrl,url:wsUrl,token:authToken});
+  await runV60AudioRoundTrip({baseUrl,url:wsUrl,token:authToken});
 
   guideGenelWs.close();
   pilgrimWs.close();
@@ -1157,7 +1158,8 @@ async function runStep5V53AudioChecks(){
     if(worklet)ctx.audioWorklet={addModule:async()=>{}};
     class Kernel{constructor(rate,o){opts=o;}control(){}process(ch,t){fallbackAt=t;}}
     class AW{constructor(context,name,o){opts=o.processorOptions;this.port={postMessage(){}};}connect(){}}
-    const g=box(graph.replace(/\bimport\(url\)/g,'loadCaptureModule(url)')+'\n'+profileCode,'',{
+    const g=box(['stopGuideMicrophoneStream','disposeGuideCaptureNode'].map(n=>pick(guide,n)).join('\n')+'\n'+graph.replace(/\bimport\(url\)/g,'loadCaptureModule(url)')+'\n'+profileCode,'',{
+      guideMicGeneration:0,guideMicSetupJob:null,micStream:null,
       audioCtx:ctx,window:{AudioContext:class{}},AudioWorkletNode:worklet?AW:undefined,
       navigator:{mediaDevices:{getUserMedia:async()=>({getAudioTracks:()=>[{}]})}},
       loadCaptureModule:async()=>({RysCaptureKernel:Kernel}),
@@ -1529,9 +1531,9 @@ async function runStep5V54AudioChecks(){
     if(mode!=='join')assert.equal(body.joinContext??null,null);
     else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
   }
-  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v59"));assert(sw.includes('/vercel-ws-shim.js?v=59'));
+  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v60"));assert(sw.includes('/vercel-ws-shim.js?v=60'));
   for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
-    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'59',f+' stale shim');
+    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'60',f+' stale shim');
   }
   if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
   console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
@@ -2287,13 +2289,14 @@ async function runStep5V59AudioChecks(){
   for(let i=0;i<210;i++){while(arming.q.size<20){const seq=arming.expected===null?0:(arming.expected+arming.q.size)%0x80000000;if(arming.expected===null)arming.expected=seq;arming.q.set(seq,new Float32Array(480).fill(.1));}
     arming.process([],[[new Float32Array(128)]]);if(arming.stats.catchupDropped>0)break;}
   assert(arming.stats.catchupDropped>0,'sustained backlog must arm catch-up within 560ms');
-  const env={isMicBroadcasting:true,isVoiceLoopbackTesting:false,isHealingGuideMic:false,
+  const env={guideMicGeneration:0,guideMicStarting:false,guideDeviceChangePending:false,guideMicHealTicket:null,stopGuideMicrophoneStream(){},
+    isMicBroadcasting:true,isVoiceLoopbackTesting:false,isHealingGuideMic:false,
     micStream:{getAudioTracks:()=>[{readyState:'live',muted:true}],getTracks:()=>[]},guideTrackMutedAt:1000,guideLastMicRebuildAt:0,
     lastGuideMicChunkAt:5000,Date:{now:()=>5000},audioCtx:null,disconnectGuideAudioNodes(){},
-    setupGuideMicrophoneGraph:async()=>{env.rebuilds++;},rebuilds:0,window:{},document:{getElementById:()=>null},console};
+    setupGuideMicrophoneGraph:async()=>{env.rebuilds++;return ++env.guideMicGeneration;},rebuilds:0,window:{},document:{getElementById:()=>null},console};
   vm.createContext(env);vm.runInContext(pick(guide,'healGuideMicrophoneIfNeeded'),env);
   await env.healGuideMicrophoneIfNeeded();assert.equal(env.rebuilds,1);await env.healGuideMicrophoneIfNeeded();assert.equal(env.rebuilds,1);
-  assert(guide.includes('healGuideMicrophoneIfNeeded(true), 350'));assert(guide.includes('audioTrack.onmute'));
+  assert(guide.includes('healGuideMicrophoneIfNeeded(true), 350'));assert(guide.includes('track.onmute'));
   for(const [source,name,node,value] of [[guide,'updateGuideMicGain','guideMicGainNode',1.25],[listener,'updateVolume','gainNode',1.25]]){
     const calls=[],g={audioCtx:{currentTime:9},document:{getElementById:()=>({})}};g[node]={gain:{setTargetAtTime:(...args)=>calls.push(args)}};
     vm.createContext(g);vm.runInContext(pick(source,name),g);g[name](125);assert.deepEqual(calls,[[value,9,.01]]);
@@ -2307,11 +2310,265 @@ async function runStep5V59AudioChecks(){
   rateBox.Date.now=()=>60000;limiter({...req,ip:'fresh'},response,()=>admitted++);assert.equal(admitted,2);
   assert(server.includes('rysSendAudio(peer.ws,fallbackPayload,false)'));
   assert(!server.includes('fallbackJsonStr'));
-  assert(read('public/sw.js').includes('pcm-player-worklet.js?v=59-audio'));
-  assert(read('public/sw.js').includes('pcm-capture-worklet.js?v=53-audio'));
+  assert(read('public/sw.js').includes('pcm-player-worklet.js?v=60-audio'));
+  assert(read('public/sw.js').includes('pcm-capture-worklet.js?v=60-audio'));
   recordResult('ADIM-5.V59','8/16/44.1/48k DSP; FIR rejection; DC/limiter/partition; PLC/jitter/catchup; mic mute/retry; gain ramps; bounded CGNAT buckets',true);
   console.log('V59 DSP METRICS '+JSON.stringify({rates:dsp,fixture200HzMaxStep:+maxStep.toFixed(6),concealedSamples:p.stats.concealed}));
   console.log('V59 UNIT PASS: numerical model checks; no physical headset or lock-screen guarantee');
+}
+
+// v60 deterministic browser scheduling harness. Devices/permissions are mocked, production functions are extracted.
+function createV60GuideHarness(source,options={}){
+  const assert=require('node:assert/strict'),requests=[],modules=[],imports=[],processors=[],nodes=[],jobs=[],messages=[],broadcasts=[];
+  const defer=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
+  function pick(name){
+    const m=new RegExp('^[ \\t]*(?:async )?function '+name+'\\(','m').exec(source);if(!m)return '';
+    for(let end=source.indexOf('}',m.index);end>=0;end=source.indexOf('}',end+1)){
+      const text=source.slice(m.index,end+1);try{new vm.Script(text);return text;}catch(e){if(e.name!=='SyntaxError')throw e;}
+    }throw Error('V60 unterminated '+name);
+  }
+  const node=()=>{const n={gain:{value:0,setTargetAtTime(){}},frequency:{value:0},Q:{value:0},
+    connect(){},disconnect(){this.disconnected=true;}};nodes.push(n);return n;};
+  const ctx={state:'running',sampleRate:48000,currentTime:10,destination:{},
+    resume:async()=>{},close:async()=>{ctx.state='closed';},createMediaStreamSource:node,createGain:node,createBiquadFilter:node,
+    createScriptProcessor:()=>{const n=node();processors.push(n);return n;}};
+  if(options.worklet!==false)ctx.audioWorklet={addModule:()=>{if(!options.deferModules)return Promise.resolve();const d=defer();modules.push(d);return d.promise;}};
+  class Worklet{constructor(context,name,settings){Object.assign(this,node());this.options=settings.processorOptions;this.sent=[];this.port={onmessage:null,
+    postMessage:m=>this.sent.push(m),close:()=>this.closed=true};processors.push(this);}}
+  class Kernel{constructor(rate,profile,emit){this.emit=emit;g.lastKernelProfile=profile;}control(){}process(){this.emit({type:'frame',samples:new Float32Array(480),rms:0});}}
+  const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{value:id==='guideRoomSelect'?'genel':'RY-V60',style:{},classList:{add(){},remove(){}}});return elements.get(id);};
+  const g={guideMicGeneration:0,guideMicStarting:false,guideMicSetupJob:null,guideMicHealTicket:null,
+    guideDeviceChangePending:false,guideLoopbackSource:null,guideDeviceChangeTimer:null,
+    guideTrackMutedAt:0,guideLastMicRebuildAt:0,guideWasIdlePaused:false,lastGuideMicChunkAt:5000,
+    audioCtx:ctx,micStream:null,scriptProcessor:null,guideSourceNode:null,guideHighPassNode:null,guideMudCutNode:null,
+    guideLowPassNode:null,guidePresenceNode:null,guideMicGainNode:null,zeroGainNode:null,
+    isMicBroadcasting:false,isHealingGuideMic:false,isVoiceLoopbackTesting:false,isDemoBroadcasting:false,
+    isGuideMicMuted:false,guideMicGainMultiplier:1,guideSideVoiceRejectLevel:.5,guideContinuousSpeech:false,guideComfortFade:true,
+    workletModuleLoaded:false,loopbackRecordedChunks:[],guideTxRmsRing:new Float32Array(8),
+    AudioWorkletNode:options.worklet===false?undefined:Worklet,WebSocket:{OPEN:1},ws:null,
+    window:{AudioContext:class{constructor(){ctx.state='running';return ctx;}},ryBroadcastGuideStream:s=>broadcasts.push(s)},
+    navigator:{mediaDevices:{getUserMedia:constraint=>{const d=defer();requests.push({...d,constraint});return d.promise;}}},
+    loadCaptureModule:()=>{if(!options.deferImports)return Promise.resolve({RysCaptureKernel:Kernel});const d=defer();imports.push(d);return d.promise;},
+    setTimeout:(fn,ms)=>{const job={fn,ms,cancelled:false};jobs.push(job);return job;},clearTimeout:job=>{if(job)job.cancelled=true;},
+    document:{getElementById:element},Date:{now:()=>g.now},now:5000,Float32Array,Float64Array,Math,Number,
+    console:{warn(){},error(){}},alert:m=>{throw Error('Unexpected alert '+m);},
+    handleGuideMicFloatChunk:m=>{messages.push(m);options.onFrame?.(m);},syncGuideAudioProfile(){},toggleGuideMicMute(){},
+    enableGuideKeepAlive(){},disableGuideKeepAlive(){},startBroadcastClock(){},stopBroadcastClock(){},connectGuideWs(){},
+    toggleDemoBroadcast(){g.isDemoBroadcasting=!g.isDemoBroadcasting;}};
+  const names=['stopGuideMicrophoneStream','disposeGuideCaptureNode','disconnectGuideAudioNodes','setupGuideMicrophoneGraph',
+    'healGuideMicrophoneIfNeeded','stopMicBroadcast','toggleMicBroadcast','testGuideVoiceLoopback'];
+  vm.createContext(g);vm.runInContext(names.map(pick).join('\n').replace(/\bimport\(url\)/g,'loadCaptureModule(url)'),g);
+  const stream=id=>{const track={id,readyState:'live',muted:false,stops:0,stop(){this.stops++;this.readyState='ended';}};
+    return {id,track,getTracks:()=>[track],getAudioTracks:()=>[track]};};
+  const tick=async()=>{for(let i=0;i<10;i++)await Promise.resolve();};
+  return {g,ctx,requests,modules,imports,processors,nodes,jobs,messages,broadcasts,stream,tick,Kernel,assert};
+}
+
+
+async function runStep5V60AudioChecks(){
+  const assert=require('node:assert/strict'),read=f=>fs.readFileSync(path.join(ROOT_DIR,f),'utf8').replace(/\r\n/g,'\n');
+  const guide=read('public/rehber.html'),player=read('public/pcm-player-worklet.js'),checks=[];
+  const stop=h=>h.g.stopMicBroadcast(),started=async(h,id)=>{const p=h.g.toggleMicBroadcast();const s=h.stream(id);h.requests.at(-1).resolve(s);await p;return s;};
+  const aborted=p=>p.then(()=>{throw Error('Expected AbortError');},e=>assert.equal(e.name,'AbortError'));
+  {
+    const h=createV60GuideHarness(guide),p=h.g.toggleMicBroadcast(),s=h.stream('cancelled-permission');
+    stop(h);h.requests[0].resolve(s);await p;assert(!h.g.isMicBroadcasting);assert.equal(h.g.micStream,null);assert.equal(s.track.stops,1);
+    assert.equal(h.broadcasts.filter(Boolean).length,0);checks.push('stop-before-gUM');
+  }
+  {
+    const h=createV60GuideHarness(guide),p=h.g.toggleMicBroadcast();
+    await h.g.toggleMicBroadcast();assert(!h.g.guideMicStarting);const newer=await started(h,'new-start');
+    h.requests[0].resolve(h.stream('old-start'));await p;assert.equal(h.g.micStream,newer);assert(h.g.isMicBroadcasting);
+    checks.push('double-click-stop-restart');stop(h);
+  }
+  {
+    const h=createV60GuideHarness(guide),a=aborted(h.g.setupGuideMicrophoneGraph()),b=h.g.setupGuideMicrophoneGraph();
+    const first=h.stream('old'),second=h.stream('new');h.requests[1].resolve(second);await b;
+    h.requests[0].resolve(first);await a;assert.equal(h.g.micStream,second);assert.equal(first.track.stops,1);assert.equal(second.track.stops,0);
+    checks.push('reversed-permission-order');stop(h);
+  }
+  {
+    const h=createV60GuideHarness(guide,{deferModules:true}),p=h.g.toggleMicBroadcast(),s=h.stream('module-wait');
+    h.requests[0].resolve(s);await h.tick();assert.equal(h.modules.length,1);stop(h);assert.equal(s.track.stops,1);
+    h.modules[0].resolve();await p;assert.equal(h.processors.length,0);assert(h.nodes.every(n=>n.disconnected));
+    checks.push('stop-before-addModule');
+  }
+  {
+    const h=createV60GuideHarness(guide,{worklet:false,deferImports:true}),p=h.g.toggleMicBroadcast(),s=h.stream('import-wait');
+    h.requests[0].resolve(s);await h.tick();assert.equal(h.imports.length,1);stop(h);assert.equal(s.track.stops,1);
+    h.imports[0].resolve({RysCaptureKernel:h.Kernel});await p;assert.equal(h.processors.length,0);checks.push('stop-before-fallback-import');
+  }
+  {
+    const h=createV60GuideHarness(guide),p=h.g.toggleMicBroadcast();stop(h);h.requests[0].reject(Error('denied'));await p;
+    assert.equal(h.requests.length,1,'cancelled strict request must not open another permission request');checks.push('no-stale-gUM-retry');
+  }
+  for(const worklet of [true,false]){
+    const h=createV60GuideHarness(guide,{worklet}),s1=await started(h,'first');
+    const old=h.g.scriptProcessor,callback=worklet?old.port.onmessage:old.onaudioprocess;
+    const ended=s1.track.onended,error=old.onprocessorerror;
+    stop(h);const s2=await started(h,'second'),before=h.messages.length,jobCount=h.jobs.length;
+    if(worklet)callback({data:{samples:new Float32Array(480)}});
+    else callback({inputBuffer:{getChannelData:()=>new Float32Array(2048)}});
+    ended();error?.();assert.equal(h.messages.length,before);assert.equal(h.jobs.length,jobCount);assert.equal(h.g.micStream,s2);
+    assert(old.disconnected);if(worklet){assert(old.sent.some(m=>m.type==='stop'));assert(old.closed);}
+    checks.push(worklet?'stale-worklet-track-error':'stale-scriptprocessor');stop(h);
+  }
+  {
+    const h=createV60GuideHarness(guide);await started(h,'initial');h.g.guideLastMicRebuildAt=h.g.now;
+    const a=h.g.healGuideMicrophoneIfNeeded(true);assert.equal(h.requests.length,2,'forced route change bypasses cooldown');
+    await h.g.healGuideMicrophoneIfNeeded(true);assert(h.g.guideDeviceChangePending,'route change during heal must remain pending');
+    h.requests[1].resolve(h.stream('route-1'));await a;const b=h.g.healGuideMicrophoneIfNeeded();
+    assert.equal(h.requests.length,3);h.requests[2].resolve(h.stream('route-2'));await b;
+    assert(!h.g.guideDeviceChangePending);checks.push('forced-route-during-cooldown-and-heal');stop(h);
+  }
+  {
+    const h=createV60GuideHarness(guide);await started(h,'start');const a=h.g.healGuideMicrophoneIfNeeded(true);stop(h);
+    await started(h,'restart');const b=h.g.healGuideMicrophoneIfNeeded(true),ticket=h.g.guideMicHealTicket;
+    h.requests[1].resolve(h.stream('stale-heal'));await a;assert.equal(h.g.guideMicHealTicket,ticket);assert(h.g.isHealingGuideMic);
+    h.requests[3].resolve(h.stream('current-heal'));await b;assert(!h.g.isHealingGuideMic);checks.push('old-heal-finally-cannot-unlock-new-heal');stop(h);
+  }
+  {
+    const h=createV60GuideHarness(guide),p=h.g.testGuideVoiceLoopback();h.requests[0].resolve(h.stream('preview'));await h.tick();
+    const timer=h.jobs.find(j=>j.ms===4000);assert(timer);stop(h);const s=await started(h,'after-preview');timer.fn();await p;
+    assert.equal(h.g.micStream,s);assert(h.g.isMicBroadcasting);assert(!s.track.stops);checks.push('stale-preview-does-not-stop-new-broadcast');stop(h);
+  }
+  {
+    const h=createV60GuideHarness(guide);let bufferRate=0,copied,source;
+    h.ctx.sampleRate=8000;
+    h.ctx.createBuffer=(channels,length,rate)=>{bufferRate=rate;return {copyToChannel:a=>copied=Array.from(a)};};
+    h.ctx.createBufferSource=()=>source={connect(){},start(){},disconnect(){this.disconnected=true;}};
+    const p=h.g.testGuideVoiceLoopback();h.requests[0].resolve(h.stream('preview-normal'));await h.tick();
+    const samples=new Float32Array(480).fill(.1);h.g.loopbackRecordedChunks.push({samples,sampleRate:24000});
+    h.jobs.find(j=>j.ms===4000).fn();await h.tick();assert.equal(bufferRate,24000);assert.deepEqual(copied,Array.from(samples));
+    source.onended();await p;assert(source.disconnected);assert.equal(h.g.loopbackRecordedChunks.length,0);
+    checks.push('preview-preserves-source-rate-and-releases-data');
+  }
+  {
+    const h=createV60GuideHarness(guide),s=await started(h,'stop-with-errors');
+    h.g.ws={readyState:1,send(){throw Error('socket failed');}};
+    h.g.window.ryBroadcastGuideStream=()=>{throw Error('publisher failed');};
+    assert.doesNotThrow(()=>stop(h));assert.equal(s.track.stops,1);assert.equal(h.g.micStream,null);
+    checks.push('stop-releases-hardware-despite-hook-errors');
+  }
+  {
+    const h=createV60GuideHarness(guide),p=h.g.toggleMicBroadcast(),s=h.stream('failed-start');
+    h.g.alert=()=>{};h.g.window.ryBroadcastGuideStream=()=>{throw Error('publisher start failed');};
+    h.requests[0].resolve(s);await p;assert(!h.g.isMicBroadcasting);assert.equal(h.g.micStream,null);assert.equal(s.track.stops,1);
+    checks.push('post-commit-start-error-releases-microphone');
+  }
+  for(const worklet of [true,false]){
+    const h=createV60GuideHarness(guide,{worklet,deferModules:worklet,deferImports:!worklet});
+    const p=h.g.setupGuideMicrophoneGraph();h.requests[0].resolve(h.stream('profile-wait'));await h.tick();
+    h.g.isGuideMicMuted=true;h.g.guideContinuousSpeech=true;h.g.guideComfortFade=false;
+    if(worklet)h.modules[0].resolve();else h.imports[0].resolve({RysCaptureKernel:h.Kernel});await p;
+    const profile=worklet?h.g.scriptProcessor.options:h.g.lastKernelProfile;
+    assert(profile.muted&&profile.continuousSpeech&&!profile.comfortFade,'latest mute/profile must survive asynchronous setup');
+    checks.push(worklet?'current-profile-after-worklet-await':'current-profile-after-import-await');stop(h);
+  }
+  const captureBox={Float32Array,Float64Array,Math,Number,sampleRate:48000,currentTime:0,
+    AudioWorkletProcessor:class{constructor(){this.port={postMessage(){}};}},registerProcessor:(n,P)=>captureBox.P=P};
+  vm.createContext(captureBox);vm.runInContext(read('public/pcm-capture-worklet.js').replace(/^export .*$/mg,''),captureBox);
+  const capture=new captureBox.P({processorOptions:{}}),outputs=[[new Float32Array(128)]];
+  assert.equal(capture.process([[new Float32Array(128)]],outputs),true);capture.port.onmessage({data:{type:'stop'}});
+  capture.port.onmessage({data:{type:'set-mute',muted:true}});assert.equal(capture.process([[new Float32Array(128)]],outputs),false);
+  assert(outputs[0][0].every(x=>x===0));assert(!capture.kernel.muted);checks.push('capture-processor-terminates');
+  const alias=[];
+  for(const rate of [8000,16000,24000,44100,48000]){
+    const box={Float32Array,Float64Array,Math,Number,sampleRate:rate,
+      AudioWorkletProcessor:class{constructor(){this.port={postMessage(){}};}},registerProcessor:(n,P)=>box.P=P};
+    vm.createContext(box);vm.runInContext(player,box);const P=box.P;
+    if(rate>=24000){assert.equal(new P().rxFir,null);continue;}
+    const render=f=>{const p=new P(),out=[];let seq=0,now=0;
+      assert(p.rxFir,'P2-59-08 requires a real pre-Hermite FIR');
+      while(now<2200){while(seq*20<=now){const n=seq++;p._push({seq:n,arrival:n*20,
+        samples:Float32Array.from({length:480},(_,i)=>.25*Math.sin(2*Math.PI*f*(n*480+i)/24000))});}
+        const b=new Float32Array(128);p.process([],[[b]]);if(now>500)out.push(...b);now+=128000/rate;}
+      assert(out.every(Number.isFinite));return Math.sqrt(out.reduce((s,x)=>s+x*x,0)/out.length);};
+    const pass=render(200);assert(pass>.16&&pass<.19);
+    const frequencies=[rate*.51,rate*.6,rate===8000?6000:10000];
+    for(const frequency of frequencies){const db=20*Math.log10(Math.max(1e-16,render(frequency))/pass);
+      assert(db< -70,'alias '+rate+'/'+frequency+' '+db);alias.push({rate,frequency,rejectionDb:+db.toFixed(2)});}
+    const p=new P();p.rxFir.r.fill(1);p._reset();assert(p.rxFir.r.every(x=>x===0));
+    p.rxFir.r.fill(1);p.playing=true;p.expected=0;p.missing=15;
+    p.process([],[[new Float32Array(128)]]);assert(!p.playing);assert(p.rxFir.r.every(x=>x===0));
+  }
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v60'));
+  for(const asset of ['pcm-player-worklet.js?v=60-audio','pcm-capture-worklet.js?v=60-audio'])assert(sw.includes(asset));
+  assert(guide.includes('pcm-capture-worklet.js?v=60-audio'));assert(read('public/dinle.html').includes('pcm-player-worklet.js?v=60-audio'));
+  console.log('V60 UNIT METRICS '+JSON.stringify({lifecycleChecks:checks,alias}));
+  recordResult('ADIM-5.V60','Low-rate player anti-alias; source/reset/starvation; guide permission/module/preview/heal races; explicit capture shutdown; cache60',true);
+  console.log('V60 UNIT PASS');
+}
+
+
+async function runV60AudioRoundTrip({baseUrl,url,token}){
+  const assert=require('node:assert/strict'),{WebSocket}=require('ws');
+  const code='RY-V60-'+Date.now().toString(36).toUpperCase(),headers={'Content-Type':'application/json',Authorization:'Bearer '+token};
+  const sockets=[],native=[],relay=[],sent=new Map(),errors=[],joined=new Set();let session,h,created=false,sequence=0;
+  const until=async f=>{const end=Date.now()+5000;while(!f()){if(Date.now()>end)throw Error('V60 E2E deadline');await new Promise(r=>setTimeout(r,5));}};
+  const post=async body=>{const r=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers,body:JSON.stringify(body)});
+    assert.equal(r.status,200);return r.json();};
+  const poll=async()=>{const data=await post({...session,subscriptionContext:{type:'join',role:'pilgrim',tourCode:code,roomId:'genel',pin:'6060',name:'V60 HTTP'}});
+    relay.push(...(data.messages||[]).filter(m=>m.type==='audio-chunk'));};
+  const open=async(role)=>{const s=new WebSocket(url);sockets.push(s);s.on('error',e=>errors.push(e.message));
+    s.on('message',(raw,binary)=>{if(binary)native.push(Buffer.from(raw));else try{if(JSON.parse(raw.toString()).type==='joined')joined.add(s);}catch(e){errors.push('JSON');}});
+    await new Promise((resolve,reject)=>{s.once('open',resolve);s.once('error',reject);});
+    s.send(JSON.stringify({type:'join',role,tourCode:code,roomId:'genel',name:'V60 '+role,pin:'6060',token:role==='guide'?token:undefined}));
+    return s;};
+  try{
+    const createdResponse=await fetch(baseUrl+'/api/tours',{method:'POST',headers,body:JSON.stringify({code,name:'V60 pipeline',pin:'6060'})});
+    assert.equal(createdResponse.status,200);await createdResponse.arrayBuffer();created=true;
+    const guide=await open('guide');await open('pilgrim');await until(()=>joined.size===2);
+    const opened=await post({type:'relay-open',version:56});session={clientId:opened.clientId,relayKey:opened.relayKey};await poll();
+    const captureBox={Float32Array,Float64Array,Math,Number};vm.createContext(captureBox);
+    vm.runInContext(fs.readFileSync(path.join(ROOT_DIR,'public/pcm-capture-worklet.js'),'utf8').replace(/^export .*$/mg,''),captureBox);
+    const frames=[],kernel=new captureBox.RysCaptureKernel(48000,{continuousSpeech:true,comfortFade:false},m=>frames.push(m.samples));
+    kernel.process(Float32Array.from({length:96000},(_,i)=>.25*Math.sin(2*Math.PI*6000*i/48000)));
+    const samples=frames.slice(-30);assert.equal(samples.length,30);
+    h=createV60GuideHarness(fs.readFileSync(path.join(ROOT_DIR,'public/rehber.html'),'utf8'),{onFrame:m=>{
+      const seq=sequence++,bytes=Buffer.alloc(972);bytes.writeUInt32LE(seq,0);bytes.writeDoubleLE(Date.now(),4);
+      for(let i=0;i<480;i++)bytes.writeInt16LE(Math.round(Math.max(-1,Math.min(1,m.samples[i]))*32767),12+i*2);
+      sent.set(seq,bytes);guide.send(bytes);
+    }});
+    const start=async id=>{const p=h.g.toggleMicBroadcast();h.requests.at(-1).resolve(h.stream(id));await p;assert(h.g.isMicBroadcasting);};
+    await start('guide-first');let callback=h.g.scriptProcessor.port.onmessage;
+    const paced=performance.now();
+    for(let i=0;i<30;i++){
+      if(i===15){
+        h.g.stopMicBroadcast();callback({data:{samples:samples[i]}});assert.equal(sent.size,15);
+        const pending=h.g.toggleMicBroadcast();h.g.stopMicBroadcast();h.requests.at(-1).resolve(h.stream('cancelled-late'));await pending;
+        assert(!h.g.isMicBroadcasting);assert.equal(sent.size,15);await start('guide-new');callback=h.g.scriptProcessor.port.onmessage;
+      }
+      const wait=paced+i*20-performance.now();if(wait>0)await new Promise(r=>setTimeout(r,wait));
+      callback({data:{samples:samples[i]}});
+      if(i%5===4){await until(()=>native.length>=i+1);await poll();}
+    }
+    h.g.stopMicBroadcast();callback({data:{samples:samples[0]}});await until(()=>native.length===30);await poll();
+    assert.equal(sequence,30);assert.equal(relay.length,30);assert.deepEqual(errors,[]);
+    for(let i=0;i<30;i++){
+      assert(native[i].equals(sent.get(i)));assert.equal(relay[i].seq,i);
+      assert(Buffer.from(relay[i].pcm16,'base64').equals(sent.get(i).subarray(12)));
+    }
+    const rendered=[];
+    for(const rate of [8000,16000]){
+      const box={Float32Array,Float64Array,Math,Number,sampleRate:rate,
+        AudioWorkletProcessor:class{constructor(){this.port={postMessage(){}};}},registerProcessor:(n,P)=>box.P=P};
+      vm.createContext(box);vm.runInContext(fs.readFileSync(path.join(ROOT_DIR,'public/pcm-player-worklet.js'),'utf8'),box);
+      const p=new box.P();for(const bytes of native){const seq=bytes.readUInt32LE(0);p._push({seq,arrival:seq*20,
+        samples:Float32Array.from({length:480},(_,i)=>bytes.readInt16LE(12+i*2)/32768)});}
+      const output=[];for(let now=0;now<550;now+=128000/rate){const block=new Float32Array(128);p.process([],[[block]]);if(now>150)output.push(...block);}
+      assert(output.every(Number.isFinite));const rms=Math.sqrt(output.reduce((s,x)=>s+x*x,0)/output.length);
+      if(rate===8000)assert(rms<.0001,'6kHz must not alias at an 8kHz output');else assert(rms>.05,'6kHz must remain audible at a 16kHz output');
+      rendered.push({rate,rms:+rms.toExponential(3)});
+    }
+    console.log('V60 E2E METRICS '+JSON.stringify({nativeFrames:native.length,httpFrames:relay.length,bytesEqual:true,staleForwarded:0,rendered}));
+    recordResult('ADIM-3.V60','Actual capture kernel -> fenced guide callback -> real native/HTTP relay -> low-rate player; cancelled/stale capture sends no PCM',true);
+    console.log('V60 E2E PASS');
+  }finally{
+    h?.g.stopMicBroadcast();for(const s of sockets)try{s.terminate();}catch(e){}
+    if(session)try{await post({...session,type:'relay-close'});}catch(e){}
+    if(created){const r=await fetch(baseUrl+'/api/tours/'+code,{method:'DELETE',headers});await r.arrayBuffer();}
+  }
 }
 
 async function main() {
@@ -2327,6 +2584,7 @@ async function main() {
     await runStep5V57RoutingChecks();
     await runStep5V58InputChecks();
     await runStep5V59AudioChecks();
+    await runStep5V60AudioChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);
