@@ -83,6 +83,14 @@
 
   // PATCH: coalescing-v50
   // PATCH: coalescer-v51
+  // Per page, shared by replacement sockets; the audioSourceId is stable for this page.
+  function nextRysAudioStateSeq(minimum=0){
+    const n=globalThis.__ryGuideAudioStateSeq;
+    const next=Math.max(Number.isSafeInteger(n)&&n>=0?n:0,Number.isSafeInteger(minimum)&&minimum>=0?minimum:0)+1;
+    if(!Number.isSafeInteger(next))throw new RangeError('Audio state sequence exhausted');
+    globalThis.__ryGuideAudioStateSeq=next;return next;
+  }
+
   class RysAudioCoalescer {
     constructor(send,clock=()=>Date.now(),schedule=(f,ms)=>setTimeout(f,ms),cancel=id=>clearTimeout(id)){
       this.send=send;this.clock=clock;this.schedule=schedule;this.cancel=cancel;
@@ -600,13 +608,14 @@
         const pilgrims = Array.from(this._pilgrimMeta.values());
         const tourCode = this._joinContext.tourCode || 'RY-KASIM';
         const roomId = this._joinContext.roomId || 'genel';
-        const isLive = typeof this._isLive === 'undefined' ? true : Boolean(this._isLive);
+        const isLive=typeof this._lastGuideState?.isLive==='boolean'?this._lastGuideState.isLive:
+          typeof this._isLive==='undefined'?true:Boolean(this._isLive);
         const roomObj = {
           tourCode,
           roomId,
           guideName: this._joinContext.name || 'Ömer Ali Gültekin',
           isLive,
-          broadcastMode: this._broadcastMode || (isLive ? 'mic' : 'idle'),
+          broadcastMode:this._lastGuideState?.broadcastMode||this._broadcastMode||(isLive?'mic':'idle'),
           currentTopic:
             this._currentTopic ||
             (tourCode === 'RY-KASIM'
@@ -615,6 +624,8 @@
           activeTawafStage: this._activeTawafStage || null,
           guidePeerId: window.ryGetDynamicChannelId(tourCode, roomId),
           audioSourceId:this._joinContext.audioSourceId||null,
+          audioStateKnown:typeof this._lastGuideState?.isLive==='boolean'||typeof this._isLive==='boolean',
+          audioStateSeq:this._lastGuideState?.audioStateSeq||null,audioStateEnded:false,
           guideLocation: this._guideLocation || null,
           connectedPilgrims: pilgrims,
           totalListeners: pilgrims.length,
@@ -686,6 +697,7 @@
         }
         if(['join','family-subscribe','admin-subscribe'].includes(parsed.type))this._cancelNativeProbe?.();
         if(parsed.type==='guide-stream-state'){
+          parsed={...parsed,audioStateSeq:nextRysAudioStateSeq(this._lastGuideState?.audioStateSeq),audioStateEnded:false};
           this._lastGuideState={...parsed};
           if(!parsed.isLive||String(parsed.broadcastMode||'').startsWith('demo')){
             this._audioCoalescer?.clear();this._sendQueue=(this._sendQueue||[]).filter(m=>m.type!=='audio-chunk');
@@ -809,6 +821,7 @@
             broadcastMode: this._broadcastMode,
             currentTopic: this._currentTopic,
             audioSourceId:this._joinContext.audioSourceId||null,
+            audioStateSeq:parsed.audioStateSeq,audioStateEnded:false,
             guidePeerId: window.ryGetDynamicChannelId(
               this._joinContext.tourCode || 'RY-KASIM',
               this._joinContext.roomId || 'genel'
@@ -934,8 +947,12 @@
             !/^[0-9a-f]{48}$/.test(data.relayKey||''))throw Error('Relay open failed');
           this._relayClientId=data.clientId;this._relayKey=data.relayKey;
           if(!sameRoute()){success=true;return;}
-          if(this._lastGuideState&&this._joinContext?.role==='guide')
-            batch.push({...this._lastGuideState});
+          if(this._lastGuideState&&this._joinContext?.role==='guide'){
+            // Reannounce before the first PCM; renewal may follow an authoritative disconnect stop.
+            this._lastGuideState={...this._lastGuideState,audioStateSeq:nextRysAudioStateSeq(this._lastGuideState?.audioStateSeq),audioStateEnded:false};
+            for(let i=batch.length-1;i>=0;i--)if(batch[i].type==='guide-stream-state')batch.splice(i,1);
+            batch.unshift({...this._lastGuideState});
+          }
         }
         const token=(localStorage.getItem('ry_auth_token')||'').trim();
         const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join');

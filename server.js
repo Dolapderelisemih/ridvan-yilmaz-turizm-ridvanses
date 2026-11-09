@@ -421,6 +421,7 @@ function serializeRoom(room, includePilgrimDetails = true) {
     guidePeerId: room.guidePeerId || null,
     audioSourceId:room.audioSourceId||null,
     audioStateKnown:!!room.audioStateKnown,
+    audioStateSeq:room.audioStateSeq||null,audioStateEnded:!!room.audioStateEnded,
     guideLocation: room.guideLocation || null,
     connectedPilgrims: pilgrims,
     connectedGuides: guides,
@@ -472,9 +473,14 @@ function acceptRysAudio(room,sender,clientId,synth=false){
   return !(sameSource&&room.audioStateKnown&&(!room.isLive||!synth&&String(room.broadcastMode||'').startsWith('demo')));
 }
 
+function acceptRysAudioState(room,sender,clientId,message){
+  if(room.audioSourceId!==(sender.audioSourceId||clientId)||!Number.isSafeInteger(room.audioStateSeq))return true;
+  return Number.isSafeInteger(message.audioStateSeq)&&message.audioStateSeq>room.audioStateSeq;
+}
+
 function setRysAudioSource(room,sourceId){
   if(room.audioSourceId===sourceId)return;
-  room.audioSourceId=sourceId;room.audioStateKnown=false;
+  room.audioSourceId=sourceId;room.audioStateKnown=false;room.audioStateSeq=null;room.audioStateEnded=false;
   broadcastToRoom(room,{type:'audio-source',audioSourceId:sourceId});
 }
 
@@ -676,7 +682,7 @@ function evaluateTourGuidePresence(tourCode) {
   const genelHasGuide = Array.from(genelRoom.clients.values()).some((c) => c.role === 'guide');
   if (!genelHasGuide && genelRoom.isLive) {
     genelRoom.isLive = false;
-    genelRoom.broadcastMode = 'idle';
+    genelRoom.broadcastMode = 'idle';genelRoom.audioStateKnown=true;genelRoom.audioStateEnded=true;
     broadcastToFamilyTrackers(code, {
       type: 'stream-state',
       isLive: false,
@@ -695,19 +701,21 @@ function evaluateTourGuidePresence(tourCode) {
       r.guideName = genelRoom.guideName;
       setRysAudioSource(r,genelRoom.audioSourceId||null);
       r.audioStateKnown=!!genelRoom.audioStateKnown;
+      r.audioStateSeq=genelRoom.audioStateSeq||null;r.audioStateEnded=!!genelRoom.audioStateEnded;
       broadcastToRoom(r, {
         type: 'stream-state',
         isLive: r.isLive,
         broadcastMode: r.broadcastMode,
         currentTopic: r.currentTopic,
         guidePeerId: r.guidePeerId || null,
-        audioSourceId:r.audioSourceId||null
+        audioSourceId:r.audioSourceId||null,
+        audioStateSeq:r.audioStateSeq||null,audioStateEnded:!!r.audioStateEnded
       });
       continue;
     }
     if (!roomHasGuide && !coveredByGenel && r.isLive) {
       r.isLive = false;
-      r.broadcastMode = 'idle';
+      r.broadcastMode = 'idle';r.audioStateKnown=true;r.audioStateEnded=true;
     }
     if (!r.isLive && r.broadcastMode !== 'idle') {
       r.broadcastMode = 'idle';
@@ -719,7 +727,8 @@ function evaluateTourGuidePresence(tourCode) {
         broadcastMode: r.broadcastMode,
         currentTopic: r.currentTopic,
         guidePeerId: r.guidePeerId || null,
-        audioSourceId:r.audioSourceId||null
+        audioSourceId:r.audioSourceId||null,
+        audioStateSeq:r.audioStateSeq||null,audioStateEnded:!!r.audioStateEnded
       });
     }
   }
@@ -1036,9 +1045,11 @@ function processClientJsonMessageV49(ctx, msg) {
   switch (msg.type) {
     case 'guide-stream-state': {
       if (sender.role !== 'guide' || !isAuthedClient) break;
+      if(!acceptRysAudioState(currentRoom,sender,clientId,msg))break;
       for (const r of getTargetBroadcastRooms(currentRoom)) {
         const wasLive = r.isLive;
         setRysAudioSource(r,sender.audioSourceId||clientId);r.audioStateKnown=true;
+        r.audioStateSeq=msg.audioStateSeq||null;r.audioStateEnded=false;
         r.isLive = Boolean(msg.isLive);
         r.broadcastMode = msg.broadcastMode || (r.isLive ? 'mic' : 'idle');
         if (msg.topic) r.currentTopic = msg.topic;
@@ -1056,7 +1067,8 @@ function processClientJsonMessageV49(ctx, msg) {
           broadcastMode: r.broadcastMode,
           currentTopic: r.currentTopic,
           guidePeerId: r.guidePeerId || null,
-        audioSourceId:r.audioSourceId||null
+        audioSourceId:r.audioSourceId||null,
+        audioStateSeq:r.audioStateSeq||null,audioStateEnded:!!r.audioStateEnded
         });
       }
       broadcastToFamilyTrackers(currentRoom.tourCode, {
@@ -1258,6 +1270,7 @@ function isRysClientMessage(message){
           const next=value[key];
           if(next===undefined)continue; // Internal GET DTOs may contain omitted optional fields.
           if(strings.has(key)&&next!==null&&typeof next!=='string')return false;
+          if(key==='audioStateSeq'&&next!==null&&(!Number.isSafeInteger(next)||next<1))return false;
           if(key==='audioSourceId'&&next!==null&&(typeof next!=='string'||next.length>128||
             !(/^[a-zA-Z0-9_.-]*$/).test(next)))return false;
           pending.push({value:next,depth:depth+1});
@@ -1717,7 +1730,8 @@ app.get('/api/ws-relay',(req,res)=>{
     q.tourCode?{type:'join',tourCode:q.tourCode,roomId:q.roomId||'genel',role:q.role||'pilgrim',
       name:q.name||'',pin:q.pin||'',token:q.token,
       ...(q.deviceId!==undefined?{deviceId:q.deviceId}:{}),
-      ...(q.phone!==undefined?{phone:q.phone}:{}),...(q.lang!==undefined?{lang:q.lang}:{})}:null;
+      ...(q.phone!==undefined?{phone:q.phone}:{}),...(q.lang!==undefined?{lang:q.lang}:{}),
+      ...(q.audioSourceId!==undefined?{audioSourceId:q.audioSourceId}:{})}:null;
   const session=resolveRysRelay(req,res,q);if(!session)return;
   return serveRysRelay(session,req,res,q.token,context);
 });
