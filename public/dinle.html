@@ -16,7 +16,7 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=63"></script>
+  <script src="/vercel-ws-shim.js?v=64"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
@@ -1181,7 +1181,7 @@
       if(typeof sourceId!=='string'||!sourceId||sourceId.length>128||!(/^[a-zA-Z0-9_.-]+$/).test(sourceId))return;
       if(rxAudioSourceId!==sourceId){
         if(rxAudioSourceId!==null){lastReceivedAudioSeq=0;stopAllActiveSources();}
-        rxStreamActive=null;rxStreamMode=null;rxAudioStateSeq=null;rxAudioStateEnded=false;
+        rxStreamActive=null;rxStreamMode=null;rxAudioStateSeq=null;rxAudioStateEnded=false;rxAudioMediaEpoch=null;
       }
       rxAudioSourceId=sourceId;
     }
@@ -1189,20 +1189,30 @@
     function applyRxAudioState(state){
       if(typeof state?.isLive!=='boolean')return false;
       if(state.audioStateSeq!=null&&(!Number.isSafeInteger(state.audioStateSeq)||state.audioStateSeq<1))return false;
+      if(state.audioMediaEpoch!=null&&(!Number.isSafeInteger(state.audioMediaEpoch)||state.audioMediaEpoch<1||
+        !Number.isSafeInteger(state.audioStateSeq)||state.audioMediaEpoch>state.audioStateSeq))return false;
       if(state.audioSourceId!=null&&(typeof state.audioSourceId!=='string'||!state.audioSourceId||state.audioSourceId.length>128||!(/^[a-zA-Z0-9_.-]+$/).test(state.audioSourceId)))return false;
       updateRxAudioSource(state.audioSourceId);
       const seq=state.audioStateSeq??null,ended=state.audioStateEnded===true;
       if(rxAudioStateSeq!==null){
         if(seq===null||seq<rxAudioStateSeq||seq===rxAudioStateSeq&&(!ended||rxAudioStateEnded))return false;
       }
-      rxAudioStateSeq=seq;rxAudioStateEnded=ended;
+      const epoch=state.audioMediaEpoch??null;
+      if(Number.isSafeInteger(rxAudioMediaEpoch)&&(!Number.isSafeInteger(epoch)||epoch<rxAudioMediaEpoch))return false;
+      const epochChanged=rxAudioMediaEpoch!==null&&epoch!==rxAudioMediaEpoch;
+      rxAudioMediaEpoch=epoch;rxAudioStateSeq=seq;rxAudioStateEnded=ended;
+      if(epochChanged){lastReceivedAudioSeq=0;stopAllActiveSources();}
       rxStreamActive=state.isLive;
       if(typeof state.broadcastMode==='string')rxStreamMode=state.broadcastMode;
       return true;
     }
 
-    function acceptRxAudioFrame(sourceId,synth=false){
+    function acceptRxAudioFrame(sourceId,synth=false,mediaEpoch=null,json=false){
       if(rxStreamActive===false)return false;
+      if(json){
+        if(mediaEpoch!=null&&(!Number.isSafeInteger(mediaEpoch)||mediaEpoch<1))return false;
+        if(Number.isSafeInteger(rxAudioMediaEpoch)&&mediaEpoch!==rxAudioMediaEpoch)return false;
+      }
       if(!synth&&String(rxStreamMode||'').startsWith('demo')||synth&&rxStreamMode==='mic')return false;
       if(sourceId!=null){
         if(typeof sourceId!=='string'||!sourceId||sourceId.length>128||!(/^[a-zA-Z0-9_.-]+$/).test(sourceId))return false;
@@ -1217,7 +1227,7 @@
         clearTimeout(window._ryWsReconnectTimeout);
         window._ryWsReconnectTimeout = null;
       }
-      rxAudioSourceId=null;rxStreamActive=null;rxStreamMode=null;rxAudioStateSeq=null;rxAudioStateEnded=false;lastReceivedAudioSeq=0;stopAllActiveSources();
+      rxAudioSourceId=null;rxStreamActive=null;rxStreamMode=null;rxAudioStateSeq=null;rxAudioStateEnded=false;rxAudioMediaEpoch=null;lastReceivedAudioSeq=0;stopAllActiveSources();
       if (ws) {
         try {
           ws.onopen=null;ws.onmessage=null;
@@ -1284,7 +1294,8 @@
             const previousMode=rxStreamMode;
             updateRxAudioSource(r.audioSourceId);
             if(r.audioStateKnown===true||rxStreamActive===null&&r.isLive===true){
-              if(applyRxAudioState(r)&&(rxStreamActive===false||previousMode!==null&&previousMode!==rxStreamMode))stopAllActiveSources();
+              if(applyRxAudioState(r)&&(rxStreamActive===false||previousMode!==rxStreamMode&&
+                (previousMode!==null||String(rxStreamMode||'').startsWith('demo'))))stopAllActiveSources();
             }
             // A delayed snapshot may update counts, but must not roll back the accepted audio state.
             if(rxStreamActive!==null)r={...r,isLive:rxStreamActive,broadcastMode:rxStreamMode};
@@ -1315,7 +1326,12 @@
         }
 
         if (msg.type === 'stream-state') {
+          const previousMode=rxStreamMode;
           if(!applyRxAudioState(msg))return;
+          if(rxStreamActive===false||previousMode!==rxStreamMode&&
+            (previousMode!==null||String(rxStreamMode||'').startsWith('demo'))){
+            lastReceivedAudioSeq=0;stopAllActiveSources();
+          }
           if (msg.currentTopic) {
             document.getElementById('liveTopicText').textContent = msg.currentTopic;
           }
@@ -1324,11 +1340,9 @@
             lastReceivedAudioSeq = 0;
             stopAllActiveSources();
           }
-          if (msg.broadcastMode === 'mic' && msg.isLive !== false) {
+          if (rxStreamMode === 'mic' && rxStreamActive !== false) {
             updateGuideSpeakingIndicator(true);
           } else {
-            lastReceivedAudioSeq = 0;
-            stopAllActiveSources();
             updateGuideSpeakingIndicator(false);
           }
         }
@@ -1363,7 +1377,7 @@
         }
 
         if (msg.type === 'audio-chunk') {
-          if(!acceptRxAudioFrame(msg.audioSourceId,!!msg.synthNote))return;
+          if(!acceptRxAudioFrame(msg.audioSourceId,!!msg.synthNote,msg.audioMediaEpoch,true))return;
           window.__ryPilgrimReconnectAttempts = 0;
           if (window.__ryPilgrimConnState === 'reconnecting') {
             updatePilgrimConnectionUi('connected');
@@ -1634,6 +1648,7 @@
     let rxAudioDeliveryEpoch=0,rxAudioSourceId=null;
     let rxStreamActive=null,rxStreamMode=null;
     let rxAudioStateSeq=null,rxAudioStateEnded=false;
+    let rxAudioMediaEpoch=null;
     const pendingRxFrames = [];
 
     function flushPendingRxFrames() {
@@ -2570,7 +2585,7 @@
     }
 
     function leaveRoom() {
-      intentionalLeave = true;rxAudioSourceId=null;rxStreamActive=null;rxStreamMode=null;rxAudioStateSeq=null;rxAudioStateEnded=false;
+      intentionalLeave = true;rxAudioSourceId=null;rxStreamActive=null;rxStreamMode=null;rxAudioStateSeq=null;rxAudioStateEnded=false;rxAudioMediaEpoch=null;
       if (window._ryWsReconnectTimeout) {
         clearTimeout(window._ryWsReconnectTimeout);
         window._ryWsReconnectTimeout = null;
@@ -2634,7 +2649,7 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         // PATCH: sw-register-v53
-        navigator.serviceWorker.register('/sw.js?v=63').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=64').catch(() => {});
       });
     }
 

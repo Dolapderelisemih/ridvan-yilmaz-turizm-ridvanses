@@ -67,6 +67,7 @@
       Number.isFinite(m.sentAt) &&
       m.sentAt > 0 &&
       (m.audioSourceId==null||(typeof m.audioSourceId==='string'&&m.audioSourceId.length<=128&&/^[a-zA-Z0-9_.-]+$/.test(m.audioSourceId))) &&
+      (m.audioMediaEpoch==null||(Number.isSafeInteger(m.audioMediaEpoch)&&m.audioMediaEpoch>0)) &&
       typeof m.pcm16 === 'string' &&
       m.pcm16.length === 1280 &&
       /^[A-Za-z0-9+/]+$/.test(m.pcm16)
@@ -126,7 +127,8 @@
       } catch (e) {}
       if(m?.type==='guide-stream-state'&&(!m.isLive||String(m.broadcastMode||'').startsWith('demo')))c.clear();
       if (sock._isRelay && validRysAudio(m)) {
-        c.push({...m,audioSourceId:m.audioSourceId||sock._joinContext?.audioSourceId||null});
+        c.push({...m,audioSourceId:m.audioSourceId||sock._joinContext?.audioSourceId||null,
+          audioMediaEpoch:m.audioMediaEpoch??sock._lastGuideState?.audioMediaEpoch??null});
         return;
       }
       send(data);
@@ -373,6 +375,8 @@
         try{this.onmessage?.({data:JSON.stringify(ack)});}catch(e){this.onerror?.(e);}
         if(this._closedExplicitly||this.readyState!==1||this._isRelay||this._native!==probe)return;
         this._failbackSubscription=request;
+        if(mode==='join'&&join.role==='guide'&&ack.room?.audioStateKnown===true&&
+          (ack.room.audioStateEnded===true||ack.room.isLive===false))this._forceMediaEpoch=true;
         try{this.onopen?.({type:'open',failback:true});}catch(e){this.onerror?.(e);}
         finally{this._failbackSubscription=null;}
         if(this._closedExplicitly||this.readyState!==1||this._isRelay||this._native!==probe)return;
@@ -626,6 +630,7 @@
           audioSourceId:this._joinContext.audioSourceId||null,
           audioStateKnown:typeof this._lastGuideState?.isLive==='boolean'||typeof this._isLive==='boolean',
           audioStateSeq:this._lastGuideState?.audioStateSeq||null,audioStateEnded:false,
+          audioMediaEpoch:this._lastGuideState?.audioMediaEpoch||null,
           guideLocation: this._guideLocation || null,
           connectedPilgrims: pilgrims,
           totalListeners: pilgrims.length,
@@ -697,7 +702,20 @@
         }
         if(['join','family-subscribe','admin-subscribe'].includes(parsed.type))this._cancelNativeProbe?.();
         if(parsed.type==='guide-stream-state'){
-          parsed={...parsed,audioStateSeq:nextRysAudioStateSeq(this._lastGuideState?.audioStateSeq),audioStateEnded:false};
+          const previous=this._lastGuideState,seq=nextRysAudioStateSeq(previous?.audioStateSeq),renew=this._forceMediaEpoch===true;
+          this._forceMediaEpoch=false;
+          const sameMode=previous&&previous.isLive===parsed.isLive&&previous.broadcastMode===parsed.broadcastMode;
+          parsed={...parsed,audioStateSeq:seq,audioStateEnded:false,
+            audioMediaEpoch:!renew&&sameMode&&Number.isSafeInteger(previous.audioMediaEpoch)?previous.audioMediaEpoch:seq};
+          if(renew&&sameMode){
+            const rebase=m=>{
+              if(m.type!=='audio-chunk')return m;
+              if(Array.isArray(m.frames))return {...m,frames:m.frames.map(rebase)};
+              return m.audioMediaEpoch===previous.audioMediaEpoch?{...m,audioMediaEpoch:seq}:m;
+            };
+            this._sendQueue=this._sendQueue.map(rebase);
+            if(this._audioCoalescer?.frames)this._audioCoalescer.frames=this._audioCoalescer.frames.map(rebase);
+          }
           this._lastGuideState={...parsed};
           if(!parsed.isLive||String(parsed.broadcastMode||'').startsWith('demo')){
             this._audioCoalescer?.clear();this._sendQueue=(this._sendQueue||[]).filter(m=>m.type!=='audio-chunk');
@@ -743,12 +761,18 @@
       if(parsed?.type==='audio-chunk'&&this._joinContext?.role==='guide'){
         const state=this._lastGuideState,pcm=!parsed.synthNote;
         if(state&&(state.isLive===false||pcm&&String(state.broadcastMode||'').startsWith('demo')))return;
-        const source=this._joinContext.audioSourceId;
+        const source=this._joinContext.audioSourceId,epoch=state?.audioMediaEpoch;
+        if(parsed.synthNote&&Number.isSafeInteger(epoch)){
+          if(parsed.audioMediaEpoch!=null&&parsed.audioMediaEpoch!==epoch)return;
+          parsed={...parsed,audioMediaEpoch:epoch};
+        }
         if(source&&!pcm){if(parsed.audioSourceId&&parsed.audioSourceId!==source)return;parsed={...parsed,audioSourceId:source};}
-        if(pcm&&source){
+        if(pcm&&(source||Number.isSafeInteger(epoch))){
           const frames=parsed.frames===undefined?[parsed]:parsed.frames;
           if(!Array.isArray(frames)||!frames.length||frames.length>3||!frames.every(validRysAudio))return;
-          const kept=frames.filter(f=>!f.audioSourceId||f.audioSourceId===source).map(f=>({...f,audioSourceId:source}));
+          const kept=frames.filter(f=>(!source||!f.audioSourceId||f.audioSourceId===source)&&
+            (!Number.isSafeInteger(epoch)||f.audioMediaEpoch==null||f.audioMediaEpoch===epoch))
+            .map(f=>({...f,audioSourceId:source||f.audioSourceId||null,audioMediaEpoch:Number.isSafeInteger(epoch)?epoch:f.audioMediaEpoch??null}));
           if(!kept.length)return;
           parsed=parsed.frames===undefined?kept[0]:{...parsed,frames:kept,audioSourceId:source};
         }
@@ -821,7 +845,7 @@
             broadcastMode: this._broadcastMode,
             currentTopic: this._currentTopic,
             audioSourceId:this._joinContext.audioSourceId||null,
-            audioStateSeq:parsed.audioStateSeq,audioStateEnded:false,
+            audioStateSeq:parsed.audioStateSeq,audioStateEnded:false,audioMediaEpoch:parsed.audioMediaEpoch,
             guidePeerId: window.ryGetDynamicChannelId(
               this._joinContext.tourCode || 'RY-KASIM',
               this._joinContext.roomId || 'genel'
@@ -905,6 +929,7 @@
         this._sendQueue=this._sendQueue.filter(m=>m.type!=='guide-stream-state');
       }
       const now=Date.now();
+      if(message.type==='audio-chunk'&&!Number.isFinite(message._queuedAt))message={...message,_queuedAt:now};
       this._sendQueue=this._sendQueue.filter(m=>m.type!=='audio-chunk'||
         (Number.isFinite(m._queuedAt)&&now-m._queuedAt<=200));
       const audio=message.type==='audio-chunk';
@@ -949,7 +974,25 @@
           if(!sameRoute()){success=true;return;}
           if(this._lastGuideState&&this._joinContext?.role==='guide'){
             // Reannounce before the first PCM; renewal may follow an authoritative disconnect stop.
-            this._lastGuideState={...this._lastGuideState,audioStateSeq:nextRysAudioStateSeq(this._lastGuideState?.audioStateSeq),audioStateEnded:false};
+            const previous=this._lastGuideState,seq=nextRysAudioStateSeq(previous.audioStateSeq);
+            // Rebase only media from the still-current capture epoch. A stop/resume during
+            // relay-open must not relabel the pre-stop captured batch as fresh audio.
+            const rebase=m=>{
+              if(m.type!=='audio-chunk')return m;
+              if(Array.isArray(m.frames))return {...m,frames:m.frames.map(rebase)};
+              if(m.audioMediaEpoch==null||m.audioMediaEpoch===previous.audioMediaEpoch)return {...m,audioMediaEpoch:seq};
+              return m;
+            };
+            for(let i=0;i<batch.length;i++)batch[i]=rebase(batch[i]);
+            this._sendQueue=this._sendQueue.map(rebase);
+            if(this._audioCoalescer?.frames)this._audioCoalescer.frames=this._audioCoalescer.frames.map(rebase);
+            this._lastGuideState={...previous,audioStateSeq:seq,audioStateEnded:false,audioMediaEpoch:seq};
+            // MQTT receivers must learn the rebased epoch before subsequent live media.
+            try{this._publishMqtt?.({_msgId:'ms-'+Date.now()+'-'+seq+'-'+Math.random().toString(36).slice(2),
+              type:'stream-state',audioSourceId:this._joinContext.audioSourceId||null,
+              audioStateSeq:seq,audioStateEnded:false,audioMediaEpoch:seq,
+              isLive:!!previous.isLive,broadcastMode:previous.broadcastMode||'idle',
+              currentTopic:previous.topic||this._currentTopic||''});this._broadcastP2PRoomState?.();}catch(e){}
             for(let i=batch.length-1;i>=0;i--)if(batch[i].type==='guide-stream-state')batch.splice(i,1);
             batch.unshift({...this._lastGuideState});
           }
@@ -965,7 +1008,8 @@
           const state=this._lastGuideState,source=this._joinContext?.audioSourceId;
           if(this._joinContext?.role==='guide'&&state&&(state.isLive===false||!m.synthNote&&String(state.broadcastMode||'').startsWith('demo')))return false;
           const frames=Array.isArray(m.frames)?m.frames:[m];
-          return !source||frames.every(f=>!f.audioSourceId||f.audioSourceId===source);
+          return frames.every(f=>(!source||!f.audioSourceId||f.audioSourceId===source)&&
+            (!Number.isSafeInteger(state?.audioMediaEpoch)||f.audioMediaEpoch===state.audioMediaEpoch));
         });
         const requestSeq=this._relayRequestSeq=(this._relayRequestSeq||0)+1;
         const res=await fetch('/api/ws-relay',{method:'POST',signal:ac.signal,

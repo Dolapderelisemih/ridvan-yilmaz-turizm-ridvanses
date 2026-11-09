@@ -422,6 +422,7 @@ function serializeRoom(room, includePilgrimDetails = true) {
     audioSourceId:room.audioSourceId||null,
     audioStateKnown:!!room.audioStateKnown,
     audioStateSeq:room.audioStateSeq||null,audioStateEnded:!!room.audioStateEnded,
+    audioMediaEpoch:room.audioMediaEpoch||null,
     guideLocation: room.guideLocation || null,
     connectedPilgrims: pilgrims,
     connectedGuides: guides,
@@ -468,19 +469,25 @@ function broadcastToRoom(room,payload,excludeWs=null,isAudioOverride=false){
 }
 
 // v61: source identity is control metadata; the 972-byte PCM wire format is unchanged.
-function acceptRysAudio(room,sender,clientId,synth=false){
+function acceptRysAudio(room,sender,clientId,synth=false,message=null){
   const sameSource=room.audioSourceId===(sender.audioSourceId||clientId);
-  return !(sameSource&&room.audioStateKnown&&(!room.isLive||!synth&&String(room.broadcastMode||'').startsWith('demo')));
+  if(sameSource&&room.audioStateKnown&&(!room.isLive||!synth&&String(room.broadcastMode||'').startsWith('demo')))return false;
+  // Raw binary uses the ordered native socket; JSON must name the active media epoch.
+  if(message&&sameSource&&Number.isSafeInteger(room.audioMediaEpoch)&&message.audioMediaEpoch!==room.audioMediaEpoch)return false;
+  return true;
 }
 
 function acceptRysAudioState(room,sender,clientId,message){
+  const epoch=message.audioMediaEpoch;
+  if(epoch!=null&&(!Number.isSafeInteger(epoch)||epoch<1||!Number.isSafeInteger(message.audioStateSeq)||epoch>message.audioStateSeq))return false;
   if(room.audioSourceId!==(sender.audioSourceId||clientId)||!Number.isSafeInteger(room.audioStateSeq))return true;
-  return Number.isSafeInteger(message.audioStateSeq)&&message.audioStateSeq>room.audioStateSeq;
+  if(!Number.isSafeInteger(message.audioStateSeq)||message.audioStateSeq<=room.audioStateSeq)return false;
+  return !Number.isSafeInteger(room.audioMediaEpoch)||(Number.isSafeInteger(epoch)&&epoch>=room.audioMediaEpoch);
 }
 
 function setRysAudioSource(room,sourceId){
   if(room.audioSourceId===sourceId)return;
-  room.audioSourceId=sourceId;room.audioStateKnown=false;room.audioStateSeq=null;room.audioStateEnded=false;
+  room.audioSourceId=sourceId;room.audioStateKnown=false;room.audioStateSeq=null;room.audioStateEnded=false;room.audioMediaEpoch=null;
   broadcastToRoom(room,{type:'audio-source',audioSourceId:sourceId});
 }
 
@@ -702,6 +709,7 @@ function evaluateTourGuidePresence(tourCode) {
       setRysAudioSource(r,genelRoom.audioSourceId||null);
       r.audioStateKnown=!!genelRoom.audioStateKnown;
       r.audioStateSeq=genelRoom.audioStateSeq||null;r.audioStateEnded=!!genelRoom.audioStateEnded;
+      r.audioMediaEpoch=genelRoom.audioMediaEpoch||null;
       broadcastToRoom(r, {
         type: 'stream-state',
         isLive: r.isLive,
@@ -709,7 +717,7 @@ function evaluateTourGuidePresence(tourCode) {
         currentTopic: r.currentTopic,
         guidePeerId: r.guidePeerId || null,
         audioSourceId:r.audioSourceId||null,
-        audioStateSeq:r.audioStateSeq||null,audioStateEnded:!!r.audioStateEnded
+        audioStateSeq:r.audioStateSeq||null,audioStateEnded:!!r.audioStateEnded,audioMediaEpoch:r.audioMediaEpoch||null
       });
       continue;
     }
@@ -728,7 +736,7 @@ function evaluateTourGuidePresence(tourCode) {
         currentTopic: r.currentTopic,
         guidePeerId: r.guidePeerId || null,
         audioSourceId:r.audioSourceId||null,
-        audioStateSeq:r.audioStateSeq||null,audioStateEnded:!!r.audioStateEnded
+        audioStateSeq:r.audioStateSeq||null,audioStateEnded:!!r.audioStateEnded,audioMediaEpoch:r.audioMediaEpoch||null
       });
     }
   }
@@ -1049,7 +1057,7 @@ function processClientJsonMessageV49(ctx, msg) {
       for (const r of getTargetBroadcastRooms(currentRoom)) {
         const wasLive = r.isLive;
         setRysAudioSource(r,sender.audioSourceId||clientId);r.audioStateKnown=true;
-        r.audioStateSeq=msg.audioStateSeq||null;r.audioStateEnded=false;
+        r.audioStateSeq=msg.audioStateSeq||null;r.audioStateEnded=false;r.audioMediaEpoch=msg.audioMediaEpoch||null;
         r.isLive = Boolean(msg.isLive);
         r.broadcastMode = msg.broadcastMode || (r.isLive ? 'mic' : 'idle');
         if (msg.topic) r.currentTopic = msg.topic;
@@ -1068,7 +1076,7 @@ function processClientJsonMessageV49(ctx, msg) {
           currentTopic: r.currentTopic,
           guidePeerId: r.guidePeerId || null,
         audioSourceId:r.audioSourceId||null,
-        audioStateSeq:r.audioStateSeq||null,audioStateEnded:!!r.audioStateEnded
+        audioStateSeq:r.audioStateSeq||null,audioStateEnded:!!r.audioStateEnded,audioMediaEpoch:r.audioMediaEpoch||null
         });
       }
       broadcastToFamilyTrackers(currentRoom.tourCode, {
@@ -1160,7 +1168,7 @@ function processClientJsonMessageV49(ctx, msg) {
       ) {
         break;
       }
-      if(!acceptRysAudio(currentRoom,sender,clientId,!!msg.synthNote))break;
+      if(!acceptRysAudio(currentRoom,sender,clientId,!!msg.synthNote,msg))break;
       if(msg.audioSourceId&&msg.audioSourceId!==(sender.audioSourceId||clientId))break;
       currentRoom.activePublisherClientId = clientId;
       const serializedAudio = JSON.stringify({
@@ -1170,6 +1178,7 @@ function processClientJsonMessageV49(ctx, msg) {
         phraseStart: Boolean(msg.phraseStart),
         speakerId: clientId,
         audioSourceId:sender.audioSourceId||clientId,
+        audioMediaEpoch:msg.audioMediaEpoch??null,
         speakerName: sender.name,
         speakerRole: sender.role,
         sampleRate: msg.sampleRate || 24000,
@@ -1263,6 +1272,8 @@ function isRysClientMessage(message){
         if(!Number.isFinite(value))return false;
       }else if(typeof value==='boolean')continue;
       else if(typeof value==='object'){
+        if(value.type==='guide-stream-state'&&value.audioMediaEpoch!=null&&
+          (!Number.isSafeInteger(value.audioStateSeq)||value.audioMediaEpoch>value.audioStateSeq))return false;
         const keys=Object.keys(value);if(keys.length>512)return false;
         for(const key of keys){
           characters+=key.length;
@@ -1270,7 +1281,7 @@ function isRysClientMessage(message){
           const next=value[key];
           if(next===undefined)continue; // Internal GET DTOs may contain omitted optional fields.
           if(strings.has(key)&&next!==null&&typeof next!=='string')return false;
-          if(key==='audioStateSeq'&&next!==null&&(!Number.isSafeInteger(next)||next<1))return false;
+          if((key==='audioStateSeq'||key==='audioMediaEpoch')&&next!==null&&(!Number.isSafeInteger(next)||next<1))return false;
           if(key==='audioSourceId'&&next!==null&&(typeof next!=='string'||next.length>128||
             !(/^[a-zA-Z0-9_.-]*$/).test(next)))return false;
           pending.push({value:next,depth:depth+1});
@@ -1343,6 +1354,7 @@ wss.on('connection', (ws, req) => {
                 phraseStart,
                 speakerId: ctx.clientId,
                 audioSourceId:sender.audioSourceId||ctx.clientId,
+                audioMediaEpoch:ctx.currentRoom.audioMediaEpoch||null,
                 speakerName: sender.name,
                 speakerRole: sender.role,
                 sampleRate: 24000,
