@@ -234,6 +234,9 @@
 
       this._native.onmessage = (ev) => {
         if (this._isRelay) return;
+        if(typeof ev.data==='string'){try{const msg=JSON.parse(ev.data);
+          if(msg.type==='session-replaced'){this._fenceReplaced();return;}
+          this._observeTrustedMessage(msg);}catch(e){}}
         if (typeof this.onmessage === 'function') this.onmessage(ev);
       };
 
@@ -246,6 +249,7 @@
 
       this._native.onclose = (ev) => {
         clearTimeout(fallbackTimeout);
+        if(ev.code===4009){this._fenceReplaced();return;}
         if (!this._isRelay) {
           if (!this._opened) {
             window.__ryConsecutiveVdsFailures = (window.__ryConsecutiveVdsFailures || 0) + 1;
@@ -390,8 +394,47 @@
       };
     }
 
+
+    _clearPresence(){
+      this._pilgrimMeta?.clear();this._presenceTotal=0;this._mqttInbox=[];this._busSeen?.clear();this._seenIds?.clear();
+    }
+    _prunePresence(now=Date.now()){
+      if(!this._pilgrimMeta)this._pilgrimMeta=new Map();
+      for(const [id,p] of this._pilgrimMeta)if(now-p.lastSeenAt>120000)this._pilgrimMeta.delete(id);
+      while(this._pilgrimMeta.size>512)this._pilgrimMeta.delete(this._pilgrimMeta.keys().next().value);
+    }
+    _observeTrustedMessage(msg){
+      if(msg?.type==='auth-error'){this._clearPresence();return;}
+      if(msg?._localPresence||this._joinContext?.role!=='guide'||!['joined','room-state'].includes(msg?.type))return;
+      const room=msg.room,c=this._joinContext;
+      if(!room||String(room.tourCode).toUpperCase().trim()!==String(c.tourCode||'RY-KASIM').toUpperCase().trim()||
+        String(room.roomId||'genel').trim()!==String(c.roomId||'genel').trim())return;
+      this._pilgrimMeta=new Map();let bytes=2;const now=Date.now();
+      this._presenceTotal=Number.isSafeInteger(room.totalListeners)&&room.totalListeners>=0?room.totalListeners:
+        (Array.isArray(room.connectedPilgrims)?room.connectedPilgrims.length:0);
+      for(const p of (Array.isArray(room.connectedPilgrims)?room.connectedPilgrims:[])){
+        if(this._pilgrimMeta.size>=512)break;
+        const item={id:String(p.id||'').slice(0,96),name:String(p.name||'').slice(0,48),
+          lang:String(p.lang||'tr').slice(0,8),phone:String(p.phone||'').slice(0,64),
+          roomId:String(p.roomId||'genel').slice(0,64),joinedAt:String(p.joinedAt||'').slice(0,32),lastSeenAt:now};
+        if(!item.id)continue;
+        bytes+=1+encodeURIComponent(JSON.stringify(item)).replace(/%../g,'x').length;if(bytes>262144)break;
+        this._pilgrimMeta.set(item.id,item);
+      }
+    }
+    _fenceReplaced(){
+      if(this._replaced)return;
+      this._replaced=true;this._clearPresence();this.close();
+      this.onmessage?.({data:JSON.stringify({type:'session-replaced'})});
+      this.onclose?.({code:4009,reason:'session-replaced'});
+    }
+
+    _encodeTopicSegment(value){
+      const text=String(value);
+      try{return 'u'+encodeURIComponent(text);}catch(e){return 'j'+encodeURIComponent(JSON.stringify(text));}
+    }
     _sanitizeCode(str) {
-      return String(str || 'RYKASIM').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      return this._encodeTopicSegment(String(str || 'RY-KASIM').toUpperCase().trim());
     }
 
     _busConnected() {
@@ -399,6 +442,7 @@
     }
 
     _closeMqttClients() {
+      this._mqttInbox=[];
       // Invalidate pending script loads and queued callbacks before ending any client.
       this._mqttGeneration=(this._mqttGeneration||0)+1;
       if(this._roomStateTimer){clearTimeout(this._roomStateTimer);this._roomStateTimer=null;}
@@ -419,8 +463,8 @@
         if (!current()||!window.mqtt) return;
 
         const codeClean = joinMsg ? this._sanitizeCode(joinMsg.tourCode) : 'ALL';
-        const roomClean = joinMsg && joinMsg.roomId ? String(joinMsg.roomId).trim().toUpperCase() : 'GENEL';
-        const topic = `ridvanses/v2/room/${codeClean}/${roomClean}`;
+        const roomClean=this._encodeTopicSegment(String(joinMsg?.roomId||'genel').trim());
+        const topic = `ridvanses/v3/room/${codeClean}/${roomClean}`;
         this._mqttTopic = topic;
 
         // Ölçüm (30 sn, 23 paket/sn): broker.emqx.io yayıncı başına ~10 mesaj/sn ile sınırlıyor (%54 kayıp);
@@ -448,8 +492,8 @@
               client.subscribe(GLOBAL_SOS_TOPIC, { qos: 0 });
             }
             if (!joinMsg) return;
-            if (joinMsg.role !== 'guide' && roomClean !== 'GENEL') {
-              client.subscribe(`ridvanses/v2/room/${codeClean}/GENEL`, { qos: 0 });
+            if (joinMsg.role !== 'guide' && roomClean !== this._encodeTopicSegment('genel')) {
+              client.subscribe(`ridvanses/v3/room/${codeClean}/ugenel`, { qos: 0 });
             }
             client.subscribe(topic, { qos: 0 }, () => {
               if(!current())return;
@@ -476,142 +520,34 @@
           client.on('message', (t, payloadBuf) => {
             if(!current())return;
             try {
-              const msg = JSON.parse(payloadBuf.toString());
-              if (!msg || msg.senderClientId === this._clientId) return;
-              // KRİTİK-02: Herkese açık MQTT broker'larından gelen imzasız veya bayat (>60sn) paketleri reddet
-              const frameTs = Number(msg._ryTs) || 0;
-              if (!frameTs || Math.abs(Date.now() - frameTs) > 60000) return;
-              const expectedSig = this._computeMqttFrameSig(t, msg.type, frameTs, msg.senderClientId);
-              if (!msg._rySig || msg._rySig !== expectedSig) return;
-              // Aynı mesaj iki brokerdan da gelir: ilk geleni işle, ikincisini at
-              if (msg._msgId) {
-                if (this._busSeen.has(msg._msgId)) return;
-                this._busSeen.add(msg._msgId);
-                if (this._busSeen.size > 800) {
-                  this._busSeen.delete(this._busSeen.values().next().value);
-                }
-              }
-              if (t === GLOBAL_SOS_TOPIC) {
-                if (msg.type === 'sos-alert' || msg.type === 'sos-resolved') {
-                  this._deliverIncomingMessage(msg);
-                }
-                return;
-              }
-              this._handleCloudBusMessage(msg);
+              if(payloadBuf.length>32768)return;
+              const frame=JSON.parse(payloadBuf.toString());
+              if(frame?.version!==70||frame.topic!==t||!/^[0-9a-f]{64}$/.test(frame.proof||''))return;
+              const q=this._mqttInbox||(this._mqttInbox=[]);
+              if(q.some(f=>f.proof===frame.proof))return;
+              q.push(frame);while(q.length>16)q.shift();
             } catch {}
           });
         });
       });
     }
 
-    _computeMqttFrameSig(topic, type, ts, senderId) {
-      const raw = `ryv2|${String(topic || '')}|${String(type || '')}|${Number(ts) || 0}|${String(senderId || '')}|kabe_shield_2026`;
-      let h1 = 0x811c9dc5;
-      let h2 = 0x1505;
-      for (let i = 0; i < raw.length; i++) {
-        const c = raw.charCodeAt(i);
-        h1 ^= c;
-        h1 = Math.imul(h1, 0x01000193) >>> 0;
-        h2 = ((h2 << 5) + h2 + c) >>> 0;
-      }
-      return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
-    }
 
-    _publishMqtt(obj, customTopic = null) {
-      const targetTopic = customTopic || this._mqttTopic;
-      if (!targetTopic) return;
-      const nowTs = Date.now();
-      const sig = this._computeMqttFrameSig(targetTopic, obj && obj.type, nowTs, this._clientId);
-      const payload = JSON.stringify({ ...obj, senderClientId: this._clientId, _ryTs: nowTs, _rySig: sig });
-      for (const c of this._mqttClients) {
-        if (c && c.connected) {
-          try { c.publish(targetTopic, payload, { qos: 0 }); } catch {}
-        }
+
+    _publishMqtt(frame) {
+      if(frame?.version!==70||!/^[0-9a-f]{64}$/.test(frame.proof||''))return;
+      const expected='ridvanses/v3/room/'+this._sanitizeCode(this._joinContext?.tourCode)+'/'+
+        this._encodeTopicSegment(String(frame.roomId||'genel').trim());
+      if(this._joinContext?.role!=='guide'||frame.topic!==expected)return;
+      const payload=JSON.stringify(frame);if(payload.length>32768)return;
+      for(const c of this._mqttClients)if(c?.connected){
+        try{c.publish(frame.topic,payload,{qos:0});}catch(e){}
       }
     }
 
-    _handleCloudBusMessage(msg) {
-      const role = this._joinContext ? this._joinContext.role : 'pilgrim';
-
-      if (msg.type === 'p2p-guide-ping' && role !== 'guide' && this._joinContext) {
-        this._publishMqtt({
-          _msgId: 'hello-' + this._clientId + '-' + Date.now(),
-          type: 'p2p-pilgrim-hello',
-          clientId: this._clientId,
-          name: this._joinContext.name || 'Hacı Misafir',
-          phone: this._joinContext.phone || '',
-          lang: this._joinContext.lang || 'tr',
-          joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-        });
-        return;
-      }
-
-      if (role === 'guide') {
-        if (msg.type === 'p2p-pilgrim-hello') {
-          const cid = msg.clientId || msg.senderClientId;
-          this._pilgrimMeta.set(cid, {
-            id: cid,
-            name: msg.name || 'Hacı Misafir',
-            phone: msg.phone || '',
-            lang: msg.lang || 'tr',
-            roomId: msg.roomId || 'genel',
-            joinedAt: msg.joinedAt || 'Şimdi'
-          });
-          this._broadcastP2PRoomState();
-          return;
-        }
-
-        if (msg.type === 'sos-trigger') {
-          const cid = msg.senderClientId;
-          const p = this._pilgrimMeta.get(cid);
-          const alertItem = {
-            id: msg.alertId || ('sos-' + Date.now()),
-            tourCode: msg.tourCode || (this._joinContext ? this._joinContext.tourCode : 'RY-KASIM'),
-            pilgrimName: msg.pilgrimName || (p ? p.name : 'Hacı Misafir'),
-            phone: msg.phone || (p && p.phone) || '+90 538 399 96 66',
-            lat: Number(msg.lat) || 21.4225,
-            lng: Number(msg.lng) || 39.8262,
-            accuracy: msg.accuracy || null,
-            locationNote: msg.locationNote || 'Canlı Cihaz GPS Konumu',
-            createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-            status: 'active'
-          };
-          this._deliverIncomingMessage({
-            _msgId: msg._msgId,
-            type: 'sos-alert',
-            alert: alertItem
-          });
-          return;
-        }
-
-        if (
-          msg.type === 'new-announcement' ||
-          msg.type === 'announcement-deleted' ||
-          msg.type === 'steps-updated'
-        ) {
-          this._deliverIncomingMessage(msg);
-          return;
-        }
-      } else {
-        if (msg.type === 'audio-chunk') {
-          this._deliverIncomingMessage(msg);
-          return;
-        }
-        if (
-          msg.type === 'room-state' ||
-          msg.type === 'audio-source' ||
-          msg.type === 'stream-state' ||
-          msg.type === 'tawaf-stage' ||
-          msg.type === 'new-announcement' ||
-          msg.type === 'announcement-deleted' ||
-          msg.type === 'guide-location' ||
-          msg.type === 'steps-updated' ||
-          msg.type === 'family-state'
-        ) {
-          this._deliverIncomingMessage(msg);
-          return;
-        }
-      }
+    _handleCloudBusMessage(msg){
+      // Unverified peers have no authority, including hello/SOS/control.
+      return;
     }
 
     _broadcastP2PRoomState() {
@@ -622,6 +558,7 @@
         if((this._mqttGeneration||0)!==generation||this._closedExplicitly||!this._isRelay||this.readyState!==1)return;
         this._roomStateTimer = null;
         if(!this._joinContext||this._joinContext.role!=='guide')return;
+        this._prunePresence?.();
         const pilgrims = Array.from(this._pilgrimMeta.values());
         const tourCode = this._joinContext.tourCode || 'RY-KASIM';
         const roomId = this._joinContext.roomId || 'genel';
@@ -646,22 +583,24 @@
           audioMediaEpoch:this._lastGuideState?.audioMediaEpoch||null,
           guideLocation: this._guideLocation || null,
           connectedPilgrims: pilgrims,
-          totalListeners: pilgrims.length,
-          realListenerCount: pilgrims.length
+          totalListeners:Number.isSafeInteger(this._presenceTotal)?this._presenceTotal:pilgrims.length,
+          realListenerCount:Number.isSafeInteger(this._presenceTotal)?this._presenceTotal:pilgrims.length
         };
         const payload = {
           _msgId: 'rs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
           type: 'room-state',
           room: roomObj
         };
-        this._deliverIncomingMessage(payload);
-        this._publishMqtt(payload);
+        this._deliverIncomingMessage({...payload,_localPresence:true});
+        this._publishMqtt({...payload,room:{...roomObj,connectedPilgrims:[]}});
       }, 180);
     }
 
     // PATCH: shim-delivery-v50
     _deliverIncomingMessage(msg) {
       if (!msg || typeof msg !== 'object') return;
+      if(msg.type==='session-replaced'){this._fenceReplaced();return;}
+      this._observeTrustedMessage?.(msg);
       if (msg._msgId) {
         if (this._seenIds.has(msg._msgId)) return;
         this._seenIds.add(msg._msgId);
@@ -710,6 +649,11 @@
       if (parsed && typeof parsed === 'object') {
         const subscription=['join','family-subscribe','admin-subscribe'].includes(parsed.type);
         const previousRoute=subscription?this._relayRoutingKey():null;
+        if(subscription){
+          const old=this._joinContext;
+          if(parsed.type!=='join'||!old||String(old.tourCode||'RY-KASIM').toUpperCase().trim()!==String(parsed.tourCode||'RY-KASIM').toUpperCase().trim()||
+            String(old.roomId||'genel').trim()!==String(parsed.roomId||'genel').trim()||old.role!==parsed.role||old.token!==parsed.token)this._clearPresence?.();
+        }
         if (!parsed._msgId) {
           parsed._msgId = 'm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
         }
@@ -767,6 +711,7 @@
           if (this._isRelay) this._initMqttBus(null, true);
         }
         if(subscription&&previousRoute!==this._relayRoutingKey()){
+          this._clearPresence?.();
           this._sendQueue.length=0;this._audioCoalescer?.clear();this._lastGuideState=null;
         }
       }
@@ -924,10 +869,7 @@
         }
       }
 
-      // MQTT WSS bağlıyken ses paketlerini (audio-chunk) yavaş HTTP /api/ws-relay kuyruğuna sokma (ağ tıkanıklığını ve 450ms gecikmeli çift paketi önler)
-      if (parsed.type === 'audio-chunk' && this._busConnected()) {
-        return;
-      }
+      // v70: authenticate media on the server before public MQTT publication.
 
       if(!this._enqueueRelayMessage(parsed))return;
       if (!this._inFlight) {
@@ -1036,11 +978,14 @@
         const requestSeq=this._relayRequestSeq=(this._relayRequestSeq||0)+1;
         const res=await fetch('/api/ws-relay',{method:'POST',signal:ac.signal,
           headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:this._relayClientId,
-            relayKey:this._relayKey,requestSeq,token,subscriptionContext:context,messages:fresh})});
+            relayKey:this._relayKey,requestSeq,token,subscriptionContext:context,messages:fresh,
+            mqttFrames:(this._mqttInbox||[]).splice(0,8)})});
         const payload=await res.json();if(!current())return;
         if(!res.ok){
           if(res.status===409&&payload.error==='relay-request-stale'){success=true;return;}
+          if(res.status===401)this._clearPresence?.();
           if(res.status===409){
+            if(payload.reason==='replaced'){this._fenceReplaced();success=true;return;}
             if(payload.error==='relay-session-retired'&&this._failbackProbe)this._relayFenced=true;
             else{
               if(sameRoute())for(const m of batch)if(m.type!=='audio-chunk')this._enqueueRelayMessage(m);
@@ -1052,6 +997,8 @@
         if(!sameRoute()){success=true;return;}
         if(Number.isSafeInteger(submittedGuideEpoch)&&!payload.messages?.some?.(m=>m.type==='auth-error'||m.type==='pin-error'))
           this._relayGuideStateAckEpoch=submittedGuideEpoch;
+        this._prunePresence?.();
+        if(Array.isArray(payload.mqttPublications))for(const f of payload.mqttPublications)this._publishMqtt?.(f);
         if(Array.isArray(payload.messages))for(const m of payload.messages)this._deliverIncomingMessage(m);
         success=true;
       }catch(e){
@@ -1067,6 +1014,7 @@
 
     // PATCH: shim-close-v53
     close() {
+      this._clearPresence?.();
       this._closedExplicitly=true;this._cancelNativeProbe?.();this._resetRelaySession?.();
       this.readyState = 3;
       this._httpEpoch=(this._httpEpoch||0)+1;

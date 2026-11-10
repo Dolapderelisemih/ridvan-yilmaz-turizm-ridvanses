@@ -456,6 +456,7 @@ function broadcastToRoom(room,payload,excludeWs=null,isAudioOverride=false){
   const audio=isAudioOverride||!!(payload&&typeof payload==='object'&&payload.type==='audio-chunk');
   const data=typeof payload==='string'?payload:JSON.stringify(payload);
   let relayData;
+  if(globalThis.__rysMqttPublisher&&typeof rysMintMqtt==='function')rysMintMqtt(globalThis.__rysMqttPublisher,room,payload);
   for(const client of room.clients.values()){
     const socket=client.ws;if(socket===excludeWs||socket.readyState!==WebSocket.OPEN)continue;
     if(audio){
@@ -622,9 +623,95 @@ function isValidAuthToken(token) {
 }
 
 
+
+function rysPrincipal(token){
+  if(!isValidAuthToken(token))return null;
+  if(String(token).trim()===AUTH_TOKEN_VALUE)return {role:'agency_admin',assignedTour:null};
+  const u=activeAuthSessions.get(String(token).trim())?.user;
+  if(!u||!['agency','agency_admin','super_admin','admin'].includes(u.role))return null;
+  const assignedTour=u.assignedTour?String(u.assignedTour).toUpperCase().trim():null;
+  if(u.role==='agency'&&!assignedTour)return null;
+  return {role:u.role,assignedTour};
+}
+function rysCanGuide(principal,code){
+  return !!principal&&(!principal.assignedTour||principal.assignedTour===String(code||'RY-KASIM').toUpperCase().trim());
+}
+function rysCanAdmin(principal){
+  return !!principal&&!principal.assignedTour&&['agency_admin','super_admin','admin'].includes(principal.role);
+}
+function rysCanonical(value){
+  if(Array.isArray(value))return '['+value.map(rysCanonical).join(',')+']';
+  if(value&&typeof value==='object')return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+rysCanonical(value[k])).join(',')+'}';
+  return JSON.stringify(value);
+}
+function rysTopicSegment(value){
+  const text=String(value);
+  try{return 'u'+encodeURIComponent(text);}catch(e){return 'j'+encodeURIComponent(JSON.stringify(text));}
+}
+function rysMqttTopic(code,room){
+  return 'ridvanses/v3/room/'+rysTopicSegment(String(code||'RY-KASIM').toUpperCase().trim())+'/'+rysTopicSegment(String(room||'genel').trim());
+}
+function rysMintMqtt(session,room,payload){
+  const member=session.currentRoom?.clients.get(session.clientId);
+  if(room!==session.currentRoom||!session.ws.isHttpRelay||session.relayRetired||member?.role!=='guide'||
+    !rysCanGuide(rysPrincipal(session.rysAuthToken),room.tourCode))return;
+  let body=typeof payload==='string'?JSON.parse(payload):payload;
+  if(!['audio-chunk','stream-state','audio-source','room-state','tawaf-stage','guide-location'].includes(body?.type))return;
+  if(body.type==='room-state')body={type:'room-state',room:serializeRoom(room,false)};
+  if(Buffer.byteLength(JSON.stringify(body),'utf8')>16384)return;
+  const iv=crypto.randomBytes(12),key=crypto.createHash('sha256').update('rys-mqtt-v70:'+AUTH_TOKEN_VALUE).digest();
+  const cipher=crypto.createCipheriv('aes-256-gcm',key,iv);
+  const encrypted=Buffer.concat([cipher.update(JSON.stringify(body),'utf8'),cipher.final()]);
+  const sealed={iv:iv.toString('hex'),tag:cipher.getAuthTag().toString('hex'),data:encrypted.toString('base64')};
+  const frame=JSON.parse(JSON.stringify({version:70,issuer:session.clientId,tourCode:room.tourCode,roomId:room.roomId,
+    topic:rysMqttTopic(room.tourCode,room.roomId),issuedAt:Date.now(),expiresAt:Date.now()+400,
+    nonce:crypto.randomBytes(12).toString('hex'),
+    grant:crypto.createHmac('sha256',AUTH_TOKEN_VALUE).update('rys-grant70:'+session.rysAuthToken).digest('hex'),
+    source:room.audioSourceId||null,
+    epoch:room.audioMediaEpoch||null,stateSeq:room.audioStateSeq||null,seq:body.seq??null,type:body.type,payload:sealed}));
+  frame.proof=crypto.createHmac('sha256',AUTH_TOKEN_VALUE).update(rysCanonical(frame)).digest('hex');
+  const q=session.mqttPublications||(session.mqttPublications=[]);q.push(frame);
+  while(q.length>16)q.shift();
+}
+function rysVerifyMqtt(receiver,frame){
+  if(!frame||frame.version!==70||JSON.stringify(frame).length>32768)return null;
+  const {proof,...unsigned}=frame;
+  if(!/^[0-9a-f]{64}$/.test(proof||''))return null;
+  const expected=crypto.createHmac('sha256',AUTH_TOKEN_VALUE).update(rysCanonical(unsigned)).digest('hex');
+  if(!crypto.timingSafeEqual(Buffer.from(proof),Buffer.from(expected)))return null;
+  const now=Date.now();
+  if(frame.issuedAt>now||frame.expiresAt<now||frame.expiresAt-frame.issuedAt>400||
+    frame.topic!==rysMqttTopic(frame.tourCode,frame.roomId))return null;
+  const issuer=httpRelaySessions.get(frame.issuer),origin=issuer?.currentRoom;
+  const publisher=origin?.clients.get(issuer?.clientId),target=receiver.currentRoom;
+  if(!issuer||issuer.relayRetired||now-issuer.lastSeen>35000||publisher?.role!=='guide'||
+    !rysCanGuide(rysPrincipal(issuer.rysAuthToken),origin.tourCode)||
+    !target||!target.clients.has(receiver.clientId)||target.tourCode!==frame.tourCode||
+    !getTargetBroadcastRooms(origin).includes(target))return null;
+  if(frame.grant!==crypto.createHmac('sha256',AUTH_TOKEN_VALUE).update('rys-grant70:'+issuer.rysAuthToken).digest('hex'))return null;
+  if(origin.roomId!==frame.roomId||target.audioSourceId!==frame.source||
+    (target.audioMediaEpoch||null)!==frame.epoch||(target.audioStateSeq||null)!==frame.stateSeq)return null;
+  const sealed=frame.payload;
+  if(!/^[0-9a-f]{24}$/.test(sealed?.iv||'')||!/^[0-9a-f]{32}$/.test(sealed?.tag||''))return null;
+  const key=crypto.createHash('sha256').update('rys-mqtt-v70:'+AUTH_TOKEN_VALUE).digest();
+  const decipher=crypto.createDecipheriv('aes-256-gcm',key,Buffer.from(sealed.iv,'hex'));
+  decipher.setAuthTag(Buffer.from(sealed.tag,'hex'));
+  const body=JSON.parse(Buffer.concat([decipher.update(Buffer.from(sealed.data,'base64')),decipher.final()]).toString('utf8'));
+  if(body.type!==frame.type||(body.seq??null)!==frame.seq)return null;
+  if(body.type==='audio-chunk'&&(!target.isLive||body.audioSourceId!==frame.source||body.audioMediaEpoch!==frame.epoch))return null;
+  const seen=receiver.mqttVerified||(receiver.mqttVerified=new Map());
+  for(const [id,expiry] of seen)if(expiry<now)seen.delete(id);
+  if(seen.has(proof))return null;
+  seen.set(proof,frame.expiresAt);while(seen.size>128)seen.delete(seen.keys().next().value);
+  return body.type==='room-state'?{type:'room-state',room:serializeRoom(target,false)}:body;
+}
+
 function refreshRysNativeAuth(ctx){
   if(!ctx||ctx.ws.isHttpRelay)return true; // HTTP capabilities revalidate per request.
-  const authed=!!isValidAuthToken(ctx.rysAuthToken||ctx.rysHandshakeToken);
+  const principal=rysPrincipal(ctx.rysAuthToken||ctx.rysHandshakeToken);
+  const memberNow=ctx.currentRoom?.clients.get(ctx.clientId);
+  const authed=!!principal&&(!ctx.ws.isAdmin||rysCanAdmin(principal))&&
+    (memberNow?.role!=='guide'||rysCanGuide(principal,ctx.currentRoom.tourCode));
   ctx.isAuthenticated=authed;ctx.ws.isAuthenticated=authed;
   if(authed)return true;
   const room=ctx.currentRoom,member=room?.clients.get(ctx.clientId),pending=ctx.rysHandoff?.request;
@@ -822,12 +909,12 @@ function cleanupStaleRelaySessions() {
 function broadcastToAdmins(payload) {
   const data = JSON.stringify(payload);
   wss.clients.forEach((ws) => {
-    if (ws.isAdmin && ws.readyState === WebSocket.OPEN) {
+    if (ws.isAdmin && ws.readyState === WebSocket.OPEN && rysCanAdmin(rysPrincipal(ws.rysAuthContext?.rysAuthToken||ws.rysAuthContext?.rysHandshakeToken))) {
       ws.send(data);
     }
   });
   for (const sess of httpRelaySessions.values()) {
-    if (sess.ws.isAdmin) {
+    if (sess.ws.isAdmin && rysCanAdmin(rysPrincipal(sess.rysAuthToken))) {
       sess.ws.send(data);
     }
   }
@@ -947,10 +1034,13 @@ function processClientJsonMessageV49(ctx, msg) {
     ws.isAuthenticated = true;
     ctx.isAuthenticated = true;
   }
-  const isAuthedClient = Boolean(ws.isAuthenticated || ctx.isAuthenticated);
+  const principal=rysPrincipal(ctx.rysAuthToken||ctx.rysHandshakeToken);
+  const isAuthedClient=!!principal;
+  ws.isAuthenticated=isAuthedClient;ctx.isAuthenticated=isAuthedClient;
 
   if (msg.type === 'admin-subscribe') {
-    if (!isAuthedClient) {
+    if (!rysCanAdmin(principal)) {
+      ws.isAdmin=false;
       ws.send(JSON.stringify({ type: 'auth-error', message: 'Acente paneli aboneliği için yetkili oturum gereklidir.' }));
       return;
     }
@@ -981,7 +1071,7 @@ function processClientJsonMessageV49(ctx, msg) {
   }
 
   if (msg.type === 'join') {
-    if (msg.role === 'guide' && !isAuthedClient) {
+    if (msg.role === 'guide' && !rysCanGuide(principal,msg.tourCode)) {
       ws.send(JSON.stringify({ type: 'auth-error', message: 'Rehber yayını başlatmak için yetkili girişi gereklidir.' }));
       return;
     }
@@ -991,7 +1081,7 @@ function processClientJsonMessageV49(ctx, msg) {
     const matchedTour = (db.tours || []).find((t) => String(t.code || '').toUpperCase() === tourCode);
     if (
       role !== 'guide' &&
-      !isAuthedClient &&
+      !rysCanGuide(principal,tourCode) &&
       matchedTour &&
       matchedTour.pinProtected &&
       matchedTour.pin &&
@@ -1028,7 +1118,10 @@ function processClientJsonMessageV49(ctx, msg) {
         if (sameDevice || sameGuide) {
           if(existingClient.ws?.isHttpRelay){
             const oldRelay=httpRelaySessions.get(existingId);
-            if(oldRelay&&(oldRelay.relayKey||ctx.rysAckCapture))oldRelay.relayRetired=true;
+            if(oldRelay&&(existingClient.role==='guide'||oldRelay.relayKey||ctx.rysAckCapture)){
+              oldRelay.relayRetired=true;oldRelay.relayRetiredReason=ctx.rysAckCapture?'handoff':'replaced';
+              oldRelay.mqttPublications=[];
+            }
           }
           r.clients.delete(existingId);
           if(existingClient.role==='guide'&&r!==targetRoom)needsGuidePresenceSync=true;
@@ -1038,7 +1131,10 @@ function processClientJsonMessageV49(ctx, msg) {
           }
           try {
             if (existingClient.ws && !existingClient.ws.isHttpRelay && typeof existingClient.ws.terminate === 'function') {
-              existingClient.ws.terminate();
+              if(existingClient.role==='guide'&&typeof existingClient.ws.close==='function'){
+                existingClient.ws.send(JSON.stringify({type:'session-replaced'}));
+                existingClient.ws.close(4009,'session-replaced');
+              }else existingClient.ws.terminate();
             }
           } catch {}
         }
@@ -1084,6 +1180,7 @@ function processClientJsonMessageV49(ctx, msg) {
   if (!currentRoom) return;
   const sender = currentRoom.clients.get(clientId);
   if (!sender) return;
+  if(sender.role==='guide'&&!rysCanGuide(principal,currentRoom.tourCode))return;
 
   switch (msg.type) {
     case 'guide-stream-state': {
@@ -1438,6 +1535,9 @@ const heartbeatTimer = setInterval(() => {
     if (ws.isAlive === false) {
       return ws.terminate();
     }
+    if(ws.rysAuthContext?.currentRoom?.clients.get(ws.rysAuthContext.clientId)?.role==='guide'){
+      try{ws.send(JSON.stringify({type:'room-state',room:serializeRoom(ws.rysAuthContext.currentRoom,true)}));}catch(e){}
+    }
     ws.isAlive = false;
     try {
       ws.ping();
@@ -1536,7 +1636,7 @@ function resolveRysRelay(req,res,input){
       res.status(409).json({error:'relay-session-expired'});return null;
     }
   }else s=s||getOrCreateRelaySession(id);
-  if(s.relayRetired){res.status(409).json({error:'relay-session-retired'});return null;}
+  if(s.relayRetired){res.status(409).json({error:'relay-session-retired',reason:s.relayRetiredReason||'handoff'});return null;}
   return s;
 }
 function digestRysSubscription(m){
@@ -1559,7 +1659,9 @@ function clearRysHandoff(ctx){
 }
 function validateRysHandoff(ctx,request){
   const token=[request.token,ctx.rysAuthToken,ctx.rysHandshakeToken].find(isValidAuthToken);
-  const authed=!!token;
+  const principal=rysPrincipal(token),authed=!!principal;
+  if(request.type==='admin-subscribe'&&!rysCanAdmin(principal))return 'scope-required';
+  if(request.type==='join'&&request.role==='guide'&&!rysCanGuide(principal,request.tourCode))return 'scope-required';
   if(authed)ctx.rysAuthToken=String(token).trim();
   ctx.isAuthenticated=authed;ctx.ws.isAuthenticated=authed;
   if((request.type==='admin-subscribe'||request.type==='join'&&request.role==='guide')&&!authed)
@@ -1649,13 +1751,27 @@ function handleRysNativeHandoff(ctx,msg){
 }
 
 // PATCH: relay-auth-v53
+
 function applyRysRelayAuth(session,req,token,context){
-  const authenticated=!!(isRequestAuthenticated(req)||isValidAuthToken(token)||isValidAuthToken(context?.token));
-  const client=session.currentRoom?.clients.get(session.clientId);
+  const credential=[extractAuthTokenFromReq(req),token,context?.token].find(isValidAuthToken);
+  const principal=rysPrincipal(credential),authenticated=!!principal;
   session.isAuthenticated=authenticated;session.ws.isAuthenticated=authenticated;
-  return authenticated||!(client?.role==='guide'||session.ws.isAdmin||
-    context?.role==='guide'||context?.type==='admin-subscribe');
+  const client=session.currentRoom?.clients.get(session.clientId);
+  let allowed=true;
+  if(context?.type==='admin-subscribe'||session.ws.isAdmin&&!context)allowed=rysCanAdmin(principal);
+  else if(context?.type==='join'&&context.role==='guide')allowed=rysCanGuide(principal,context.tourCode);
+  else if(client?.role==='guide'&&!context)allowed=rysCanGuide(principal,session.currentRoom.tourCode);
+  // A rejected elevation must not erase a healthy public family's subscription/outbox.
+  if(!allowed)return false;
+  const nextCredential=authenticated?String(credential).trim():null;
+  if((session.rysAuthToken||null)!==nextCredential){
+    if(Array.isArray(session.outbox))session.outbox.length=0;
+    session.mqttPublications=[];session.mqttVerified?.clear();session.presenceSnapshotAt=0;
+  }
+  session.rysAuthToken=nextCredential;
+  return true;
 }
+
 function syncRysRelayJoin(session,joinContext){
   if(!joinContext||joinContext.type!=='join')return true;
   const code=String(joinContext.tourCode||'RY-KASIM').toUpperCase().trim();
@@ -1694,6 +1810,18 @@ function syncRysRelayJoin(session,joinContext){
 // v54: actual subscription type, without a fabricated pilgrim join.
 function syncRysRelayContext(session,context){
   if(!context)return true;
+  const room=session.currentRoom,member=room?.clients.get(session.clientId);
+  const previous=session.ws.isAdmin?['admin-subscribe']:session.ws.familyTourCode?
+    ['family-subscribe',session.ws.familyTourCode]:room?
+    ['join',room.tourCode,room.roomId,member?.role||'pilgrim',member?.role==='guide'?member.audioSourceId||null:null]:['none'];
+  const desired=context.type==='admin-subscribe'?['admin-subscribe']:context.type==='family-subscribe'?
+    ['family-subscribe',String(context.tourCode||'RY-KASIM').toUpperCase().trim()]:
+    ['join',String(context.tourCode||'RY-KASIM').toUpperCase().trim(),String(context.roomId||'genel').trim(),
+      context.role==='guide'?'guide':'pilgrim',context.role==='guide'?context.audioSourceId||member?.audioSourceId||null:null];
+  if(JSON.stringify(previous)!==JSON.stringify(desired)){
+    if(Array.isArray(session.outbox))session.outbox.length=0;
+    session.mqttPublications=[];session.mqttVerified?.clear();session.presenceSnapshotAt=0;
+  }
   if(context.type==='join'){
     if(!syncRysRelayJoin(session,context))return false;
     session.ws.isAdmin=false;session.ws.familyTourCode=null;
@@ -1763,13 +1891,27 @@ function serveRysRelay(session,req,res,token,context,messages=[]){
   }
   if(session.relayKey&&!context&&messages.some(m=>['join','family-subscribe','admin-subscribe'].includes(m?.type)))
     return res.status(400).json({error:'relay-context-required'});
-  for(const m of messages){
+  session.mqttPublications=[];
+  const previousPublisher=globalThis.__rysMqttPublisher;
+  globalThis.__rysMqttPublisher=session;
+  try{for(const m of messages){
     if(!m||typeof m!=='object')continue;
     // Explicit context is the latest subscription. Do not replay stale queued joins.
     if(context&&['join','family-subscribe','admin-subscribe'].includes(m.type))continue;
     processClientJsonMessage(session,m);
   }
-  return res.json({clientId:session.clientId,messages:drainRysRelaySession(session)});
+  }finally{globalThis.__rysMqttPublisher=previousPublisher;}
+  const incoming=drainRysRelaySession(session);
+  const frames=req.body?.mqttFrames;
+  if(Array.isArray(frames))for(const f of frames.slice(0,8)){
+    try{const verified=rysVerifyMqtt(session,f);if(verified)incoming.push(verified);}catch(e){}
+  }
+  const publications=session.mqttPublications||[];session.mqttPublications=[];
+  if(session.currentRoom?.clients.get(session.clientId)?.role==='guide'&&
+    Date.now()-(session.presenceSnapshotAt||0)>=15000){
+    session.presenceSnapshotAt=Date.now();incoming.push({type:'room-state',room:serializeRoom(session.currentRoom,true)});
+  }
+  return res.json({clientId:session.clientId,messages:incoming,mqttPublications:publications});
 }
 
 app.post('/api/ws-relay',(req,res)=>{

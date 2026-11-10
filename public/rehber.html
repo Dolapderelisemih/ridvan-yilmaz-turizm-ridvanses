@@ -28,7 +28,7 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=69"></script>
+  <script src="/vercel-ws-shim.js?v=70"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .console-wrap {
@@ -734,7 +734,17 @@
       }
     }
 
+    function fenceGuideSession(){
+      if(window.ryGuideSessionReplaced)return;
+      window.ryGuideSessionReplaced=true;
+      clearTimeout(guideWsReconnectTimer);guideWsReconnectTimer=null;
+      isDemoBroadcasting=false;++guideDemoGeneration;clearInterval(demoInterval);demoInterval=null;
+      stopMicBroadcast();
+      const label=document.getElementById('micSourceLabel');
+      if(label)label.textContent='Yayın başka bir sekmede devralındı. Yeniden devralmak için sayfayı yenileyin.';
+    }
     function connectGuideWs() {
+      if(window.ryGuideSessionReplaced)return;
       if (guideWsReconnectTimer) {
         clearTimeout(guideWsReconnectTimer);
         guideWsReconnectTimer = null;
@@ -770,6 +780,7 @@
           return;
         }
 
+        if(msg.type==='session-replaced'){fenceGuideSession();return;}
         if (msg.type === 'joined' || msg.type === 'room-state') {
           renderRoomState(msg.room);
           if (msg.steps) renderGuideStepsList(msg.steps);
@@ -809,8 +820,10 @@
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
         if(!current())return;
+        if(ev?.code===4009){fenceGuideSession();return;}
+        if(window.ryGuideSessionReplaced)return;
         const retryMs = isMicBroadcasting || isDemoBroadcasting ? 600 : 1500;
         console.warn(`Rehber bağlantısı kapandı, ${retryMs} ms içinde otomatik yeniden bağlanılacak...`);
         if (guideWsReconnectTimer) clearTimeout(guideWsReconnectTimer);
@@ -1767,6 +1780,7 @@
     }
 
     function guideBackgroundHeartbeatTick() {
+      if(window.ryGuideSessionReplaced)return;
       if (isMicBroadcasting) {
         healGuideMicrophoneIfNeeded();
         const el = document.getElementById('guideBgKeepAliveAudio');
@@ -1893,6 +1907,7 @@
     }
 
     async function toggleMicBroadcast() {
+      if(window.ryGuideSessionReplaced)return;
       const btn = document.getElementById('startMicBtn');
       if (isMicBroadcasting || guideMicStarting) {
         stopMicBroadcast();
@@ -2029,6 +2044,7 @@
 
     // Demo Audio Broadcast (Works without physical mic)
     function toggleDemoBroadcast() {
+      if(window.ryGuideSessionReplaced)return;
       if(isVoiceLoopbackTesting)return;
       if(guideMicStarting)stopMicBroadcast();
       const btn = document.getElementById('startDemoStreamBtn');
