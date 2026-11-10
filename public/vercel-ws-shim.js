@@ -399,16 +399,24 @@
     }
 
     _closeMqttClients() {
+      // Invalidate pending script loads and queued callbacks before ending any client.
+      this._mqttGeneration=(this._mqttGeneration||0)+1;
+      if(this._roomStateTimer){clearTimeout(this._roomStateTimer);this._roomStateTimer=null;}
       for (const c of this._mqttClients) {
         try { c.end(true); } catch {}
       }
       this._mqttClients = [];
+      this._mqttTopic = null;
     }
 
     _initMqttBus(joinMsg, isAdminMode = false) {
+      this._closeMqttClients();
+      const generation=this._mqttGeneration;
+      const current=()=>this._mqttGeneration===generation&&this._isRelay&&
+        this.readyState===1&&!this._closedExplicitly;
+      if(!current())return;
       loadScriptOnce('https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js', 'mqtt', () => {
-        if (!window.mqtt) return;
-        this._closeMqttClients();
+        if (!current()||!window.mqtt) return;
 
         const codeClean = joinMsg ? this._sanitizeCode(joinMsg.tourCode) : 'ALL';
         const roomClean = joinMsg && joinMsg.roomId ? String(joinMsg.roomId).trim().toUpperCase() : 'GENEL';
@@ -434,6 +442,7 @@
           this._mqttClients.push(client);
 
           client.on('connect', () => {
+            if(!current())return;
             // Rehber ve Admin her zaman Global SOS kanalını da dinler (hangi turda olursa olsun kayıp hacıyı görür!)
             if (isAdminMode || (joinMsg && joinMsg.role === 'guide')) {
               client.subscribe(GLOBAL_SOS_TOPIC, { qos: 0 });
@@ -443,6 +452,7 @@
               client.subscribe(`ridvanses/v2/room/${codeClean}/GENEL`, { qos: 0 });
             }
             client.subscribe(topic, { qos: 0 }, () => {
+              if(!current())return;
               if (joinMsg.role !== 'guide') {
                 this._publishMqtt({
                   _msgId: 'hello-' + this._clientId + '-' + Date.now(),
@@ -464,6 +474,7 @@
           });
 
           client.on('message', (t, payloadBuf) => {
+            if(!current())return;
             try {
               const msg = JSON.parse(payloadBuf.toString());
               if (!msg || msg.senderClientId === this._clientId) return;
@@ -606,9 +617,11 @@
     _broadcastP2PRoomState() {
       if (!this._joinContext || this._joinContext.role !== 'guide') return;
       if (this._roomStateTimer) return;
+      const generation=this._mqttGeneration||0;
       this._roomStateTimer = setTimeout(() => {
+        if((this._mqttGeneration||0)!==generation||this._closedExplicitly||!this._isRelay||this.readyState!==1)return;
         this._roomStateTimer = null;
-        if (!this._joinContext || this._joinContext.role !== 'guide') return;
+        if(!this._joinContext||this._joinContext.role!=='guide')return;
         const pilgrims = Array.from(this._pilgrimMeta.values());
         const tourCode = this._joinContext.tourCode || 'RY-KASIM';
         const roomId = this._joinContext.roomId || 'genel';
