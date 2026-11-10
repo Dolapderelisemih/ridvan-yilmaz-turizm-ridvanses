@@ -308,6 +308,296 @@ function computeJourneyStats(steps) {
   };
 }
 
+
+// v73 Web Push: no npm dependencies. Persistent state belongs to the VDS, not /tmp.
+const rysPushSubs = new Map();
+const rysPushQueue = [];
+const rysPushPending = [];
+const rysPushRequests = new Map(); // At most four active network requests
+let rysPushInFlight=0,rysPushPumpScheduled=false,rysPushVapid=null,rysPushInitError=null;
+
+function rysPushFail(status,code){const e=new Error(code);e.status=status;return e;}
+function rysPushB64(value,length){
+  if(typeof value!=='string'||!value||!/^[A-Za-z0-9_-]+$/.test(value))throw rysPushFail(400,'invalid-key');
+  const b=Buffer.from(value,'base64url');
+  if(b.length!==length||b.toString('base64url')!==value)throw rysPushFail(400,'invalid-key');
+  return b;
+}
+function rysPushPoint(value){
+  const b=rysPushB64(value,65);
+  if(b[0]!==4)throw rysPushFail(400,'invalid-p256dh');
+  try{crypto.ECDH.convertKey(b,'prime256v1',undefined,undefined,'uncompressed');}
+  catch(e){throw rysPushFail(400,'invalid-p256dh');}
+  return b;
+}
+function rysPushPublicIp(address){
+  const net=require('node:net'),family=net.isIP(address);
+  if(family===4){
+    const a=address.split('.').map(Number),[x,y,z]=a;
+    return !(x===0||x===10||x===127||x>=224||x===169&&y===254||
+      x===172&&y>=16&&y<=31||x===192&&(y===168||y===0||y===2)||
+      x===100&&y>=64&&y<=127||x===198&&(y===18||y===19||y===51&&z===100)||
+      x===203&&y===0&&z===113);
+  }
+  if(family===6){
+    const parts=address.toLowerCase().split(':'),head=parseInt(parts[0],16),second=parseInt(parts[1],16);
+    return head>=0x2000&&head<=0x3fff&&head!==0x2002&&
+      !(head===0x2001&&(second===0xdb8||second<0x200));
+  }
+  return false;
+}
+function rysPushEndpoint(value){
+  if(typeof value!=='string'||value.length>2048)throw rysPushFail(400,'invalid-endpoint');
+  let u;try{u=new URL(value);}catch(e){throw rysPushFail(400,'invalid-endpoint');}
+  if(u.username||u.password||u.hash||u.href.length>2048)throw rysPushFail(400,'invalid-endpoint');
+  let test=false;
+  if(process.env.NODE_ENV==='test'&&process.env.RYS_PUSH_TEST_ORIGIN){
+    let t;try{t=new URL(process.env.RYS_PUSH_TEST_ORIGIN);}catch(e){}
+    test=!!t&&t.protocol==='http:'&&t.hostname==='127.0.0.1'&&!!t.port&&u.origin===t.origin;
+  }
+  const h=u.hostname.toLowerCase();
+  const provider=h==='fcm.googleapis.com'||h==='android.googleapis.com'||
+    h.endsWith('.push.apple.com')||h.endsWith('.notify.windows.com')||
+    h.endsWith('.push.services.mozilla.com');
+  if(!test&&(u.protocol!=='https:'||u.port||!provider))throw rysPushFail(403,'endpoint-forbidden');
+  return {url:u,test};
+}
+function rysPushLoadVapid(){
+  const configured=process.env.RYS_VAPID_PRIVATE_KEY||process.env.VAPID_PRIVATE_KEY;
+  const publicEnv=process.env.RYS_VAPID_PUBLIC_KEY||process.env.VAPID_PUBLIC_KEY;
+  let material=configured||db.pushVapid?.privateKey,key;
+  if(publicEnv&&!configured)throw rysPushFail(503,'vapid-private-key-required');
+  if(!material){
+    const e=crypto.createECDH('prime256v1');e.generateKeys();
+    material=Buffer.from(e.getPrivateKey('hex').padStart(64,'0'),'hex').toString('base64url');
+  }
+  try{
+    if(material.trim().startsWith('{'))key=crypto.createPrivateKey({key:JSON.parse(material),format:'jwk'});
+    else if(material.includes('BEGIN'))key=crypto.createPrivateKey(material.replace(/\\n/g,'\n'));
+    else{
+      const d=rysPushB64(material,32),e=crypto.createECDH('prime256v1');e.setPrivateKey(d);
+      const p=e.getPublicKey();key=crypto.createPrivateKey({format:'jwk',key:{kty:'EC',crv:'P-256',
+        x:p.subarray(1,33).toString('base64url'),y:p.subarray(33).toString('base64url'),d:d.toString('base64url')}});
+    }
+    const jwk=key.export({format:'jwk'});
+    if(jwk.kty!=='EC'||jwk.crv!=='P-256'||!jwk.d)throw Error('curve');
+    const p=Buffer.concat([Buffer.from([4]),Buffer.from(jwk.x,'base64url'),Buffer.from(jwk.y,'base64url')]);
+    const check=crypto.createECDH('prime256v1');check.setPrivateKey(rysPushB64(jwk.d,32));
+    if(!check.getPublicKey().equals(p))throw Error('inconsistent private key');
+    const publicKey=p.toString('base64url');rysPushPoint(publicKey);
+    if(publicEnv&&publicEnv!==publicKey)throw Error('public/private mismatch');
+    const subject=process.env.RYS_VAPID_SUBJECT||'mailto:info@ridvanyilmazturizm.com';
+    const contact=new URL(subject);
+    if(!['mailto:','https:'].includes(contact.protocol)||contact.username||contact.password||/[\r\n]/.test(subject))throw Error('subject');
+    if(!configured&&(!db.pushVapid||db.pushVapid.publicKey!==publicKey)){
+      db.pushVapid={publicKey,privateKey:jwk.d};
+      // Startup only: make the identity durable before accepting subscriptions.
+      saveState(db);flushPendingSaveSync();
+      if(!fs.existsSync(RUNTIME_FILE)||JSON.parse(fs.readFileSync(RUNTIME_FILE,'utf8')).pushVapid?.publicKey!==publicKey)
+        throw Error('persistent VAPID write failed');
+    }
+    return {publicKey,privateKey:key,subject};
+  }catch(e){throw rysPushFail(503,'vapid-configuration-error');}
+}
+function rysPushPersist(){
+  db.pushSubscriptions=Array.from(rysPushSubs.values());saveState(db);
+}
+function rysPushCancel(endpoint,binding){
+  for(const active of rysPushRequests.get(endpoint)||[]){
+    if(!binding||active.binding===binding)active.request.destroy(Error('push subscription superseded'));
+  }
+}
+function rysPushDrop(endpoint){
+  const old=rysPushSubs.get(endpoint);rysPushSubs.delete(endpoint);
+  if(old)rysPushCancel(endpoint,old);
+}
+function rysPushPrune(){
+  const counts=new Map();
+  for(const [endpoint,s] of Array.from(rysPushSubs.entries()).reverse()){
+    const n=(counts.get(s.tourCode)||0)+1;counts.set(s.tourCode,n);
+    if(n>512)rysPushDrop(endpoint);
+  }
+  while(rysPushSubs.size>4096)rysPushDrop(rysPushSubs.keys().next().value);
+}
+function rysPushInit(){
+  if(process.env.VERCEL){rysPushInitError='persistent-vds-required';return;}
+  try{
+    rysPushVapid=rysPushLoadVapid();
+    if(!(process.env.NODE_ENV==='test'&&process.env.RYS_PUSH_TEST_ONLY==='1')){
+      for(const row of (Array.isArray(db.pushSubscriptions)?db.pushSubscriptions:[]).slice(-4096)){
+        try{
+          rysPushEndpoint(row.endpoint);rysPushPoint(row.keys?.p256dh);rysPushB64(row.keys?.auth,16);
+          if(!findRysTour(row.tourCode)||row.vapidKey!==rysPushVapid.publicKey||
+            !Number.isSafeInteger(row.revision)||row.revision<1)continue;
+          rysPushB64(row.subscriptionToken,32);rysPushSubs.set(row.endpoint,row);
+        }catch(e){}
+      }
+      rysPushPrune();
+    }
+  }catch(e){rysPushInitError=e.message;console.error('[WebPush] Initialization unavailable:',e.message);}
+}
+function rysPushSubscribe(body){
+  const code=typeof body?.tourCode==='string'?body.tourCode.toUpperCase().trim():'';
+  if(!code||code.length>96)throw rysPushFail(400,'invalid-tour');
+  const tour=findRysTour(code);if(!tour)throw rysPushFail(404,'tour-unknown');
+  if(String(tour.pin||'').trim()&&String(tour.pin).trim()!==String(body.pin||'').trim())throw rysPushFail(403,'pin-error');
+  const target=rysPushEndpoint(body.endpoint);
+  const p=rysPushPoint(body.keys?.p256dh),auth=rysPushB64(body.keys?.auth,16);
+  if(typeof body.deviceId!=='string'||!body.deviceId.trim()||body.deviceId.length>128||
+    !Number.isSafeInteger(body.revision)||body.revision<1)throw rysPushFail(400,'invalid-subscription');
+  const previous=rysPushSubs.get(target.url.href);
+  if(previous){
+    const sameSecret=previous.keys.auth===auth.toString('base64url')&&previous.keys.p256dh===p.toString('base64url');
+    const capability=typeof body.subscriptionToken==='string'&&body.subscriptionToken===previous.subscriptionToken;
+    if(!sameSecret&&!capability)throw rysPushFail(403,'subscription-owner-required');
+    if(body.revision<previous.revision||body.revision===previous.revision&&code!==previous.tourCode)
+      throw Object.assign(rysPushFail(409,'stale-subscription'),{revision:previous.revision});
+  }
+  let s={endpoint:target.url.href,keys:{p256dh:p.toString('base64url'),auth:auth.toString('base64url')},
+    tourCode:code,lang:typeof body.lang==='string'?body.lang.slice(0,16):'tr',deviceId:body.deviceId.trim(),
+    revision:body.revision,subscriptionToken:previous?.subscriptionToken||crypto.randomBytes(32).toString('base64url'),
+    vapidKey:rysPushVapid.publicKey,updatedAt:Date.now()};
+  if(previous&&previous.tourCode===s.tourCode&&previous.keys.auth===s.keys.auth&&previous.keys.p256dh===s.keys.p256dh){
+    Object.assign(previous,s);s=previous; // preserve valid pending deliveries for the same binding
+  }
+  if(previous&&previous!==s)rysPushCancel(s.endpoint,previous);
+  rysPushSubs.delete(s.endpoint);rysPushSubs.set(s.endpoint,s);rysPushPrune();rysPushPersist();
+  return {success:true,subscriptionToken:s.subscriptionToken,revision:s.revision};
+}
+function rysPushUnsubscribe(body){
+  const target=rysPushEndpoint(body?.endpoint),s=rysPushSubs.get(target.url.href);
+  if(!s)return {success:true};
+  const supplied=typeof body.subscriptionToken==='string'?body.subscriptionToken:'';
+  if(supplied.length!==43)throw rysPushFail(403,'subscription-owner-required');
+  const a=Buffer.from(supplied),b=Buffer.from(s.subscriptionToken);
+  if(a.length!==b.length||!crypto.timingSafeEqual(a,b))throw rysPushFail(403,'subscription-owner-required');
+  rysPushDrop(s.endpoint);rysPushPersist();return {success:true};
+}
+function rysPushEncrypt(subscription,plaintext,entropy=null){
+  const ua=rysPushPoint(subscription.keys.p256dh),auth=rysPushB64(subscription.keys.auth,16);
+  const text=Buffer.isBuffer(plaintext)?plaintext:Buffer.from(plaintext);
+  if(text.length>3993)throw rysPushFail(413,'push-payload-too-large');
+  const e=crypto.createECDH('prime256v1');
+  if(entropy?.privateKey)e.setPrivateKey(entropy.privateKey);else e.generateKeys();
+  const as=e.getPublicKey(),salt=entropy?.salt||crypto.randomBytes(16);
+  if(salt.length!==16)throw Error('invalid salt');
+  const info=Buffer.concat([Buffer.from('WebPush: info\0'),ua,as]);
+  const ikm=Buffer.from(crypto.hkdfSync('sha256',e.computeSecret(ua),auth,info,32));
+  const cek=Buffer.from(crypto.hkdfSync('sha256',ikm,salt,Buffer.from('Content-Encoding: aes128gcm\0'),16));
+  const nonce=Buffer.from(crypto.hkdfSync('sha256',ikm,salt,Buffer.from('Content-Encoding: nonce\0'),12));
+  const header=Buffer.alloc(86);salt.copy(header);header.writeUInt32BE(4096,16);header[20]=65;as.copy(header,21);
+  const cipher=crypto.createCipheriv('aes-128-gcm',cek,nonce);
+  return Buffer.concat([header,cipher.update(Buffer.concat([text,Buffer.from([2])])),cipher.final(),cipher.getAuthTag()]);
+}
+function rysPushAuthorization(endpoint){
+  const claims={aud:new URL(endpoint).origin,exp:Math.floor(Date.now()/1000)+12*3600,sub:rysPushVapid.subject};
+  const token=Buffer.from(JSON.stringify({typ:'JWT',alg:'ES256'})).toString('base64url')+'.'+Buffer.from(JSON.stringify(claims)).toString('base64url');
+  const sig=crypto.sign('sha256',Buffer.from(token),{key:rysPushVapid.privateKey,dsaEncoding:'ieee-p1363'}).toString('base64url');
+  return 'vapid t='+token+'.'+sig+', k='+rysPushVapid.publicKey;
+}
+async function rysPushSend(subscription,payload){
+  const target=rysPushEndpoint(subscription.endpoint),u=target.url;
+  if(process.env.NODE_ENV==='test'&&process.env.RYS_PUSH_TEST_ONLY==='1'&&!target.test)
+    throw Error('external push disabled in verification');
+  let pinned;
+  if(!target.test){
+    const dns=require('node:dns').promises;
+    let timer;const addresses=await Promise.race([dns.lookup(u.hostname,{all:true,verbatim:true}),
+      new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('push DNS timeout')),3000);})]).finally(()=>clearTimeout(timer));
+    if(!addresses.length||addresses.some(a=>!rysPushPublicIp(a.address)))throw Error('push private DNS denied');
+    pinned=addresses.find(a=>a.family===4)||addresses[0];
+  }
+  if(rysPushSubs.get(subscription.endpoint)!==subscription)throw Error('push subscription superseded');
+  const body=rysPushEncrypt(subscription,payload),authorization=rysPushAuthorization(u.href);
+  return new Promise((resolve,reject)=>{
+    const transport=target.test?require('node:http'):require('node:https');
+    const options={method:'POST',headers:{Authorization:authorization,'Content-Encoding':'aes128gcm',
+      'Content-Type':'application/octet-stream','Content-Length':body.length,TTL:'86400',Urgency:'high'},
+      ...(pinned?{lookup:(host,opts,cb)=>cb(null,opts?.all?[pinned]:pinned.address,pinned.family)}:{})};
+    const request=transport.request(u,options,response=>{
+      let bytes=0;response.on('data',chunk=>{bytes+=chunk.length;if(bytes>8192)request.destroy(Error('push response too large'));});
+      response.on('error',reject);response.on('end',()=>resolve(response.statusCode));
+    });
+    const active={binding:subscription,request},set=rysPushRequests.get(subscription.endpoint)||new Set();
+    set.add(active);rysPushRequests.set(subscription.endpoint,set);
+    const deadline=setTimeout(()=>request.destroy(Error('push deadline')),5000);
+    request.on('error',reject);request.on('close',()=>{
+      clearTimeout(deadline);set.delete(active);if(!set.size)rysPushRequests.delete(subscription.endpoint);
+    });request.end(body);
+    // Native request never follows redirects; DNS answer is pinned, TLS name remains the provider.
+  });
+}
+function rysPushText(value,bytes){
+  let out='',used=0;for(const ch of String(value||'')){const n=Buffer.byteLength(ch);if(used+n>bytes)break;out+=ch;used+=n;}return out;
+}
+function rysPushPayload(ann,code){
+  const data={type:'announcement',id:rysPushText(ann.id,96),title:rysPushText(ann.title||'Kafile Duyurusu',160),
+    body:rysPushText(ann.message,2000),tag:'ridvanses-ann-'+rysPushText(ann.id,96),tourCode:code,
+    data:{url:'/dinle?code='+encodeURIComponent(code)}};
+  let text=JSON.stringify(data);
+  while(Buffer.byteLength(text)>3000&&data.body){data.body=rysPushText(data.body,Math.floor(Buffer.byteLength(data.body)/2));text=JSON.stringify(data);}
+  if(Buffer.byteLength(text)>3993)throw Error('push payload too large');return text;
+}
+
+function queueRysPushAnnouncement(ann,allTours=false){
+  if(!rysPushVapid||!ann?.id||!rysPushSubs.size)return;
+  // Snapshot references only; preview serialization/crypto is yielded in bounded batches.
+  if(rysPushPending.length>=8)rysPushPending.shift();
+  rysPushPending.push({broadcastAll:allTours===true,announcement:{id:rysPushText(ann.id,96),title:rysPushText(ann.title,160),
+    message:rysPushText(ann.message,2000),tourCode:String(ann.tourCode||'').toUpperCase().trim()},
+    targets:Array.from(rysPushSubs.values()),index:0,payloads:new Map()});
+  scheduleRysPushPump();
+}
+function scheduleRysPushPump(){
+  if(!rysPushPumpScheduled){rysPushPumpScheduled=true;setImmediate(pumpRysPushQueue);}
+}
+function pumpRysPushQueue(){
+  rysPushPumpScheduled=false;
+  let budget=64;
+  while(rysPushPending.length&&rysPushQueue.length<8192&&budget>0){
+    const pending=rysPushPending[0];
+    if(pending.index>=pending.targets.length){rysPushPending.shift();continue;}
+    const s=pending.targets[pending.index++],ann=pending.announcement;budget--;
+    if(rysPushSubs.get(s.endpoint)!==s||!findRysTour(s.tourCode)||
+      !pending.broadcastAll&&ann.tourCode!==s.tourCode)continue;
+    if(!pending.payloads.has(s.tourCode))pending.payloads.set(s.tourCode,rysPushPayload(ann,s.tourCode));
+    rysPushQueue.push({subscription:s,payload:pending.payloads.get(s.tourCode),attempt:0});
+  }
+  while(rysPushInFlight<4&&rysPushQueue.length){
+    const job=rysPushQueue.shift(),s=job.subscription;
+    if(rysPushSubs.get(s.endpoint)!==s||!findRysTour(s.tourCode))continue;
+    rysPushInFlight++;
+    Promise.resolve().then(()=>rysPushSend(s,job.payload)).then(async status=>{
+      if((status===404||status===410)&&rysPushSubs.get(s.endpoint)===s){
+        rysPushDrop(s.endpoint);rysPushPersist();
+      }else if((status===429||status>=500)&&job.attempt<2&&rysPushSubs.get(s.endpoint)===s){
+        job.attempt++;
+        await new Promise(resolve=>setTimeout(resolve,job.attempt===1?1000:4000));
+        if(rysPushSubs.get(s.endpoint)===s&&rysPushQueue.length<8192)rysPushQueue.push(job);
+      }
+    }).catch(()=>{}).finally(()=>{
+      rysPushInFlight--;
+      if(rysPushQueue.length||rysPushPending.length)scheduleRysPushPump();
+    });
+  }
+  if(rysPushPending.length&&rysPushQueue.length<8192)scheduleRysPushPump();
+}
+rysPushInit();
+
+app.get('/api/push/vapid-public-key',(req,res)=>{
+  res.setHeader('Cache-Control','no-store');
+  if(!rysPushVapid)return res.status(503).json({success:false,error:rysPushInitError||'push-unavailable'});
+  return res.json({success:true,publicKey:rysPushVapid.publicKey});
+});
+for(const [route,handler] of [['subscribe',rysPushSubscribe],['unsubscribe',rysPushUnsubscribe]]){
+  app.post('/api/push/'+route,createRateLimiter({max:1200,windowMs:60000}),(req,res)=>{
+    res.setHeader('Cache-Control','no-store');
+    if(!rysPushVapid)return res.status(503).json({success:false,error:'push-unavailable'});
+    try{return res.json(handler(req.body));}
+    catch(e){return res.status(e.status||400).json({success:false,error:e.message,...(e.revision?{revision:e.revision}:{})});}
+  });
+}
+
 // Live Room State in Memory
 // key: `${tourCode}:${roomId}`
 const liveRooms = new Map();
@@ -1410,7 +1700,7 @@ function processClientJsonMessageV49(ctx, msg) {
     case 'quick-announcement': {
       if (sender.role !== 'guide') break;
       const ann = {
-        id: `ann-${Date.now()}`,
+        id: `ann-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`,
         tourCode: currentRoom.tourCode,
         title: msg.title || 'Rehber Duyurusu',
         message: msg.message || '',
@@ -1420,6 +1710,7 @@ function processClientJsonMessageV49(ctx, msg) {
       };
       db.announcements.unshift(ann);
       saveState(db);
+      queueRysPushAnnouncement(ann);
       for (const r of getTourRooms(currentRoom.tourCode)) {
         broadcastToRoom(r, { type: 'new-announcement', announcement: ann });
       }
@@ -2347,6 +2638,8 @@ app.delete('/api/tours/:id', requireAuth, (req, res) => {
     if (db.journeySteps && db.journeySteps[deletedCode]) {
       delete db.journeySteps[deletedCode];
     }
+    for(const [endpoint,subscription] of rysPushSubs)if(subscription.tourCode===deletedCode)rysPushDrop(endpoint);
+    db.pushSubscriptions=Array.from(rysPushSubs.values());
     for (const [key, room] of liveRooms.entries()) {
       if (room.tourCode === deletedCode) {
         dropRysRoom(room);
@@ -2571,9 +2864,14 @@ app.delete('/api/guides/:id', requireAuth, (req, res) => {
 // 6. Push Announcements
 app.post('/api/announcements', requireAuth, (req, res) => {
   const body = req.body || {};
+  const tourCode=String(body.tourCode||'RY-KASIM').toUpperCase().trim();
+  const principal=rysPrincipal(extractAuthTokenFromReq(req));
+  if(tourCode==='ALL'?!rysCanAdmin(principal):!rysCanGuide(principal,tourCode))
+    return res.status(403).json({success:false,error:'announcement-scope'});
+  if(tourCode!=='ALL'&&!findRysTour(tourCode))return res.status(404).json({success:false,error:'tour-unknown'});
   const ann = {
-    id: `ann-${Date.now()}`,
-    tourCode: String(body.tourCode || 'RY-KASIM').toUpperCase(),
+    id: `ann-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`,
+    tourCode,
     title: body.title || 'Kafile Duyurusu',
     message: body.message || '',
     sender: body.sender || 'Rıdvan Yılmaz Turizm Operasyon',
@@ -2582,6 +2880,7 @@ app.post('/api/announcements', requireAuth, (req, res) => {
   };
   db.announcements.unshift(ann);
   saveState(db);
+  queueRysPushAnnouncement(ann,ann.tourCode==='ALL');
 
   // Broadcast to matching rooms
   for (const room of liveRooms.values()) {

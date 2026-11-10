@@ -16,7 +16,7 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=72"></script>
+  <script src="/vercel-ws-shim.js?v=73"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
@@ -1114,6 +1114,7 @@
         }
 
         currentTour = data.tour;
+        setWebPushTour(currentTour.code,pin);
         updatePilgrimHotelNavigationUi(currentTour);
         try {
           localStorage.setItem('ridvanses_pilgrim_name', name);
@@ -1409,7 +1410,7 @@
           const dot = document.getElementById('annUnreadDot');
           if (dot) dot.style.display = 'block';
           playNotificationChime();
-          sendServiceWorkerNotification(msg.announcement.title, msg.announcement.message);
+          sendServiceWorkerNotification(msg.announcement.title,msg.announcement.message,'ridvanses-ann-'+msg.announcement.id);
         }
 
         if (msg.type === 'announcement-deleted' && msg.id) {
@@ -2688,7 +2689,7 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         // PATCH: sw-register-v53
-        navigator.serviceWorker.register('/sw.js?v=72').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=73').catch(() => {});
       });
     }
 
@@ -2768,57 +2769,141 @@
       await enableNotificationPermission();
     }
 
+
+    function urlBase64ToUint8Array(value){
+      if(typeof value!=='string'||!/^[A-Za-z0-9_-]+$/.test(value))throw Error('Geçersiz bildirim anahtarı');
+      const text=atob((value+'='.repeat((4-value.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/'));
+      return Uint8Array.from(text,ch=>ch.charCodeAt(0));
+    }
+    function rysWebPushState(){
+      return window.__rysWebPush||(window.__rysWebPush={context:null,generation:0,promise:null,revision:0,status:'idle'});
+    }
+    function setWebPushTour(tourCode,pin){
+      const state=rysWebPushState();
+      state.context={tourCode:String(tourCode||'').toUpperCase().trim(),pin:String(pin||'')};
+      state.generation++;
+      if(typeof Notification!=='undefined'&&Notification.permission==='granted')void syncWebPushSubscription();
+    }
+    function nextWebPushRevision(minimum=0){
+      const state=rysWebPushState();let previous=0;
+      try{previous=Number(localStorage.getItem('rys_push_revision'))||0;}catch(e){}
+      const revision=Math.max(Date.now()*1024,state.revision+1,previous+1,minimum+1);
+      if(!Number.isSafeInteger(revision))throw Error('Bildirim kaydı yenilenemedi');
+      state.revision=revision;
+      try{localStorage.setItem('rys_push_revision',String(revision));}catch(e){}
+      return revision;
+    }
+    async function webPushFetch(url,init){
+      const ac=new AbortController(),timer=setTimeout(()=>ac.abort(),8000);
+      try{return await fetch(url,{...init,signal:ac.signal});}finally{clearTimeout(timer);}
+    }
+    async function awaitWebPushWorker(registration,current){
+      for(let i=0;i<80;i++){
+        if(!current())return false;
+        const active=registration.active;
+        if(active?.state==='activated'&&Number(new URL(active.scriptURL).searchParams.get('v'))>=73)return true;
+        await new Promise(resolve=>setTimeout(resolve,100));
+      }
+      throw Error('Bildirim Service Worker güncellemesi bekleniyor');
+    }
+    async function syncWebPushSubscription(){
+      const state=rysWebPushState();state.generation++;
+      if(state.promise)return state.promise;
+      let completed=state.generation;
+      state.promise=(async()=>{
+        let result=false;
+        do{
+          const generation=state.generation,context=state.context&&{...state.context};
+          completed=generation;result=false;
+          const current=()=>generation===state.generation;
+          if(!context?.tourCode||typeof Notification==='undefined'||Notification.permission!=='granted'||
+            !('serviceWorker' in navigator)||isIosDevice()&&!isStandaloneApp()){
+            state.status='waiting';continue;
+          }
+          try{
+            let timer;
+            const registration=await Promise.race([navigator.serviceWorker.ready,
+              new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Service Worker hazır değil')),8000);})])
+              .finally(()=>clearTimeout(timer));
+            if(!current())continue;
+            if(!registration.pushManager){state.status='unsupported';continue;}
+            if(!await awaitWebPushWorker(registration,current))continue;
+            const keyResponse=await webPushFetch('/api/push/vapid-public-key',{cache:'no-store'});
+            if(!keyResponse.ok)throw Error('Bildirim sunucusu hazır değil');
+            const keyData=await keyResponse.json(),key=urlBase64ToUint8Array(keyData.publicKey);
+            if(key.length!==65||key[0]!==4)throw Error('Bildirim anahtarı geçersiz');
+            if(!current())continue;
+            let subscription=await registration.pushManager.getSubscription();
+            if(!current())continue;
+            if(subscription){
+              const old=subscription.options?.applicationServerKey;
+              const bytes=old?new Uint8Array(old.buffer||old,old.byteOffset||0,old.byteLength):null;
+              if(!bytes||bytes.length!==key.length||bytes.some((b,i)=>b!==key[i])){
+                await subscription.unsubscribe();subscription=null;
+              }
+            }
+            if(!current())continue;
+            if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
+            if(!current())continue;
+            let receipt=null;try{receipt=JSON.parse(localStorage.getItem('rys_push_receipt')||'null');}catch(e){}
+            const json=subscription.toJSON();
+            let body={endpoint:json.endpoint,keys:json.keys,tourCode:context.tourCode,pin:context.pin,
+              lang:currentLang,deviceId:pilgrimDeviceId,revision:nextWebPushRevision(),
+              ...(receipt?.endpoint===json.endpoint?{subscriptionToken:receipt.subscriptionToken}:{})};
+            let response=await webPushFetch('/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+            let saved=await response.json();
+            if(response.status===409&&saved.error==='stale-subscription'&&current()){
+              body={...body,revision:nextWebPushRevision(saved.revision)};
+              response=await webPushFetch('/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+              saved=await response.json();
+            }
+            if(!response.ok||!saved.success)throw Error('Bildirim aboneliği kaydedilemedi');
+            try{localStorage.setItem('rys_push_receipt',JSON.stringify({endpoint:json.endpoint,subscriptionToken:saved.subscriptionToken}));}catch(e){}
+            if(current()){state.status='subscribed';state.tourCode=context.tourCode;result=true;}
+          }catch(e){if(current())state.status='retry';}
+        }while(completed!==state.generation);
+        return result;
+      })().finally(()=>{
+        state.promise=null;
+        // Latch a context change arriving between the last await and finalization.
+        if(completed!==state.generation)queueMicrotask(()=>void syncWebPushSubscription());
+      });
+      return state.promise;
+    }
+
     async function enableNotificationPermission() {
-      if (!('Notification' in window)) {
-        if (isIosDevice() && !isStandaloneApp()) {
-          showAppToast(
-            '<strong>iPhone Bilgilendirmesi:</strong><br/>Apple güvenlik politikası gereği bildirim alabilmek için lütfen önce alt menüdeki <strong>Paylaş > Ana Ekrana Ekle</strong> adımlarını tamamlayınız.',
-            6000
-          );
-        } else {
-          showAppToast('Cihazınız web anlık bildirimlerini desteklememektedir. Sesli canlı yayın ve konum takibiniz kesintisiz çalışmaktadır.', 5000);
-        }
+      if(isIosDevice()&&!isStandaloneApp()){
+        showAppToast('<strong>iPhone Bilgilendirmesi:</strong><br/>Bildirimler için <strong>Paylaş > Ana Ekrana Ekle</strong> adımlarını tamamlayıp uygulamayı Ana Ekrandan açın.',6000);
         return;
       }
-
-      try {
-        let perm = Notification.permission;
-        if (perm === 'granted') {
-          showAppToast('Bildirim izni zaten açık! Kafile duyuruları telefonunuza gelecektir.', 3500);
-          sendServiceWorkerNotification('RıdvanSes Bildirimleri Aktif', 'Kafile duyuruları ve toplanma saatleri telefonunuza anında düşecektir.');
+      if(!('Notification' in window)||!('serviceWorker' in navigator)){
+        showAppToast('Bu tarayıcı arka plan bildirimlerini desteklemiyor.',5000);return;
+      }
+      try{
+        let permission=Notification.permission;
+        if(permission!=='granted')permission=await Notification.requestPermission();
+        if(permission==='granted'){
+          const active=await syncWebPushSubscription();
+          showAppToast(active?'Kafile bildirimleri etkinleştirildi.':
+            !rysWebPushState().context?'İzin açık; bir kafileye katıldığınızda bildirimler etkinleşir.':
+            'Bildirim aboneliği tamamlanamadı. Bağlantınızı kontrol edip yeniden deneyin.',5000);
+          if(active)sendServiceWorkerNotification('RıdvanSes Bildirimleri Aktif','Kafile duyuruları için bildirim aboneliğiniz kaydedildi.','ridvanses-push-enabled');
           closePwaModal();
-          return;
+        }else if(permission==='denied'){
+          showAppToast('Bildirim izni engellenmiş. Telefon Ayarları > RıdvanSes > Bildirimler bölümünden izin verebilirsiniz.',6000);
         }
-
-        if (typeof Notification.requestPermission === 'function') {
-          try {
-            perm = await Notification.requestPermission();
-          } catch (e) {
-            perm = await new Promise((res) => Notification.requestPermission(res));
-          }
-        }
-
-        if (perm === 'granted') {
-          sendServiceWorkerNotification('RıdvanSes Bildirimleri Aktif', 'Kafile duyuruları ve toplanma saatleri telefonunuza anında düşecektir.');
-          showAppToast('Bildirim izni başarıyla verildi!', 4000);
-          closePwaModal();
-        } else if (perm === 'denied') {
-          showAppToast('Bildirim izni engellenmiş. Telefon Ayarları > RıdvanSes > Bildirimler bölümünden izin verebilirsiniz.', 6000);
-        }
-      } catch (err) {
-        showAppToast('Bildirim izni alınırken bir sorun oluştu.', 3500);
+      }catch(e){showAppToast('Bildirim izni alınırken bir sorun oluştu.',3500);}
+    }
+    function sendServiceWorkerNotification(title,body,tag){
+      if('serviceWorker' in navigator&&navigator.serviceWorker.controller){
+        const code=rysWebPushState().context?.tourCode||currentTour?.code;
+        navigator.serviceWorker.controller.postMessage({type:'SHOW_NOTIFICATION',title,body,
+          tag:tag||'ridvanses-notify',data:{url:code?'/dinle?code='+encodeURIComponent(code):'/dinle'}});
       }
     }
+    window.addEventListener('online',()=>{if(rysWebPushState().context)void syncWebPushSubscription();});
+    navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(rysWebPushState().context)void syncWebPushSubscription();});
 
-    function sendServiceWorkerNotification(title, body) {
-      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({
-          type: 'SHOW_NOTIFICATION',
-          title,
-          body
-        });
-      }
-    }
 
     let wakeLockSentinel = null;
     let wakeLockDesired = true;

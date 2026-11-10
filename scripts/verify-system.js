@@ -592,6 +592,7 @@ async function runStep2And3LiveServerAndWsTests() {
   await runV69RoomReplacementChecks({baseUrl,url:wsUrl,token:authToken});
   await runV70SecurityChecks({baseUrl,url:wsUrl,token:authToken,credentials:loginCredentials});
   await runV71IsolationChecks({baseUrl,url:wsUrl,token:authToken});
+  await runV73PushChecks({baseUrl,url:wsUrl,token:authToken});
 
   guideGenelWs.close();
   pilgrimWs.close();
@@ -1567,9 +1568,9 @@ async function runStep5V54AudioChecks(){
     if(mode!=='join')assert.equal(body.joinContext??null,null);
     else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
   }
-  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v72"));assert(sw.includes('/vercel-ws-shim.js?v=72'));
+  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v73"));assert(sw.includes('/vercel-ws-shim.js?v=73'));
   for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
-    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'72',f+' stale shim');
+    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'73',f+' stale shim');
   }
   if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
   console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
@@ -2534,7 +2535,7 @@ async function runStep5V60AudioChecks(){
     p.rxFir.r.fill(1);p.playing=true;p.expected=0;p.missing=15;
     p.process([],[[new Float32Array(128)]]);assert(!p.playing);assert(p.rxFir.r.every(x=>x===0));
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v72'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v73'));
   for(const asset of ['pcm-player-worklet.js?v=72-audio','pcm-capture-worklet.js?v=72-audio'])assert(sw.includes(asset));
   assert(guide.includes('pcm-capture-worklet.js?v=72-audio'));assert(read('public/dinle.html').includes('pcm-player-worklet.js?v=72-audio'));
   console.log('V60 UNIT METRICS '+JSON.stringify({lifecycleChecks:checks,alias}));
@@ -2744,7 +2745,7 @@ async function runStep5V61AudioChecks(){
     assert(published.filter(m=>['room-state','stream-state'].includes(m.type)).every(m=>(m.audioSourceId||m.room?.audioSourceId)==='stable-page'));
     checks.push('MQTT-room-and-stream-source-parity');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v73'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));
   assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V61 UNIT METRICS '+JSON.stringify({checks,reset,capture24kFrames:frames.length}));
   recordResult('ADIM-5.V61','Socket/Blob/retry/source ownership; 5-rate reset/starvation de-click; 24k capture; source schema/digest/MQTT; cache61',true);
@@ -2983,7 +2984,7 @@ async function runStep5V62AudioChecks(){
     }
     checks.push('failed-poll-retry-keeps-latest-stop-and-resume-only');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v73'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V62 UNIT METRICS '+JSON.stringify({checks,coalescerPostStopAudio:0,receiverPostStopFrames:0}));
   recordResult('ADIM-5.V62','Stop/mode/source barriers across coalescer, relay, receiver, demo lifecycle and server; idle reconnect; cache62',true);
   console.log('V62 UNIT PASS');
@@ -3168,7 +3169,7 @@ async function runStep5V63AudioChecks(){
     const epoch=h.g.rxAudioDeliveryEpoch;s.onmessage({data:JSON.stringify({type:'room-state',room:{...state(1,true),audioStateKnown:true}})});
     assert(h.player.q.has(1001));assert.equal(h.g.rxAudioDeliveryEpoch,epoch);checks.push('unknown-to-known-live-snapshot-preserves-current-pcm');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v73'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V63 UNIT METRICS '+JSON.stringify({checks,snapshotRecovered:true,staleStateResets:0,renewalFirstPcmPreserved:true}));
   recordResult('ADIM-5.V63','Ordered state/snapshot recovery; terminal disconnect; source reset; inheritance; MQTT parity; renewal state-before-PCM; cache63',true);
   console.log('V63 UNIT PASS');
@@ -3355,7 +3356,7 @@ async function runStep5V64AudioChecks(){
     deliver(state(12,12,true,'mic'));assert.equal(stopped,1);assert.equal(h.g.activeGuideDemoSources.size,0);
     checks.push('demo-topic-keeps-current-note-and-mode-change-stops-it');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v73'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V64 UNIT METRICS '+JSON.stringify({checks,postResumeOldFrames:0,capturedOldBatchFrames:0,currentPendingPreserved:true,topicTimelinePreserved:true}));
   recordResult('ADIM-5.V64','Media epoch across PCM/synth/coalescer/server/receiver; topic continuity; Blob fencing; stop-resume during relay-open; pending-media preservation; cache64',true);console.log('V64 UNIT PASS');
 }
@@ -3519,7 +3520,7 @@ async function runStep5V65AudioChecks(){
     const good=member('rys56-good','c'.repeat(48));g.serveRysRelay(good,{auth:true,method:'POST',body:{requestSeq:1}},response(),'good',{type:'join',role:'guide'});assert.equal(good.lastSeen,35001);
     checks.push('auth-failure-retires-verified-privileged-capability-public-ID-cannot-disconnect-legacy-no-failed-lease-renewal');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v73'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V65 UNIT METRICS '+JSON.stringify({checks,unprimedFrames:0,retryFirstPcmPreserved:true,fullQueueStopDelivered:true,failedAuthLeaseExtensions:0}));
   recordResult('ADIM-5.V65','Controller readiness; retry control-first and latched full-queue stop; submitted-epoch ACK; auth-failure cleanup and lease/public-ID safety; cache65',true);console.log('V65 UNIT PASS');
 }
@@ -3693,7 +3694,7 @@ async function runStep5V66AudioChecks(){
     h.s.close();assert(h.clients.every(c=>c.ended===1));assert.equal(h.received.length,0);
     checks.push('100-replacements-bounded-active-clients-invalidate-before-synchronous-end');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('vercel-ws-shim.js?v=72'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v73'));assert(sw.includes('vercel-ws-shim.js?v=73'));
   assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V66 UNIT METRICS '+JSON.stringify({checks,clientsAfterDelayedClose:0,staleDelivered:0,activeClientsMax:2,replacements:100}));
   recordResult('ADIM-5.V66','MQTT loader/client/suback/timer ownership across route, close and native takeover; bounded replacement; cache66',true);console.log('V66 UNIT PASS');
@@ -3815,7 +3816,7 @@ async function runStep5V67AudioChecks(){
     sockets.clear();const idle=member('idle-expired','json-expired');g.heartbeat();assert.equal(idle.ws.terminated,1);assert.equal(idle.currentRoom,null);
     checks.push('real-binary-and-JSON-ingress-reject-expired-credentials-idle-heartbeat-cleans-membership');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('vercel-ws-shim.js?v=72'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v73'));assert(sw.includes('vercel-ws-shim.js?v=73'));
   assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V67 UNIT METRICS '+JSON.stringify({checks,expiredGuidePresent:false,expiryGraceMs:0,revokedGuideTerminated:1,revokedAdminTerminated:1,healthyTerminated:0,publicFamilyTerminated:0,cancelledPrepare:true}));
   recordResult('ADIM-5.V67','Native live credential expiry/revoke, token rotation, pending handoff cleanup, public-family isolation and HTTP/static compatibility; cache67',true);console.log('V67 UNIT PASS');
@@ -3975,7 +3976,7 @@ async function runStep5V68AudioChecks(){
     assert.equal(h.room('siyer').audioSourceId,'page');assert.equal(h.room('siyer').audioMediaEpoch,10);assert.equal(h.room('siyer').isLive,true);
     checks.push('dedicated-guide-downgrade-restores-General-source-state-epoch-inheritance');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('vercel-ws-shim.js?v=72'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v73'));assert(sw.includes('vercel-ws-shim.js?v=73'));
   assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V68 UNIT METRICS '+JSON.stringify({checks,collisionCases,crossRoleGuideEvictions:0,downgradeOwner:null,sameRoleReconnect:true,terminalStop:true,coveredByGenel:true}));
   recordResult('ADIM-5.V68','Role-isolated device dedup; native/HTTP/legacy collisions; same-role reconnect; same-socket downgrade/owner release/terminal stop and General inheritance; cache68',true);console.log('V68 UNIT PASS');
@@ -4156,7 +4157,7 @@ async function runStep5V69AudioChecks(){
     assert.equal(h.room().activePublisherClientId,null);assert(h.room('target').clients.has('current'));
     checks.push('cross-tour-prior-guide-removal-does-not-suppress-target-tour-reconciliation');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('vercel-ws-shim.js?v=72'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v73'));assert(sw.includes('vercel-ws-shim.js?v=73'));
   assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V69 UNIT METRICS '+JSON.stringify({checks,vacatedOwners:0,reconciliationsPerAffectedTour:1,sameRoomTerminalControls:0,generalControllerReady:true,crossTourSync:true}));
   recordResult('ADIM-5.V69','Cross-room guide replacement owner cleanup; terminal/General reconciliation after membership install; same-room continuity; existing-context and duplicate-room coverage; cache69',true);console.log('V69 UNIT PASS');
@@ -4871,9 +4872,376 @@ async function runStep5V72QualityChecks(){
   recordResult('ADIM-5.V72.PLAYER','Band-limited ASRC; five-rate reset/starvation and catch-up; 1/3/5% and burst PLC; 60/120/180ms jitter; four-minute +/-1000ppm drift',true);
 }
 
+
+async function runStep5V73PushChecks(){
+  const assert=require('node:assert/strict'),crypto=require('node:crypto'),vm=require('node:vm');
+  const read=f=>fs.readFileSync(path.join(ROOT_DIR,f),'utf8'),source=read('server.js'),listener=read('public/dinle.html'),sw=read('public/sw.js');
+  const names=['rysPushFail','rysPushB64','rysPushPoint','rysPushPublicIp','rysPushEndpoint','rysPushLoadVapid','rysPushPersist',
+    'rysPushCancel','rysPushDrop','rysPushPrune','rysPushSubscribe','rysPushUnsubscribe','rysPushEncrypt','rysPushAuthorization','rysPushText','rysPushPayload',
+    'queueRysPushAnnouncement','scheduleRysPushPump','pumpRysPushQueue','rysPushSend'];
+  const g={Buffer,URL,crypto,require,process:{env:{}},RUNTIME_FILE:'/fixture/runtime.json',
+    db:{tours:[{code:'T',pin:'5555'},{code:'OTHER',pin:'7777'}]},rysPushSubs:new Map(),rysPushQueue:[],rysPushPending:[],
+    rysPushRequests:new Map(),rysPushInFlight:0,rysPushPumpScheduled:false,Date,setTimeout,clearTimeout,setImmediate,console,
+    saveState(){},flushPendingSaveSync(){g.persisted=JSON.stringify(g.db);},
+    fs:{existsSync:()=>true,readFileSync:()=>g.persisted},findRysTour:code=>g.db.tours.find(t=>t.code===code)};
+  vm.createContext(g);vm.runInContext(names.map(n=>v70Pick(source,n)).join('\n'),g);
+  g.rysPushVapid=g.rysPushLoadVapid();const originalPublic=g.rysPushVapid.publicKey;
+  assert.equal(Buffer.from(originalPublic,'base64url').length,65);
+  g.db=JSON.parse(g.persisted);assert.equal(g.rysPushLoadVapid().publicKey,originalPublic,'persisted restart identity');
+  for(const material of [g.db.pushVapid.privateKey,JSON.stringify(g.rysPushVapid.privateKey.export({format:'jwk'})),
+    g.rysPushVapid.privateKey.export({format:'pem',type:'pkcs8'})]){
+    g.process.env.RYS_VAPID_PRIVATE_KEY=material;g.process.env.RYS_VAPID_PUBLIC_KEY=originalPublic;
+    assert.equal(g.rysPushLoadVapid().publicKey,originalPublic);
+  }
+  g.process.env={};
+  const wrongPublic=crypto.createECDH('prime256v1');wrongPublic.generateKeys();
+  const wrongPoint=wrongPublic.getPublicKey(),inconsistent=g.rysPushVapid.privateKey.export({format:'jwk'});
+  inconsistent.x=wrongPoint.subarray(1,33).toString('base64url');inconsistent.y=wrongPoint.subarray(33).toString('base64url');
+  g.process.env={RYS_VAPID_PRIVATE_KEY:JSON.stringify(inconsistent)};
+  assert.throws(()=>g.rysPushLoadVapid(),e=>e.status===503);g.process.env={};
+  const savedDb=JSON.stringify(g.db),savedPersisted=g.persisted,nativeCrypto=g.crypto;
+  delete g.db.pushVapid;
+  g.crypto={...crypto,createECDH:curve=>{
+    const e=crypto.createECDH(curve);e.generateKeys=()=>{const d=Buffer.alloc(32);d[31]=1;e.setPrivateKey(d);return e.getPublicKey();};return e;
+  }};
+  const shortScalar=g.rysPushLoadVapid();assert.equal(Buffer.from(g.db.pushVapid.privateKey,'base64url').length,32);
+  assert.equal(shortScalar.privateKey.export({format:'jwk'}).d.length,43);
+  g.crypto=nativeCrypto;g.db=JSON.parse(savedDb);g.persisted=savedPersisted;
+  // RFC8291 section5 / appendixA known-answer vector; not our sender/receiver round-trip.
+  const vector={keys:{auth:'BTBZMqHH6r4Tts7J_aSIgg',
+    p256dh:'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4'}};
+  const expected='DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN';
+  const encrypted=g.rysPushEncrypt(vector,'When I grow up, I want to be a watermelon',{
+    privateKey:Buffer.from('yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw','base64url'),
+    salt:Buffer.from('DGv6ra1nlYgDCS1FRnbzlw','base64url')});
+  assert.equal(encrypted.toString('base64url'),expected);
+  assert.throws(()=>g.rysPushEncrypt(vector,Buffer.alloc(3994)),e=>e.status===413);
+  assert.equal(g.rysPushEncrypt(vector,Buffer.alloc(3993)).length,4096);
+  const bad=Buffer.alloc(65);bad[0]=4;assert.throws(()=>g.rysPushPoint(bad.toString('base64url')));
+  assert.throws(()=>g.rysPushB64('A'.repeat(21),16));
+  for(const endpoint of ['http://169.254.169.254/latest/meta-data','https://127.0.0.1/x','https://fcm.googleapis.com.evil.test/x',
+    'https://user@fcm.googleapis.com/x','https://fcm.googleapis.com:8443/x','https://fcm.googleapis.com/x#fragment'])
+    assert.throws(()=>g.rysPushEndpoint(endpoint));
+  assert.throws(()=>g.rysPushEndpoint('https://fcm.googleapis.com/'+ 'ş'.repeat(1000)));
+  for(const ip of ['127.0.0.1','10.0.0.1','169.254.169.254','100.100.100.200','172.16.0.1','192.168.1.1','::1',
+    '::ffff:127.0.0.1','fd00::1','2001:0000::1','2001:db8::1','2002:7f00:1::1'])assert(!g.rysPushPublicIp(ip),ip);
+  for(const ip of ['8.8.8.8','1.1.1.1','2606:4700::1111','2001:4860:4860::8888'])assert(g.rysPushPublicIp(ip),ip);
+  let outbound=0;const nativeRequire=g.require;
+  g.require=name=>name==='node:dns'?{promises:{lookup:async()=>[{address:'127.0.0.1',family:4}]}}:
+    name==='node:https'?{request(){outbound++;throw Error('unexpected network');}}:nativeRequire(name);
+  await assert.rejects(()=>g.rysPushSend({endpoint:'https://fcm.googleapis.com/fcm/send/ssrf'},'{}'),/private DNS/);
+  assert.equal(outbound,0);
+  let resolveDns;
+  g.require=name=>name==='node:dns'?{promises:{lookup:()=>new Promise(resolve=>resolveDns=resolve)}}:
+    name==='node:https'?{request(){outbound++;throw Error('unexpected network');}}:nativeRequire(name);
+  const staleDns={endpoint:'https://fcm.googleapis.com/fcm/send/dns-race'};
+  g.rysPushSubs.set(staleDns.endpoint,staleDns);const oldDnsJob=g.rysPushSend(staleDns,'{}');
+  g.rysPushSubs.set(staleDns.endpoint,{...staleDns,tourCode:'OTHER'});
+  resolveDns([{address:'8.8.8.8',family:4}]);await assert.rejects(()=>oldDnsJob,/superseded/);
+  assert.equal(outbound,0);g.rysPushSubs.clear();g.require=nativeRequire;
+  g.process.env={NODE_ENV:'test',RYS_PUSH_TEST_ORIGIN:'http://127.0.0.1:12345'};
+  assert(g.rysPushEndpoint('http://127.0.0.1:12345/receiver').test);
+  assert.throws(()=>g.rysPushEndpoint('http://127.0.0.1:12346/receiver'));
+  assert.throws(()=>g.rysPushEndpoint('http://localhost:12345/receiver'));
+  g.process.env.NODE_ENV='production';assert.throws(()=>g.rysPushEndpoint('http://127.0.0.1:12345/receiver'));g.process.env={};
+  let revision=0;const ua=crypto.createECDH('prime256v1');ua.generateKeys();
+  const keys={p256dh:ua.getPublicKey().toString('base64url'),auth:crypto.randomBytes(16).toString('base64url')};
+  const sub=(tourCode='T',id='one')=>({endpoint:'https://fcm.googleapis.com/fcm/send/'+id,keys,tourCode,pin:tourCode==='T'?'5555':'7777',
+    lang:'tr',deviceId:'unit-device',revision:++revision});
+  const first=sub(),receipt=g.rysPushSubscribe(first),binding=g.rysPushSubs.get(first.endpoint);
+  assert.throws(()=>g.rysPushSubscribe({...first,revision:++revision,keys:{...keys,auth:crypto.randomBytes(16).toString('base64url')}}),e=>e.status===403);
+  g.rysPushSubscribe({...first,revision:++revision});assert.equal(g.rysPushSubs.get(first.endpoint),binding);
+  let activeCancelled=0;
+  g.rysPushRequests.set(first.endpoint,new Set([{binding,request:{destroy(){activeCancelled++;}}}]));
+  g.rysPushSubscribe({...sub('OTHER'),endpoint:first.endpoint});assert.notEqual(g.rysPushSubs.get(first.endpoint),binding);
+  assert.equal(activeCancelled,1);g.rysPushRequests.clear();
+  assert.throws(()=>g.rysPushSubscribe({...first,revision:1}),e=>e.status===409);
+  assert.throws(()=>g.rysPushUnsubscribe({endpoint:first.endpoint,subscriptionToken:'wrong'}),e=>e.status===403);
+  assert(g.rysPushUnsubscribe({endpoint:first.endpoint,subscriptionToken:receipt.subscriptionToken}).success);
+  for(let i=0;i<513;i++)g.rysPushSubscribe(sub('T','limit-'+i));
+  assert.equal(g.rysPushSubs.size,512);assert(!g.rysPushSubs.has('https://fcm.googleapis.com/fcm/send/limit-0'));
+  g.rysPushSubs.clear();
+  g.db.tours=Array.from({length:9},(_,i)=>({code:'C'+i,pin:'7777'}));
+  for(let i=0;i<4097;i++)g.rysPushSubscribe(sub('C'+Math.floor(i/512),'global-'+i));
+  assert.equal(g.rysPushSubs.size,4096);assert(!g.rysPushSubs.has('https://fcm.googleapis.com/fcm/send/global-0'));
+  assert(Array.from(g.rysPushSubs.values()).every(s=>g.db.pushSubscriptions.includes(s)));
+  const scheduled=[];g.setImmediate=fn=>scheduled.push(fn);
+  g.rysPushSend=()=>{throw Error('unexpected test network');};
+  g.queueRysPushAnnouncement({id:'literal-all-tour',tourCode:'ALL',title:'Scoped',message:'Not a global grant'});
+  scheduled.shift()();assert.equal(g.rysPushQueue.length,0);assert.equal(g.rysPushInFlight,0);
+  g.rysPushPending.length=0;scheduled.length=0;g.rysPushPumpScheduled=false;
+  for(let i=0;i<12;i++)g.queueRysPushAnnouncement({id:'queue-'+i,tourCode:'ALL',title:'Notice',message:'Body'},true);
+  assert.equal(g.rysPushPending.length,8);assert.equal(g.rysPushQueue.length,0,'enqueue must not encrypt synchronously');
+  let concurrent=0,maxConcurrent=0;g.rysPushSend=async()=>{concurrent++;maxConcurrent=Math.max(maxConcurrent,concurrent);await Promise.resolve();concurrent--;return 201;};
+  scheduled.shift()();assert(g.rysPushQueue.length<=64);assert(g.rysPushInFlight<=4);
+  for(let i=0;i<12;i++)await Promise.resolve();assert.equal(maxConcurrent,4);
+  // Finish in-memory fake work without touching production endpoints.
+  g.rysPushPending.length=0;g.rysPushQueue.length=0;scheduled.length=0;
+  g.rysPushSubs.clear();g.db.tours=[{code:'T',pin:'5555'}];
+  const oldReceipt=g.rysPushSubscribe(sub('T','stale410')),oldRow=g.rysPushSubs.get('https://fcm.googleapis.com/fcm/send/stale410');
+  let finish;g.rysPushSend=()=>new Promise(resolve=>finish=resolve);
+  g.rysPushQueue.push({subscription:oldRow,payload:'{}',attempt:0});g.pumpRysPushQueue();await Promise.resolve();
+  const replacement={...oldRow,keys:{...oldRow.keys,auth:crypto.randomBytes(16).toString('base64url')}};
+  g.rysPushSubs.set(oldRow.endpoint,replacement);finish(410);for(let i=0;i<10;i++)await Promise.resolve();
+  assert.equal(g.rysPushSubs.get(oldRow.endpoint),replacement,'late410 must not delete a new binding');
+
+  const handlers={},displayed=new Map(),shown=[],opened=[],focused=[],navigated=[];
+  let windows=[];const swBox={URL,Promise,console,fetch(){},caches:{},
+    self:{location:{origin:'https://example.test'},skipWaiting(){},addEventListener:(n,fn)=>handlers[n]=fn,
+      registration:{showNotification:(title,options)=>{shown.push({title,options});displayed.set(options.tag,{title,options});return Promise.resolve();}},
+      clients:{claim(){},matchAll:async()=>windows,openWindow:async url=>opened.push(url)}}};
+  vm.createContext(swBox);vm.runInContext(sw,swBox);
+  const invoke=async(type,data)=>{let work;handlers[type]({...data,waitUntil:p=>work=p});await work;};
+  const notice={id:'same-id',title:'Dua',body:'Toplanma',tag:'ridvanses-ann-same-id',data:{url:'/dinle?code=T'}};
+  await invoke('message',{data:{...notice,type:'SHOW_NOTIFICATION'}});
+  await invoke('push',{data:{json:()=>notice}});
+  assert.equal(displayed.size,1);assert.equal(shown.length,2);
+  assert.equal(shown.at(-1).options.tag,'ridvanses-ann-same-id');
+  assert.deepEqual(Array.from(shown.at(-1).options.vibrate),[200,100,200]);
+  assert.equal(shown.at(-1).options.data.url,'https://example.test/dinle?code=T');
+  await invoke('push',{data:{json(){throw Error('plain');},text:()=> 'Plain message'}});
+  assert.equal(shown.at(-1).options.body,'Plain message');
+  const click=url=>({notification:{data:{url},close(){}}});
+  windows=[{url:'https://example.test/dinle?code=T',focus:async()=>focused.push('exact')}];
+  await invoke('notificationclick',click('/dinle?code=T'));assert.equal(focused.length,1);
+  windows=[{url:'https://example.test/dinle?code=T',focus:async()=>{throw Error('closed window');}}];
+  await invoke('notificationclick',click('/dinle?code=T'));assert.equal(opened.at(-1),'https://example.test/dinle?code=T');
+  windows=[{url:'https://example.test/dinle?code=OLD',navigate:async url=>{navigated.push(url);return {focus:async()=>focused.push('new')};}}];
+  await invoke('notificationclick',click('/dinle?code=T'));assert.equal(navigated[0],'https://example.test/dinle?code=T');
+  windows=[];await invoke('notificationclick',click('https://evil.test/phish'));assert.equal(opened.at(-1),'https://example.test/dinle');
+
+  const storage=new Map(),posted=[],messages=[],toasts=[];let subscription=null,subscribeCalls=0,requests=0,ios=false,standalone=true,keyReply=null,held=null;
+  const publicKey=originalPublic;
+  const N={permission:'granted',async requestPermission(){requests++;N.permission='granted';return 'granted';}};
+  const registration={active:{state:'activated',scriptURL:'https://example.test/sw.js?v=73'},pushManager:{
+    async getSubscription(){return subscription;},async subscribe(options){
+      subscribeCalls++;assert(options.userVisibleOnly);assert.equal(options.applicationServerKey.length,65);
+      subscription={endpoint:'https://fcm.googleapis.com/fcm/send/client-'+subscribeCalls,
+        options:{applicationServerKey:options.applicationServerKey.buffer},
+        toJSON:()=>({endpoint:subscription.endpoint,keys}),async unsubscribe(){subscription=null;return true;}};
+      return subscription;
+    }}};
+  const ui={window:{Notification:N},navigator:{serviceWorker:{ready:Promise.resolve(registration),controller:{postMessage:m=>messages.push(m)}}},
+    Notification:N,Uint8Array,URL,Promise,AbortController,Date,Math,Number,setTimeout,clearTimeout,queueMicrotask,
+    atob:s=>Buffer.from(s,'base64').toString('binary'),localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},
+    currentLang:'tr',pilgrimDeviceId:'client-device',currentTour:{code:'T'},isIosDevice:()=>ios,isStandaloneApp:()=>standalone,
+    showAppToast:t=>toasts.push(t),closePwaModal(){},fetch:async(url,options)=>{
+      if(url.endsWith('vapid-public-key')){
+        if(keyReply){const wait=keyReply;keyReply=null;return wait;}
+        return {ok:true,status:200,json:async()=>({publicKey})};
+      }
+      const body=JSON.parse(options.body);posted.push(body);
+      return {ok:true,status:200,json:async()=>({success:true,revision:body.revision,subscriptionToken:'receipt-token'})};
+    }};
+  vm.createContext(ui);vm.runInContext(['urlBase64ToUint8Array','rysWebPushState','setWebPushTour','nextWebPushRevision',
+    'webPushFetch','awaitWebPushWorker','syncWebPushSubscription','enableNotificationPermission','sendServiceWorkerNotification']
+    .map(n=>v70Pick(listener,n)).join('\n'),ui);
+  const tick=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
+  keyReply=new Promise(resolve=>held=resolve);ui.setWebPushTour('T','5555');await tick();
+  ui.setWebPushTour('OTHER','7777');held({ok:true,status:200,json:async()=>({publicKey})});
+  await ui.syncWebPushSubscription();await tick();
+  assert(posted.length>0&&posted.every(p=>p.tourCode==='OTHER'));assert.equal(subscribeCalls,1);
+  assert.equal(posted.at(-1).pin,'7777');assert.equal(ui.rysWebPushState().tourCode,'OTHER');
+  ui.setWebPushTour('T','5555');await ui.syncWebPushSubscription();assert.equal(posted.at(-1).tourCode,'T');assert.equal(subscribeCalls,1);
+  assert(!Array.from(storage.values()).join('|').includes('5555'),'PIN must not persist in browser storage');
+  N.permission='default';ios=true;standalone=false;const before=posted.length;await ui.enableNotificationPermission();
+  assert.equal(requests,0);assert.equal(posted.length,before);assert(toasts.at(-1).includes('Ana Ekrana Ekle'));
+  standalone=true;await ui.enableNotificationPermission();assert.equal(requests,1);assert.equal(ui.rysWebPushState().status,'subscribed');
+  ui.sendServiceWorkerNotification('Dua','Toplanma','ridvanses-ann-same-id');
+  assert.equal(messages.at(-1).tag,'ridvanses-ann-same-id');
+  assert(messages.at(-1).data.url.includes('code=T'));
+  assert(read('public/sw.js').includes("ridvanses-pwa-v73"));
+  for(const f of ['index','dinle','rehber','panel','login','rota','ani-kitabi','yaka-karti'])
+    assert(read('public/'+f+'.html').includes('/vercel-ws-shim.js?v=73'),f);
+  assert(read('public/sw.js').includes('pcm-player-worklet.js?v=72-audio'));
+  console.log('V73 UNIT METRICS '+JSON.stringify({rfc8291KnownAnswer:true,keyFormats:3,persistedIdentity:true,leadingZeroScalar:true,dnsRebindingDenied:true,staleDnsFenced:true,
+    capacityPerTour:512,capacityGlobal:4096,pendingAnnouncements:8,fanoutBatch:64,maxConcurrent,
+    stale410Preserved:true,swPushWithoutPage:true,displayedSameTag:1,safeClick:true,latestTour:true,iosStandalone:true,pinPersisted:false}));
+  recordResult('ADIM-5.V73','RFC8291 vector/VAPID persistence/formats; endpoint/SSRF/capacity; bounded async fanout; SW closed-page/tag/click; iOS and latest-tour subscription',true);
+}
+
+
+async function runV73PushChecks({baseUrl,url,token}){
+  const assert=require('node:assert/strict'),crypto=require('node:crypto'),http=require('node:http'),{WebSocket}=require('ws');
+  const stamp=Date.now().toString(36).toUpperCase(),a='P73-A-'+stamp,b='P73-B-'+stamp;
+  const auth={'Content-Type':'application/json',Authorization:'Bearer '+token},plain={'Content-Type':'application/json'};
+  const received=[],errors=[],clients=new Map(),registrations=[],sockets=[],created=[];
+  let origin,relay,subscriptionRevision=0,slowPushPending=false,maxApiMs=0,audioDuringPushMs=0;const previousOrigin=process.env.RYS_PUSH_TEST_ORIGIN;
+  const receiver=http.createServer((req,res)=>{
+    const chunks=[];let size=0;
+    req.on('data',x=>{size+=x.length;if(size>4096)req.destroy();else chunks.push(x);});
+    req.on('error',e=>errors.push(e.message));
+    req.on('end',()=>{
+      try{
+        const data=Buffer.concat(chunks),receiverKey=clients.get(req.url);assert(receiverKey,'unregistered receiver URL');
+        assert.equal(req.method,'POST');assert.equal(req.headers['content-encoding'],'aes128gcm');
+        assert.equal(req.headers.ttl,'86400');assert.equal(req.headers.urgency,'high');assert(data.length<=4096);
+        const authorization=/^vapid t=([A-Za-z0-9_.-]+), k=([A-Za-z0-9_-]+)$/.exec(req.headers.authorization);
+        assert(authorization);const [head,claims,sig]=authorization[1].split('.');
+        assert.equal(JSON.parse(Buffer.from(head,'base64url')).alg,'ES256');
+        const claim=JSON.parse(Buffer.from(claims,'base64url'));
+        assert.equal(claim.aud,origin);assert(claim.exp>Date.now()/1000&&claim.exp<Date.now()/1000+86400);
+        const publicKey=Buffer.from(authorization[2],'base64url');assert.equal(publicKey.length,65);
+        const key=crypto.createPublicKey({format:'jwk',key:{kty:'EC',crv:'P-256',
+          x:publicKey.subarray(1,33).toString('base64url'),y:publicKey.subarray(33).toString('base64url')}});
+        assert.equal(Buffer.from(sig,'base64url').length,64);
+        assert(crypto.verify('sha256',Buffer.from(head+'.'+claims),{key,dsaEncoding:'ieee-p1363'},Buffer.from(sig,'base64url')));
+        assert.equal(authorization[2],receiverKey.vapid);
+        const salt=data.subarray(0,16);assert.equal(data.readUInt32BE(16),4096);assert.equal(data[20],65);
+        const as=data.subarray(21,86),ua=receiverKey.ua.getPublicKey(),secret=receiverKey.ua.computeSecret(as);
+        const hmac=(key,bytes)=>crypto.createHmac('sha256',key).update(bytes).digest();
+        const prkKey=hmac(receiverKey.auth,secret);
+        const ikm=hmac(prkKey,Buffer.concat([Buffer.from('WebPush: info\0'),ua,as,Buffer.from([1])]));
+        const prk=hmac(salt,ikm);
+        const cek=hmac(prk,Buffer.concat([Buffer.from('Content-Encoding: aes128gcm\0'),Buffer.from([1])])).subarray(0,16);
+        const nonce=hmac(prk,Buffer.concat([Buffer.from('Content-Encoding: nonce\0'),Buffer.from([1])])).subarray(0,12);
+        const decipher=crypto.createDecipheriv('aes-128-gcm',cek,nonce);decipher.setAuthTag(data.subarray(data.length-16));
+        const clear=Buffer.concat([decipher.update(data.subarray(86,data.length-16)),decipher.final()]);
+        assert.equal(clear[clear.length-1],2);const payload=JSON.parse(clear.subarray(0,clear.length-1).toString('utf8'));
+        assert.equal(payload.tag,'ridvanses-ann-'+payload.id);assert.equal(payload.data.url,'/dinle?code='+encodeURIComponent(payload.tourCode));
+        received.push({path:req.url,payload,bytes:data.length,signatureValid:true});
+        if(req.url==='/gone'){res.writeHead(410);res.end();}
+        else if(req.url==='/dead'){res.writeHead(404);res.end();}
+        else if(req.url==='/redirect'){res.writeHead(302,{Location:origin+'/follow'});res.end();}
+        else{
+          const slow=req.url==='/a'&&payload.title==='Toplanma — التجمع';
+          if(slow)slowPushPending=true;
+          const timer=setTimeout(()=>{if(slow)slowPushPending=false;if(!res.destroyed){res.writeHead(201);res.end();}},slow?1500:40);
+          res.on('close',()=>{clearTimeout(timer);if(slow)slowPushPending=false;});
+        }
+      }catch(e){errors.push(e.message);res.writeHead(400);res.end();}
+    });
+  });
+  const wait=ms=>new Promise(r=>setTimeout(r,ms));
+  const until=async(fn,label)=>{const end=Date.now()+8000;while(!fn()){assert.equal(errors.length,0,errors.join(';'));if(Date.now()>end)throw Error('V73 timeout '+label);await wait(10);}};
+  const post=async(path,body,status=200,authorized=false)=>{
+    const response=await fetch(baseUrl+path,{method:'POST',headers:authorized?auth:plain,body:JSON.stringify(body)});
+    const data=await response.json();assert.equal(response.status,status,JSON.stringify(data));return data;
+  };
+  const subscribe=async(path,code,pin)=>{
+    const ua=crypto.createECDH('prime256v1');ua.generateKeys();const secret=crypto.randomBytes(16);
+    const body={endpoint:origin+path,keys:{p256dh:ua.getPublicKey().toString('base64url'),auth:secret.toString('base64url')},
+      tourCode:code,pin,lang:'tr',deviceId:'push-'+path,revision:++subscriptionRevision};
+    clients.set(path,{ua,auth:secret,vapid:publicKey});
+    const result=await post('/api/push/subscribe',body);
+    const row={path,body,subscriptionToken:result.subscriptionToken};registrations.push(row);return row;
+  };
+  const publish=async(code,title,body)=>{
+    const started=Date.now();const result=await post('/api/announcements',{tourCode:code,title,message:body},200,true);
+    const elapsed=Date.now()-started;maxApiMs=Math.max(maxApiMs,elapsed);
+    assert(elapsed<1000,'announcement API waited for remote delivery');
+    return result.announcement;
+  };
+  let publicKey;
+  try{
+    await new Promise(resolve=>receiver.listen(0,'127.0.0.1',resolve));origin='http://127.0.0.1:'+receiver.address().port;
+    process.env.RYS_PUSH_TEST_ORIGIN=origin;
+    const k=await fetch(baseUrl+'/api/push/vapid-public-key');assert.equal(k.status,200);publicKey=(await k.json()).publicKey;
+    assert.equal(Buffer.from(publicKey,'base64url').length,65);
+
+    // Boot a second real process against the persisted identity; inherit the
+    // rehearsal preload when present, so normal post-apply CLI also uses this check.
+    const restartScript="const http=require('node:http'),servers=[],create=http.createServer,interval=global.setInterval;\nhttp.createServer=function(...args){const s=create.apply(this,args);servers.push(s);return s;};\nglobal.setInterval=(...args)=>{const timer=interval(...args);timer.unref();return timer;};\nconst shutdown=()=>{for(const server of servers){server.closeAllConnections?.();server.close();}};\nconst app=require('./server.js');\nconst listener=app.listen(0,'127.0.0.1',async()=>{\n  try{\n    const r=await fetch('http://127.0.0.1:'+listener.address().port+'/api/push/vapid-public-key');\n    const j=await r.json();if(!r.ok)throw Error(j.error);\n    process.stdout.write('V73_RESTART_KEY '+j.publicKey+'\\n');\n  }catch(e){console.error(e.message);process.exitCode=1;}\n  finally{shutdown();}\n});";
+    const restartedKey=await new Promise((resolve,reject)=>{
+      const child=require('node:child_process').spawn(process.execPath,[...process.execArgv,'-e',restartScript],{
+        cwd:ROOT_DIR,env:{...process.env,PORT:'0'},stdio:['ignore','pipe','pipe']});
+      let stdout='',stderr='';
+      const timer=setTimeout(()=>{child.kill();reject(Error('VAPID restart deadline'));},8000);
+      child.stdout.on('data',x=>{stdout+=x;if(stdout.length>32768)child.kill();});
+      child.stderr.on('data',x=>{stderr=(stderr+x).slice(-2048);});
+      child.on('error',e=>{clearTimeout(timer);reject(e);});
+      child.on('close',code=>{clearTimeout(timer);const match=/V73_RESTART_KEY ([A-Za-z0-9_-]+)/.exec(stdout);
+        if(code!==0||!match)reject(Error('VAPID restart process failed '+stderr));else resolve(match[1]);});
+    });
+    assert.equal(restartedKey,publicKey,'restart must not rotate VAPID identity');
+    for(const code of [a,b]){const r=await post('/api/tours',{code,name:'Push E2E',pin:code===a?'7351':'7352'},200,true);created.push(code);}
+    const ua=crypto.createECDH('prime256v1');ua.generateKeys();
+    const valid={endpoint:origin+'/a',keys:{p256dh:ua.getPublicKey().toString('base64url'),auth:crypto.randomBytes(16).toString('base64url')},
+      tourCode:a,pin:'7351',lang:'tr',deviceId:'bad-case',revision:1};
+    await post('/api/push/subscribe',{...valid,pin:'wrong'},403);
+    await post('/api/push/subscribe',{...valid,tourCode:'UNKNOWN-'+stamp},404);
+    await post('/api/push/subscribe',{...valid,endpoint:'http://169.254.169.254/latest/meta-data/'},403);
+    await post('/api/push/subscribe',{...valid,endpoint:'https://fcm.googleapis.com.evil.test/x'},403);
+    await post('/api/push/subscribe',{...valid,keys:{...valid.keys,p256dh:Buffer.concat([Buffer.from([4]),Buffer.alloc(64)]).toString('base64url')}},400);
+    await post('/api/push/subscribe',{...valid,keys:{...valid.keys,auth:'AA'}},400);
+    const x=await subscribe('/a',a,'7351'),other=await subscribe('/b',b,'7352');
+    const gone=await subscribe('/gone',a,'7351'),dead=await subscribe('/dead',a,'7351'),redirect=await subscribe('/redirect',a,'7351');
+    await post('/api/push/unsubscribe',{endpoint:gone.body.endpoint},403);
+    const ws=new WebSocket(url);sockets.push(ws);const messages=[];
+    ws.on('error',e=>errors.push(e.message));ws.on('message',(raw,binary)=>{if(!binary)messages.push(JSON.parse(raw));});
+    await new Promise((resolve,reject)=>{ws.once('open',resolve);ws.once('error',reject);});
+    ws.send(JSON.stringify({type:'join',tourCode:a,roomId:'genel',role:'guide',name:'Push guide',token}));
+    await until(()=>messages.some(m=>m.type==='joined'),'guide join');
+    ws.send(JSON.stringify({type:'guide-stream-state',isLive:true,broadcastMode:'mic',audioStateSeq:10,audioMediaEpoch:10}));
+    await until(()=>messages.some(m=>m.type==='stream-state'&&m.isLive===true),'live audio controller');
+    const pilgrim=new WebSocket(url);sockets.push(pilgrim);let pilgrimJoined=false,pcmReceivedAt=0;
+    pilgrim.on('error',e=>errors.push(e.message));
+    pilgrim.on('message',(raw,binary)=>{
+      if(binary){if(raw.length===972&&raw.readUInt32LE(0)===73)pcmReceivedAt=Date.now();}
+      else if(JSON.parse(raw).type==='joined')pilgrimJoined=true;
+    });
+    await new Promise((resolve,reject)=>{pilgrim.once('open',resolve);pilgrim.once('error',reject);});
+    pilgrim.send(JSON.stringify({type:'join',tourCode:a,roomId:'genel',role:'pilgrim',pin:'7351',name:'Push/audio probe'}));
+    await until(()=>pilgrimJoined,'audio listener join');
+    const ann=await publish(a,'Toplanma — التجمع','Türkçe / العربية\nKapı 73, saat 20:15.');
+    await until(()=>received.filter(r=>r.payload.id===ann.id).length===4,'encrypted REST fanout');
+    const first=received.find(r=>r.path==='/a'&&r.payload.id===ann.id);
+    assert.equal(first.payload.title,ann.title);assert.equal(first.payload.body,ann.message);
+    assert(!received.some(r=>r.path==='/b'&&r.payload.id===ann.id));assert(!received.some(r=>r.path==='/follow'));
+    assert(slowPushPending,'provider must still be waiting');
+    const pcmSentAt=Date.now(),pcm=Buffer.alloc(972);pcm.writeUInt32LE(73);pcm.writeDoubleLE(pcmSentAt,4);
+    for(let i=0;i<480;i++)pcm.writeInt16LE(1234,12+i*2);
+    ws.send(pcm);await until(()=>pcmReceivedAt>0,'live PCM during slow push');
+    audioDuringPushMs=pcmReceivedAt-pcmSentAt;assert(audioDuringPushMs<500);assert(slowPushPending);
+
+    await wait(100);
+    await post('/api/push/unsubscribe',{endpoint:gone.body.endpoint},200);
+    await post('/api/push/unsubscribe',{endpoint:dead.body.endpoint},200);
+    ws.send(JSON.stringify({type:'quick-announcement',title:'WS duyurusu',message:'Gerçek zamanlı duyuru'}));
+    await until(()=>received.some(r=>r.path==='/a'&&r.payload.title==='WS duyurusu'),'WS push trigger');
+    const opened=await post('/api/ws-relay',{type:'relay-open',version:56});relay=opened;
+    await post('/api/ws-relay',{clientId:opened.clientId,relayKey:opened.relayKey,requestSeq:1,token,
+      subscriptionContext:{type:'join',tourCode:a,roomId:'genel',role:'guide',name:'HTTP push guide',token},
+      messages:[{type:'quick-announcement',title:'Relay duyurusu',message:'HTTP ortak handler'}]});
+    await until(()=>received.some(r=>r.path==='/a'&&r.payload.title==='Relay duyurusu'),'relay push trigger');
+    const moved={...x.body,tourCode:b,pin:'7352',revision:100};
+    await post('/api/push/subscribe',moved);
+    await post('/api/push/subscribe',{...x.body,revision:99},409);
+    const beforeMove=await publish(a,'Eski tur','Ulaşmamalı');await wait(150);
+    assert(!received.some(r=>r.path==='/a'&&r.payload.id===beforeMove.id));
+    const next=await publish(b,'Yeni tur','Sadece güncel kayıt');
+    await until(()=>received.some(r=>r.path==='/a'&&r.payload.id===next.id)&&received.some(r=>r.path==='/b'&&r.payload.id===next.id),'tour migration');
+    await post('/api/push/unsubscribe',{endpoint:x.body.endpoint,subscriptionToken:'bad'},403);
+    await post('/api/push/unsubscribe',{endpoint:x.body.endpoint,subscriptionToken:x.subscriptionToken});
+    const after=await publish(b,'Abonelikten sonra','Tek alıcı');
+    await until(()=>received.some(r=>r.path==='/b'&&r.payload.id===after.id),'unsubscribe remaining recipient');
+    assert(!received.some(r=>r.path==='/a'&&r.payload.id===after.id));
+    const login=await post('/api/login',{email:'selamet',password:process.env.SELAMET_PASSWORD||'selamet2026'});
+    const scoped=await fetch(baseUrl+'/api/announcements',{method:'POST',headers:{...plain,Authorization:'Bearer '+login.token},
+      body:JSON.stringify({tourCode:b,title:'Forbidden',message:'No cross-tour push'})});
+    assert.equal(scoped.status,403);await scoped.arrayBuffer();
+    await fetch(baseUrl+'/api/logout',{method:'POST',headers:{Authorization:'Bearer '+login.token}});
+    assert.equal(errors.length,0,errors.join(';'));
+    console.log('V73 E2E METRICS '+JSON.stringify({keyBytes:65,restartSameKey:true,announcementApiMaxMs:maxApiMs,liveAudioDuringSlowPush:true,liveAudioMs:audioDuringPushMs,denials:6,encryptedBodies:received.length,maxBodyBytes:Math.max(...received.map(r=>r.bytes)),
+      independentDecrypt:true,es256Valid:true,ttl:86400,urgency:'high',otherTourLeak:0,gone410Removed:true,gone404Removed:true,
+      redirectFollowed:false,wsTrigger:true,httpRelayTrigger:true,tourMoved:true,staleRevisionRejected:true,unsubscribe:true,scopedPublishDenied:true}));
+    recordResult('ADIM-3.V73','Real Web Push/VAPID HTTP receiver, independent ECDH-HKDF-GCM decrypt; PIN/SSRF/key/scope guards; WS/relay trigger; tour migration and gone cleanup',true);
+  }finally{
+    for(const s of sockets)try{s.terminate();}catch(e){}
+    if(relay)try{await post('/api/ws-relay',{type:'relay-close',version:56,clientId:relay.clientId,relayKey:relay.relayKey});}catch(e){}
+    for(const r of registrations)try{await post('/api/push/unsubscribe',{endpoint:r.body.endpoint,subscriptionToken:r.subscriptionToken});}catch(e){}
+    for(const code of created){const r=await fetch(baseUrl+'/api/tours/'+encodeURIComponent(code),{method:'DELETE',headers:auth});await r.arrayBuffer();}
+    await wait(100);
+    if(previousOrigin===undefined)delete process.env.RYS_PUSH_TEST_ORIGIN;else process.env.RYS_PUSH_TEST_ORIGIN=previousOrigin;
+    receiver.closeAllConnections?.();await new Promise(resolve=>receiver.close(resolve));
+  }
+}
+
 async function main() {
   const runtimePath = path.join(ROOT_DIR, 'data', 'runtime.json');
   const runtimeSnapshot = fs.existsSync(runtimePath) ? fs.readFileSync(runtimePath, 'utf8') : null;
+  process.env.NODE_ENV='test';
+  process.env.RYS_PUSH_TEST_ONLY='1'; // Never send verifier announcements to real subscriptions.
   try {
     await runStep1StaticAndSyntaxChecks();
     await runStep2And3LiveServerAndWsTests();
@@ -4897,6 +5265,7 @@ async function main() {
     await runStep5V70AudioChecks();
     await runStep5V71AudioChecks();
     await runStep5V72QualityChecks();
+    await runStep5V73PushChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);

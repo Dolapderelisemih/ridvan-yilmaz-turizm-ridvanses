@@ -1,14 +1,14 @@
 // PATCH: sw-v53
 // PATCH: sw-v53
 // PATCH: sw-v53
-const CACHE_NAME = 'ridvanses-pwa-v72';
+const CACHE_NAME = 'ridvanses-pwa-v73';
 const ASSETS_TO_CACHE = [
   '/',
   '/dinle',
   '/rota',
   '/ani-kitabi',
   '/css/style.css',
-  '/vercel-ws-shim.js?v=72',
+  '/vercel-ws-shim.js?v=73',
   '/js/umrah-steps-map.js',
   '/pcm-capture-worklet.js?v=72-audio',
   '/pcm-player-worklet.js?v=72-audio',
@@ -71,27 +71,43 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-self.addEventListener('message', (event) => {
-  const data = event.data || {};
-  if (data.type === 'SHOW_NOTIFICATION' && self.registration.showNotification) {
-    self.registration.showNotification(data.title || 'Rıdvan Yılmaz Turizm Duyurusu', {
-      body: data.body || '',
-      icon: '/icons/icon-512.png',
-      badge: '/icons/icon-192.png',
-      vibrate: [200, 100, 200],
-      tag: data.tag || 'ridvanses-notify'
-    });
-  }
-});
 
-self.addEventListener('notificationclick', (event) => {
+function rysNotificationUrl(value){
+  try{
+    const url=new URL(value||'/dinle',self.location.origin);
+    if(url.origin===self.location.origin&&url.pathname==='/dinle')return url.href;
+  }catch(e){}
+  return new URL('/dinle',self.location.origin).href;
+}
+function showRysNotification(message){
+  const data=message&&typeof message==='object'?message:{body:String(message||'')};
+  const tag=typeof data.tag==='string'&&data.tag?data.tag.slice(0,180):
+    data.id?'ridvanses-ann-'+String(data.id).slice(0,96):'ridvanses-notify';
+  return self.registration.showNotification(String(data.title||'RıdvanSes Kafile Duyurusu').slice(0,160),{
+    body:String(data.body||data.message||'').slice(0,2000),
+    icon:'/icons/icon-512.png',badge:'/icons/icon-192.png',vibrate:[200,100,200],
+    tag,renotify:false,data:{url:rysNotificationUrl(data.data?.url||data.url)}
+  });
+}
+self.addEventListener('message',event=>{
+  if(event.data?.type==='SHOW_NOTIFICATION')event.waitUntil(showRysNotification(event.data));
+});
+self.addEventListener('push',event=>{
+  let data={};
+  if(event.data){
+    try{data=event.data.json();}
+    catch(e){try{data={body:event.data.text()};}catch(e){}}
+  }
+  event.waitUntil(showRysNotification(data));
+});
+self.addEventListener('notificationclick',event=>{
   event.notification.close();
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      if (clientList.length > 0) {
-        return clientList[0].focus();
-      }
-      return self.clients.openWindow('/dinle');
-    })
-  );
+  const target=rysNotificationUrl(event.notification.data?.url);
+  event.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(async clients=>{
+    const exact=clients.find(c=>c.url===target);
+    if(exact){try{return await exact.focus();}catch(e){}}
+    const active=clients.find(c=>{try{const u=new URL(c.url);return u.origin===self.location.origin&&u.pathname==='/dinle';}catch(e){return false;}});
+    if(active?.navigate){try{const navigated=await active.navigate(target);if(navigated)return await navigated.focus();}catch(e){}}
+    return self.clients.openWindow(target);
+  }));
 });
