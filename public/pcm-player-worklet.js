@@ -2,7 +2,7 @@
 // PATCH: player-v52
 // PATCH: player-v51
 // PATCH: player-v50
-// RıdvanSes v50 — Sıra Numarası (Seq) Tabanlı Jitter Tamponu, 48..400 Lag Pitch-PLC ve ±1000 ppm Hermite ASRC Oynatıcı
+// RıdvanSes v72 — Seq jitter buffer, pitch PLC, PI clock servo and band-limited fractional ASRC.
 const RYS_MOD = 0x80000000;
 function rysDiff(a, b) {
   return ((a - b + 0x40000000) & 0x7fffffff) - 0x40000000;
@@ -95,11 +95,29 @@ class RysPitchPlc {
   }
 }
 
+// 32-tap fractional-delay FIR, 256 interpolated phase intervals.
+// The separate 193-tap input FIR still supplies the low-rate anti-alias guard.
+function rysFractionalTable(){
+  const table=new Float32Array(257*32);
+  for(let p=0;p<=256;p++){
+    let sum=0;
+    for(let k=0;k<32;k++){
+      const d=k-15-p/256;
+      const w=.42-.5*Math.cos(2*Math.PI*k/31)+.08*Math.cos(4*Math.PI*k/31);
+      const h=(Math.abs(d)<1e-10?1:Math.sin(Math.PI*d)/(Math.PI*d))*w;
+      table[p*32+k]=h;sum+=h;
+    }
+    for(let k=0;k<32;k++)table[p*32+k]/=sum;
+  }
+  return table;
+}
+
 class RysPcmPlayerProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.rate = typeof sampleRate === 'number' && sampleRate > 0 ? sampleRate : 48000;
     this.hb = 0;
+    this.resampleTable = rysFractionalTable();
     this.target = 0.120;
     this.jitter = 0;
     this.lastArrival = null;
@@ -122,6 +140,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
 
   _reset() {
     this.rxFir=this.rate<24000?new RysOutputFir(this.rate):null;
+    this.sourceFade = 0;
     this.plc = new RysPitchPlc();
     this.plcFrame = new Float32Array(480);
     this.recoveryFrame=new Float32Array(480);this.continuation=new Float32Array(480);
@@ -136,11 +155,10 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     this.missing = 0;
     this.wait = 0;
     this.phase = 0;
+    this.resampleRing = new Float32Array(32);
+    this.resamplePos = 0;
     this.ratio = 1;
-    this.y0 = 0;
-    this.y1 = 0;
-    this.y2 = 0;
-    this.y3 = 0;
+    this.driftIntegral = 0;
     this.primed = false;
     this.resetFrom = this.lastOut || 0;
     this.resetFade = 0;
@@ -229,7 +247,12 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
 
   _pull() {
     if (this.fi >= 480) this._nextFrame();
-    const x=this.frame[this.fi++];
+    let x=this.frame[this.fi++];
+    // Ramp every fresh source before FIR/ASRC history; the low-rate FIR
+    // delays an abrupt step past the output fade (4 ms group delay).
+    if(this.sourceFade<120){
+      x*=.5-.5*Math.cos(Math.PI*(++this.sourceFade)/120);
+    }
     return this.rxFir?this.rxFir.step(x):x;
   }
 
@@ -283,27 +306,31 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     }else this.catchupAge=0;
     const queued = this.q.size * 480 + (480 - this.fi);
     const error = queued / 24000 - this.target;
-    const wanted = 1 + Math.max(-0.001, Math.min(0.001, error * 0.01));
+    // PI removes static clock error without consuming the jitter safety margin.
+    const proportional = error * .04;
+    const control = proportional + this.driftIntegral;
+    if(this.missing===0&&this.q.size>0&&
+      (Math.abs(control)<.001||error*control<0)){
+      this.driftIntegral=Math.max(-.001,Math.min(.001,
+        this.driftIntegral+error*(n/this.rate)*.0004));
+    }
+    const wanted = 1 + Math.max(-0.001, Math.min(0.001, proportional + this.driftIntegral));
     this.ratio += (wanted - this.ratio) * Math.min(1, n / (this.rate * 2));
     const step = (24000 / this.rate) * this.ratio;
     if (!this.primed) {
-      this.y0 = 0;
-      this.y1 = this._pull();
-      this.y2 = this._pull();
-      this.y3 = this._pull();
+      this.resampleRing.fill(0);this.resamplePos=0;
+      // Causal 17-source-sample delay: do not prefetch a future packet early.
       this.phase = 0;
       this.primed = true;
     }
     for (let i = 0; i < n; i++) {
       const t = this.phase;
-      const a = this.y0;
-      const b = this.y1;
-      const c = this.y2;
-      const d = this.y3;
-      const c1 = 0.5 * (c - a);
-      const c2 = a - 2.5 * b + 2 * c - 0.5 * d;
-      const c3 = 0.5 * (d - a) + 1.5 * (b - c);
-      let y = ((c3 * t + c2) * t + c1) * t + b;
+      const phase=t*256,row=Math.min(255,Math.floor(phase)),mix=phase-row;
+      let y=0;
+      for(let k=0;k<32;k++){
+        const h=this.resampleTable[row*32+k],next=this.resampleTable[(row+1)*32+k];
+        y+=this.resampleRing[(this.resamplePos+k)&31]*(h+(next-h)*mix);
+      }
       if (this.fade < this.fadeN) {
         const w = 0.5 - 0.5 * Math.cos((Math.PI * this.fade) / (this.fadeN - 1));
         y = this.blend[this.fade] * (1 - w) + y * w;
@@ -317,10 +344,8 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
       this.phase += step;
       while (this.phase >= 1) {
         this.phase -= 1;
-        this.y0 = this.y1;
-        this.y1 = this.y2;
-        this.y2 = this.y3;
-        this.y3 = this._pull();
+        this.resampleRing[this.resamplePos]=this._pull();
+        this.resamplePos=(this.resamplePos+1)&31;
       }
     }
     // 300 ms'den uzun eksik ses: ileride gerçek ses gelince yeniden ön tamponla.
@@ -331,7 +356,7 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
       this.primed = false;
       this.fi = 480;
       this.haveHistory = false;this.missing=0;this.pendingQueueBlend=false;this.catchupAge=0;this.catchupArmed=false;this.plc=new RysPitchPlc();
-      this.rxFir=this.rate<24000?new RysOutputFir(this.rate):null;
+      this.rxFir=this.rate<24000?new RysOutputFir(this.rate):null;this.sourceFade=0;
       this.resetFrom = this.lastOut;
       this.resetFade = 0;
     }

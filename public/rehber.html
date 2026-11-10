@@ -28,7 +28,7 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=71"></script>
+  <script src="/vercel-ws-shim.js?v=72"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .console-wrap {
@@ -1297,7 +1297,7 @@
     function resetGuideVoiceLock(){
       syncGuideAudioProfile(true);
       const box=document.getElementById('voiceTestStatusBox');
-      if(box){box.style.display='block';box.textContent='Ortam yeniden ölçülüyor: ilk 400 ms konuşmadan bekleyin. Uzun okuma ve dip ses tercihleri korunur.';}
+      if(box){box.style.display='block';box.textContent='Ortam yeniden ölçülüyor: ilk 400 ms ses iletilir; mümkünse konuşmadan bekleyin. Uzun okuma ve dip ses tercihleri korunur.';}
     }
 
     function toggleGuideMicMute(forceState) {
@@ -1601,7 +1601,7 @@
         if (isGuideMicMuted) {
           label.textContent = '🔇 Mikrofon Geçici Sessizde (Özel Konuşma Modu)';
         } else if (!m.ready) {
-          label.textContent = '400 ms ortam ölçümü: konuşmadan bekleyin';
+          label.textContent = '400 ms ortam ölçümü; ses iletiliyor, kısa süre bekleyin';
         } else {
           const dbVal = rms > 0.0001 ? Math.max(-48, Math.min(0, Math.round(20 * Math.log10(rms)))) : -48;
           label.textContent =
@@ -1700,7 +1700,7 @@
         const zero=own(ctx.createGain());zero.gain.value=0;
         source.connect(highPass);highPass.connect(mudCut);mudCut.connect(presence);presence.connect(lowPass);lowPass.connect(gain);
         const onFrame=message=>{if(current())handleGuideMicFloatChunk(message);};
-        const url='/pcm-capture-worklet.js?v=60-audio';
+        const url='/pcm-capture-worklet.js?v=72-audio';
         const options=()=>({muted:isGuideMicMuted,reject:guideSideVoiceRejectLevel,
           continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade});
         if(ctx.audioWorklet&&typeof AudioWorkletNode!=='undefined'){

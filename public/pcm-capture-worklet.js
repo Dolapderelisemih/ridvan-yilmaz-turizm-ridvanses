@@ -3,8 +3,8 @@
 // PATCH: capture-v51
 // PATCH: capture-v50
 // RıdvanSes v50 — Gerçek Zamanlı AudioWorklet Yakalama Motoru
-// 193-Tap 256-Faz Blackman Windowed-Sinc Polyphase Anti-Aliasing FIR (RysFir24 — >-118 dB Stopband)
-// + 400ms Kalibrasyon ve 4s Rolling Minima Tabanlı 4-Bant Yakın-Alan Ses Kilidi (RysNearExpander)
+// 193-tap Blackman FIR; 256 linearly interpolated phase intervals + endpoint.
+// + 400ms unity-gain calibration and speech-frozen 4-band rolling-minima expander.
 // + Worklet & ScriptProcessor Ortak 480-Örnek (20 ms @ 24 kHz) Çekirdeği (RysCaptureKernel)
 
 class RysFir24 {
@@ -14,9 +14,9 @@ class RysFir24 {
     this.t = 0;
     this.count = 0;
     this.r = new Float32Array(512);
-    this.table = new Float32Array(256 * 193);
+    this.table = new Float32Array(257 * 193);
     const fc = Math.min(10200 / rate, 0.45);
-    for (let p = 0; p < 256; p++) {
+    for (let p = 0; p <= 256; p++) {
       let sum = 0;
       for (let k = 0; k < 193; k++) {
         const d = k - 96 + p / 256;
@@ -37,11 +37,15 @@ class RysFir24 {
     while (Math.floor(this.t / 24000) < this.count) {
       const pos = this.t / 24000;
       const b = Math.floor(pos);
-      const p = Math.min(255, Math.floor((pos - b) * 256));
+      const phase = (pos - b) * 256;
+      const p = Math.min(255, Math.floor(phase));
+      const mix = phase - p;
       let y = 0;
       for (let k = 0; k < 193; k++) {
         if (b - k >= 0) {
-          y += this.r[(b - k) & 511] * this.table[p * 193 + k];
+          const h = this.table[p * 193 + k];
+          const next = this.table[(p + 1) * 193 + k];
+          y += this.r[(b - k) & 511] * (h + (next - h) * mix);
         }
       }
       emit(y);
@@ -68,8 +72,9 @@ class RysNearExpander {
     this.age = 0;
     this.look = new Float32Array(240);
     this.li = 0;
-    this.g = 0.126;
+    this.g = 1;
     this.hold = 0;
+    this.toneEnergy=0;this.toneCorr=0;this.toneError=0;this.toneX1=0;this.toneX2=0;
     this.ready = false;
   }
 
@@ -92,6 +97,14 @@ class RysNearExpander {
     const x = 0.9793 * (this.hpY + raw - this.hpX);
     this.hpX = raw;
     this.hpY = Math.abs(x)<1e-20?0:x;
+    // A stationary sinusoid is predictable by a second-order recurrence.
+    // Do not freeze its noise estimate as if it were sustained harmonic speech.
+    this.toneEnergy+=.001*(x*x-this.toneEnergy);
+    this.toneCorr+=.001*(x*this.toneX1-this.toneCorr);
+    const cos=Math.max(-1,Math.min(1,this.toneCorr/(this.toneEnergy+1e-20)));
+    const residual=x-2*cos*this.toneX1+this.toneX2;
+    this.toneError+=.001*(residual*residual-this.toneError);
+    this.toneX2=this.toneX1;this.toneX1=x;
     for (let k = 0; k < 3; k++) {
       this.lp[k] += this.a[k] * (x - this.lp[k]);
     }
@@ -106,6 +119,9 @@ class RysNearExpander {
     if (++this.count === 240) {
       this.count = 0;
       this.age += 0.01;
+      // A speech interval must not become the next noise floor when minima rotate.
+      const open=4.5+(this.reject-.5)*4;
+      const speechLikely=this.ready&&this.hold>0&&this.toneError>this.toneEnergy*.0005;
       for (let k = 0; k < 4; k++) {
         this.cur[k] = Math.min(this.cur[k], this.e[k]);
         let c = this.cur[k];
@@ -114,7 +130,7 @@ class RysNearExpander {
         }
         const t = this.age < 0.4 ? this.e[k] : Math.max(1e-10, c * 1.4);
         const alpha = this.age < 0.4 ? 0.25 : t < this.n[k] ? 0.08 : 0.02;
-        this.n[k] += alpha * (t - this.n[k]); // independent of gate/hold
+        if(!speechLikely||t<this.n[k])this.n[k] += alpha * (t - this.n[k]);
       }
       if (++this.hops === 50) {
         this.hops = 0;
@@ -128,15 +144,15 @@ class RysNearExpander {
       const e = this.e[1] + 1.3 * this.e[2] + 0.35 * this.e[3];
       const n = this.n[1] + 1.3 * this.n[2] + 0.35 * this.n[3] + 1e-12;
       const snr = 10 * Math.log10((e + 1e-12) / n);
-      const open = 7.5 + (this.reject - 0.5) * 4;
+      // 2 dB hysteresis stays above the measured stationary noise excess.
       const rumble = (this.e[1] + this.e[2]) / (this.e[0] + 1e-12) > 0.8;
-      if (this.ready && rumble && snr > (this.hold ? open - 4 : open)) {
+      if (this.ready && rumble && snr > (this.hold ? open - 2 : open)) {
         this.hold = 24;
       } else if (this.hold) {
         this.hold--;
       }
     }
-    const want = this.ready && (this.hold || this.continuousSpeech) ? 1 : 0.126;
+    const want = !this.ready || this.hold || this.continuousSpeech ? 1 : 0.126;
     this.g += (want - this.g) * (1 - Math.exp(-1 / (24000 * (want > this.g ? 0.003 : 0.12))));
     const d = this.look[this.li];
     this.look[this.li] = x;
@@ -167,7 +183,7 @@ class RysCaptureKernel {
     this.accept = (s) => {
       const v = this.gate.step(s);
       this.mg += ((this.muted ? 0 : 1) - this.mg) * 0.0083;
-      const active=this.gate.ready&&(this.gate.hold>0||this.gate.continuousSpeech);
+      const active=!this.gate.ready||this.gate.hold>0||this.gate.continuousSpeech;
       this.quietSamples=active?0:this.quietSamples+1;
       const want=(!this.comfortFade||active||this.quietSamples<=14400)?1:0;
       if(want!==this.comfortTarget){

@@ -1567,9 +1567,9 @@ async function runStep5V54AudioChecks(){
     if(mode!=='join')assert.equal(body.joinContext??null,null);
     else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
   }
-  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v71"));assert(sw.includes('/vercel-ws-shim.js?v=71'));
+  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v72"));assert(sw.includes('/vercel-ws-shim.js?v=72'));
   for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
-    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'71',f+' stale shim');
+    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'72',f+' stale shim');
   }
   if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
   console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
@@ -2352,8 +2352,8 @@ async function runStep5V59AudioChecks(){
   rateBox.Date.now=()=>60000;limiter({...req,ip:'fresh'},response,()=>admitted++);assert.equal(admitted,2);
   assert(server.includes('rysSendAudio(peer.ws,fallbackPayload,false)'));
   assert(!server.includes('fallbackJsonStr'));
-  assert(read('public/sw.js').includes('pcm-player-worklet.js?v=61-audio'));
-  assert(read('public/sw.js').includes('pcm-capture-worklet.js?v=60-audio'));
+  assert(read('public/sw.js').includes('pcm-player-worklet.js?v=72-audio'));
+  assert(read('public/sw.js').includes('pcm-capture-worklet.js?v=72-audio'));
   recordResult('ADIM-5.V59','8/16/44.1/48k DSP; FIR rejection; DC/limiter/partition; PLC/jitter/catchup; mic mute/retry; gain ramps; bounded CGNAT buckets',true);
   console.log('V59 DSP METRICS '+JSON.stringify({rates:dsp,fixture200HzMaxStep:+maxStep.toFixed(6),concealedSamples:p.stats.concealed}));
   console.log('V59 UNIT PASS: numerical model checks; no physical headset or lock-screen guarantee');
@@ -2534,9 +2534,9 @@ async function runStep5V60AudioChecks(){
     p.rxFir.r.fill(1);p.playing=true;p.expected=0;p.missing=15;
     p.process([],[[new Float32Array(128)]]);assert(!p.playing);assert(p.rxFir.r.every(x=>x===0));
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v71'));
-  for(const asset of ['pcm-player-worklet.js?v=61-audio','pcm-capture-worklet.js?v=60-audio'])assert(sw.includes(asset));
-  assert(guide.includes('pcm-capture-worklet.js?v=60-audio'));assert(read('public/dinle.html').includes('pcm-player-worklet.js?v=61-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v72'));
+  for(const asset of ['pcm-player-worklet.js?v=72-audio','pcm-capture-worklet.js?v=72-audio'])assert(sw.includes(asset));
+  assert(guide.includes('pcm-capture-worklet.js?v=72-audio'));assert(read('public/dinle.html').includes('pcm-player-worklet.js?v=72-audio'));
   console.log('V60 UNIT METRICS '+JSON.stringify({lifecycleChecks:checks,alias}));
   recordResult('ADIM-5.V60','Low-rate player anti-alias; source/reset/starvation; guide permission/module/preview/heal races; explicit capture shutdown; cache60',true);
   console.log('V60 UNIT PASS');
@@ -2744,8 +2744,8 @@ async function runStep5V61AudioChecks(){
     assert(published.filter(m=>['room-state','stream-state'].includes(m.type)).every(m=>(m.audioSourceId||m.room?.audioSourceId)==='stable-page'));
     checks.push('MQTT-room-and-stream-source-parity');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v71'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));
-  assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));
+  assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V61 UNIT METRICS '+JSON.stringify({checks,reset,capture24kFrames:frames.length}));
   recordResult('ADIM-5.V61','Socket/Blob/retry/source ownership; 5-rate reset/starvation de-click; 24k capture; source schema/digest/MQTT; cache61',true);
   console.log('V61 UNIT PASS');
@@ -2983,7 +2983,7 @@ async function runStep5V62AudioChecks(){
     }
     checks.push('failed-poll-retry-keeps-latest-stop-and-resume-only');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v71'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V62 UNIT METRICS '+JSON.stringify({checks,coalescerPostStopAudio:0,receiverPostStopFrames:0}));
   recordResult('ADIM-5.V62','Stop/mode/source barriers across coalescer, relay, receiver, demo lifecycle and server; idle reconnect; cache62',true);
   console.log('V62 UNIT PASS');
@@ -3168,7 +3168,7 @@ async function runStep5V63AudioChecks(){
     const epoch=h.g.rxAudioDeliveryEpoch;s.onmessage({data:JSON.stringify({type:'room-state',room:{...state(1,true),audioStateKnown:true}})});
     assert(h.player.q.has(1001));assert.equal(h.g.rxAudioDeliveryEpoch,epoch);checks.push('unknown-to-known-live-snapshot-preserves-current-pcm');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v71'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V63 UNIT METRICS '+JSON.stringify({checks,snapshotRecovered:true,staleStateResets:0,renewalFirstPcmPreserved:true}));
   recordResult('ADIM-5.V63','Ordered state/snapshot recovery; terminal disconnect; source reset; inheritance; MQTT parity; renewal state-before-PCM; cache63',true);
   console.log('V63 UNIT PASS');
@@ -3355,7 +3355,7 @@ async function runStep5V64AudioChecks(){
     deliver(state(12,12,true,'mic'));assert.equal(stopped,1);assert.equal(h.g.activeGuideDemoSources.size,0);
     checks.push('demo-topic-keeps-current-note-and-mode-change-stops-it');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v71'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V64 UNIT METRICS '+JSON.stringify({checks,postResumeOldFrames:0,capturedOldBatchFrames:0,currentPendingPreserved:true,topicTimelinePreserved:true}));
   recordResult('ADIM-5.V64','Media epoch across PCM/synth/coalescer/server/receiver; topic continuity; Blob fencing; stop-resume during relay-open; pending-media preservation; cache64',true);console.log('V64 UNIT PASS');
 }
@@ -3519,7 +3519,7 @@ async function runStep5V65AudioChecks(){
     const good=member('rys56-good','c'.repeat(48));g.serveRysRelay(good,{auth:true,method:'POST',body:{requestSeq:1}},response(),'good',{type:'join',role:'guide'});assert.equal(good.lastSeen,35001);
     checks.push('auth-failure-retires-verified-privileged-capability-public-ID-cannot-disconnect-legacy-no-failed-lease-renewal');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v71'));assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V65 UNIT METRICS '+JSON.stringify({checks,unprimedFrames:0,retryFirstPcmPreserved:true,fullQueueStopDelivered:true,failedAuthLeaseExtensions:0}));
   recordResult('ADIM-5.V65','Controller readiness; retry control-first and latched full-queue stop; submitted-epoch ACK; auth-failure cleanup and lease/public-ID safety; cache65',true);console.log('V65 UNIT PASS');
 }
@@ -3693,8 +3693,8 @@ async function runStep5V66AudioChecks(){
     h.s.close();assert(h.clients.every(c=>c.ended===1));assert.equal(h.received.length,0);
     checks.push('100-replacements-bounded-active-clients-invalidate-before-synchronous-end');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v71'));assert(sw.includes('vercel-ws-shim.js?v=71'));
-  assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('vercel-ws-shim.js?v=72'));
+  assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V66 UNIT METRICS '+JSON.stringify({checks,clientsAfterDelayedClose:0,staleDelivered:0,activeClientsMax:2,replacements:100}));
   recordResult('ADIM-5.V66','MQTT loader/client/suback/timer ownership across route, close and native takeover; bounded replacement; cache66',true);console.log('V66 UNIT PASS');
 }
@@ -3815,8 +3815,8 @@ async function runStep5V67AudioChecks(){
     sockets.clear();const idle=member('idle-expired','json-expired');g.heartbeat();assert.equal(idle.ws.terminated,1);assert.equal(idle.currentRoom,null);
     checks.push('real-binary-and-JSON-ingress-reject-expired-credentials-idle-heartbeat-cleans-membership');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v71'));assert(sw.includes('vercel-ws-shim.js?v=71'));
-  assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('vercel-ws-shim.js?v=72'));
+  assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V67 UNIT METRICS '+JSON.stringify({checks,expiredGuidePresent:false,expiryGraceMs:0,revokedGuideTerminated:1,revokedAdminTerminated:1,healthyTerminated:0,publicFamilyTerminated:0,cancelledPrepare:true}));
   recordResult('ADIM-5.V67','Native live credential expiry/revoke, token rotation, pending handoff cleanup, public-family isolation and HTTP/static compatibility; cache67',true);console.log('V67 UNIT PASS');
 }
@@ -3975,8 +3975,8 @@ async function runStep5V68AudioChecks(){
     assert.equal(h.room('siyer').audioSourceId,'page');assert.equal(h.room('siyer').audioMediaEpoch,10);assert.equal(h.room('siyer').isLive,true);
     checks.push('dedicated-guide-downgrade-restores-General-source-state-epoch-inheritance');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v71'));assert(sw.includes('vercel-ws-shim.js?v=71'));
-  assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('vercel-ws-shim.js?v=72'));
+  assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V68 UNIT METRICS '+JSON.stringify({checks,collisionCases,crossRoleGuideEvictions:0,downgradeOwner:null,sameRoleReconnect:true,terminalStop:true,coveredByGenel:true}));
   recordResult('ADIM-5.V68','Role-isolated device dedup; native/HTTP/legacy collisions; same-role reconnect; same-socket downgrade/owner release/terminal stop and General inheritance; cache68',true);console.log('V68 UNIT PASS');
 }
@@ -4156,8 +4156,8 @@ async function runStep5V69AudioChecks(){
     assert.equal(h.room().activePublisherClientId,null);assert(h.room('target').clients.has('current'));
     checks.push('cross-tour-prior-guide-removal-does-not-suppress-target-tour-reconciliation');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v71'));assert(sw.includes('vercel-ws-shim.js?v=71'));
-  assert(sw.includes('pcm-player-worklet.js?v=61-audio'));assert(sw.includes('pcm-capture-worklet.js?v=60-audio'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v72'));assert(sw.includes('vercel-ws-shim.js?v=72'));
+  assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V69 UNIT METRICS '+JSON.stringify({checks,vacatedOwners:0,reconciliationsPerAffectedTour:1,sameRoomTerminalControls:0,generalControllerReady:true,crossTourSync:true}));
   recordResult('ADIM-5.V69','Cross-room guide replacement owner cleanup; terminal/General reconciliation after membership install; same-room continuity; existing-context and duplicate-room coverage; cache69',true);console.log('V69 UNIT PASS');
 }
@@ -4770,6 +4770,107 @@ async function runV71IsolationChecks({baseUrl,url,token}){
   }
 }
 
+
+async function runStep5V72QualityChecks(){
+  const assert=require('node:assert/strict'),vm=require('node:vm');
+  const read=f=>fs.readFileSync(path.join(ROOT_DIR,f),'utf8').replace(/\r\n/g,'\n');
+  const capture=read('public/pcm-capture-worklet.js'),player=read('public/pcm-player-worklet.js'),guide=read('public/rehber.html');
+  const db=x=>20*Math.log10(Math.max(1e-20,x));
+  const rms=a=>Math.sqrt(a.reduce((s,x)=>s+x*x,0)/a.length);
+  // Compile trusted production DSP in the host realm: no browser globals or I/O.
+  // This avoids VM global-lookup overhead in four minutes of actual 128-sample rendering.
+  const make=(source,rate=48000)=>{
+    const scope={},base=class{constructor(){this.port={postMessage(){}};}};
+    scope.AudioWorkletProcessor=base;
+    vm.compileFunction(source.replace(/^export .*$/mg,''),['globalThis','sampleRate','AudioWorkletProcessor','registerProcessor'])
+      (scope,rate,base,(name,K)=>scope.P=K);
+    return scope;
+  };
+  const cap=make(capture);
+  const fit=function(a,f,rate){let ss=0,cc=0,sc=0,s1=0,c1=0,ys=0,yc=0,y1=0;for(let i=0;i<a.length;i++){const s=Math.sin(2*Math.PI*f*i/rate),c=Math.cos(2*Math.PI*f*i/rate),y=a[i];ss+=s*s;cc+=c*c;sc+=s*c;s1+=s;c1+=c;ys+=y*s;yc+=y*c;y1+=y;}const A=[[ss,sc,s1,ys],[sc,cc,c1,yc],[s1,c1,a.length,y1]];for(let k=0;k<3;k++){const d=A[k][k];for(let j=k;j<4;j++)A[k][j]/=d;for(let i=0;i<3;i++)if(i!==k){const q=A[i][k];for(let j=k;j<4;j++)A[i][j]-=q*A[k][j];}}const b=A.map(x=>x[3]);let er=0;for(let i=0;i<a.length;i++){const e=a[i]-b[0]*Math.sin(2*Math.PI*f*i/rate)-b[1]*Math.cos(2*Math.PI*f*i/rate)-b[2];er+=e*e;}return{amp:Math.hypot(b[0],b[1]),dc:b[2],thdnDb:db(Math.sqrt(er/a.length)/(Math.hypot(b[0],b[1])/Math.SQRT2))};};
+  const gateProbe=function(snr=10,mode='phrase',profile={}){const g=new cap.RysNearExpander(profile),dt=1/24000,N=mode==='long'?24000*10:24000*3;let seed=1234567;const data=[];const noise=()=>{seed=(1664525*seed+1013904223)>>>0;return(seed/4294967296-.5)*Math.sqrt(12);};const nAmp=.035;let opened=0,trans=0,prev=0;for(let i=0;i<N;i++){const t=i*dt;let env=0;if(mode==='long'){env=t>=.8?1:0;}else if(mode==='cold'){env=t<.25?1:t>=1&&t<1.25?1:0;}else{const rel=t-.8;env=rel>=0&&rel<.08?.12:rel<.48&&rel>=.08?1:rel<.62&&rel>=.48?.12:0;}const voiced=(.65*Math.sin(2*Math.PI*220*t)+.35*Math.sin(2*Math.PI*880*t)+.28*Math.sin(2*Math.PI*1760*t))/Math.sqrt((.65**2+.35**2+.28**2)/2);const x=nAmp*noise()+nAmp*Math.pow(10,snr/20)*env*voiced;g.step(x);const open=g.hold>0;if(open!==prev){trans++;prev=open;}if(open)opened++;if(i%240===0)data.push({t:+t.toFixed(2),gain:g.g,hold:g.hold,noise:Array.from(g.n),energy:Array.from(g.e)});}const period=(a,b)=>{const s=data.filter(x=>x.t>=a&&x.t<b);return{minGain:+Math.min(...s.map(x=>x.gain)).toFixed(4),meanGain:+(s.reduce((v,x)=>v+x.gain,0)/s.length).toFixed(4),open:s.filter(x=>x.hold>0).length+'/'+s.length};};return{snr,mode,regions:{cold:period(.02,.24),onset:period(.8,.88),vowel:period(.9,1.25),coda:period(1.28,1.42),longEarly:period(1,2),longLate:period(8,9)},openedMs:opened/24,trans,data};};
+  const noiseProbe=function(cap,seconds=12){const g=new cap.RysNearExpander();let z=1234567,open=0,maxG=0;for(let i=0;i<24000*seconds;i++){z=(1664525*z+1013904223)>>>0;g.step(.035*(z/4294967296-.5)*Math.sqrt(12));if(i>=24000){if(g.hold)open++;maxG=Math.max(maxG,g.g);}}return{openPct:open/(24000*(seconds-1))*100,finalGain:g.g,maxGain:maxG};};
+  const sim=function({rate=48000,seconds=5,ppm=0,loss=0,burstLoss=0,jitter=0,catchup=false,source=player,tone=197}={}){const b=make(source,rate),p=new b.P(),events=[],nFrames=Math.ceil((seconds+.8)*50*(1+ppm/1e6));let seed=37;for(let seq=0;seq<nFrames;seq++){seed=(1664525*seed+1013904223)>>>0;if(loss&&Math.floor((seq+1)*loss+.5)>Math.floor(seq*loss+.5))continue;if(burstLoss&&seq>=75&&seq<75+burstLoss)continue;let at=seq*.020/(1+ppm/1e6);if(jitter){const k=seq%50;if(k>=20&&k<20+Math.round(jitter/.02))at=Math.max(at,(seq-k+20)*.02+jitter);}if(catchup&&seq>=50&&seq<80)at=Math.max(at,1.6);events.push({seq,at,samples:Float32Array.from({length:480},(_,i)=>.25*Math.sin(2*Math.PI*tone*(seq*480+i)/24000))});}events.sort((a,c)=>a.at-c.at||a.seq-c.seq);let ei=0,prev=0,maxStep=0,maxQ=0,minQ=Infinity,ratioMin=1,ratioMax=1,maxRatioDelta=0,oldRatio=1,started=false,stops=0,zeroRun=0,maxZero=0;const output=[],frame=new Float32Array(128),qTrace=[];for(let index=0;index<seconds*rate;index+=128){const now=index/rate;while(ei<events.length&&events[ei].at<=now){const m=events[ei++];p._push({...m,arrival:m.at*1000});maxQ=Math.max(maxQ,p.q.size);}p.process([],[[frame]]);if(started&&!p.playing)stops++;started=p.playing;ratioMin=Math.min(ratioMin,p.ratio);ratioMax=Math.max(ratioMax,p.ratio);maxRatioDelta=Math.max(maxRatioDelta,Math.abs(p.ratio-oldRatio));oldRatio=p.ratio;if(now>.5)minQ=Math.min(minQ,p.q.size);if(index%(128*200)===0)qTrace.push([+now.toFixed(2),p.q.size,+p.ratio.toFixed(7)]);for(const y of frame){if(!Number.isFinite(y))throw Error('nonfinite');if(now>.4){maxStep=Math.max(maxStep,Math.abs(y-prev));if(Math.abs(y)<1e-7){zeroRun++;maxZero=Math.max(maxZero,zeroRun);}else zeroRun=0;}prev=y;if(seconds<20)output.push(y);}}return {rate,seconds,ppm,loss,burstLoss,jitter,stats:{...p.stats},maxStep,maxQ,minQ,ratioMin,ratioMax,maxRatioDelta,stops,maxZeroMs:maxZero/rate*1000,target:p.target,output,qTrace};};
+  const captureMetrics=[],gateMetrics=[];
+  const pcmBox={Uint8Array,Math,btoa:s=>Buffer.from(s,'binary').toString('base64')};
+  vm.createContext(pcmBox);vm.runInContext(v70Pick(guide,'floatTo16BitBase64'),pcmBox);
+  for(const rate of [44100,48000]){
+    const fir=new cap.RysFir24(rate),out=[];
+    for(let i=0;i<rate*2;i++)fir.push(.5*Math.sin(2*Math.PI*8000*i/rate),x=>out.push(x));
+    const tone=fit(out.slice(24000),8000,24000);assert(tone.thdnDb<-100,'fractional FIR phase spurs '+rate);
+    const frames=[],k=new cap.RysCaptureKernel(rate,{continuousSpeech:true,comfortFade:false},m=>frames.push(...m.samples));
+    for(let at=0;at<rate*2;at+=128)k.process(Float32Array.from({length:Math.min(128,rate*2-at)},(_,j)=>.5*Math.sin(2*Math.PI*997*(at+j)/rate)),at/rate);
+    assert.equal(frames.length,48000);const floats=frames.slice(24000),bytes=Buffer.from(pcmBox.floatTo16BitBase64(floats),'base64');
+    const pcm=Float32Array.from({length:floats.length},(_,i)=>bytes.readInt16LE(2*i)/32768);
+    const thdn=fit(pcm,997,24000).thdnDb;assert(thdn<-85,'capture PCM16 fidelity '+rate+' '+thdn);
+    assert(floats.every(x=>Math.abs(x)<.98));
+    captureMetrics.push({rate,fir8000ThdnDb:+tone.thdnDb.toFixed(2),pcm997ThdnDb:+thdn.toFixed(2)});
+  }
+  for(const snr of [5,10,20]){
+    const phrase=gateProbe(snr,'phrase'),long=gateProbe(snr,'long'),cold=gateProbe(snr,'cold');
+    assert(phrase.regions.vowel.minGain>.95,'5/10/20dB vowel');
+    assert(phrase.regions.coda.minGain>.95,'soft coda hangover');
+    assert(long.regions.longLate.minGain>.98,'speech must not become noise when minima rotate');
+    assert(cold.regions.cold.minGain>.98,'no forced -18dB calibration attenuation');
+    const tail=phrase.data.filter(x=>x.t>=2.5&&x.t<2.9);assert(tail.every(x=>x.gain<.14),'gate must release after speech');
+    gateMetrics.push({snr,vowelMin:phrase.regions.vowel.minGain,codaMin:phrase.regions.coda.minGain,
+      weakPrefixMean:phrase.regions.onset.meanGain,longLateMin:long.regions.longLate.minGain,warmupMin:cold.regions.cold.minGain});
+  }
+  const stationary=noiseProbe(cap);assert.equal(stationary.openPct,0);assert(stationary.finalGain<.127);
+  console.log('V72 CAPTURE METRICS '+JSON.stringify({captureMetrics,gateMetrics,stationary}));
+  recordResult('ADIM-5.V72.CAPTURE','Interpolated FIR phase fidelity; actual PCM16 THD+N; 5/10/20dB envelope, long-vowel/noise discrimination and calibration continuity',true);
+
+  const interpolation=[],reset=[],network=[],drift=[];
+  for(const rate of [8000,16000,24000,44100,48000]){
+    const P=make(player,rate).P;
+    for(const hz of new Set([997,Math.min(5600,rate*.35),Math.min(8000,rate*.35)])){
+      const p=new P(),out=[];let seq=0;
+      for(let at=0;at<rate*2;at+=128){
+        while(p.q.size<12){const s=seq++;p._push({seq:s,arrival:s*20,samples:Float32Array.from({length:480},(_,i)=>.25*Math.sin(2*Math.PI*hz*(s*480+i)/24000))});}
+        // Isolate interpolation error from intentional clock servo modulation.
+        p.target=(p.q.size*480+480-p.fi)/24000;p.ratio=1;p.driftIntegral=0;
+        const a=new Float32Array(128);p.process([],[[a]]);out.push(...a);
+      }
+      const f=fit(out.slice(Math.round(rate*.5),Math.round(rate*1.5)),hz,rate);
+      assert(f.thdnDb<-75,'ASRC image rejection '+rate+'/'+hz+' '+f.thdnDb);
+      assert(Math.abs(db(f.amp/.25))<.02,'ASRC passband');
+      interpolation.push({rate,hz,residualDb:+f.thdnDb.toFixed(2),gainDb:+db(f.amp/.25).toFixed(4)});
+    }
+    const p=new P(),push=(seq,v)=>{for(let i=0;i<12;i++)p._push({seq:seq+i,arrival:(seq+i)*20,samples:new Float32Array(480).fill(v)});};
+    const render=seconds=>{const a=[];for(let i=0;i<Math.ceil(rate*seconds/128);i++){const b=new Float32Array(128);p.process([],[[b]]);a.push(...b);}return a;};
+    const maxStep=a=>{let last=0,max=0;for(const y of a){assert(Number.isFinite(y));max=Math.max(max,Math.abs(y-last));last=y;}return max;};
+    push(0,.2);render(.1);p.port.onmessage({data:{type:'reset'}});render(.03);push(100,-.2);
+    const a=render(.03),rs=maxStep(a);assert.equal(a[0],0);assert(rs<.004*24000/rate,'reset slope bound '+rate+' '+rs);
+    render(1);assert(!p.playing);push(1000,.2);const b=render(.03),ss=maxStep(b);assert.equal(b[0],0);assert(ss<.004*24000/rate,'starvation slope bound');
+    reset.push({rate,resetStep:+rs.toFixed(7),starveStep:+ss.toFixed(7)});
+  }
+  for(const loss of [.01,.03,.05]){
+    const r=sim({loss,seconds:8});assert.equal(r.stats.concealed,Math.round(400*loss)*480);assert.equal(r.stops,0);assert(r.maxStep<.04);
+    network.push({...r,output:undefined,qTrace:undefined});
+  }
+  for(const burstLoss of [2,3,5]){
+    const r=sim({burstLoss,seconds:5});assert.equal(r.stats.concealed,480*burstLoss);assert(r.maxStep<.04);
+    network.push({...r,output:undefined,qTrace:undefined});
+  }
+  for(const jitter of [.06,.12,.18]){
+    const r=sim({jitter,seconds:8});assert(r.maxStep<.04);assert.equal(r.stats.resync,0);
+    network.push({...r,output:undefined,qTrace:undefined});
+  }
+  for(const rate of [8000,16000,24000,44100,48000]){
+    const r=sim({rate,catchup:true,seconds:4});assert(r.stats.catchupDropped>0);assert(r.maxStep<.05);
+    network.push({...r,output:undefined,qTrace:undefined});
+  }
+  for(const ppm of [-1000,-500,-100,100,500,1000]){
+    const r=sim({rate:24000,seconds:240,ppm});
+    assert.equal(r.stats.concealed,0,'loss-free clock drift must not synthesize PLC '+ppm);
+    assert.equal(r.stats.late,0);assert.equal(r.stops,0);assert(r.minQ>=1);
+    assert(r.ratioMin>=.999-1e-9&&r.ratioMax<=1.001+1e-9);assert(r.maxRatioDelta<.00001);
+    drift.push({...r,output:undefined,qTrace:undefined});
+  }
+  console.log('V72 PLAYER METRICS '+JSON.stringify({interpolation,reset,network,drift}));
+  recordResult('ADIM-5.V72.PLAYER','Band-limited ASRC; five-rate reset/starvation and catch-up; 1/3/5% and burst PLC; 60/120/180ms jitter; four-minute +/-1000ppm drift',true);
+}
+
 async function main() {
   const runtimePath = path.join(ROOT_DIR, 'data', 'runtime.json');
   const runtimeSnapshot = fs.existsSync(runtimePath) ? fs.readFileSync(runtimePath, 'utf8') : null;
@@ -4795,6 +4896,7 @@ async function main() {
     await runStep5V69AudioChecks();
     await runStep5V70AudioChecks();
     await runStep5V71AudioChecks();
+    await runStep5V72QualityChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);
