@@ -311,13 +311,54 @@ function computeJourneyStats(steps) {
 // Live Room State in Memory
 // key: `${tourCode}:${roomId}`
 const liveRooms = new Map();
+const guideDisconnectTimers = new Map(); // Tuple room.key -> Timeout
+
+
+function rysRoomKey(tourCode,roomId='genel'){
+  return JSON.stringify([String(tourCode||'RY-KASIM').toUpperCase().trim(),String(roomId||'genel').trim()]);
+}
+function findRysTour(tourCode){
+  const code=String(tourCode||'RY-KASIM').toUpperCase().trim();
+  return (db.tours||[]).find(t=>String(t.code||'').toUpperCase().trim()===code)||null;
+}
+function isConfiguredRysRoom(room){
+  const tour=findRysTour(room.tourCode);
+  return !!tour&&(room.roomId==='genel'||(tour.rooms||[]).some(r=>String(r.id||'').trim()===room.roomId));
+}
+function dropRysRoom(room){
+  if(room._broadcastTimer){clearTimeout(room._broadcastTimer);room._broadcastTimer=null;}
+  const timer=guideDisconnectTimers.get(room.key);
+  if(timer){clearTimeout(timer);guideDisconnectTimers.delete(room.key);}
+  if(liveRooms.get(room.key)===room)liveRooms.delete(room.key);
+}
+function pruneRysRooms(now=Date.now(),pressureTour=null){
+  for(const room of liveRooms.values()){
+    if(room.clients.size||guideDisconnectTimers.has(room.key)||room._broadcastTimer)continue;
+    const registered=!!findRysTour(room.tourCode),configured=isConfiguredRysRoom(room);
+    const expired=!registered||!configured&&now-(room.idleSince??room.lastUsedAt??now)>=60000;
+    const reclaim=pressureTour&&!configured&&(room.tourCode===pressureTour||liveRooms.size>=2048);
+    if(expired||reclaim)dropRysRoom(room);
+  }
+}
+function commitRysSubscription(ctx,type){
+  // Called only after authorization, PIN, registry and target identity validation.
+  ctx.ws.isAdmin=false;ctx.ws.familyTourCode=null;
+  if(type!=='join'&&ctx.currentRoom){
+    const previous=ctx.currentRoom;ctx.currentRoom=null;
+    removeClientFromRoom(previous,ctx.clientId,0);
+  }
+}
 
 function getOrCreateRoom(tourCode, roomId = 'genel') {
   const code = String(tourCode || 'RY-KASIM').toUpperCase().trim();
   const rId = String(roomId || 'genel').trim();
-  const key = `${code}:${rId}`;
+  const key=rysRoomKey(code,rId),tour=findRysTour(code),now=Date.now();
+  if(!tour)return null;
   if (!liveRooms.has(key)) {
-    const tour = db.tours.find((t) => t.code === code) || db.tours[0];
+    // 64 rooms/tour and 2048 globally; active rooms and pending guide grace are never evicted.
+    const count=()=>Array.from(liveRooms.values()).filter(r=>r.tourCode===code).length;
+    if(liveRooms.size>=2048||count()>=64)pruneRysRooms(now,code);
+    if(liveRooms.size>=2048||count()>=64)return null;
     liveRooms.set(key, {
       key,
       tourCode: code,
@@ -333,10 +374,12 @@ function getOrCreateRoom(tourCode, roomId = 'genel') {
           : 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti',
       activeTawafStage: null,
       guideLocation: null,
+      lastUsedAt:now,idleSince:now,
       clients: new Map() // clientId -> { ws, id, role, name, phone, lang, joinedAt }
     });
   }
-  return liveRooms.get(key);
+  const room=liveRooms.get(key);room.lastUsedAt=now;
+  return room;
 }
 
 // Initialize default rooms
@@ -368,6 +411,7 @@ function getTargetBroadcastRooms(sourceRoom) {
 }
 
 function serializeRoom(room, includePilgrimDetails = true) {
+  if(!room)return null;
   let pilgrimCount = 0;
   const pilgrims = [];
   const guides = [];
@@ -505,7 +549,7 @@ function broadcastToGuidesInTour(tourCode, payload) {
   }
 }
 
-const guideDisconnectTimers = new Map(); // room.key -> Timeout
+
 
 // Auth Constants & Helpers (Rehber Yayını & Acente Paneli Yetkili Girişi — .env Üzerinden Yönetilir)
 const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || 'ridvanyilmazturizm@gmail.com').trim().toLowerCase();
@@ -663,8 +707,9 @@ function rysMintMqtt(session,room,payload){
   const cipher=crypto.createCipheriv('aes-256-gcm',key,iv);
   const encrypted=Buffer.concat([cipher.update(JSON.stringify(body),'utf8'),cipher.final()]);
   const sealed={iv:iv.toString('hex'),tag:cipher.getAuthTag().toString('hex'),data:encrypted.toString('base64')};
+  const issuedAt=Date.now();
   const frame=JSON.parse(JSON.stringify({version:70,issuer:session.clientId,tourCode:room.tourCode,roomId:room.roomId,
-    topic:rysMqttTopic(room.tourCode,room.roomId),issuedAt:Date.now(),expiresAt:Date.now()+400,
+    topic:rysMqttTopic(room.tourCode,room.roomId),issuedAt,expiresAt:issuedAt+400,
     nonce:crypto.randomBytes(12).toString('hex'),
     grant:crypto.createHmac('sha256',AUTH_TOKEN_VALUE).update('rys-grant70:'+session.rysAuthToken).digest('hex'),
     source:room.audioSourceId||null,
@@ -794,8 +839,8 @@ function sanitizeGuideForPublic(guide) {
 function evaluateTourGuidePresence(tourCode) {
   const code = String(tourCode || 'RY-KASIM').toUpperCase().trim();
   const genelRoom = getOrCreateRoom(code, 'genel');
-  const genelHasGuide = Array.from(genelRoom.clients.values()).some((c) => c.role === 'guide');
-  if (!genelHasGuide && genelRoom.isLive) {
+  const genelHasGuide = !!genelRoom&&Array.from(genelRoom.clients.values()).some((c) => c.role === 'guide');
+  if (!genelHasGuide && genelRoom?.isLive) {
     genelRoom.isLive = false;
     genelRoom.broadcastMode = 'idle';genelRoom.audioStateKnown=true;genelRoom.audioStateEnded=true;
     broadcastToFamilyTrackers(code, {
@@ -854,6 +899,7 @@ function removeClientFromRoom(room, clientId, graceMs = 2500) {
   if (!room) return;
   const prevClient = room.clients.get(clientId);
   room.clients.delete(clientId);
+  if(!room.clients.size)room.idleSince=Date.now();
   if (room.activePublisherClientId === clientId) {
     room.activePublisherClientId = null;
   }
@@ -884,7 +930,7 @@ function removeClientFromRoom(room, clientId, graceMs = 2500) {
     !room.isLive &&
     !(db.tours || []).some((t) => String(t.code || '').toUpperCase() === String(room.tourCode || '').toUpperCase())
   ) {
-    liveRooms.delete(room.key);
+    dropRysRoom(room);
     return;
   }
 
@@ -1037,6 +1083,13 @@ function processClientJsonMessageV49(ctx, msg) {
   const principal=rysPrincipal(ctx.rysAuthToken||ctx.rysHandshakeToken);
   const isAuthedClient=!!principal;
   ws.isAuthenticated=isAuthedClient;ctx.isAuthenticated=isAuthedClient;
+  // Application heartbeat belongs to the connection, including family/admin subscriptions.
+  if(msg.type==='ping'){
+    if(ws.readyState===WebSocket.OPEN&&!ws.isHttpRelay){
+      try{ws.send(JSON.stringify({type:'pong',ts:Date.now(),echoTs:msg.ts||null}));}catch(e){}
+    }
+    return;
+  }
 
   if (msg.type === 'admin-subscribe') {
     if (!rysCanAdmin(principal)) {
@@ -1044,6 +1097,7 @@ function processClientJsonMessageV49(ctx, msg) {
       ws.send(JSON.stringify({ type: 'auth-error', message: 'Acente paneli aboneliği için yetkili oturum gereklidir.' }));
       return;
     }
+    commitRysSubscription(ctx,'admin-subscribe');
     ws.isAdmin = true;
     sendRysSubscriptionAck(ctx, {
         type: 'admin-rooms-update',
@@ -1056,8 +1110,13 @@ function processClientJsonMessageV49(ctx, msg) {
 
   if (msg.type === 'family-subscribe') {
     const tourCode = String(msg.tourCode || 'RY-KASIM').toUpperCase().trim();
-    ws.familyTourCode = tourCode;
     const room = getOrCreateRoom(tourCode, 'genel');
+    if(!room){ws.send(JSON.stringify({type:'subscription-error',code:'room-unavailable'}));return;}
+    if(room.tourCode!==tourCode||room.roomId!=='genel'){
+      ws.send(JSON.stringify({type:'subscription-error',code:'room-identity-mismatch'}));return;
+    }
+    commitRysSubscription(ctx,'family-subscribe');
+    ws.familyTourCode = tourCode;
     const steps = getTourSteps(tourCode);
     sendRysSubscriptionAck(ctx, {
         type: 'family-state',
@@ -1078,7 +1137,8 @@ function processClientJsonMessageV49(ctx, msg) {
     const tourCode = String(msg.tourCode || 'RY-KASIM').toUpperCase().trim();
     const roomId = String(msg.roomId || 'genel').trim();
     const role = msg.role === 'guide' ? 'guide' : 'pilgrim';
-    const matchedTour = (db.tours || []).find((t) => String(t.code || '').toUpperCase() === tourCode);
+    const matchedTour=findRysTour(tourCode);
+    if(!matchedTour){ws.send(JSON.stringify({type:'subscription-error',code:'tour-unknown'}));return;}
     if (
       role !== 'guide' &&
       !rysCanGuide(principal,tourCode) &&
@@ -1092,6 +1152,12 @@ function processClientJsonMessageV49(ctx, msg) {
     }
     const prevRoom = ctx.currentRoom;
     const targetRoom = getOrCreateRoom(tourCode, roomId);
+    if(!targetRoom){ws.send(JSON.stringify({type:'subscription-error',code:'room-unavailable'}));return;}
+    if(targetRoom.tourCode!==tourCode||targetRoom.roomId!==roomId||
+      role==='guide'&&!rysCanGuide(principal,targetRoom.tourCode)){
+      ws.send(JSON.stringify({type:'auth-error',message:'Oda kimliği ve yetki kapsamı eşleşmiyor.'}));return;
+    }
+    commitRysSubscription(ctx,'join');
     ctx.currentRoom = targetRoom;
     const deviceId = msg.deviceId ? String(msg.deviceId).trim() : '';
     const previousClient=prevRoom===targetRoom?targetRoom.clients.get(clientId):null;
@@ -1362,14 +1428,6 @@ function processClientJsonMessageV49(ctx, msg) {
       break;
     }
 
-    case 'ping': {
-      if (ws && ws.readyState === WebSocket.OPEN && !ws.isHttpRelay) {
-        try {
-          ws.send(JSON.stringify({ type: 'pong', ts: Date.now(), echoTs: msg.ts || null }));
-        } catch {}
-      }
-      break;
-    }
   }
 }
 
@@ -1529,7 +1587,7 @@ wss.on('connection', (ws, req) => {
 
 // 30-Second Ping/Pong Heartbeat to prune zombie/dropped connections from mobile networks
 const heartbeatTimer = setInterval(() => {
-  cleanupStaleRelaySessions();
+  cleanupStaleRelaySessions();pruneRysRooms();
   wss.clients.forEach((ws) => {
     if(ws.rysAuthContext&&!refreshRysNativeAuth(ws.rysAuthContext))return;
     if (ws.isAlive === false) {
@@ -1662,11 +1720,12 @@ function validateRysHandoff(ctx,request){
   const principal=rysPrincipal(token),authed=!!principal;
   if(request.type==='admin-subscribe'&&!rysCanAdmin(principal))return 'scope-required';
   if(request.type==='join'&&request.role==='guide'&&!rysCanGuide(principal,request.tourCode))return 'scope-required';
+  if(request.type!=='admin-subscribe'&&!findRysTour(request.tourCode))return 'tour-unknown';
   if(authed)ctx.rysAuthToken=String(token).trim();
   ctx.isAuthenticated=authed;ctx.ws.isAuthenticated=authed;
   if((request.type==='admin-subscribe'||request.type==='join'&&request.role==='guide')&&!authed)
     return 'auth-required';
-  if(request.type==='join'&&request.role!=='guide'&&!authed){
+  if(request.type==='join'&&request.role!=='guide'&&!rysCanGuide(principal,request.tourCode)){
     const code=String(request.tourCode||'RY-KASIM').toUpperCase().trim();
     const tour=(db.tours||[]).find(t=>String(t.code||'').toUpperCase()===code);
     if(tour?.pinProtected&&tour.pin&&String(tour.pin).trim()!==String(request.pin||'').trim())
@@ -1828,18 +1887,13 @@ function syncRysRelayContext(session,context){
     return true;
   }
   if(context.type!=='family-subscribe'&&context.type!=='admin-subscribe')return false;
-  if(session.currentRoom){
-    const old=session.currentRoom;session.currentRoom=null;
-    removeClientFromRoom(old,session.clientId,0);
-  }
   if(context.type==='admin-subscribe'){
-    session.ws.familyTourCode=null;
-    if(!session.ws.isAdmin)processClientJsonMessage(session,context);
-    return !!session.ws.isAdmin;
+    if(!session.ws.isAdmin||session.currentRoom||session.ws.familyTourCode)processClientJsonMessage(session,context);
+    return !!session.ws.isAdmin&&!session.currentRoom&&!session.ws.familyTourCode;
   }
   const code=String(context.tourCode||'RY-KASIM').toUpperCase().trim();
-  session.ws.isAdmin=false;
-  if(session.ws.familyTourCode!==code)processClientJsonMessage(session,{...context,tourCode:code});
+  if(session.ws.familyTourCode!==code||session.currentRoom||session.ws.isAdmin)
+    processClientJsonMessage(session,{...context,tourCode:code});
   return session.ws.familyTourCode===code;
 }
 
@@ -1880,7 +1934,7 @@ function serveRysRelay(session,req,res,token,context,messages=[]){
     return res.status(401).json({error:'relay-auth-required'});
   }
   if(!syncRysRelayContext(session,context)){
-    const errors=drainRysRelaySession(session).filter(m=>m.type==='pin-error'||m.type==='auth-error');
+    const errors=drainRysRelaySession(session).filter(m=>m.type==='pin-error'||m.type==='auth-error'||m.type==='subscription-error');
     return res.json({clientId:session.clientId,messages:errors.length?errors:
       [{type:'pin-error',message:'Kafile/oda katılımı reddedildi; PIN ve yetkiyi kontrol edin.'}]});
   }
@@ -2132,7 +2186,9 @@ app.post('/api/join-tour', joinTourRateLimiter, (req, res) => {
       message: 'Bu kafile odası PIN korumalıdır. Lütfen geçerli PIN kodunu giriniz.'
     });
   }
-  const roomState = serializeRoom(getOrCreateRoom(tour.code, 'genel'), false);
+  const allocatedRoom=getOrCreateRoom(tour.code,'genel');
+  if(!allocatedRoom)return res.status(503).json({success:false,error:'room-capacity'});
+  const roomState=serializeRoom(allocatedRoom,false);
   const steps = getTourSteps(tour.code);
   const stats = computeJourneyStats(steps);
   return res.json({
@@ -2293,7 +2349,7 @@ app.delete('/api/tours/:id', requireAuth, (req, res) => {
     }
     for (const [key, room] of liveRooms.entries()) {
       if (room.tourCode === deletedCode) {
-        liveRooms.delete(key);
+        dropRysRoom(room);
       }
     }
   }
@@ -2332,7 +2388,12 @@ app.get('/api/trips/:code/steps', (req, res) => {
   const tour = isRequestAuthenticated(req) ? rawTour : sanitizeTourForPublic(rawTour);
   const steps = getTourSteps(code);
   const stats = computeJourneyStats(steps);
-  const room = serializeRoom(getOrCreateRoom(code, 'genel'), false);
+  const allocatedRoom=getOrCreateRoom(code,'genel');
+  if(!allocatedRoom){
+    if(findRysTour(code))return res.status(503).json({success:false,error:'room-capacity'});
+    return res.json({success:false,error:'tour-unknown',tour:null,steps:[],stats:computeJourneyStats([]),room:null,announcements:[]});
+  }
+  const room=serializeRoom(allocatedRoom,false);
   const announcements = db.announcements.filter((a) => a.tourCode === code || a.tourCode === 'ALL');
   return res.json({
     success: true,

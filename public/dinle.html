@@ -16,7 +16,7 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=70"></script>
+  <script src="/vercel-ws-shim.js?v=71"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
@@ -1670,63 +1670,96 @@
     }
 
     // PATCH: rx-init-v53
-    function initRxPlayerWorklet() {
-      if (rxPlayerWorkletNode && rxPlayerWorkletNode.context !== audioCtx) {
-        rxPlayerWorkletNode = null;
-        rxPlayerWorkletAlive = false;
-      }
-      if (!audioCtx || rxPlayerWorkletNode || rxPlayerWorkletLoading) return;
-      if (!audioCtx.audioWorklet || typeof window.AudioWorkletNode === 'undefined') return;
-      const ctx = audioCtx;
-      const token = ++rxLoadToken;
-      rxPlayerWorkletLoading = true;
-      ctx.audioWorklet
-        .addModule('/pcm-player-worklet.js?v=61-audio')
-        .then(() => {
-          if (token !== rxLoadToken || audioCtx !== ctx || rxPlayerWorkletNode) return;
-          const node = new AudioWorkletNode(ctx, 'rys-pcm-player', {
-            numberOfInputs: 0,
-            numberOfOutputs: 1,
-            outputChannelCount: [1]
-          });
-          node.onprocessorerror = () => {
-            if(audioCtx!==ctx||rxPlayerWorkletNode!==node)return;
-            rxPlayerWorkletAlive = false;
-            lastRxWorkletHeartbeatAt = 1;
-          };
-          node.port.onmessage = (ev) => {
-            if(audioCtx!==ctx||rxPlayerWorkletNode!==node)return;
-            const d = (ev && ev.data) || {};
-            if (d.type === 'audio-heartbeat') {
-              rxPlayerWorkletAlive = true;
-              lastRxWorkletHeartbeatAt = Date.now();
 
-            } else if (d.type === 'stats') {
-              window.__ryRxAudioStats = d;
-            }
-          };
-          node.connect(rxInputNode || gainNode);
-          rxPlayerWorkletNode = node;
-          rxPlayerWorkletAlive = true;
-          lastRxWorkletHeartbeatAt = Date.now();
-          while (activeScheduledSources.length > 0) {
-            const src = activeScheduledSources.shift();
-            try {
-              src.onended = null;
-              src.stop();
-              src.disconnect();
-              src.buffer = null;
-            } catch {}
+    function initRxPlayerWorklet() {
+      const state=window.__ryRxPlayerLoad||(window.__ryRxPlayerLoad={
+        ctx:null,token:0,timer:null,retryAt:0,failures:0,unsupported:false
+      });
+      if(state.ctx!==audioCtx){
+        clearTimeout(state.timer);state.timer=null;state.ctx=audioCtx;
+        if(!state.restarting){state.retryAt=0;state.failures=0;}
+        state.restarting=false;state.needsRebuild=false;state.unsupported=false;
+        state.token=++rxLoadToken;rxPlayerWorkletLoading=false;
+      }
+      if(rxPlayerWorkletNode&&rxPlayerWorkletNode.context!==audioCtx){
+        try{rxPlayerWorkletNode.disconnect();rxPlayerWorkletNode.port?.close();}catch(e){}
+        rxPlayerWorkletNode=null;rxPlayerWorkletAlive=false;
+      }
+      if(!audioCtx||audioCtx.state==='closed'||rxPlayerWorkletNode||rxPlayerWorkletLoading)return;
+      if(!audioCtx.audioWorklet||typeof window.AudioWorkletNode==='undefined'){
+        if(!state.unsupported&&typeof showAppToast==='function')
+          showAppToast('Bu tarayıcı canlı sesi desteklemiyor. Güncel bir tarayıcıyla yeniden açın.');
+        state.unsupported=true;window.__ryRxAudioStatus='unsupported';return;
+      }
+      if(state.needsRebuild||Date.now()<state.retryAt)return;
+      clearTimeout(state.timer);state.timer=null;
+      const ctx=audioCtx,token=++rxLoadToken;state.token=token;
+      const owned=()=>rxLoadToken===token&&state.token===token&&state.ctx===ctx&&audioCtx===ctx;
+      state.cancel=()=>{
+        clearTimeout(state.timer);state.timer=null;state.token=++rxLoadToken;
+        rxPlayerWorkletLoading=false;
+        if(!state.restarting){state.retryAt=0;state.failures=0;state.needsRebuild=false;}
+        state.ctx=null;
+      };
+      const failed=reason=>{
+        if(!owned())return;
+        clearTimeout(state.timer);state.timer=null;rxPlayerWorkletLoading=false;
+        const retryToken=++rxLoadToken;state.token=retryToken;
+        if(!isAudioListening||intentionalLeave||ctx.state==='closed')return;
+        state.failures=Math.min(6,state.failures+1);
+        const delay=Math.min(8000,1500*Math.pow(2,state.failures-1));
+        state.retryAt=Date.now()+delay;window.__ryRxAudioStatus=reason;
+        state.needsRebuild=true;
+        const retry=()=>{
+          if(state.token!==retryToken||rxLoadToken!==retryToken||state.ctx!==ctx||audioCtx!==ctx)return;
+          state.timer=null;
+          if(!isAudioListening||intentionalLeave){state.cancel();return;}
+          if(rxPlayerWorkletNode)return;
+          // A Worklet caches failed/pending module responses. Retry in a fresh, closed-over context.
+          state.restarting=true;
+          try{rebuildPilgrimAudioEngine('worklet-load-retry');}finally{state.restarting=false;}
+          if(audioCtx===ctx&&state.token===retryToken&&!rxPlayerWorkletNode){
+            state.retryAt=Date.now()+1500;state.timer=setTimeout(retry,1500);
           }
-          flushPendingRxFrames();
+        };
+        state.timer=setTimeout(retry,delay);
+      };
+      rxPlayerWorkletLoading=true;window.__ryRxAudioStatus='loading';
+      state.timer=setTimeout(()=>failed('load-timeout'),3000);
+      let loading;
+      try{loading=ctx.audioWorklet.addModule('/pcm-player-worklet.js?v=61-audio');}
+      catch(error){failed('load-error');return;}
+      Promise.resolve(loading)
+        .then(()=>{
+          if(!owned())return;
+          if(!isAudioListening||intentionalLeave||ctx.state==='closed'){state.cancel();return;}
+          let node;
+          try{
+            node=new AudioWorkletNode(ctx,'rys-pcm-player',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1]});
+            node.onprocessorerror=()=>{
+              if(audioCtx!==ctx||rxPlayerWorkletNode!==node)return;
+              rxPlayerWorkletAlive=false;lastRxWorkletHeartbeatAt=1;
+            };
+            node.port.onmessage=ev=>{
+              if(audioCtx!==ctx||rxPlayerWorkletNode!==node)return;
+              const data=ev?.data||{};
+              if(data.type==='audio-heartbeat'){rxPlayerWorkletAlive=true;lastRxWorkletHeartbeatAt=Date.now();}
+              else if(data.type==='stats')window.__ryRxAudioStats=data;
+            };
+            node.connect(rxInputNode||gainNode);rxPlayerWorkletNode=node;
+            rxPlayerWorkletAlive=true;lastRxWorkletHeartbeatAt=Date.now();
+            clearTimeout(state.timer);state.timer=null;state.retryAt=0;state.failures=0;
+            state.unsupported=false;rxPlayerWorkletLoading=false;window.__ryRxAudioStatus='ready';
+            while(activeScheduledSources.length){
+              const src=activeScheduledSources.shift();
+              try{src.onended=null;src.stop();src.disconnect();src.buffer=null;}catch(e){}
+            }
+            flushPendingRxFrames();
+          }catch(error){try{node?.disconnect();node?.port?.close();}catch(e){}throw error;}
         })
-        .catch((e) => {
-          console.warn('Player worklet yüklenemedi', e);
-        })
-        .finally(() => {
-          if (token === rxLoadToken) rxPlayerWorkletLoading = false;
-        });
+        .catch(error=>{if(owned()){console.warn('Player yüklemesi yeniden denenecek',error);failed('load-error');}});
     }
+
 
     function rebuildPilgrimAudioEngine(reason = 'auto-heal') {
       if (!isAudioListening || isRebuildingAudioEngine) return;
@@ -1735,6 +1768,7 @@
       isRebuildingAudioEngine = true;
       lastAudioEngineRebuildAt = now;
       try {
+        window.__ryRxPlayerLoad?.cancel?.();
         ++rxLoadToken;
         rxPlayerWorkletLoading = false;
         stopAllActiveSources();
@@ -2589,6 +2623,7 @@
     }
 
     function leaveRoom() {
+      window.__ryRxPlayerLoad?.cancel?.();
       intentionalLeave = true;rxAudioSourceId=null;rxStreamActive=null;rxStreamMode=null;rxAudioStateSeq=null;rxAudioStateEnded=false;rxAudioMediaEpoch=null;
       if (window._ryWsReconnectTimeout) {
         clearTimeout(window._ryWsReconnectTimeout);
@@ -2653,7 +2688,7 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         // PATCH: sw-register-v53
-        navigator.serviceWorker.register('/sw.js?v=70').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=71').catch(() => {});
       });
     }
 

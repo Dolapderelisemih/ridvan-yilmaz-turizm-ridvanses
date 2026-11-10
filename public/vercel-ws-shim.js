@@ -196,10 +196,12 @@
         return;
       }
 
+      const native=this._native;
       // VDS / Özel Domain Ortamında Mobil Şebeke (Asansör/Tünel) El Sıkışma Zaman Aşımı (3.5 sn):
       // İlk hatada doğrudan VDS'i yeniden dene; VDS üst üste erişilemezse (bakım/ağ engeli) otomatik MQTT Bulut Rölesine geç!
       const handshakeLimit = 3500;
       const fallbackTimeout = setTimeout(() => {
+        if(this._closedExplicitly||this._native!==native)return;
         if (!this._opened && !this._isRelay) {
           window.__ryConsecutiveVdsFailures = (window.__ryConsecutiveVdsFailures || 0) + 1;
           try {
@@ -223,7 +225,7 @@
       }, handshakeLimit);
 
       this._native.onopen = (ev) => {
-        if (this._isRelay) return;
+        if (this._isRelay||this._closedExplicitly||this._native!==native) return;
         clearTimeout(fallbackTimeout);
         window.__ryConsecutiveVdsFailures = 0;
         this._opened = true;
@@ -232,13 +234,7 @@
         if (typeof this.onopen === 'function') this.onopen(ev);
       };
 
-      this._native.onmessage = (ev) => {
-        if (this._isRelay) return;
-        if(typeof ev.data==='string'){try{const msg=JSON.parse(ev.data);
-          if(msg.type==='session-replaced'){this._fenceReplaced();return;}
-          this._observeTrustedMessage(msg);}catch(e){}}
-        if (typeof this.onmessage === 'function') this.onmessage(ev);
-      };
+      this._native.onmessage = event=>this._handleNativeMessage(native,event);
 
       this._native.onerror = (err) => {
         if (!this._opened && !this._isRelay) {
@@ -249,7 +245,8 @@
 
       this._native.onclose = (ev) => {
         clearTimeout(fallbackTimeout);
-        if(ev.code===4009){this._fenceReplaced();return;}
+        if(this._closedExplicitly||this._native!==native)return;
+        if(ev.code===4009){this._handleNativeClose(native,ev);return;}
         if (!this._isRelay) {
           if (!this._opened) {
             window.__ryConsecutiveVdsFailures = (window.__ryConsecutiveVdsFailures || 0) + 1;
@@ -259,8 +256,7 @@
               return;
             }
           }
-          this.readyState = 3; // CLOSED
-          if (typeof this.onclose === 'function') this.onclose(ev);
+          this._handleNativeClose(native,ev);
         }
       };
     }
@@ -318,6 +314,23 @@
       this._httpEpoch=(this._httpEpoch||0)+1;
       this._relayAbort?.abort();this._relayAbort=null;this._inFlight=false;
     }
+
+    _handleNativeMessage(socket,event){
+      if(this._native!==socket||this._isRelay||this._closedExplicitly||this.readyState!==1)return;
+      if(typeof event.data==='string'){
+        let message;try{message=JSON.parse(event.data);}catch(e){}
+        if(message?.type==='session-replaced'){this._fenceReplaced();return;}
+        if(message)this._observeTrustedMessage(message);
+      }
+      // Preserve the original ArrayBuffer/Blob event; no PCM copy or re-encoding.
+      this.onmessage?.(event);
+    }
+    _handleNativeClose(socket,event){
+      if(this._native!==socket||this._isRelay||this._closedExplicitly)return;
+      if(event?.code===4009){this._fenceReplaced();return;}
+      this.readyState=3;this.onclose?.(event);
+    }
+
     _tryNativeFailback(){
       if(!this._isRelay||this.readyState!==1||this._closedExplicitly||this._failbackProbe)return;
       const join=this._joinContext,generation=this._transportGeneration||0;
@@ -373,10 +386,10 @@
         this._resetRelaySession();
         if(this._pollTimer){clearInterval(this._pollTimer);this._pollTimer=null;}
         if(this._vdsFailbackTimer){clearInterval(this._vdsFailbackTimer);this._vdsFailbackTimer=null;}
-        probe.onmessage=e=>{if(!this._isRelay&&this.readyState===1)this.onmessage?.(e);};
+        probe.onmessage=e=>this._handleNativeMessage(probe,e);
         probe.onerror=e=>this.onerror?.(e);
-        probe.onclose=e=>{if(!this._isRelay){this.readyState=3;this.onclose?.(e);}};
-        try{this.onmessage?.({data:JSON.stringify(ack)});}catch(e){this.onerror?.(e);}
+        probe.onclose=e=>this._handleNativeClose(probe,e);
+        try{this._handleNativeMessage(probe,{data:JSON.stringify(ack)});}catch(e){this.onerror?.(e);}
         if(this._closedExplicitly||this.readyState!==1||this._isRelay||this._native!==probe)return;
         this._failbackSubscription=request;
         if(mode==='join'&&join.role==='guide'&&ack.room?.audioStateKnown===true&&
