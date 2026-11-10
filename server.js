@@ -1018,6 +1018,7 @@ function processClientJsonMessageV49(ctx, msg) {
       joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
     };
     // 4G/5G hücre geçişlerinde aynı cihaza veya aynı rehbere ait yarı-açık (zombie) eski soketleri anında temizle
+    let needsGuidePresenceSync=false;
     for (const r of getTourRooms(tourCode)) {
       for (const [existingId, existingClient] of r.clients.entries()) {
         if (existingId === clientId || existingClient.ws === ws) continue;
@@ -1030,8 +1031,10 @@ function processClientJsonMessageV49(ctx, msg) {
             if(oldRelay&&(oldRelay.relayKey||ctx.rysAckCapture))oldRelay.relayRetired=true;
           }
           r.clients.delete(existingId);
+          if(existingClient.role==='guide'&&r!==targetRoom)needsGuidePresenceSync=true;
           if (r.activePublisherClientId === existingId) {
-            r.activePublisherClientId = clientId;
+            // Transfer ownership only within the room that receives the replacement.
+            r.activePublisherClientId = r===targetRoom?clientId:null;
           }
           try {
             if (existingClient.ws && !existingClient.ws.isHttpRelay && typeof existingClient.ws.terminate === 'function') {
@@ -1043,12 +1046,16 @@ function processClientJsonMessageV49(ctx, msg) {
     }
     targetRoom.clients.set(clientId, clientObj);
     if (prevRoom && prevRoom !== targetRoom) {
+      const wasGuide=prevRoom.clients.get(clientId)?.role==='guide';
       removeClientFromRoom(prevRoom, clientId, 0);
+      if(wasGuide&&prevRoom.tourCode===tourCode)needsGuidePresenceSync=false; // Same-tour removal already reconciled it.
     } else if(previousClient?.role==='guide'&&role!=='guide'){
       // Keep the new listener membership, release the former publisher and sync inheritance/stop.
       if(targetRoom.activePublisherClientId===clientId)targetRoom.activePublisherClientId=null;
-      evaluateTourGuidePresence(tourCode);
+      needsGuidePresenceSync=true;
     }
+    // The replacement must be installed before checking General coverage or terminal stop.
+    if(needsGuidePresenceSync)evaluateTourGuidePresence(tourCode);
     if (role === 'guide' && guideDisconnectTimers.has(targetRoom.key)) {
       clearTimeout(guideDisconnectTimers.get(targetRoom.key));
       guideDisconnectTimers.delete(targetRoom.key);
