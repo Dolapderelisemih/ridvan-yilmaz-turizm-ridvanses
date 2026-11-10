@@ -1,196 +1,125 @@
-# RıdvanSes v71 — Room Key Tuple Isolation, Bounded LiveRooms, Atomic Native Subscription Transitions, Worklet Load Watchdog & Promoted Native Hooks Patch
+# RıdvanSes v71 — Uygulama Eşliği ve Doğrudan CLI Doğrulama Raporu
 
 Tarih: 2026-11-10  
 Çalışma alanı: D:/umresesliyazılım  
-Taban HEAD: 73740b2863427fe9a39e74f909dcdebcd08c359c (uygulanmış v70)
+Denetlenen HEAD: 0673384271e594d88c2cf117077f93c7f1d5b540  
+Yama tabanı: 73740b2863427fe9a39e74f909dcdebcd08c359c (v70)
 
-## 1. Karar ve Uygulama Durumu
+## 1. Sonuç ve güncel uygulama durumu
 
-AUD-70R-01…AUD-70R-06 kapsamındaki **2 P1, 2 P2 ve 2 P3** bulgu aşağıdaki tek v71 yamasında kapatıldı, çalışma ağacına uygulandı ve doğrudan `node scripts/verify-system.js` ile **60 / 60 [BAŞARILI / PASS], exit 0** doğrulandı. Mevcut 58 sonuca ADIM-3.V71 ve ADIM-5.V71 eklendi; V65 public family güvenliği, V67 revoke/expiry, V68 downgrade, V69 ownership, V70 principal/şifreli MQTT regresyonları geçti.
+**v71 kaynaklara eksiksiz uygulanmış ve preload olmadan doğrulanmıştır: 60 / 60 [BAŞARILI / PASS], exit 0.** AUD-70R-01…AUD-70R-06 kapsamındaki altı bulgunun kapanışı kaynak incelemesi, gerçek HTTP/WebSocket E2E testleri ve üretim fonksiyonlarını çalıştıran deterministik Unit testleriyle teyit edildi.
 
-**Uygulama durumu: UYGULANDI VE DOĞRULANDI (v71 — 60/60 PASS).** Çalışma ağacındaki uygulama/test dosyaları v71 sürümündedir (`git apply --reverse --check --ignore-space-change -` → `exit 0`). AUDIT_FIX_SUMMARY.md ve AUDIT_REPORT.md dosyalarının önceden silinmiş durumları korundu.
+Rapordaki diff üzerinde çalışma ağacına karşı `git apply --reverse --check --ignore-space-change -` **exit 0** verdi. Ayrıca v70 tabanındaki her hedef kaynak bellekte aynı diff ile yeniden oluşturuldu; mevcut v71 dosyalarının LF-normalize içerikleri **12/12 birebir eşleşti**. Ters kontrolün yanında bu karşılaştırma, patch dışındaki olası hedef dosya değişikliklerini de kontrol eder. CRLF→LF dışında normalizasyon uygulanmadı; UTF-8 BOM korundu.
 
-Aşağıdaki kapanış sonuçları uygulanmış v71 içindir. Bu belge yalnız **bir v71 unified diff** içerir; eski v70 uygulaması HEAD geçmişinde bulunur.
+Bu rapor önceki “aday / henüz uygulanmadı” durumunu günceller. Aşağıdaki tek diff artık uygulanmış v71 paketinin tarihsel ve doğrulanabilir kaydıdır; bu denetimde kaynaklara yeniden uygulanmadı.
 
-## 2. Altı bulgunun kapanışı
+**İncelenen kapsamda yeni ve kanıtlanabilir bir P0/P1/P2/P3 kod bulgusu doğrulanmadı; bu tur yeni yama önerilmedi.** Bu sonuç test edilen durumlarla sınırlıdır; tüm olası cihaz/ağ koşullarında sıfır hata garantisi değildir.
 
-v70 negatifleri aynı taban HEAD üzerinde önceki bağımsız denetimde üretim fonksiyonları/localhost ile ölçülmüştür. v71 sütunları bu turdaki gerçek CLI, yeni kalıcı testler ve kontrollü fault injection sonuçlarıdır.
+## 2. Diff kimliği ve kaynak bütünlüğü
 
-| Bulgu | v70 negatif kanıtı | v71 çözümü ve kanıtı |
-|---|---|---|
-| AUD-70R-01 — P1 | tour=RY-KASIM:SUB / room=hidden ve tour=RY-KASIM / room=SUB:hidden aynı Map key’ine düştü; scoped guide başka turun sentetik telefonunu aldı | Merkezi rysRoomKey JSON tuple kullanır. Gerçek target tour/room kimliği ve guide scope üyelik/özel ACK’den önce doğrulanır. Aynı çarpışma çifti native ve HTTP testinde ayrı; özel veri sızıntısı 0. Kasten yanlış nesne döndüren unit probu da ACK alamaz. |
-| AUD-70R-02 — P1 | Anonim 100 unknown family isteği 100 oda bıraktı; close + 36 s sonrasında da 100 kaldı | Kayıtlı olmayan turda kalıcı oda tahsisi yok. 1000 native + 1 HTTP unknown family isteği → 0 tahsis. Unit 1200 unknown isteği de 0. Per-tour 64, global 2048 oda sınırı; boş geçici oda için 60 s TTL ve kapasite baskısında reclaim; aktif 300 kişi/grace korunur. |
-| AUD-70R-03 — P2 | Guide→family sonrası eski guide/live/publisher kaldı, eski PCM 303 aktı; admin→pilgrim sonrası özel admin delta geldi | Yetki/PIN/registry/target doğrulamasından sonra commitRysSubscription native ve HTTP için aynı transition sınırını uygular. Eski currentRoom 0-grace bırakılır; admin/family flag’leri temizlenir. Eski PCM, eski guide, eski admin/family deltası 0; failed elevation aileyi korur. |
-| AUD-70R-04 — P2 | Pending addModule ile simüle 60 s/3000 PCM sonunda loading=true, girişim 1, player node 0, kurtarma 0 | 3000 ms generation watchdog; token invalidation; 1500→3000→6000→8000 ms capped backoff. Retry eski AudioContext’i kapatıp yeni context kurar. Geç resolve node sayısı 0; yeni context’te taze PCM 801 byte-birebir player’a ulaştı. Cached failure, pause/resume ve cancel testleri geçti. |
-| AUD-70R-05 — P3 | Promoted native ACK/snapshot/auth-error/4009 sonrasında eski metadata kaldı; shim fence flag’leri set edilmedi | İlk native ve promoted probe ortak _handleNativeMessage/_handleNativeClose yollarına bağlı. ACK/snapshot observer’a uğrar; auth-error cache’i temizler; session-replaced/4009 idempotent fence uygular. Promoted gerçek handoff ve terminal replacement geçti; cache 0. Binary olayın orijinal referansı unit testte korundu. |
-| AUD-70R-06 — P3 | İki Date.now okuması 1000/1001 → 401 ms zarf, geçerli imzaya rağmen reject | Mint tek issuedAt=Date.now alır; expiresAt=issuedAt+400. Unit 1 ms ilerleyen saatle tek mint okuması ve kabul edilen 400 ms kanıt; gerçek şifreli HTTP/MQTT round-trip PCM 707 byte-birebir. |
-
-### 2.1 Room kimliği, kapasite ve TTL politikası
-
-rysRoomKey canonical tur için uppercase+trim, oda için trim yapar ve JSON.stringify([tour, room]) döndürür. ':' içeren değerler kaybolmaz; oda harf duyarlılığı korunur. Map allocation, room.key kullanan grace timer’ları, room release ve tur silme yolları aynı tuple kimliğini taşır. Tur silme dropRysRoom üzerinden bekleyen room/grace timer’larını da iptal eder.
-
-findRysTour kayıtlı db.tours satırını esas alır. getOrCreateRoom bilinmeyen turda null döndürür; guide veya public giriş bu turu kalıcı olarak yaratamaz. Native/HTTP family reddi subscription-error ile bildirilir; başarılı eski abonelik doğrulama başarısızlığı yüzünden sökülmez. Mevcut GET /api/trips/:code/steps sözleşmesi korunur: unknown tur için HTTP 200 içinde success=false, boş steps/room ve tour-unknown döner, DB/Map tahsisi yapılmaz. Bilinen turda kapasite sorunu join-tour için 503’tür.
-
-Sınırlar:
-
-- Her tur en fazla 64; process genelinde en fazla 2048 liveRooms.
-- Mevcut bir odanın yeni dinleyicisi bu tahsis limitine takılmaz; 300 kişi aynı Genel odasında tek oda kaydı kullanır.
-- Aktif clients Map’i dolu oda, pending guide grace veya bekleyen broadcast timer’ı olan oda sweep/pressure reclaim ile atılmaz.
-- Genel ve tur konfigürasyonundaki odalar sıradan idle TTL ile silinmez. Konfigüre edilmemiş boş geçici odalar 60 s sonunda temizlenir.
-- Yeni oda tahsisinde limit doluysa yalnız güvenle boş geçici odalar reclaim edilir; boş yer yoksa açık red yanıtı verilir. Aktif oda evict edilmez.
-- Prune 30 s server heartbeat’ine bağlıdır; normal TTL temizliği bir sonraki sweep’te olabilir. Kapasite sınırı tahsis anında uygulanır.
-
-Bu limitler yeni bir işletim politikasıdır: 64’ten fazla eşzamanlı oda kullanan bir tur için bilinçli kapasite ayarı gerekir. 1 guide + 300 listener hedefi için oda sayısı ile kişi sayısı karıştırılmadı.
-
-### 2.2 Atomik subscription transition ve uyumluluk
-
-commitRysSubscription yalnız yetki, PIN, kayıtlı tur ve gerçek target kimliği kabul edildikten sonra çağrılır. Yeni family/admin eski currentRoom’u 0-grace ile bırakır. Yeni join admin/family flag’lerini temizler; mevcut join→join membership install/remove sırası ve V69 General inheritance mantığı korunur. İşlemde await yoktur; aynı event-loop turunda tamamlanır.
-
-HTTP sync artık eski üyeliği ortak handler’ın doğrulamasından önce sökmez; geçişi aynı üretim handler’ına bırakır. Başarısız guide/admin elevation public family flag’ini ve sağlıklı kuyruğunu bozmaz. Handoff ACK capture ve retired source sözleşmesi mevcut V56/V69 testleriyle korunur.
-
-Ek entegrasyon düzeltmesi: uygulama ping’i oda membership switch’inin içinden bağlantı düzeyine taşındı. Böylece gerçekten currentRoom=null olan native family/admin de pong alır; eski guide üyeliği sırf heartbeat için tutulmaz. HTTP ping davranışı değiştirilmedi.
-
-### 2.3 Player watchdog ve tarayıcı cache’i
-
-Yükleme deadline’ı 3000 ms’dir. Timeout/reject token’ı geçersizleştirir ve loading kilidini bırakır; retry 1500, 3000, 6000, en fazla 8000 ms aralıkla yapılır. Incoming PCM çağrıları backoff’u delip yeni load başlatamaz. AudioContext clock’unun ilerliyor olması tek başına player’ın kurulmuş olduğu anlamına gelmez; yükleme timer’ı bağımsız ilerler.
-
-Worklet module yanıtı context’e ait cache’te tutulabilir; aynı context/URL’de tekrar addModule çağırmak önceki hatayı yeniden kullanabilir. Retry bu yüzden mevcut rebuildPilgrimAudioEngine ile eskisine close çağırır ve yeni AudioContext kurar. Bu seçim [WHATWG Worklet module responses map algoritmasına](https://html.spec.whatwg.org/multipage/webappapis.html#fetch-a-worklet-script) dayanır; [addModule sözleşmesi](https://html.spec.whatwg.org/multipage/worklets.html#dom-worklet-addmodule) asynchronous yükleme/çalıştırma tamamlanmasını tanımlar.
-
-Failure sayısı planlı context yenilemesinde korunur; backoff her yeni context’te tekrar ilk değere dönmez. Aynı anda bir aktif load/retry timer’ı tutulur. Cancel/leave/rebuild eski job token’ını geçersizleştirir. Retry beklerken sesi durdur/aç yarışında eski needsRebuild kilidi kalmaz. Geç resolve/reject ve eski node heartbeat’i yeni context’e bağlanamaz.
-
-AudioWorklet API’si yoksa sonsuz load döngüsü yerine açık unsupported durumu ve tarayıcı güncelleme mesajı verilir. Bu paket yeni bir ScriptProcessor dinleyici fallback’i eklemiyor; eski Hermite yardımcı fonksiyonunu çalışan yedek motor gibi sunmuyor.
-
-### 2.4 Promoted native ve sabit PCM protokolü
-
-Constructor ve promoted probe aynı trusted JSON observer/close kancalarını kullanır. Handoff committed ACK’si de observer’a gider. Native socket kimliği ve explicit-close guard’ları eski callback’leri düşürür. session-replaced / close 4009 tek terminal fence’e gider; normal 1006 terminal devralma sayılmaz. Rehber sayfasındaki mevcut 600/1500 ms ağ retry davranışı ve capture release regresyonları korunur.
-
-Binary ArrayBuffer/Blob eventi JSON’a çevrilmeden dış callback’e orijinal event/ref ile iletilir. PCM formatı değişmedi: 24 kHz mono, 480 örnek, 12 B başlık + 960 B PCM16 = 972 B. Capture/player DSP dosyaları değiştirilmedi. MQTT zarf protokolü v70/version70 ve canonical v3 topic olarak kaldı; yalnız mint zaman okuması düzeltildi.
-
-### 2.5 Kaynak izlenebilirliği
-
-Satırlar LF-normalize kaynakta 1 tabanlıdır; aday satırları aşağıdaki diff uygulandığında geçerlidir. Yeni helper için v70 satırı yoktur.
-
-| Dosya | v70 satırı | v71 aday satırı | Amaç |
-|---|---:|---:|---|
-| server.js | yeni | 317 | AUD-70R-01 merkezi kimlik |
-| server.js | 315 | 352 | AUD-70R-01/02 tahsis ve sınırlar |
-| server.js | yeni | 334 | AUD-70R-02 TTL / güvenli reclaim |
-| server.js | yeni | 343 | AUD-70R-03 atomik geçiş |
-| server.js | 654 | 698 | AUD-70R-06 tek saat |
-| public/dinle.html | 1673 | 1674 | AUD-70R-04 yükleme / generation |
-| public/vercel-ws-shim.js | yeni | 318 | AUD-70R-05 ortak observer |
-| public/vercel-ws-shim.js | yeni | 328 | AUD-70R-05 ortak fence |
-| scripts/verify-system.js | yeni | 4628 | ADIM-3.V71 gerçek E2E |
-| scripts/verify-system.js | yeni | 4484 | ADIM-5.V71 üretim fonksiyon testleri |
-
-## 3. Kalıcı testler ve gerçek CLI provası
-
-Yeni ADIM-3.V71 gerçek localhost HTTP/WS, scoped login, korumalı ':' turu, aynı collision çiftinin native/HTTP üyeliği, unknown family, room cap, dört native transition, HTTP parity, public family güvenliği, gerçek prepare/commit, promoted snapshot, 4009 ve şifreli 400 ms proof yolunu çalıştırır.
-
-Player bölümü hibrittir: ağ ve üretim receiver kodu gerçektir; AudioContext/Worklet donanımı deterministik VM modeli ve sanal timer ile temsil edilir. Pending modül deadline’ı aşılır; geç resolve 0 node oluşturur; fresh context’te yeni PCM 801 player kuyruğuna girer ve örnek değeri byte dönüşümüyle eşleşir. Gerçek hoparlörde dinleme veya mobil işletim sistemi testi yapıldığı iddia edilmez.
-
-ADIM-5.V71 üretim fonksiyonlarını kaynaklardan yükler; tuple hedef zehirleme, 1200 unknown istek, 64/2048 cap, 60 s TTL, 300 sessiz aktif kişi, grace/timer cleanup, native geçişler, mint’in tek saat okuması, stale resolve, cached failure, pause/resume, bounded backoff, cancel/unsupported ve promoted binary referansı sınanır.
-
-Mevcut testlerin sayısı/temel iddiaları azaltılmadı. Eski string room.key beklentileri JSON tuple’a ve cache beklentileri 71’e güncellendi. Bilinen tur gerektiren eski handoff fixture’larına geçerli test turu, yeni heartbeat helper’ı ve WebSocket sabiti eklendi. Bunlar üretimden eksik bırakılmış test bağımlılıklarını tamamlar; auth/revoke veya PCM doğrulamalarını kaldırmaz.
-
-Tasarım provası komutu: node --require <TEMP>/rys-v71-preload.cjs scripts/verify-system.js; çalışma ağacına uygulama sonrasında doğrudan komut: `node scripts/verify-system.js` (**60 / 60 [BAŞARILI / PASS], exit 0**).
-
-Uygulama sonrasında preload’suz normal `node scripts/verify-system.js` komutu doğrudan 60 testlik paketi çalıştırır.
-
-
-### 3.1 Ölçülen sonuçlar
-
-Son ve teslim edilen **77727 baytlık** adayla gerçek CLI: **60/60 PASS; exit 0**. CLI finally sonucu RUNTIME_RESTORED=True; preload dosyası silindi.
-
-| Ölçüm | Sonuç |
+| Kontrol | Sonuç |
 |---|---|
-| ADIM-3.V59 native fan-out | 300 listener; 270 sağlıklı; 120 frame |
-| Sağlıklı hedeflere teslim | 32400 / 32400; bozuk frame 0 |
-| Slow queue / hard isolation | 1500 kontrollü drop / 3 izolasyon |
-| Fan-out gecikmesi p50 / p95 / p99 / max | 11.4 / 19.06 / 34.84 / 37.07 ms |
-| Event-loop p99 / CPU / süre | 24.4 / 1500 / 2420.5 ms |
-| Collision private sızıntısı | native 0 / HTTP 0 |
-| Unknown family tahsisi | 1001 istek / 0 oda |
-| Guide→family eski PCM / guide | 0 / 0 |
-| Admin→pilgrim özel delta / family→join eski delta | 0 / 0 |
-| Worklet deadline / stale node / girişim | 3000 ms / 0 / 2 |
-| Kurtarılan fresh-context PCM | seq=801; örnek eşliği true |
-| Promoted handoff / fence / 4009 cache | true / true / 0 |
-| Şifreli MQTT proof | 400 ms TTL; seq=707; PCM eşliği true |
+| Tek unified diff | 1 blok, 12 hedef |
+| UTF-8 / LF diff boyutu | 77.727 bayt |
+| SHA-256 | 68b22040c9fbbdb94f35e165681660a55a2ab41f18422c2c589e6d674f2fc40f |
+| Çalışma ağacında reverse check | exit 0; stderr boş |
+| v70 + rapor diff’i → mevcut v71 hedefleri | 12/12 içerik eşliği |
+| Başlangıç ve son mevcut takipli dosyalar | Rapor hariç 61/61 raw SHA-256 eşliği |
+| data/runtime.json | Başlangıç raw Buffer’ı ile birebir eşlik |
+| Stage / commit / push / deploy | Yapılmadı |
 
-Tam son ölçüm çıktısı:
+Diff hash’i yalnız fence içindeki LF metni kapsar; son LF dahildir. Rapor açıklamaları ve fence işaretleri hash’e dahil değildir.
+
+### 2.1 Altı bulgu için kaynak ve test karşılığı
+
+Satırlar mevcut HEAD içindir.
+
+| Bulgu | Kaynak kanıtı | Çalıştırılan doğrulama |
+|---|---|---|
+| AUD-70R-01 — P1 | server.js:317 rysRoomKey JSON tuple; :352 getOrCreateRoom ortak anahtar; :1115 family actual-target kontrolü; :1140–1160 kayıtlı tur/PIN/actual-target/principal doğrulaması | ':' çarpışma çiftleri ayrı nesne; native ve HTTP özel veri sızıntısı 0; yanlış nesne döndürülen target reddedildi; başka tur PIN’i kapsam dışı token ile aşılamadı |
+| AUD-70R-02 — P1 | server.js:320 findRysTour; :328 dropRysRoom timer cleanup; :334 pruneRysRooms; :352–381 tahsis sınırları; :1590 heartbeat sweep | 1000 native + 1 HTTP unknown family → 0 tahsis; Unit 1200 unknown → 0; 64/tur ve 2048/global sınır; 60 s TTL; grace ve 300 sessiz aktif dinleyici korunumu |
+| AUD-70R-03 — P2 | server.js:343 commitRysSubscription; :1100 admin; :1118 family; :1160 join; ortak native/HTTP handler | Guide→family/admin eski üyeliği bırakır; admin→pilgrim özel delta 0; family→join eski delta 0; eski PCM ve guide 0; başarısız elevation sağlıklı family aboneliğini korur; HTTP parity |
+| AUD-70R-04 — P2 | public/dinle.html:1674 initRxPlayerWorklet; :1697 generation ownership; :1704 failed/backoff; :1728 3000 ms timer; :1764 rebuild; leave/rebuild cancel | Pending load timeout; geç resolve 0 node; 1500 ms sonra fresh context; eski context kapalı; taze seq=801 PCM örnek eşliği; cached failure, 60 s bounded retry, pause/resume ve cancel |
+| AUD-70R-05 — P3 | public/vercel-ws-shim.js:318 _handleNativeMessage; :328 _handleNativeClose; :237 ilk native message; :389–392 promoted message/close/ACK; :419 observer; :438 fence | Gerçek prepare/commit ve promoted trusted snapshot; auth-error metadata temizliği; session replacement/4009 terminal fence; cache 0; orijinal ArrayBuffer referansı ve geç callback reddi |
+| AUD-70R-06 — P3 | server.js:698 rysMintMqtt; :710 tek const issuedAt=Date.now(); :712 expiresAt=issuedAt+400 | 1 ms ilerleyen saat altında mint saat okuması 1; TTL tam 400 ms; gerçek şifreli proof doğrulaması ve seq=707 PCM byte eşliği |
+
+getOrCreateRoom çağrı yerleri, liveRooms/guideDisconnectTimers erişimleri, oda/tur silme ve kapasiteden null dönen yollar ayrıca okundu. evaluateTourGuidePresence genel oda yokluğunu tolere ediyor; join-tour kapasitede 503, unknown steps güvenli boş cevap veriyor. Uygulama ping’i oda üyeliğine bağlı olmadan family/admin bağlantılarına pong döndürüyor.
+
+Kapasite politikası kişi sayısına bağlı değildir: aynı Genel odasındaki 300 dinleyici tek oda kaydı kullanır. Aktif üyeliği, pending guide grace veya broadcast timer’ı bulunan odalar prune/reclaim ile atılmaz. Konfigüre edilmemiş boş odalar 60 s TTL ile bir sonraki 30 s heartbeat sweep’inde temizlenebilir; tahsis sınırı istek anında uygulanır. Genel ve konfigüre odalar normal idle TTL’den muaftır.
+
+### 2.2 Cache etiketleri
+
+- public/sw.js:4: CACHE_NAME = 'ridvanses-pwa-v71'.
+- public/sw.js:11: /vercel-ws-shim.js?v=71.
+- index.html:85, dinle.html:19, rehber.html:31, panel.html:32, login.html:13, rota.html:12, ani-kitabi.html:10, yaka-karti.html:11: sekiz shim etiketi de v=71; eski shim etiketi yok.
+- Mevcut service worker kayıt çağrısı dinle.html:2691 üzerinde /sw.js?v=71.
+- Capture/player dosyaları değişmedi: capture v=60-audio ve player v=61-audio pinleri hem sayfalarla hem SW ile eşleşiyor.
+
+## 3. Preload olmadan gerçek CLI çalıştırması
+
+Çalışma dizininde doğrudan çalıştırılan komut:
+
+```powershell
+node scripts/verify-system.js
+```
+
+Bu tur --require/preload kullanılmadı. Çağıran shell’deki NODE_OPTIONS test süresince kaldırılıp sonunda eski haline getirildi. Üretim server.js ve diskteki scripts/verify-system.js gerçek localhost HTTP/WebSocket sunucusuyla çalıştı. Dış finally bloğu runtime’ın başlangıç byte dizisini korudu; sonuç RUNTIME_RESTORED=True. Paket 60 PASS, 0 FAIL kaydı üretti ve exit 0 döndü. ADIM-3.V71 ve ADIM-5.V71 ayrı PASS kayıtlarıdır.
+
+| Ölçüm | Bu çalıştırmanın sonucu |
+|---|---|
+| ADIM-3.V59 gerçek WS fan-out | 300 listener; 270 sağlıklı; 120 frame |
+| Sağlıklı hedeflere teslim | 32.400 / 32.400; bozuk frame 0 |
+| Slow queue drop / hard isolation | 1.500 kontrollü drop / 3 izolasyon |
+| Local fan-out p50 / p95 / p99 / max | 12,94 / 24,43 / 32,21 / 39,90 ms |
+| Event-loop p99 / CPU / süre | 24,41 / 1.686 / 2.421,1 ms |
+| V71 tuple private sızıntı | native 0 / HTTP 0 |
+| V71 unknown family allocation | 1.001 istek / 0 yeni oda |
+| V71 eski guide / PCM / özel admin delta | 0 / 0 / 0 |
+| Worklet timeout / retry / stale node | 3.000 ms / 2 girişim / 0 |
+| Kurtarma sonrası taze ses | seq=801; fresh context; PCM örneği eşit |
+| Promoted native replacement | terminal fence true; private cache 0 |
+| MQTT proof | 400 ms TTL; seq=707 PCM eşit |
+
+Gecikme sayıları localhost WS dağıtımı içindir; mikrofon-hoparlör toplam gecikmesi veya mobil şebeke saha ölçümü değildir. 30 yavaş/izole hedefin kayıpları sağlıklı 270 hedefin teslim istatistiğine karıştırılmamıştır.
+
+Son komutun ilgili ham çıktısı:
 
 ```text
-V59 METRICS {"listeners":300,"healthy":270,"frames":120,"healthyFrames":32400,"slowQueueDrops":1500,"hardIsolated":3,"corrupt":0,"p50Ms":11.4,"p95Ms":19.06,"p99Ms":34.84,"maxMs":37.07,"eventLoopP99Ms":24.4,"cpuMs":1500,"elapsedMs":2420.5}
+V59 METRICS {"listeners":300,"healthy":270,"frames":120,"healthyFrames":32400,"slowQueueDrops":1500,"hardIsolated":3,"corrupt":0,"p50Ms":12.94,"p95Ms":24.43,"p99Ms":32.21,"maxMs":39.9,"eventLoopP99Ms":24.41,"cpuMs":1686,"elapsedMs":2421.1}
 V71 E2E METRICS {"identity":{"nativePrivateLeak":0,"httpPrivateLeak":0,"tupleDistinct":true},"rooms":{"unknownRequests":1001,"unknownAllocations":0,"knownTourMax":64,"generalJoinStillWorks":true},"transitions":{"guideToFamilyOldPcm":0,"oldGuideCount":0,"guideToAdminDetached":true,"adminToPilgrimPrivateDelta":0,"familyToJoinOldDelta":0,"failedElevationFamilyPreserved":true,"httpParity":true},"playerAndHandoff":{"realCommit":true,"trustedSnapshot":true,"loadTimeoutMs":3000,"lateNodes":0,"retryAttempts":2,"livePcmAfterRecovery":801,"freshContext":true,"pcmEqual":true,"promotedFence":true,"privateCacheAfter4009":0},"mqtt":{"ttlMs":400,"verifiedPcm":707,"pcmEqual":true}}
+[BAŞARILI / PASS] ADIM-3.V71 — Real tuple/PIN/principal isolation, unknown-room rejection/cap, atomic native+HTTP transitions, promoted guide handoff/fence, watchdog→fresh PCM and encrypted400ms proof
 V71 UNIT METRICS {"checks":["tuple-key-colon-pairs;actual-target-identity-defense;private-ACK-PIN-scope","1200-unknown-family-zero-allocation;64-per-tour/2048-global;60s-idle-TTL;300-quiet-and-guide-grace-preserved;timer-cleanup","atomic-guide-family/admin;admin-pilgrim;family-join;no-old-PCM;failed-elevation-and-unknown-tour-preserve-family","single-mint-clock-read;1ms-boundary-proof-valid400ms","load3000ms-timeout;late-resolve-zero-stale-node;1500ms-fresh-context-retry;cached-failure-recovery;60s-backoff<=12;one-live-context;pause-resume-during-backoff;cancel;unsupported-explicit","promoted-ACK/snapshot-trusted-observer;binary-original-reference;auth-clear;4009-terminal-fence;late-callback-drop"],"tupleLeak":0,"unknownAllocations":0,"quietListeners":300,"roomCaps":[64,2048],"idleTtlMs":60000,"loadTimeoutMs":3000,"stalePlayerNodes":0,"mintClockReads":1}
+[BAŞARILI / PASS] ADIM-5.V71 — Tuple/scope defense; bounded rooms/TTL/active protection; atomic subscriptions; player load watchdog/backoff; promoted native hooks; single MQTT clock
 TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: 60 / 60 [BAŞARILI / PASS]
 ```
 
+## 4. Ses ve taşıma değerlendirmesinin sınırı
 
-### 3.2 Negatif/mutasyon kontrolleri
+Mevcut paket capture/resample/FIR, player/jitter/PLC/de-click, source/media epoch ve stop/resume bariyerleri, Blob/socket generation, native/HTTP handoff, MQTT route/metadata sınırları, canlı principal/revoke ve rol değişim regresyonlarını da çalıştırdı. V71’e ait altı kusur bu mevcut kontrolleri bozmadan kapatılmış durumda.
 
-Aday korumalar yalnız bellekte tek tek kaldırıldı; her denemeden sonra aday geri kondu. Altı ana kontrolün tamamı, ayrıca target identity guard, fresh-context retry ve pause/backoff guard’ı testte hata olarak yakalandı: **9/9**. Bu FAIL sonuçları negatif kontrolün beklenen başarılı teşhisidir; teslim edilen yamada mutasyonlar yoktur.
+Player testlerinde üretim receiver fonksiyonları ve gerçek ağ kullanılır; AudioContext/AudioWorklet donanımı deterministik VM modeli ve sanal timer ile temsil edilir. Watchdog’un timeout/backoff/geç resolve davranışı bu modelde kanıtlanmıştır. Gerçek Bluetooth cihazı, iOS/Android ekran kilidi/arama kesintisi, Kâbe kalabalık izolasyonu, harici MQTT broker veya 300 eşzamanlı HTTP+MQTT saha kapasitesi bu tur ölçülmedi. Bu sınırlar yeni doğrulanmış kod kusurları olarak sınıflandırılmadı.
 
-| Kaldırılan koruma | Gözlenen test tepkisi |
+## 5. Çalışma ağacının korunumu
+
+Denetimde yalnız bu rapor kalıcı olarak güncellendi. Rapor dışındaki mevcut 61 takipli dosyanın başlangıç raw SHA-256 değerleri ve runtime Buffer’ı son okumayla karşılaştırıldı. HEAD 0673384 kaldı; index’e yazılmadı. Başlangıçtaki AUDIT_FIX_SUMMARY.md ve AUDIT_REPORT.md silinmeleri korundu.
+
+Seçilmiş başlangıç = son raw SHA-256 değerleri:
+
+| Dosya | SHA-256 |
 |---|---|
-| Tuple key | Çarpışan nesne actual-target guard tarafından reddedildi; beklenen kendi oda üyeliği kurulamadığından test FAIL |
-| Unknown tour allocation guard | Room sayısı 2 yerine 1202 oldu; FAIL |
-| Native detach | Eski owner/currentRoom kaldı; FAIL |
-| Load watchdog | 3000 ms sonunda loading hâlâ true; FAIL |
-| Promoted observer | Yeni native snapshot sonrası cache new yerine newer olamadı; FAIL |
-| Tek mint saat okuması | Saat okuma sayısı 1 yerine 2; FAIL |
-| Actual target identity guard | Zehirlenmiş target üyeliği oluştu; FAIL |
-| Fresh-context retry | Eski context closed yerine running kaldı; FAIL |
-| Pause/backoff cancel | needsRebuild false yerine true kaldı; FAIL |
-
-## 4. Uygulanabilirlik ve byte bütünlüğü
-
-Gerçek çalışma ağacında (v71 uygulanmış durumda) `git apply --reverse --check --ignore-space-change -`: **exit 0**.
-
-Aday hazırlık aşamasında 12 hedefin v70 başlangıç byte dizileri üzerinde ileri check (`exit 0`), gerçek apply (`exit 0`) ve çalışma ağacına uygulama sonrasında ters check (`git apply --reverse --check --ignore-space-change -` → **exit 0**) doğrulanmıştır.
-
-Her CLI çalışması finally bloğunda data/runtime.json başlangıç byte dizisini geri yükledi. AUDIT_FIX_SUMMARY.md ve AUDIT_REPORT.md silinmeleri korunur.
-
-
-### 4.1 Diff kimliği
-
-- UTF-8 / LF unified diff: **77727 bayt**, 12 hedef.
-- SHA-256: **68b22040c9fbbdb94f35e165681660a55a2ab41f18422c2c589e6d674f2fc40f**.
-- Kimlik yalnız diff fence içindeki metindir; son satır LF dahil. Rapor başlıkları/fence hash kapsamı dışındadır.
-
-### 4.2 v70 tabanıyla yapılan tasarım provasının bayt korunumu (tarihsel)
-
-Aşağıdaki tablo v71 uygulanmadan önceki v70 taban dosyalarına aittir; güncel uygulanmış v71 kaynaklarıyla hash eşliği iddiası değildir.
-
-| Dosya | Başlangıç = son SHA-256 |
-|---|---|
-| server.js | 2c703367398d694fd2651d3f797892bca16f0dc4b4fd643bd0cc0a3dfb1d9498 |
-| scripts/verify-system.js | 7d79b0b1fa9aedf5960ebb61e61df5a85aa3c6c12049ef854fc42d7d0ffd71e5 |
-| public/vercel-ws-shim.js | b34a65270f59c4dead8a8a0ff2713ef4e23103bea1c6e8c0c3ac1f216c3031ba |
-| public/dinle.html | eec1ee13ea5db8bfd8c55f399bc7b26e74f966bb909cf53ea8c945ae7c993d1f |
-| public/rehber.html | e75697c083ca7922e4bcc8d23937b7951e2228c290ecd86a4badd6fab120b16d |
+| server.js | 381a56e29bd2ea85e37cb8bb7130729cf0e51c79b3de1f129ddd2edcc9bd847f |
+| scripts/verify-system.js | 7800b23776df907540c8c5850a5b333b76440025440e2ce898c46cf7a84a5691 |
+| public/dinle.html | cc7af976d628804675f015bc834b3b094325f15080372733e39068d572bba27c |
+| public/vercel-ws-shim.js | 2946aca9501946bfe0751c7cb0a9623a0d09ebf81980b8d207a8788e691aadfa |
+| public/rehber.html | 1339b29b98a0c5dd63d9eaab7fcecaf6bc21e0679a1c14b8e125ac0e74e41c3d |
+| public/sw.js | 58e27fa11b1f3d8c80ba89f94f846eff3933b6490aba787a07675a59dac3b35e |
 | public/pcm-capture-worklet.js | 30340ea62d03b35c3239220460cb48176d1005fb18efbea05c4c06d8d6e6911a |
 | public/pcm-player-worklet.js | 062a66aa91bc775bd94b3dfb231243cd6b6e4ff5623893100a79512e0a629af7 |
-| public/sw.js | 1b0a1a9ba74fd9f5e62837586f4a08e4db96df8e4e7360d0da6cd471e9d3a79d |
 | data/runtime.json | 087e97acb7b29e389c4ac4da3014ce2aee8de575cd9d602c3af2eae3e11a32c4 |
 
+## 6. Uygulanmış v71 unified diff — değişmeyen kayıt
 
-## 5. Dosya ve cache kapsamı
-
-Tek diff 12 hedef içerir: server.js, scripts/verify-system.js, public/vercel-ws-shim.js, public/sw.js ve 8 HTML (index, dinle, rehber, panel, login, rota, ani-kitabi, yaka-karti). Dinle dışındaki HTML değişiklikleri cache etiketi eşliğidir.
-
-SW cache ridvanses-pwa-v71; shim URL’leri v=71; mevcut sw.js kayıt URL’si v=71. Worklet pinleri capture60-audio / player61-audio kaldı. public/pcm-capture-worklet.js ve public/pcm-player-worklet.js byte’ları değişmedi.
-
-## 6. Onayda değerlendirilecek pratik sınırlar
-
-Kapanış kararı bu altı kod bulgusu ve test edilen aday içindir. Gerçek Kâbe akustiğinde yüzde yüz kalabalık/çapraz cihaz echo izolasyonu, her mobil OS ekran kilidi/arama kesintisizliği veya bütün olası ağ koşullarında sıfır kopma kanıtlanmış değildir. Mevcut sayısal DSP/FIR/PLC/jitter/source/epoch regresyonları PASS; fiziksel cihaz matrisi bu tur çalıştırılmadı.
-
-300 WS ölçümü localhost native fan-out içindir; 300 eşzamanlı HTTP+şifreli MQTT saha kapasite ölçümü değildir. v70’in MQTT tesliminde canlı HTTP doğrulaması gerektiren modeli korundu. Yeni kapasite limitleri ve yalnız load hatasında yapılan AudioContext yenilemesi bu paketin açık işletim davranışlarıdır.
-
-## 7. Tek ve eksiksiz v71 unified diff
-
-Aşağıdaki diff HEAD 73740b2 üzerine uygulanmış ve `node scripts/verify-system.js` ile **60 / 60 [BAŞARILI / PASS], exit 0** olarak doğrulanmıştır. Raporun kendisi ve runtime verisi patch’e dahil değildir. Ters kontrol (`git apply --reverse --check --ignore-space-change -` → `exit 0`) ve arşiv bütünlüğü için aşağıda birebir korunmaktadır.
+Aşağıdaki blok, denetlenen 77.727 baytlık orijinal v71 diff’idir. İçeriği değiştirilmedi. Bu HEAD üzerinde ileri uygulama komutu yerine ters check kullanılmalıdır; kod zaten v71’dir.
 
 
 ```diff
