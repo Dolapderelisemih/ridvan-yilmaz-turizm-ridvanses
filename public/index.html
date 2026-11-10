@@ -77,6 +77,10 @@
   }
   </script>
 
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
   <link rel="manifest" href="/manifest.json?v=19" />
   <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
@@ -901,6 +905,16 @@
       } catch (e) {
         console.error(e);
       }
+    }
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js?v=73').catch(() => {});
+    }
+    if (
+      window.location.pathname === '/' &&
+      ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+        window.navigator.standalone === true)
+    ) {
+      window.location.replace('/dinle?source=pwa');
     }
     loadBootstrap();
 

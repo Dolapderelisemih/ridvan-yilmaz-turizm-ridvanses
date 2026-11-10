@@ -265,6 +265,9 @@
         </div>
       </a>
       <div class="nav-actions">
+        <button type="button" id="navPushBtn" class="btn btn-gold btn-sm" style="display:none;" onclick="activatePilgrimPushUi()">
+          🔔 Bildirim Aç
+        </button>
         <button type="button" id="navPwaInstallBtn" class="btn btn-gold btn-sm" onclick="triggerPwaInstall()">
           <svg class="svg-icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Yükle
@@ -297,6 +300,23 @@
       <button type="button" class="btn btn-gold btn-sm" style="white-space:nowrap;" onclick="triggerPwaInstall()">
         Telefona Kur
       </button>
+    </div>
+
+    <!-- ARKA PLAN BİLDİRİM İZNİ KARTI (ANA EKRAN PWA & ANDROID) -->
+    <div class="pwa-install-banner" id="webPushPromptBanner" style="display:none; background:linear-gradient(135deg, #0b4636 0%, #06231b 100%); border-color:var(--color-gold);">
+      <div style="display:flex; align-items:center; gap:12px; flex:1 1 210px; min-width:0;">
+        <div id="webPushBannerIcon" style="width:42px; height:42px; flex-shrink:0; border-radius:12px; background:rgba(223,190,120,0.18); border:1px solid rgba(223,190,120,0.55); display:flex; align-items:center; justify-content:center; font-size:1.25rem;">🔔</div>
+        <div style="min-width:0;">
+          <div id="webPushBannerTitle" style="font-weight:800; font-size:0.88rem; color:var(--color-gold-bright);">Duyuru Bildirimlerini Açın</div>
+          <div id="webPushBannerSub" style="font-size:0.75rem; color:#e2e8f0; line-height:1.35;">Uygulama kapalıyken bile hocamızın toplu duyurularının telefonunuza düşmesi için izin verin.</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <button type="button" id="webPushBannerBtn" class="btn btn-gold btn-sm" style="white-space:nowrap;" onclick="activatePilgrimPushUi()">
+          Bildirimlere İzin Ver
+        </button>
+        <button type="button" id="webPushBannerDismiss" class="btn btn-outline btn-sm" style="display:none; padding:5px 9px; color:#cbd5e1; border-color:rgba(255,255,255,0.22);" onclick="dismissSubscribedBanner()">✕</button>
+      </div>
     </div>
 
     <!-- ADIM 1: KAFİLE KODUYLA GİRİŞ KARTI -->
@@ -584,6 +604,13 @@
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
             <h3 style="font-size:1.18rem;" id="i18n_annTitle">Kafile Canlı Duyuruları</h3>
             <span class="badge badge-emerald">Anlık Bildirim</span>
+          </div>
+          <div id="annTabPushCard" style="background:var(--color-ground); border:1.5px solid var(--color-gold-border); border-radius:14px; padding:12px 14px; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+            <div style="flex:1 1 190px;">
+              <div id="annTabPushTitle" style="font-weight:800; font-size:0.86rem; color:var(--color-emerald-night);">🔔 Arka Plan Bildirim Durumu</div>
+              <div id="annTabPushSub" style="font-size:0.76rem; color:var(--color-muted); margin-top:2px; line-height:1.35;">Uygulama kapalıyken kilit ekranına bildirim düşmesi için bildirim izni verin.</div>
+            </div>
+            <button type="button" id="annTabPushBtn" class="btn btn-gold btn-sm" onclick="activatePilgrimPushUi()">Bildirimlere İzin Ver</button>
           </div>
           <div id="announcementsList" style="display:flex; flex-direction:column; gap:10px;"></div>
         </div>
@@ -1043,7 +1070,8 @@
           }
         }
       })
-      .catch((e) => console.log('Bootstrap dynamic load err:', e));
+      .catch((e) => console.log('Bootstrap dynamic load err:', e))
+      .finally(() => { if (typeof window.__rysAutoRestorePush === 'function') window.__rysAutoRestorePush(); });
 
     function updatePilgrimHotelNavigationUi(tour) {
       if (!tour) return;
@@ -1115,6 +1143,9 @@
 
         currentTour = data.tour;
         setWebPushTour(currentTour.code,pin);
+        try { localStorage.setItem('ridvanses_push_tour_code', currentTour.code); } catch {}
+        if (typeof window.__rysSyncPushUi === 'function') window.__rysSyncPushUi();
+        setTimeout(() => { if (typeof maybeOpenPushOnboardingModal === 'function') maybeOpenPushOnboardingModal(); }, 350);
         updatePilgrimHotelNavigationUi(currentTour);
         try {
           localStorage.setItem('ridvanses_pilgrim_name', name);
@@ -2735,7 +2766,7 @@
         if (iosBlock) iosBlock.style.display = 'block';
         if (androidBlock) iosBlock.style.display = 'none';
         if (actionBtn) {
-          actionBtn.innerHTML = 'iPhone Bildirim Bilgisi';
+          actionBtn.innerHTML = isStandaloneApp() ? 'Bildirimlere İzin Ver' : 'iPhone Bildirim Bilgisi';
           actionBtn.className = 'btn btn-gold';
         }
       } else {
@@ -2859,12 +2890,13 @@
             }
             if(!response.ok||!saved.success)throw Error('Bildirim aboneliği kaydedilemedi');
             try{localStorage.setItem('rys_push_receipt',JSON.stringify({endpoint:json.endpoint,subscriptionToken:saved.subscriptionToken}));}catch(e){}
-            if(current()){state.status='subscribed';state.tourCode=context.tourCode;result=true;}
-          }catch(e){if(current())state.status='retry';}
+            if(current()){state.status='subscribed';state.lastError='';state.tourCode=context.tourCode;result=true;}
+          }catch(e){if(current()){state.status='retry';state.lastError=String(e?.message||e||'');}}
         }while(completed!==state.generation);
         return result;
       })().finally(()=>{
         state.promise=null;
+        window.__rysSyncPushUi?.();
         // Latch a context change arriving between the last await and finalization.
         if(completed!==state.generation)queueMicrotask(()=>void syncWebPushSubscription());
       });
@@ -2889,8 +2921,11 @@
             'Bildirim aboneliği tamamlanamadı. Bağlantınızı kontrol edip yeniden deneyin.',5000);
           if(active)sendServiceWorkerNotification('RıdvanSes Bildirimleri Aktif','Kafile duyuruları için bildirim aboneliğiniz kaydedildi.','ridvanses-push-enabled');
           closePwaModal();
+          window.__rysClosePushOnboarding?.();
+          window.__rysSyncPushUi?.();
         }else if(permission==='denied'){
           showAppToast('Bildirim izni engellenmiş. Telefon Ayarları > RıdvanSes > Bildirimler bölümünden izin verebilirsiniz.',6000);
+          window.__rysSyncPushUi?.();
         }
       }catch(e){showAppToast('Bildirim izni alınırken bir sorun oluştu.',3500);}
     }
@@ -2903,6 +2938,209 @@
     }
     window.addEventListener('online',()=>{if(rysWebPushState().context)void syncWebPushSubscription();});
     navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(rysWebPushState().context)void syncWebPushSubscription();});
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js?v=73').catch(() => {});
+    }
+
+    let subscribedBannerDismissed = false;
+    function dismissSubscribedBanner() {
+      subscribedBannerDismissed = true;
+      window.__rysSyncPushUi?.();
+    }
+
+    function closePushOnboardingModal() {
+      const m = document.getElementById('pushOnboardingModal');
+      if (m) m.style.display = 'none';
+    }
+    window.__rysClosePushOnboarding = closePushOnboardingModal;
+
+    function maybeOpenPushOnboardingModal() {
+      if (window.__rysPushOnboardingShown) return;
+      if (isIosDevice() && !isStandaloneApp()) return;
+      if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+      if (Notification.permission !== 'default') return;
+      window.__rysPushOnboardingShown = true;
+      const m = document.getElementById('pushOnboardingModal');
+      if (m) m.style.display = 'flex';
+    }
+
+    async function activatePilgrimPushUi() {
+      if (isIosDevice() && !isStandaloneApp()) {
+        triggerPwaInstall();
+        return;
+      }
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js?v=73').catch(() => {});
+      }
+      // iOS WebKit zorunluluğu: setWebPushTour senkron çalışır, Notification.requestPermission() doğrudan dokunuş içinde çağrılır.
+      const state = rysWebPushState();
+      const rawCode = (
+        currentTour?.code ||
+        document.getElementById('tourCodeInput')?.value ||
+        (function(){ try { return localStorage.getItem('ridvanses_push_tour_code'); } catch { return ''; } })() ||
+        'RY-KASIM'
+      ).trim().toUpperCase();
+      const rawPin = (document.getElementById('tourPinInput')?.value || '').trim();
+      if (rawCode && (!state.context || state.context.tourCode !== rawCode || (rawPin && state.context.pin !== rawPin))) {
+        setWebPushTour(rawCode, rawPin);
+        try { localStorage.setItem('ridvanses_push_tour_code', rawCode); } catch {}
+      }
+      subscribedBannerDismissed = false;
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && state.status === 'subscribed') {
+        sendServiceWorkerNotification(
+          'RıdvanSes Bildirim Testi',
+          `${state.tourCode || rawCode} kafilesi arka plan bildirimleriniz bu telefonda aktiftir.`,
+          'ridvanses-push-test-' + Date.now()
+        );
+        showAppToast(`✅ <strong>${escapeHtml(state.tourCode || rawCode)}</strong> kafilesi için arka plan bildirim aboneliğiniz aktif! Test bildirimi gönderildi.`, 4500);
+        closePushOnboardingModal();
+        window.__rysSyncPushUi?.();
+        return;
+      }
+      await enableNotificationPermission();
+      window.__rysSyncPushUi?.();
+    }
+
+    window.__rysAutoRestorePush = function () {
+      try {
+        if (isIosDevice() && !isStandaloneApp()) {
+          window.__rysSyncPushUi?.();
+          return;
+        }
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && !rysWebPushState().context) {
+          let code = '';
+          try { code = (localStorage.getItem('ridvanses_push_tour_code') || '').trim().toUpperCase(); } catch {}
+          if (!code) code = (document.getElementById('tourCodeInput')?.value || 'RY-KASIM').trim().toUpperCase();
+          const matched = (availableToursCache || []).find((t) => String(t.code || '').toUpperCase() === code);
+          if (code && (!matched || (!matched.pinProtected && !matched.pinRequired))) {
+            setWebPushTour(code, '');
+          }
+        }
+      } catch {}
+      window.__rysSyncPushUi?.();
+    };
+
+    window.__rysSyncPushUi = function () {
+      const isIos = isIosDevice();
+      const standalone = isStandaloneApp();
+      const supported = ('Notification' in window) && ('serviceWorker' in navigator);
+      const perm = supported ? Notification.permission : 'unsupported';
+      const state = rysWebPushState();
+      const subscribed = perm === 'granted' && state.status === 'subscribed';
+      const tourLabel = state.tourCode || currentTour?.code || 'RY-KASIM';
+
+      const installBanner = document.getElementById('pwaInstallBanner');
+      const installNavBtn = document.getElementById('navPwaInstallBtn');
+      const navPushBtn = document.getElementById('navPushBtn');
+      const pushBanner = document.getElementById('webPushPromptBanner');
+      const bannerIcon = document.getElementById('webPushBannerIcon');
+      const bannerTitle = document.getElementById('webPushBannerTitle');
+      const bannerSub = document.getElementById('webPushBannerSub');
+      const bannerBtn = document.getElementById('webPushBannerBtn');
+      const bannerDismiss = document.getElementById('webPushBannerDismiss');
+
+      if (standalone) {
+        if (installBanner) installBanner.style.display = 'none';
+        if (installNavBtn) installNavBtn.style.display = 'none';
+      }
+
+      if (isIos && !standalone) {
+        if (navPushBtn) navPushBtn.style.display = 'none';
+        if (pushBanner) pushBanner.style.display = 'none';
+      } else if (standalone && !supported) {
+        if (navPushBtn) navPushBtn.style.display = 'none';
+        if (pushBanner) {
+          pushBanner.style.display = 'flex';
+          if (bannerIcon) bannerIcon.textContent = 'ℹ️';
+          if (bannerTitle) bannerTitle.textContent = 'Arka Plan Bildirimi Desteklenmiyor';
+          if (bannerSub) bannerSub.textContent = 'iPhone kapalı ekran bildirimleri için iOS 16.4 veya üzeri sürüm gereklidir.';
+          if (bannerBtn) bannerBtn.style.display = 'none';
+          if (bannerDismiss) bannerDismiss.style.display = 'inline-flex';
+        }
+      } else if (supported) {
+        if (navPushBtn) {
+          navPushBtn.style.display = 'inline-flex';
+          if (subscribed) {
+            navPushBtn.className = 'btn btn-outline btn-sm';
+            navPushBtn.innerHTML = '🔔 Aktif';
+          } else {
+            navPushBtn.className = 'btn btn-gold btn-sm';
+            navPushBtn.innerHTML = '🔔 Bildirim Aç';
+          }
+        }
+
+        if (pushBanner) {
+          if (subscribed && subscribedBannerDismissed) {
+            pushBanner.style.display = 'none';
+          } else {
+            pushBanner.style.display = 'flex';
+            if (subscribed) {
+              if (bannerIcon) bannerIcon.textContent = '✅';
+              if (bannerTitle) bannerTitle.textContent = `Arka Plan Bildirimleri Aktif (${tourLabel})`;
+              if (bannerSub) bannerSub.textContent = 'Uygulama tamamen kapalıyken bile duyurular telefonunuza bildirim olarak düşer.';
+              if (bannerBtn) {
+                bannerBtn.style.display = 'inline-flex';
+                bannerBtn.textContent = 'Test Et';
+              }
+              if (bannerDismiss) bannerDismiss.style.display = 'inline-flex';
+            } else if (perm === 'denied') {
+              if (bannerIcon) bannerIcon.textContent = '⚠️';
+              if (bannerTitle) bannerTitle.textContent = 'Bildirim İzni Kapalı';
+              if (bannerSub) bannerSub.textContent = 'Telefon Ayarları > Bildirimler > RıdvanSes menüsünden bildirimlere izin veriniz.';
+              if (bannerBtn) bannerBtn.style.display = 'none';
+              if (bannerDismiss) bannerDismiss.style.display = 'none';
+            } else if (perm === 'granted') {
+              if (bannerIcon) bannerIcon.textContent = '🔔';
+              if (bannerTitle) bannerTitle.textContent = 'Bildirim Eşleştirmesini Tamamlayın';
+              if (bannerSub) bannerSub.textContent = 'Bu telefonu kafile duyuru sunucusuna kaydetmek için dokunun.';
+              if (bannerBtn) {
+                bannerBtn.style.display = 'inline-flex';
+                bannerBtn.textContent = 'Şimdi Eşleştir';
+              }
+              if (bannerDismiss) bannerDismiss.style.display = 'none';
+            } else {
+              if (bannerIcon) bannerIcon.textContent = '🔔';
+              if (bannerTitle) bannerTitle.textContent = 'Uygulama Kapalıyken Duyuru Bildirimlerini Açın';
+              if (bannerSub) bannerSub.textContent = 'Rehber hocamız veya yönetim duyuru yayınladığında kilit ekranınıza bildirim gelmesi için izin verin.';
+              if (bannerBtn) {
+                bannerBtn.style.display = 'inline-flex';
+                bannerBtn.textContent = 'Bildirimlere İzin Ver';
+              }
+              if (bannerDismiss) bannerDismiss.style.display = 'none';
+            }
+          }
+        }
+      }
+
+      const annTitle = document.getElementById('annTabPushTitle');
+      const annSub = document.getElementById('annTabPushSub');
+      const annBtn = document.getElementById('annTabPushBtn');
+      if (annTitle && annSub && annBtn) {
+        if (isIos && !standalone) {
+          annTitle.textContent = '📲 iPhone Arka Plan Bildirimi';
+          annSub.textContent = 'Kapalı ekranda bildirim almak için Safari > Paylaş > Ana Ekrana Ekle adımlarını tamamlayın.';
+          annBtn.style.display = 'inline-flex';
+          annBtn.textContent = 'Kurulum Rehberi';
+        } else if (subscribed) {
+          annTitle.textContent = `✅ Kapalı Ekran Bildirimleri Aktif (${tourLabel})`;
+          annSub.textContent = 'Uygulama kapalıyken yayınlanan tüm duyurular kilit ekranınıza düşer.';
+          annBtn.style.display = 'inline-flex';
+          annBtn.textContent = 'Test Bildirimi';
+        } else if (perm === 'denied') {
+          annTitle.textContent = '⚠️ Bildirim İzni Engellenmiş';
+          annSub.textContent = 'Telefon Ayarları > Bildirimler > RıdvanSes bölümünden izin veriniz.';
+          annBtn.style.display = 'none';
+        } else {
+          annTitle.textContent = '🔔 Kapalı Ekran Bildirimleri Kapalı';
+          annSub.textContent = 'Uygulama kapalıyken de duyuru alabilmek için bildirimlere izin verin.';
+          annBtn.style.display = 'inline-flex';
+          annBtn.textContent = 'Bildirimlere İzin Ver';
+        }
+      }
+    };
+
+    window.__rysSyncPushUi();
 
 
     let wakeLockSentinel = null;
@@ -3186,7 +3424,7 @@
           </div>
           <div style="display:flex; gap:9px; align-items:flex-start;">
             <span style="background:#15803d; color:#fff; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800; flex-shrink:0; margin-top:1px;">4</span>
-            <span>Ana ekranınıza gelen <strong>RıdvanSes</strong> logosundan giriş yaptığınızda bildirimler ve ses kesintisiz çalışacaktır.</span>
+            <span>Ana ekranınıza gelen <strong>RıdvanSes</strong> logosundan uygulamayı açıp üstteki <strong>"Bildirimlere İzin Ver"</strong> butonuna dokunun.</span>
           </div>
         </div>
       </div>
@@ -3204,6 +3442,24 @@
           Bildirim İzni Ver
         </button>
         <button type="button" class="btn btn-primary" style="flex:1;" onclick="closePwaModal()">Tamam</button>
+      </div>
+    </div>
+  </div>
+  <!-- ANA EKRAN UYGULAMASI OTOMATİK BİLDİRİM İZNİ MODALI -->
+  <div class="modal-backdrop" id="pushOnboardingModal" onclick="if(event.target===this)closePushOnboardingModal()">
+    <div class="card-luxury" style="max-width:410px; width:100%; text-align:center;">
+      <div style="width:58px; height:58px; margin:0 auto 12px; border-radius:18px; background:linear-gradient(135deg, #0b4636, #06231b); border:1.5px solid var(--color-gold); display:flex; align-items:center; justify-content:center; font-size:1.7rem;">🔔</div>
+      <h3 style="font-size:1.22rem; color:var(--color-emerald-night); margin:0 0 8px;">Duyuru Bildirimlerini Açın</h3>
+      <p style="font-size:0.88rem; color:var(--color-muted); line-height:1.5; margin:0 0 18px;">
+        Rehber hocamız veya yönetim panelinden toplu bir duyuru yayınlandığında, <strong>uygulama tamamen kapalıyken bile</strong> telefonunuzun ekranına bildirim düşmesi için izin verin.
+      </p>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <button type="button" class="btn btn-gold" style="width:100%; padding:14px; font-size:0.98rem;" onclick="activatePilgrimPushUi()">
+          🔔 Bildirimlere İzin Ver
+        </button>
+        <button type="button" class="btn btn-outline btn-sm" style="width:100%;" onclick="closePushOnboardingModal()">
+          Daha Sonra
+        </button>
       </div>
     </div>
   </div>
