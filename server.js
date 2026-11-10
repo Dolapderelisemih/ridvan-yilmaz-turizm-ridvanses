@@ -1004,7 +1004,8 @@ function processClientJsonMessageV49(ctx, msg) {
     const targetRoom = getOrCreateRoom(tourCode, roomId);
     ctx.currentRoom = targetRoom;
     const deviceId = msg.deviceId ? String(msg.deviceId).trim() : '';
-    const previousSource=prevRoom===targetRoom?targetRoom.clients.get(clientId)?.audioSourceId:null;
+    const previousClient=prevRoom===targetRoom?targetRoom.clients.get(clientId):null;
+    const previousSource=previousClient?.audioSourceId;
     const clientObj = {
       ws,
       id: clientId,
@@ -1020,7 +1021,8 @@ function processClientJsonMessageV49(ctx, msg) {
     for (const r of getTourRooms(tourCode)) {
       for (const [existingId, existingClient] of r.clients.entries()) {
         if (existingId === clientId || existingClient.ws === ws) continue;
-        const sameDevice = Boolean(deviceId && existingClient.deviceId && existingClient.deviceId === deviceId);
+        // deviceId is client metadata; a listener must never evict a guide by copying it.
+        const sameDevice = Boolean(role === existingClient.role && deviceId && existingClient.deviceId && existingClient.deviceId === deviceId);
         const sameGuide = Boolean(role === 'guide' && existingClient.role === 'guide' && r.roomId === roomId && existingClient.name === clientObj.name);
         if (sameDevice || sameGuide) {
           if(existingClient.ws?.isHttpRelay){
@@ -1042,6 +1044,10 @@ function processClientJsonMessageV49(ctx, msg) {
     targetRoom.clients.set(clientId, clientObj);
     if (prevRoom && prevRoom !== targetRoom) {
       removeClientFromRoom(prevRoom, clientId, 0);
+    } else if(previousClient?.role==='guide'&&role!=='guide'){
+      // Keep the new listener membership, release the former publisher and sync inheritance/stop.
+      if(targetRoom.activePublisherClientId===clientId)targetRoom.activePublisherClientId=null;
+      evaluateTourGuidePresence(tourCode);
     }
     if (role === 'guide' && guideDisconnectTimers.has(targetRoom.key)) {
       clearTimeout(guideDisconnectTimers.get(targetRoom.key));
