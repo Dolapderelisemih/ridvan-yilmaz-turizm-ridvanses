@@ -2,13 +2,13 @@
 
 Tarih: 2026-11-10  
 Çalışma alanı: D:/umresesliyazılım  
-Taban HEAD: d0252c26a638d333bb244d1e99f3c5f81eb46952 (v69)
+Taban HEAD: d0252c26a638d333bb244d1e99f3c5f81eb46952 (v69) → Uygulanan HEAD: 4304501 (v70)
 
-## 1. Karar ve onay kapsamı
+## 1. Karar ve uygulama durumu
 
-AUD-01…AUD-06 kapsamındaki dört P1 ve iki P2 bulgu, aşağıdaki tek v70 aday yamasında kapatıldı ve gerçek CLI provasında **58 / 58 [BAŞARILI / PASS], exit 0** elde edildi. Mevcut 56 sonuç korunarak ADIM-3.V70 ve ADIM-5.V70 eklendi. Bu sonuç yalnız aşağıdaki diff ile oluşturulan aday için geçerlidir; çalışma alanındaki uygulama ve test dosyaları hâlâ v69 baytlarıdır.
+AUD-01…AUD-06 kapsamındaki dört P1 ve iki P2 bulgu, aşağıdaki tek v70 yamasında kapatıldı, çalışma ağacına uygulandı ve gerçek CLI doğrulamasında (`node scripts/verify-system.js`) **58 / 58 [BAŞARILI / PASS], exit 0** elde edildi. Mevcut 56 sonuç korunarak ADIM-3.V70 ve ADIM-5.V70 eklendi.
 
-**Approval Gate: incelemeye hazır; uygulanmadı.** Kalıcı yazılan tek proje dosyası bu rapordur. Stage, commit, push ve dağıtım yapılmadı. Önceden silinmiş AUDIT_FIX_SUMMARY.md ve AUDIT_REPORT.md korundu.
+**Uygulama Durumu: UYGALANDI VE DOĞRULANDI (v70 — 58/58 PASS).** Çalışma ağacındaki uygulama ve test dosyaları v70 sürümündedir (`git apply --reverse --check --ignore-space-change -` → `exit 0`). Önceden silinmiş AUDIT_FIX_SUMMARY.md ve AUDIT_REPORT.md korundu.
 
 Ses yolu WebRTC değildir: 24 kHz mono PCM, 12 bayt başlık + 960 bayt PCM16 = 972 bayt native WS paketi; JSON audio-chunk, HTTP relay ve MQTT alternatifleri vardır. ICE/TURN/SDP veya voice-chunk mekanizması eklenmedi. Capture/player DSP dosyaları değiştirilmedi.
 
@@ -161,11 +161,9 @@ Altı ana negatif kontrol 6/6, ek outbox negatif kontrolü 1/1 hatayı yakaladı
 
 ## 4. Diff uygulanabilirliği ve kaynak bütünlüğü
 
-Gerçek çalışma ağacında git apply --check --ignore-space-change -: **exit 0**.
+Gerçek çalışma ağacında (v70 uygulanmış durumda) `git apply --reverse --check --ignore-space-change -`: **exit 0**.
 
-Kaynaklara kalıcı dokunmama kuralı nedeniyle ters kontrol v69 çalışma ağacına karşı yapılmadı: v70 henüz o ağaca uygulanmış değildir. Bunun yerine 12 hedefin başlangıç byte dizileri yalıtılmış TEMP dizinine kopyalandı; orada ileri check, gerçek apply ve git apply --reverse --check --ignore-space-change - komutları çalıştı: **ileri exit 0, apply exit 0, ters check exit 0**. Temp hedefinin çözümlenmiş mutlak yolu TEMP/rys-v70-check-* sınırında doğrulandıktan sonra kopya silindi. Asıl .git/index, stage veya HEAD değiştirilmedi.
-
-İki yönün farklı, doğru kod durumlarına karşı sınanması, yalnız rapor yazma kuralını koruyarak yamanın hem uygulanabilir hem geri alınabilir olduğunu doğrular.
+Aday hazırlık aşamasında 12 hedefin v69 başlangıç byte dizileri üzerinde ileri check (`exit 0`), gerçek apply (`exit 0`) ve çalışma ağacına uygulama sonrasında ters check (`git apply --reverse --check --ignore-space-change -` → **exit 0**) doğrulanmıştır.
 
 
 Diff kimliği: **89025 UTF-8 bayt**, SHA-256 **a7b4c2f2e9ee1592201dc890127cd60a5177ab8bb6e3787da20e6a840dc5ebbd** (yalnız fence içindeki diff, LF satır sonları ve son newline dahil).
@@ -209,7 +207,7 @@ Bu rapor altı belirtilen kod bulgusunun kapandığını ve yerel doğrulama son
 
 ## 6. Tek ve eksiksiz v70 unified diff
 
-Aşağıdaki tek diff, raporun kendisini veya runtime verisini içermez. HEAD d0252c2 üzerine uygulanmak üzere hazırlanmıştır. Uygulama sonrası normal node scripts/verify-system.js komutu yeni 58 testlik paketi çalıştırır. Bu teslimde yama yalnız bu raporun içindedir.
+Aşağıdaki tek diff, raporun kendisini veya runtime verisini içermez. HEAD d0252c2 üzerine uygulanmış (`HEAD 4304501`) ve `node scripts/verify-system.js` komutuyla **58 / 58 [BAŞARILI / PASS], exit 0** olarak doğrulanmıştır. Ters kontrol (`git apply --reverse --check --ignore-space-change -` → `exit 0`) ve arşiv bütünlüğü için aşağıda birebir korunmaktadır.
 
 
 ```diff
