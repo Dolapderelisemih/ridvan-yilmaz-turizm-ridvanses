@@ -538,6 +538,8 @@ function revokeAuthToken(token) {
   if (clean !== AUTH_TOKEN_VALUE) {
     revokedAuthTokens.add(clean);
   }
+  // Revoke existing native publishers/admins as well as later HTTP requests.
+  for(const ws of wss.clients)if(ws.rysAuthContext)refreshRysNativeAuth(ws.rysAuthContext);
 }
 
 // IP Tabanlı Hafif Hız Sınırlayıcı (Sliding Window Rate Limiter)
@@ -617,6 +619,23 @@ function isValidAuthToken(token) {
     return false;
   }
   return true;
+}
+
+
+function refreshRysNativeAuth(ctx){
+  if(!ctx||ctx.ws.isHttpRelay)return true; // HTTP capabilities revalidate per request.
+  const authed=!!isValidAuthToken(ctx.rysAuthToken||ctx.rysHandshakeToken);
+  ctx.isAuthenticated=authed;ctx.ws.isAuthenticated=authed;
+  if(authed)return true;
+  const room=ctx.currentRoom,member=room?.clients.get(ctx.clientId),pending=ctx.rysHandoff?.request;
+  const privileged=member?.role==='guide'||ctx.ws.isAdmin||pending?.type==='admin-subscribe'||
+    pending?.type==='join'&&pending.role==='guide';
+  if(!privileged)return true; // Public listeners/family remain connected, without elevation.
+  ctx.currentRoom=null;ctx.ws.isAdmin=false;ctx.ws.familyTourCode=null;
+  clearRysHandoff(ctx);
+  if(room?.clients.has(ctx.clientId))removeClientFromRoom(room,ctx.clientId,0);
+  try{ctx.ws.terminate();}catch(e){}
+  return false;
 }
 
 function extractAuthTokenFromReq(req) {
@@ -924,6 +943,7 @@ function processClientJsonMessage(ctx, msg) {
 function processClientJsonMessageV49(ctx, msg) {
   const { clientId, ws } = ctx;
   if (msg && msg.token && isValidAuthToken(msg.token)) {
+    ctx.rysAuthToken=String(msg.token).trim();
     ws.isAuthenticated = true;
     ctx.isAuthenticated = true;
   }
@@ -1310,6 +1330,7 @@ wss.on('connection', (ws, req) => {
     rysHandshakeToken: extractAuthTokenFromReq(req)
   };
 
+  ws.rysAuthContext=ctx;
   const rejectInput=()=>{
     clearRysHandoff(ctx);
     try{ws.terminate();}catch(e){}
@@ -1320,6 +1341,7 @@ wss.on('connection', (ws, req) => {
     ws.isAlive = true;
     // PATCH: binary-v51
     if (isBinary) {
+      if(!refreshRysNativeAuth(ctx))return;
       if (!ctx.currentRoom || !(ws.isAuthenticated || ctx.isAuthenticated)) return;
       const sender = ctx.currentRoom.clients.get(ctx.clientId);
       if (!sender || sender.role !== 'guide') return;
@@ -1379,12 +1401,15 @@ wss.on('connection', (ws, req) => {
       return;
     }
     if(!isRysClientMessage(msg)){rejectInput();return;}
+    if(isValidAuthToken(msg.token))ctx.rysAuthToken=String(msg.token).trim();
+    if(!refreshRysNativeAuth(ctx))return;
     if(handleRysNativeHandoff(ctx,msg))return;
     processClientJsonMessage(ctx, msg);
     }catch(e){rejectInput();}
   });
 
   ws.on('close', () => {
+    ws.rysAuthContext=null;
     clearRysHandoff(ctx);
     if (ctx.currentRoom) {
       removeClientFromRoom(ctx.currentRoom, ctx.clientId);
@@ -1396,6 +1421,7 @@ wss.on('connection', (ws, req) => {
 const heartbeatTimer = setInterval(() => {
   cleanupStaleRelaySessions();
   wss.clients.forEach((ws) => {
+    if(ws.rysAuthContext&&!refreshRysNativeAuth(ws.rysAuthContext))return;
     if (ws.isAlive === false) {
       return ws.terminate();
     }
@@ -1519,7 +1545,9 @@ function clearRysHandoff(ctx){
   ctx.rysHandoff=null;
 }
 function validateRysHandoff(ctx,request){
-  const authed=!!(isValidAuthToken(request.token)||isValidAuthToken(ctx.rysHandshakeToken));
+  const token=[request.token,ctx.rysAuthToken,ctx.rysHandshakeToken].find(isValidAuthToken);
+  const authed=!!token;
+  if(authed)ctx.rysAuthToken=String(token).trim();
   ctx.isAuthenticated=authed;ctx.ws.isAuthenticated=authed;
   if((request.type==='admin-subscribe'||request.type==='join'&&request.role==='guide')&&!authed)
     return 'auth-required';
