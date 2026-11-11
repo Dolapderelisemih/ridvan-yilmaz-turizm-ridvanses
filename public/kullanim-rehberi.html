@@ -7,8 +7,13 @@
   <meta name="description" content="Rıdvan Yılmaz Turizm misafirleri ve rehber hocaları için RıdvanSes canlı ses sistemi kullanım rehberi, tavaf dinleme ve kafile yönetim adımları." />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/kullanim-rehberi" />
   <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#06231b" />
+  <link rel="manifest" href="/manifest.json?v=19" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" />
+  <script src="/vercel-ws-shim.js?v=79"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap');
 
     @page {
       size: A4 portrait;
@@ -243,7 +248,7 @@
     </div>
     <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
       <a href="/Ridvan_Yilmaz_Turizm_RidvanSes_Kullanim_Rehberi.pdf" download>⬇️ PDF Dosyasını İndir</a>
-      <button onclick="window.print()">🖨️ Yazdır</button>
+      <button id="guidePrintBtn" type="button">🖨️ Yazdır</button>
       <a href="/" style="background:transparent; color:#fff; border:1px solid rgba(255,255,255,0.4);">← Ana Sayfaya Dön</a>
     </div>
   </div>
@@ -449,7 +454,7 @@
 
       <h2 style="font-size:15.5pt; margin-bottom:8px;">C. Hacılarımız Telefonlarında Nasıl Kullanacak?</h2>
       <p style="font-size:9.8pt; color:#334155; margin-bottom:12px;">
-        Hacılarımızın e-posta yazmasına, şifre oluşturmasına veya uygulama mağazası şifresi bilmesine <strong>hiç gerek yoktur.</strong>
+        Hacılarımızın e-posta yazmasına, kişisel hesap açmasına veya uygulama mağazası şifresi bilmesine <strong>hiç gerek yoktur</strong> (özel PIN tanımlı kafilelerde yalnızca 4 haneli kafile PIN kodu girilir).
       </p>
 
       <div class="step-row">
@@ -604,5 +609,18 @@
     </div>
   </section>
 
+  <script>
+    (function () {
+      var printBtn = document.getElementById('guidePrintBtn');
+      if (printBtn) {
+        printBtn.addEventListener('click', function () {
+          window.print();
+        });
+      }
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js?v=79').catch(function () {});
+      }
+    })();
+  </script>
 </body>
 </html>

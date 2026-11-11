@@ -6,11 +6,12 @@
   <meta name="theme-color" content="#06231b" />
   <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
+  <link rel="manifest" href="/manifest.json?v=19" />
   <title>Yetkili Girişi (Rehber & Acente) | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/login" />
   <link rel="stylesheet" href="/css/style.css?v=22" />
-  <script src="/vercel-ws-shim.js?v=78"></script>
+  <script src="/vercel-ws-shim.js?v=79"></script>
   <style>
     .login-shell {
       max-width: 460px;
@@ -119,8 +120,22 @@
 
   <script>
     const params = new URLSearchParams(window.location.search);
-    let nextUrl = params.get('next') || '/panel';
-    if (!/^\/(?!\/|\\)/.test(nextUrl) || nextUrl.startsWith('/login')) nextUrl = '/panel';
+    function sanitizeNextUrl(raw) {
+      const cleaned = String(raw || '').replace(/[\u0000-\u001F\u007F]+/g, '').trim();
+      if (!cleaned || !cleaned.startsWith('/') || cleaned.startsWith('//') || cleaned.startsWith('/\\')) {
+        return '/panel';
+      }
+      try {
+        const parsed = new URL(cleaned, window.location.origin);
+        if (parsed.origin !== window.location.origin) return '/panel';
+        if (parsed.pathname.startsWith('//') || parsed.pathname.includes('\\')) return '/panel';
+        if (parsed.pathname.toLowerCase().startsWith('/login')) return '/panel';
+        return parsed.pathname + parsed.search + parsed.hash;
+      } catch (e) {
+        return '/panel';
+      }
+    }
+    let nextUrl = sanitizeNextUrl(params.get('next') || '/panel');
 
     const titleEl = document.getElementById('loginTargetTitle');
     const badgeEl = document.getElementById('loginTargetBadge');
@@ -143,6 +158,28 @@
     }
     updateLoginTargetUi();
 
+    (async function attemptStoredTokenRecovery() {
+      const savedTok = (localStorage.getItem('ry_auth_token') || '').trim();
+      if (!savedTok) return;
+      try {
+        const res = await fetch('/api/bootstrap', {
+          headers: { Authorization: 'Bearer ' + savedTok }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.authenticated === true) {
+          const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+          document.cookie = `ry_auth=${encodeURIComponent(savedTok)}; path=/; max-age=2592000; SameSite=Lax${secureFlag}`;
+          if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+          window.location.replace(nextUrl);
+        } else if (data && data.authenticated === false) {
+          localStorage.removeItem('ry_auth_token');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+        }
+      } catch (e) {}
+    })();
+
     function togglePassVisibility() {
       const passInput = document.getElementById('password');
       const btn = document.getElementById('togglePassBtn');
@@ -156,7 +193,7 @@
     }
 
     function submitWithTarget(target) {
-      nextUrl = target;
+      nextUrl = sanitizeNextUrl(target);
       updateLoginTargetUi();
       document.getElementById('loginForm').requestSubmit();
     }
@@ -189,12 +226,19 @@
           return;
         }
 
+        try {
+          const prevUser = JSON.parse(localStorage.getItem('user') || 'null');
+          if (prevUser && prevUser.email && data.user && prevUser.email !== data.user.email) {
+            localStorage.removeItem('rys_sos_push_receipt');
+          }
+        } catch (_) {}
+
         const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
         document.cookie = `ry_auth=${encodeURIComponent(data.token)}; path=/; max-age=2592000; SameSite=Lax${secureFlag}`;
         localStorage.setItem('ry_auth_token', data.token);
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        window.location.href = nextUrl;
+        window.location.href = sanitizeNextUrl(nextUrl);
       } catch (err) {
         errBox.textContent = 'Bağlantı hatası oluştu, lütfen tekrar deneyin.';
         errBox.style.display = 'block';

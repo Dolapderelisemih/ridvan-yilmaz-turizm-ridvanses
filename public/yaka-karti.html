@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#06231b" />
   <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
+  <link rel="manifest" href="/manifest.json?v=19" />
   <title>Baskıya Hazır Hacı Yaka Kartı & QR Kod | Rıdvan Yılmaz Turizm</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/yaka-karti" />
@@ -20,7 +23,7 @@
       }
     })();
   </script>
-  <script src="/vercel-ws-shim.js?v=78"></script>
+  <script src="/vercel-ws-shim.js?v=79"></script>
   <style>
     .print-toolbar {
       background: linear-gradient(155deg, #06231B 0%, #093529 100%);
@@ -51,15 +54,20 @@
       flex-direction: column;
       justify-content: space-between;
       page-break-inside: avoid;
+      break-inside: avoid;
       position: relative;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
     .badge-top {
-      background: linear-gradient(150deg, #06231B 0%, #0B4636 100%);
-      color: #FFFFFF;
+      background: linear-gradient(150deg, #06231B 0%, #0B4636 100%) !important;
+      color: #FFFFFF !important;
       padding: 20px 22px 18px;
       text-align: center;
       border-bottom: 3px solid var(--color-gold);
       position: relative;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
     .lanyard-slot {
       width: 58px;
@@ -68,6 +76,8 @@
       background: var(--color-ground);
       border: 1.5px solid var(--color-gold);
       margin: 0 auto 12px;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
     .badge-body {
       padding: 22px;
@@ -100,11 +110,23 @@
       text-align: center;
       color: var(--color-emerald-night);
       font-weight: 800;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
     @media print {
       .print-toolbar,
-      .bulk-panel {
+      .bulk-panel,
+      .badge-qr-warning {
         display: none !important;
+      }
+      body,
+      .neck-badge,
+      .badge-top,
+      .lanyard-slot,
+      .badge-footer,
+      .badge {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
       body {
         background: #FFFFFF !important;
@@ -145,6 +167,10 @@
       <select id="tourCodePicker" class="select" style="width:auto; padding:8px 12px; font-size:0.85rem;" onchange="updateBadges()">
         <option value="RY-KASIM">RY-KASIM (13-14 Kasım Umresi • Ömer Ali Gültekin)</option>
       </select>
+      <select id="badgeRoomPicker" class="select" style="width:auto; padding:8px 12px; font-size:0.85rem;" onchange="updateBadges()">
+        <option value="genel">Genel Rehberlik Odası</option>
+        <option value="siyer">Siyer / Tavaf Özel Odası</option>
+      </select>
       <input type="text" id="customPilgrimInput" class="input" style="width:200px; padding:8px 12px; font-size:0.85rem;" placeholder="Tek İsim (Hızlı)" oninput="debouncedUpdateBadges()" />
       <button type="button" class="btn btn-outline btn-sm" style="color:#E2C785; border-color:rgba(226,199,133,0.5); background:rgba(197,160,89,0.12);" onclick="toggleBulkListPanel()">
         📋 Toplu Hacı İsim Listesi Yapıştır (<span id="badgeCountLabel">4</span> Kart)
@@ -173,11 +199,15 @@
     </div>
   </div>
 
+  <div id="badgeQrWarningBanner" class="badge-qr-warning" style="display:none; max-width:920px; margin:16px auto 0; padding:12px 16px; border-radius:12px; background:#fffbeb; border:1.5px solid #f59e0b; color:#92400e; font-size:0.84rem; font-weight:700;"></div>
+
   <div class="badges-sheet" id="badgesContainer"></div>
 
   <script>
     const params = new URLSearchParams(window.location.search);
-    const badgeRoom = (params.get('room') || 'genel').trim() === 'siyer' ? 'siyer' : 'genel';
+    const initialBadgeRoom = (params.get('room') || 'genel').trim() === 'siyer' ? 'siyer' : 'genel';
+    const roomSel = document.getElementById('badgeRoomPicker');
+    if (roomSel) roomSel.value = initialBadgeRoom;
     if (params.get('code')) {
       const sel = document.getElementById('tourCodePicker');
       const code = params.get('code').toUpperCase();
@@ -195,6 +225,32 @@
 
     let toursData = [];
     let agencyPhone = '+90 538 399 96 66';
+    let bootstrapFailed = false;
+    window.__genericBadgeQr = '';
+
+    function showBadgeWarning(msg) {
+      const box = document.getElementById('badgeQrWarningBanner');
+      if (!box) return;
+      if (!msg) {
+        box.style.display = 'none';
+        box.textContent = '';
+        return;
+      }
+      box.textContent = msg;
+      box.style.display = 'block';
+    }
+
+    function handleBadgeQrFallback(imgEl) {
+      if (!imgEl) return;
+      imgEl.onerror = null;
+      if (window.__genericBadgeQr) {
+        imgEl.src = window.__genericBadgeQr;
+        showBadgeWarning('Uyarı: İsme özel QR servisine ulaşılamadığı için bazı kartlarda genel kafile QR kodu kullanıldı (hacı girişte adını kendisi yazabilir).');
+      } else {
+        showBadgeWarning('Uyarı: İnternet bağlantısı kurulamadı, QR kod görselleri yüklenemedi. Yazdırmadan önce bağlantınızı kontrol edin.');
+      }
+    }
+
     function escapeHtml(str) {
       return String(str ?? '')
         .replace(/&/g, '&amp;')
@@ -211,6 +267,7 @@
         if (data && data.authenticated === false) {
           localStorage.removeItem('ry_auth_token');
           localStorage.removeItem('token');
+          localStorage.removeItem('user');
           const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
           document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax' + secureFlag;
           window.location.replace('/login?next=' + encodeURIComponent(window.location.pathname + window.location.search));
@@ -226,7 +283,9 @@
           sel.innerHTML = toursData.map((t) => `<option value="${escapeHtml(t.code)}">${escapeHtml(t.code)} (${escapeHtml(t.name)} • ${escapeHtml(t.guideName)})</option>`).join('');
           if (toursData.some((t) => t.code === current)) sel.value = current;
         }
-      } catch (e) {}
+      } catch (e) {
+        bootstrapFailed = true;
+      }
       updateBadges();
     }
 
@@ -256,15 +315,22 @@
     async function updateBadges() {
       const currentSeq = ++renderSeq;
       const code = document.getElementById('tourCodePicker').value;
+      const badgeRoom = (document.getElementById('badgeRoomPicker')?.value || initialBadgeRoom) === 'siyer' ? 'siyer' : 'genel';
       const customName = document.getElementById('customPilgrimInput').value.trim();
       const bulkRaw = (document.getElementById('bulkPilgrimsTextarea')?.value || '').trim();
-      const tour = toursData.find((t) => t.code === code) || {
+      const matchedTour = toursData.find((t) => t.code === code);
+      const tour = matchedTour || {
         code,
         name: '13-14 Kasım Umresi',
         guideName: 'Ömer Ali Gültekin',
         makkahHotel: 'Mekke Otel Kudi Tower',
         madinahHotel: '2 Gün Medine Konaklama (Merkezi Bölge)'
       };
+      if (bootstrapFailed && !matchedTour) {
+        showBadgeWarning('Uyarı: Sunucudan güncel kafile bilgileri alınamadı; varsayılan şablon gösteriliyor. Yazdırmadan önce sayfayı yenileyin.');
+      } else {
+        showBadgeWarning('');
+      }
 
       let qrJson = { dataUrl: '' };
       try {
@@ -272,6 +338,7 @@
         if (qrRes.ok) qrJson = await qrRes.json();
       } catch (e) {}
       if (currentSeq !== renderSeq) return;
+      window.__genericBadgeQr = qrJson.dataUrl || '';
 
       let samplePilgrims = [];
       if (bulkRaw) {
@@ -309,7 +376,7 @@
             <span class="badge badge-gold" style="font-size:0.8rem;">KAFİLE KODU: ${escapeHtml(tour.code)}</span>
 
             <div class="qr-box">
-              <img src="${qrImgOrigin}/api/qr-img?code=${encodeURIComponent(tour.code)}&room=${encodeURIComponent(badgeRoom)}&name=${encodeURIComponent(pName)}" onerror="this.onerror=null;if('${escapeHtml(qrJson.dataUrl || '')}')this.src='${escapeHtml(qrJson.dataUrl || '')}';" alt="QR Code ${escapeHtml(tour.code)} - ${escapeHtml(pName)}" />
+              <img src="${qrImgOrigin}/api/qr-img?code=${encodeURIComponent(tour.code)}&room=${encodeURIComponent(badgeRoom)}&name=${encodeURIComponent(pName)}" onerror="handleBadgeQrFallback(this)" alt="QR Code ${escapeHtml(tour.code)} - ${escapeHtml(pName)}" />
             </div>
 
             <div style="font-size:0.79rem; color:var(--color-muted); max-width:265px; margin:0 auto 14px; line-height:1.45;">

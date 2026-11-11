@@ -7,6 +7,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
+  <meta name="theme-color" content="#06231b" />
   <link rel="manifest" href="/manifest.json?v=19" />
   <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
@@ -18,7 +19,8 @@
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
-      const hasCookie = document.cookie.split(';').some((c) => c.trim().startsWith('ry_auth='));
+      const cookieEntry = document.cookie.split(';').map((c) => c.trim()).find((c) => c.startsWith('ry_auth='));
+      const hasCookie = Boolean(cookieEntry);
       if (!hasCookie && !savedToken) {
         window.location.replace('/login?next=' + encodeURIComponent(window.location.pathname + window.location.search));
       } else if (!hasCookie && savedToken) {
@@ -27,7 +29,7 @@
       }
     })();
     async function ryLogout() {
-      const savedTok = (localStorage.getItem('ry_auth_token') || '').trim();
+      const savedTok = (window.ryReadAuthToken ? window.ryReadAuthToken() : (localStorage.getItem('ry_auth_token') || '').trim());
       try {
         if (navigator.serviceWorker && navigator.serviceWorker.controller) {
           navigator.serviceWorker.controller.postMessage({ type: 'SYNC_PUSH_META', kind: 'sos', meta: null });
@@ -56,9 +58,9 @@
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=78"></script>
+  <script src="/vercel-ws-shim.js?v=79"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=78"></script>
+  <script src="/js/umrah-steps-map.js?v=79"></script>
   <style>
     .dashboard-layout {
       display: grid;
@@ -815,6 +817,10 @@
 
       try {
         const res = await fetch(`/api/trips/${encodeURIComponent(code)}/steps`);
+        if (res.status === 401) {
+          handleAdminAuthExpired();
+          return;
+        }
         const data = await res.json();
         if (!data || !data.success) return;
         const steps = data.steps || [];
@@ -832,18 +838,30 @@
             onAction: async (action, step, btnEl) => {
               if (btnEl) btnEl.disabled = true;
               try {
+                let actRes = null;
                 if (action === 'delete') {
                   if (!confirm(`"${step.title}" durağını silmek istediğinize emin misiniz?`)) return;
-                  await fetch(`/api/trips/${encodeURIComponent(code)}/steps/${encodeURIComponent(step.id)}`, { method: 'DELETE' });
+                  actRes = await fetch(`/api/trips/${encodeURIComponent(code)}/steps/${encodeURIComponent(step.id)}`, { method: 'DELETE' });
                 } else {
                   const newStatus = action === 'activate' ? 'active' : 'completed';
-                  await fetch(`/api/trips/${encodeURIComponent(code)}/steps/${encodeURIComponent(step.id)}`, {
+                  actRes = await fetch(`/api/trips/${encodeURIComponent(code)}/steps/${encodeURIComponent(step.id)}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ status: newStatus })
                   });
                 }
+                if (actRes && actRes.status === 401) {
+                  handleAdminAuthExpired();
+                  return;
+                }
+                if (actRes && !actRes.ok) {
+                  const err = await actRes.json().catch(() => ({}));
+                  alert(err.message || err.error || 'Durak güncellenemedi.');
+                  return;
+                }
                 await loadAdminRouteSteps(false);
+              } catch (actionErr) {
+                alert('Bağlantı hatası: Durak işlemi tamamlanamadı.');
               } finally {
                 if (btnEl) btnEl.disabled = false;
               }
@@ -911,19 +929,28 @@
       }
     }
 
+    let lastRenderedSosSignature = null;
+
     async function fetchAdminData() {
-      const res = await fetch('/api/bootstrap');
-      if (res.status === 401) {
-        handleAdminAuthExpired();
-        return;
+      try {
+        const res = await fetch('/api/bootstrap');
+        if (res.status === 401) {
+          handleAdminAuthExpired();
+          return;
+        }
+        const nextState = await res.json();
+        if (nextState && nextState.authenticated === false) {
+          handleAdminAuthExpired();
+          return;
+        }
+        if (nextState && nextState.user) {
+          try { localStorage.setItem('user', JSON.stringify(nextState.user)); } catch {}
+        }
+        appState = nextState;
+        renderAll();
+      } catch (err) {
+        console.warn('Panel verisi güncellenemedi:', err);
       }
-      const nextState = await res.json();
-      if (nextState && nextState.authenticated === false) {
-        handleAdminAuthExpired();
-        return;
-      }
-      appState = nextState;
-      renderAll();
     }
 
     function renderAll() {
@@ -1090,56 +1117,64 @@
         </div>
       `).join('');
 
-      // SOS Lists
-      const sosHtml = (appState.sosAlerts || []).map((s) => {
-        const lat = Number(s.lat) || 21.4225;
-        const lng = Number(s.lng) || 39.8262;
-        const bbox = `${(lng - 0.003).toFixed(5)}%2C${(lat - 0.002).toFixed(5)}%2C${(lng + 0.003).toFixed(5)}%2C${(lat + 0.002).toFixed(5)}`;
-        const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
-        const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-        const safeName = escapeHtml(s.pilgrimName || 'Hacı Misafir');
-        const safeTour = escapeHtml(s.tourCode || 'RY-KASIM');
-        const safePhone = escapeHtml(s.phone || '');
-        const safeNote = escapeHtml(s.locationNote || '');
-        const safeTime = escapeHtml(s.createdAt || '');
-        const safeId = escapeHtml(s.id || '');
-        return `
-        <div style="display:flex; flex-direction:column; gap:10px; padding:16px; border-radius:14px; background:${s.status === 'active' ? '#FFF5F5' : 'var(--color-ground)'}; border:1.5px solid ${s.status === 'active' ? 'var(--color-danger)' : 'var(--color-hairline)'}; margin-bottom:10px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-            <div>
-              <div style="font-weight:800; color:${s.status === 'active' ? 'var(--color-danger)' : 'var(--color-emerald-night)'};">
-                ${s.status === 'active' ? 'AKTİF ALARM' : 'ÇÖZÜLDÜ'} — ${safeName} (${safeTour})
+      // SOS Lists — preserve active OpenStreetMap iframes unless SOS alert data actually changed
+      const nextSosSignature = JSON.stringify(appState.sosAlerts || []);
+      if (nextSosSignature !== lastRenderedSosSignature) {
+        lastRenderedSosSignature = nextSosSignature;
+        const sosHtml = (appState.sosAlerts || []).map((s) => {
+          const lat = Number(s.lat) || 21.4225;
+          const lng = Number(s.lng) || 39.8262;
+          const bbox = `${(lng - 0.003).toFixed(5)}%2C${(lat - 0.002).toFixed(5)}%2C${(lng + 0.003).toFixed(5)}%2C${(lat + 0.002).toFixed(5)}`;
+          const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
+          const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+          const safeName = escapeHtml(s.pilgrimName || 'Hacı Misafir');
+          const safeTour = escapeHtml(s.tourCode || 'RY-KASIM');
+          const safePhone = escapeHtml(s.phone || '');
+          const safeNote = escapeHtml(s.locationNote || '');
+          const safeTime = escapeHtml(s.createdAt || '');
+          const safeId = escapeHtml(s.id || '');
+          return `
+          <div style="display:flex; flex-direction:column; gap:10px; padding:16px; border-radius:14px; background:${s.status === 'active' ? '#FFF5F5' : 'var(--color-ground)'}; border:1.5px solid ${s.status === 'active' ? 'var(--color-danger)' : 'var(--color-hairline)'}; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div>
+                <div style="font-weight:800; color:${s.status === 'active' ? 'var(--color-danger)' : 'var(--color-emerald-night)'};">
+                  ${s.status === 'active' ? 'AKTİF ALARM' : 'ÇÖZÜLDÜ'} — ${safeName} (${safeTour})
+                </div>
+                <div style="font-size:0.84rem; color:var(--color-muted); margin-top:2px;">
+                  ${safePhone ? `${safePhone} • ` : ''}${safeNote} (${lat.toFixed(5)}, ${lng.toFixed(5)}) • ${safeTime}
+                </div>
               </div>
-              <div style="font-size:0.84rem; color:var(--color-muted); margin-top:2px;">
-                ${safePhone} • ${safeNote} (${lat.toFixed(5)}, ${lng.toFixed(5)}) • ${safeTime}
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">Yol Tarifi</a>
+                <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Harita</a>
+                ${s.status === 'active' ? `<button type="button" class="btn btn-primary btn-sm" data-panel-action="resolve-sos" data-id="${safeId}">Çözüldü İşaretle</button>` : ''}
+                <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" data-panel-action="delete-sos" data-id="${safeId}">Sil</button>
               </div>
             </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">Yol Tarifi</a>
-              <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Harita</a>
-              ${s.status === 'active' ? `<button type="button" class="btn btn-primary btn-sm" data-panel-action="resolve-sos" data-id="${safeId}">Çözüldü İşaretle</button>` : ''}
-              <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" data-panel-action="delete-sos" data-id="${safeId}">Sil</button>
-            </div>
+            ${s.status === 'active' ? `
+            <div style="border-radius:10px; overflow:hidden; border:1px solid #FCA5A5; height:190px; background:#F8FAFC;">
+              <iframe src="${osmUrl}" style="width:100%; height:100%; border:0;" loading="lazy"></iframe>
+            </div>` : ''}
           </div>
-          ${s.status === 'active' ? `
-          <div style="border-radius:10px; overflow:hidden; border:1px solid #FCA5A5; height:190px; background:#F8FAFC;">
-            <iframe src="${osmUrl}" style="width:100%; height:100%; border:0;" loading="lazy"></iframe>
-          </div>` : ''}
-        </div>
-      `;
-      }).join('');
-      document.getElementById('overviewSosBox').innerHTML = sosHtml || 'SOS kaydı yok.';
-      document.getElementById('fullSosList').innerHTML = sosHtml || 'SOS kaydı yok.';
+        `;
+        }).join('');
+        document.getElementById('overviewSosBox').innerHTML = sosHtml || 'SOS kaydı yok.';
+        document.getElementById('fullSosList').innerHTML = sosHtml || 'SOS kaydı yok.';
+      }
 
       // Hotels Grid
-      document.getElementById('adminHotelsGrid').innerHTML = appState.hotels.map((h) => `
+      document.getElementById('adminHotelsGrid').innerHTML = appState.hotels.map((h) => {
+        const hLat = Number(h.coordinates && h.coordinates.lat) || 21.4225;
+        const hLng = Number(h.coordinates && h.coordinates.lng) || 39.8262;
+        return `
         <div style="padding:18px; border-radius:16px; background:var(--color-ground); border:1px solid var(--color-hairline);">
           <span class="badge badge-emerald">${escapeHtml(h.city)}</span>
           <h4 style="font-size:1.08rem; margin:10px 0 4px;">${escapeHtml(h.name)}</h4>
           <p style="font-size:0.84rem; color:var(--color-muted); margin-bottom:12px;">${escapeHtml(h.distance)}</p>
-          <a href="https://www.google.com/maps?q=${h.coordinates.lat},${h.coordinates.lng}" target="_blank" class="btn btn-outline btn-sm">Harita Konumu</a>
+          <a href="https://www.google.com/maps?q=${hLat},${hLng}" target="_blank" class="btn btn-outline btn-sm">Harita Konumu</a>
         </div>
-      `).join('');
+      `;
+      }).join('');
 
       // Pre-Registration Requests
       const reqList = Array.isArray(appState.requests) ? appState.requests : [];
@@ -1280,7 +1315,7 @@
       const adminWs = new WebSocket(`${proto}//${wsHost}/ws`);
       adminWsInstance = adminWs;
       adminWs.onopen = () => {
-        const authToken = (localStorage.getItem('ry_auth_token') || '').trim();
+        const authToken = (window.ryReadAuthToken ? window.ryReadAuthToken() : (localStorage.getItem('ry_auth_token') || '').trim());
         adminWs.send(JSON.stringify({ type: 'admin-subscribe', token: authToken }));
       };
       adminWs.onmessage = (ev) => {
@@ -1304,6 +1339,12 @@
               else if (d && d.user && d.user.assignedTour) {
                 appState = d;
                 window.__adminWsScopedNoGlobal = true;
+                if (!window.__adminScopedPollTimer) {
+                  window.__adminScopedPollTimer = setInterval(() => {
+                    if (document.visibilityState !== 'hidden') fetchAdminData();
+                  }, 10000);
+                }
+                renderAll();
                 try { adminWs.close(); } catch {}
               }
             }).catch(() => {});
@@ -1377,6 +1418,9 @@
         loadReaReport();
         connectAdminWs();
       }
+      if ('serviceWorker' in navigator && typeof Notification !== 'undefined' && Notification.permission === 'granted' && localStorage.getItem('rys_sos_push_receipt')) {
+        syncAdminSosPush(true);
+      }
     })();
 
     document.addEventListener('visibilitychange', () => {
@@ -1394,16 +1438,34 @@
 
     document.getElementById('adminCreateStepForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const sel = document.getElementById('adminRouteTourSelect');
-      const code = sel && sel.value ? sel.value : 'RY-KASIM';
-      const payload = Object.fromEntries(new FormData(e.target).entries());
-      await fetch(`/api/trips/${encodeURIComponent(code)}/steps`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      e.target.reset();
-      loadAdminRouteSteps(false);
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      if (submitBtn && submitBtn.disabled) return;
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        const sel = document.getElementById('adminRouteTourSelect');
+        const code = sel && sel.value ? sel.value : 'RY-KASIM';
+        const payload = Object.fromEntries(new FormData(e.target).entries());
+        const res = await fetch(`/api/trips/${encodeURIComponent(code)}/steps`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.status === 401) {
+          handleAdminAuthExpired();
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.success === false) {
+          alert(data.message || data.error || 'Siyer durağı eklenemedi. Lütfen girdiğiniz bilgileri kontrol edin.');
+          return;
+        }
+        e.target.reset();
+        await loadAdminRouteSteps(false);
+      } catch (err) {
+        alert('Bağlantı hatası: Siyer durağı kaydedilemedi, yazdığınız bilgiler korundu.');
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
     });
 
     // Tour Create & Edit Form
@@ -1455,82 +1517,131 @@
 
     document.getElementById('createTourForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const payload = Object.fromEntries(new FormData(e.target).entries());
-      const editingId = payload.editingTourId;
-      delete payload.editingTourId;
+      const submitBtn = document.getElementById('tourFormSubmitBtn');
+      if (submitBtn && submitBtn.disabled) return;
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        const payload = Object.fromEntries(new FormData(e.target).entries());
+        const editingId = payload.editingTourId;
+        delete payload.editingTourId;
 
-      const url = editingId ? `/api/tours/${encodeURIComponent(editingId)}` : '/api/tours';
-      const method = editingId ? 'PATCH' : 'POST';
+        const url = editingId ? `/api/tours/${encodeURIComponent(editingId)}` : '/api/tours';
+        const method = editingId ? 'PATCH' : 'POST';
 
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.success === false) {
-        alert(data.message || 'Kafile kaydedilirken bir hata oluştu.');
-        return;
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.status === 401) {
+          handleAdminAuthExpired();
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.success === false) {
+          alert(data.message || data.error || 'Kafile kaydedilirken bir hata oluştu.');
+          return;
+        }
+        resetTourFormMode();
+        fetchAdminData();
+      } catch (err) {
+        alert('Bağlantı hatası: Kafile kaydedilemedi, lütfen tekrar deneyin.');
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
       }
-      resetTourFormMode();
-      fetchAdminData();
     });
+
+    async function runPanelApiMutation(url, options, fallbackMsg) {
+      try {
+        const res = await fetch(url, options);
+        if (res.status === 401) {
+          handleAdminAuthExpired();
+          return false;
+        }
+        if (!res.ok && res.status !== 404) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.message || err.error || fallbackMsg);
+          return false;
+        }
+        return true;
+      } catch (err) {
+        alert('Bağlantı hatası: ' + fallbackMsg);
+        return false;
+      }
+    }
 
     async function deleteTour(id) {
       const tour = (appState && appState.tours || []).find((t) => t.id === id);
       const label = tour ? `${tour.code} (${tour.name})` : id;
       if (!confirm(`"${label}" kafilesini ve bağlı odalarını silmek istediğinize emin misiniz?`)) return;
+      const ok = await runPanelApiMutation(`/api/tours/${encodeURIComponent(id)}`, { method: 'DELETE' }, 'Kafile silinemedi.');
+      if (!ok) return;
       if (document.getElementById('editingTourIdInput')?.value === id) {
         resetTourFormMode();
       }
-      await fetch(`/api/tours/${encodeURIComponent(id)}`, { method: 'DELETE' });
       fetchAdminData();
     }
 
     async function deleteGuide(id, name) {
       if (!confirm(`"${name}" rehber kaydını silmek istediğinize emin misiniz?`)) return;
-      await fetch(`/api/guides/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      fetchAdminData();
+      const ok = await runPanelApiMutation(`/api/guides/${encodeURIComponent(id)}`, { method: 'DELETE' }, 'Rehber kaydı silinemedi.');
+      if (ok) fetchAdminData();
     }
 
     async function deleteAnnouncement(id) {
       if (!confirm('Bu duyuru kaydını silmek istediğinize emin misiniz?')) return;
-      await fetch(`/api/announcements/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      fetchAdminData();
+      const ok = await runPanelApiMutation(`/api/announcements/${encodeURIComponent(id)}`, { method: 'DELETE' }, 'Duyuru silinemedi.');
+      if (ok) fetchAdminData();
     }
 
     document.getElementById('createGuideForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const payload = Object.fromEntries(new FormData(e.target).entries());
-      const res = await fetch('/api/guides', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        alert(err.message || err.error || 'Rehber kaydı eklenemedi (yetki sınırı).');
-        return;
+      try {
+        const payload = Object.fromEntries(new FormData(e.target).entries());
+        const res = await fetch('/api/guides', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.status === 401) {
+          handleAdminAuthExpired();
+          return;
+        }
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.message || err.error || 'Rehber kaydı eklenemedi (yetki sınırı).');
+          return;
+        }
+        e.target.reset();
+        fetchAdminData();
+      } catch (err) {
+        alert('Bağlantı hatası: Rehber kaydı eklenemedi.');
       }
-      e.target.reset();
-      fetchAdminData();
     });
 
     document.getElementById('adminAnnForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const payload = Object.fromEntries(new FormData(e.target).entries());
-      const res = await fetch('/api/announcements', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Seçilen kafileye duyuru gönderme yetkiniz bulunmuyor.');
-        return;
+      try {
+        const payload = Object.fromEntries(new FormData(e.target).entries());
+        const res = await fetch('/api/announcements', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.status === 401) {
+          handleAdminAuthExpired();
+          return;
+        }
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.message || err.error || 'Seçilen kafileye duyuru gönderme yetkiniz bulunmuyor.');
+          return;
+        }
+        e.target.reset();
+        fetchAdminData();
+      } catch (err) {
+        alert('Bağlantı hatası: Duyuru yayınlanamadı.');
       }
-      e.target.reset();
-      fetchAdminData();
     });
 
     async function simulateSosAlert() {
@@ -1538,7 +1649,7 @@
         return;
       }
       const defaultCode = (appState && appState.tours && appState.tours[0] && appState.tours[0].code) || 'RY-KASIM';
-      await fetch('/api/sos', {
+      const ok = await runPanelApiMutation('/api/sos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1550,29 +1661,32 @@
           lng: 39.8268,
           locationNote: 'Mescid-i Haram — Safa Tepesi Çıkışı (Test GPS)'
         })
-      });
-      fetchAdminData();
+      }, 'Test SOS kaydı oluşturulamadı.');
+      if (ok) fetchAdminData();
     }
 
     async function resolveSosAdmin(id) {
-      await fetch(`/api/sos/${encodeURIComponent(id)}/resolve`, {
+      const resolverLabel = (appState && appState.user && appState.user.name)
+        ? `${appState.user.name} (Acente Paneli)`
+        : 'Acente Operasyon Paneli';
+      const ok = await runPanelApiMutation(`/api/sos/${encodeURIComponent(id)}/resolve`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resolvedBy: 'Beytullah Bey (Acente Paneli)' })
-      });
-      fetchAdminData();
+        body: JSON.stringify({ resolvedBy: resolverLabel })
+      }, 'SOS durumu güncellenemedi.');
+      if (ok) fetchAdminData();
     }
 
     async function deleteSosAdmin(id) {
       if (!confirm('Bu SOS kaydını silmek istediğinize emin misiniz?')) return;
-      await fetch(`/api/sos/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      fetchAdminData();
+      const ok = await runPanelApiMutation(`/api/sos/${encodeURIComponent(id)}`, { method: 'DELETE' }, 'SOS kaydı silinemedi.');
+      if (ok) fetchAdminData();
     }
 
     async function deleteRequestAdmin(id) {
       if (!confirm('Bu ön kayıt başvurusunu silmek istediğinize emin misiniz?')) return;
-      await fetch(`/api/requests/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      fetchAdminData();
+      const ok = await runPanelApiMutation(`/api/requests/${encodeURIComponent(id)}`, { method: 'DELETE' }, 'Ön kayıt başvurusu silinemedi.');
+      if (ok) fetchAdminData();
     }
 
     function handleAdminAuthExpired() {
@@ -1581,6 +1695,7 @@
       try {
         localStorage.removeItem('ry_auth_token');
         localStorage.removeItem('token');
+        localStorage.removeItem('user');
         const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
         document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax' + secureFlag;
       } catch {}
@@ -1606,7 +1721,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=78');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=79');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -1704,15 +1819,12 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=78').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=79').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED' && localStorage.getItem('rys_sos_push_receipt')) {
           syncAdminSosPush(true);
         }
       });
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && localStorage.getItem('rys_sos_push_receipt')) {
-        setTimeout(() => { syncAdminSosPush(true); }, 800);
-      }
     }
   </script>
 </body>

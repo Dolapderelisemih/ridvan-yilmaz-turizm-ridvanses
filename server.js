@@ -83,22 +83,29 @@ app.use((err, req, res, next) => {
 function isTrustedCorsOrigin(origin) {
   if (!origin || typeof origin !== 'string') return false;
   if (origin === 'https://ridvanyilmazturizm.com' || origin === 'https://ses.ridvanyilmazturizm.com') return true;
+  if (origin === 'https://ridvanses.vercel.app') return true;
   if (/^https:\/\/[a-z0-9-]+\.ridvanyilmazturizm\.com$/i.test(origin)) return true;
-  if (/^https:\/\/ridvanses(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(origin)) return true;
   if (/^http:\/\/(?:localhost|127\.0\.0\.1):\d+$/i.test(origin)) return true;
+  if (process.env.ALLOWED_ORIGINS) {
+    const extras = String(process.env.ALLOWED_ORIGINS)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (extras.includes(origin)) return true;
+  }
   return false;
 }
 
 // Güvenlik Başlıkları (Security Headers) & Cross-Origin Destek
 const RYS_CSP_HEADER = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' blob: https://unpkg.com",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com",
+  "script-src 'self' 'unsafe-inline' blob:",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' data: blob: https:",
   "media-src 'self' data: blob: mediastream:",
   "worker-src 'self' blob:",
-  "connect-src 'self' https://ses.ridvanyilmazturizm.com https://*.ridvanyilmazturizm.com https://ridvanses.vercel.app https://nominatim.openstreetmap.org https://ipwho.is https://unpkg.com wss://ses.ridvanyilmazturizm.com wss://*.ridvanyilmazturizm.com wss://broker.emqx.io:8084 wss://test.mosquitto.org:8081 ws://localhost:* ws://127.0.0.1:*",
+  "connect-src 'self' https://ses.ridvanyilmazturizm.com https://*.ridvanyilmazturizm.com https://ridvanses.vercel.app https://nominatim.openstreetmap.org wss://ses.ridvanyilmazturizm.com wss://*.ridvanyilmazturizm.com wss://broker.emqx.io:8084 wss://test.mosquitto.org:8081 ws://localhost:* ws://127.0.0.1:*",
   "frame-src 'self' https://www.openstreetmap.org",
   "frame-ancestors 'self'",
   "base-uri 'self'",
@@ -120,7 +127,7 @@ app.use((req, res, next) => {
   if (isTrustedCorsOrigin(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-RY-Auth, X-Rys-Relay-Key');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-RY-Auth, X-Rys-Relay-Key, X-Tour-Pin');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
   if (req.method === 'OPTIONS') {
@@ -246,8 +253,8 @@ function saveState(state) {
       if (Array.isArray(state.requests) && state.requests.length > 200) {
         state.requests = state.requests.slice(0, 200);
       }
-      if (Array.isArray(state.revokedAuthTokens) && state.revokedAuthTokens.length > 512) {
-        state.revokedAuthTokens = state.revokedAuthTokens.slice(-512);
+      if (Array.isArray(state.revokedAuthTokens) && state.revokedAuthTokens.length > 2048) {
+        state.revokedAuthTokens = state.revokedAuthTokens.slice(-2048);
       }
     }
     pendingSaveStateRef = state;
@@ -848,13 +855,27 @@ function queueRysPushSos(alertItem){
     await Promise.all(Array.from({length:Math.min(4,targets.length)},()=>worker()));
   });
 }
+let activeSmtpConnections=0;
+const sosEmailCooldownByTour=new Map();
 function sendEmergencySosEmail(alertItem){
   if(process.env.NODE_ENV==='test')return;
   const smtpPass=String(process.env.GMAIL_APP_PASSWORD||'').replace(/\s+/g,'').trim();
   const smtpUser=String(process.env.ADMIN_USERNAME||'').trim();
   if(!smtpPass||!smtpUser||!smtpUser.includes('@'))return;
-  if(/^\[TEST\]/i.test(String(alertItem.pilgrimName||'')))return;
+  if(/^\[TEST\]/i.test(String(alertItem.pilgrimName||''))||alertItem.isTest)return;
+  if(activeSmtpConnections>=2)return;
+  const now=Date.now();
+  const tourKey=String(alertItem.tourCode||'RY-KASIM').toUpperCase().trim();
+  const lastEmailAt=sosEmailCooldownByTour.get(tourKey)||0;
+  if(now-lastEmailAt<15000)return;
+  if(sosEmailCooldownByTour.size>256){
+    for(const [k,ts] of sosEmailCooldownByTour)if(now-ts>60000)sosEmailCooldownByTour.delete(k);
+  }
+  sosEmailCooldownByTour.set(tourKey,now);
+  activeSmtpConnections++;
   setImmediate(()=>{
+    let released=false;
+    const releaseSmtp=()=>{if(!released){released=true;activeSmtpConnections=Math.max(0,activeSmtpConnections-1);}};
     try{
       const tls=require('node:tls');
       const cleanSmtpField=(val,maxLen=240)=>String(val??'').replace(/[\r\n\0]+/g,' ').trim().slice(0,maxLen);
@@ -890,21 +911,21 @@ function sendEmergencySosEmail(alertItem){
       ];
       let stepIdx=-1,buf='';
       const sock=tls.connect({host:'smtp.gmail.com',port:465,servername:'smtp.gmail.com',timeout:6000});
-      const timer=setTimeout(()=>{try{sock.destroy();}catch(e){}},7000);
+      const timer=setTimeout(()=>{releaseSmtp();try{sock.destroy();}catch(e){}},7000);
       sock.on('data',chunk=>{
         buf+=chunk.toString('utf8');
         const lines=buf.split(/\r?\n/);buf=lines.pop()||'';
         for(const line of lines){
           if(!/^\d{3} /.test(line))continue;
           const code=Number(line.slice(0,3));
-          if(code>=400){clearTimeout(timer);try{sock.destroy();}catch(e){}return;}
+          if(code>=400){clearTimeout(timer);releaseSmtp();try{sock.destroy();}catch(e){}return;}
           stepIdx++;
           if(stepIdx<steps.length)sock.write(steps[stepIdx]+'\r\n');
         }
       });
-      sock.on('error',()=>clearTimeout(timer));
-      sock.on('close',()=>clearTimeout(timer));
-    }catch(e){}
+      sock.on('error',()=>{clearTimeout(timer);releaseSmtp();});
+      sock.on('close',()=>{clearTimeout(timer);releaseSmtp();});
+    }catch(e){releaseSmtp();}
   });
 }
 
@@ -1106,8 +1127,12 @@ function rysSendAudio(socket,data,binary=false,now=Date.now()){
     return true;
   }catch(e){socket._rysAudioErrors=(socket._rysAudioErrors||0)+1;return false;}
 }
+let serverBroadcastMsgSeq=0;
 function broadcastToRoom(room,payload,excludeWs=null,isAudioOverride=false){
   const audio=isAudioOverride||!!(payload&&typeof payload==='object'&&payload.type==='audio-chunk');
+  if(!audio&&payload&&typeof payload==='object'&&!payload._msgId){
+    payload._msgId='srv-'+(++serverBroadcastMsgSeq);
+  }
   const data=typeof payload==='string'?payload:JSON.stringify(payload);
   let relayData;
   if(globalThis.__rysMqttPublisher&&typeof rysMintMqtt==='function')rysMintMqtt(globalThis.__rysMqttPublisher,room,payload);
@@ -1252,22 +1277,65 @@ function revokeAuthToken(token) {
 
 // IP Tabanlı Hafif Hız Sınırlayıcı (Sliding Window Rate Limiter)
 const rateLimitBuckets = new Map();
-function createRateLimiter({ windowMs = 60000, max = 30, scope = '', message = 'Çok fazla istek gönderildi. Lütfen biraz bekleyiniz.' } = {}) {
+function ensureRateLimitCapacity(now = Date.now()) {
+  if (rateLimitBuckets.size < 5000) return;
+  for (const [k, v] of rateLimitBuckets) {
+    if (!v || now >= v.resetAt) rateLimitBuckets.delete(k);
+  }
+  while (rateLimitBuckets.size >= 5000) {
+    const oldestKey = rateLimitBuckets.keys().next().value;
+    if (!oldestKey) break;
+    rateLimitBuckets.delete(oldestKey);
+  }
+}
+function consumeIpBucket(ip, scope, max, windowMs = 60000) {
+  const now = Date.now();
+  const cleanIp = String(ip || 'local').split(',')[0].trim() || 'local';
+  const key = `ip:${scope}:${cleanIp}`;
+  let entry = rateLimitBuckets.get(key);
+  if (!entry || now >= entry.resetAt) {
+    if (!entry) ensureRateLimitCapacity(now);
+    entry = { count: 0, resetAt: now + windowMs };
+    rateLimitBuckets.set(key, entry);
+  }
+  entry.count += 1;
+  return entry.count <= max;
+}
+function isIpBucketLocked(ip, scope, max) {
+  const now = Date.now();
+  const cleanIp = String(ip || 'local').split(',')[0].trim() || 'local';
+  const entry = rateLimitBuckets.get(`ip:${scope}:${cleanIp}`);
+  return Boolean(entry && now < entry.resetAt && entry.count >= max);
+}
+function createRateLimiter({ windowMs = 60000, max = 30, maxRequests, scope = '', message = 'Çok fazla istek gönderildi. Lütfen biraz bekleyiniz.' } = {}) {
+  const limit = typeof maxRequests === 'number' ? maxRequests : max;
+  const fallbackBuckets = new Map();
   return (req, res, next) => {
+    const buckets = typeof rateLimitBuckets !== 'undefined' && rateLimitBuckets ? rateLimitBuckets : fallbackBuckets;
     const now = Date.now();
-    const ip = String(req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'local').trim();
-    const key = `${scope}:${req.baseUrl}${req.path}:${ip}`;
-    let entry = rateLimitBuckets.get(key);
+    const headers = (req && req.headers) || {};
+    const resolvedIp = typeof getClientIp === 'function' ? getClientIp(req) : '';
+    const rawIp = resolvedIp || req.ip || (headers['x-forwarded-for'] ? String(headers['x-forwarded-for']).split(',')[0] : '') || req.socket?.remoteAddress || 'local';
+    const ip = String(rawIp).trim() || 'local';
+    const normPath = String((req.baseUrl || '') + (req.path || '/')).toLowerCase().replace(/\/+$/, '') || '/';
+    const key = `${scope}:${normPath}:${ip}`;
+    let entry = buckets.get(key);
     if (!entry || now >= entry.resetAt) {
-      if (!entry && rateLimitBuckets.size >= 5000) {
-        for (const [k, v] of rateLimitBuckets) if (now >= v.resetAt) rateLimitBuckets.delete(k);
-        if (rateLimitBuckets.size >= 5000) return res.status(429).json({ success: false, message });
+      if (!entry && buckets.size >= 5000) {
+        for (const [k, v] of buckets) {
+          if (!v || now >= v.resetAt) buckets.delete(k);
+        }
+        while (buckets.size >= 5000) {
+          const oldestKey = buckets.keys().next().value;
+          if (!oldestKey) break;
+          buckets.delete(oldestKey);
+        }
       }
       entry = { count: 0, resetAt: now + windowMs };
-      rateLimitBuckets.set(key, entry);
+      buckets.set(key, entry);
     }
     entry.count += 1;
-    if (entry.count > max) {
+    if (entry.count > limit) {
       return res.status(429).json({
         success: false,
         message
@@ -1312,6 +1380,12 @@ const relayOpenRateLimiter = createRateLimiter({
   windowMs: 60000,
   max: 1200,
   message: 'Çok fazla yedek oturum açma isteği gönderildi.'
+});
+const logoutRateLimiter = createRateLimiter({
+  scope: 'logout',
+  windowMs: 60000,
+  max: 120,
+  message: 'Çok fazla çıkış isteği gönderildi. Lütfen kısa süre sonra tekrar deneyiniz.'
 });
 
 function verifyPassword(candidate, envPass, fallbackSha256) {
@@ -1690,11 +1764,21 @@ function cleanupStaleRelaySessions() {
   const maxRelayCap = typeof MAX_HTTP_RELAY_SESSIONS === 'number' ? MAX_HTTP_RELAY_SESSIONS : 4096;
   while (httpRelaySessions.size > maxRelayCap) {
     let victimId = null;
+    // Prefer evicting legacy unauthenticated non-rys56 sessions first so capability sessions cannot be starved
     for (const [cid, sess] of httpRelaySessions.entries()) {
       const member = sess.currentRoom?.clients?.get(cid);
-      if (member?.role !== 'guide' && !sess.ws?.isAdmin) {
+      if (!sess.relayKey && member?.role !== 'guide' && !sess.ws?.isAdmin) {
         victimId = cid;
         break;
+      }
+    }
+    if (!victimId) {
+      for (const [cid, sess] of httpRelaySessions.entries()) {
+        const member = sess.currentRoom?.clients?.get(cid);
+        if (member?.role !== 'guide' && !sess.ws?.isAdmin) {
+          victimId = cid;
+          break;
+        }
       }
     }
     if (!victimId) victimId = httpRelaySessions.keys().next().value;
@@ -1868,14 +1952,21 @@ function processClientJsonMessageV49(ctx, msg) {
       ws.send(JSON.stringify({ type: 'subscription-error', code: 'tour-unknown' }));
       return;
     }
-    if (
-      !rysCanGuide(principal, tourCode) &&
-      matchedTour.pinProtected &&
-      matchedTour.pin &&
-      String(matchedTour.pin).trim() !== String(msg.pin || '').trim()
-    ) {
-      ws.send(JSON.stringify({ type: 'pin-error', message: 'Bu kafile rotası PIN korumalıdır. Lütfen geçerli PIN kodunu giriniz.' }));
-      return;
+    if (!rysCanGuide(principal, tourCode) && matchedTour.pinProtected && matchedTour.pin) {
+      if (typeof isIpBucketLocked === 'function' && ctx.clientIp && isIpBucketLocked(ctx.clientIp, 'ws-pin-fail', 60)) {
+        ws.send(JSON.stringify({ type: 'pin-error', code: 'rate-limited', message: 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.' }));
+        return;
+      }
+      if (String(matchedTour.pin).trim() !== String(msg.pin || '').trim()) {
+        if (typeof consumeIpBucket === 'function' && ctx.clientIp && String(msg.pin || '').trim().length > 0) {
+          if (!consumeIpBucket(ctx.clientIp, 'ws-pin-fail', 60, 60000)) {
+            ws.send(JSON.stringify({ type: 'pin-error', code: 'rate-limited', message: 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.' }));
+            return;
+          }
+        }
+        ws.send(JSON.stringify({ type: 'pin-error', message: 'Bu kafile rotası PIN korumalıdır. Lütfen geçerli PIN kodunu giriniz.' }));
+        return;
+      }
     }
     const room = getOrCreateRoom(tourCode, 'genel');
     if(!room){ws.send(JSON.stringify({type:'subscription-error',code:'room-unavailable'}));return;}
@@ -1906,16 +1997,21 @@ function processClientJsonMessageV49(ctx, msg) {
     const role = msg.role === 'guide' ? 'guide' : 'pilgrim';
     const matchedTour=findRysTour(tourCode);
     if(!matchedTour){ws.send(JSON.stringify({type:'subscription-error',code:'tour-unknown'}));return;}
-    if (
-      role !== 'guide' &&
-      !rysCanGuide(principal,tourCode) &&
-      matchedTour &&
-      matchedTour.pinProtected &&
-      matchedTour.pin &&
-      String(matchedTour.pin).trim() !== String(msg.pin || '').trim()
-    ) {
-      ws.send(JSON.stringify({ type: 'pin-error', message: 'Bu kafile odası PIN korumalıdır. Lütfen geçerli PIN kodunu giriniz.' }));
-      return;
+    if (role !== 'guide' && !rysCanGuide(principal, tourCode) && matchedTour && matchedTour.pinProtected && matchedTour.pin) {
+      if (typeof isIpBucketLocked === 'function' && ctx.clientIp && isIpBucketLocked(ctx.clientIp, 'ws-pin-fail', 60)) {
+        ws.send(JSON.stringify({ type: 'pin-error', code: 'rate-limited', message: 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.' }));
+        return;
+      }
+      if (String(matchedTour.pin).trim() !== String(msg.pin || '').trim()) {
+        if (typeof consumeIpBucket === 'function' && ctx.clientIp && String(msg.pin || '').trim().length > 0) {
+          if (!consumeIpBucket(ctx.clientIp, 'ws-pin-fail', 60, 60000)) {
+            ws.send(JSON.stringify({ type: 'pin-error', code: 'rate-limited', message: 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.' }));
+            return;
+          }
+        }
+        ws.send(JSON.stringify({ type: 'pin-error', message: 'Bu kafile odası PIN korumalıdır. Lütfen geçerli PIN kodunu giriniz.' }));
+        return;
+      }
     }
     const prevRoom = ctx.currentRoom;
     const targetRoom = getOrCreateRoom(tourCode, roomId);
@@ -1996,6 +2092,10 @@ function processClientJsonMessageV49(ctx, msg) {
     }
 
     const tourSteps = getTourSteps(tourCode);
+    const guideSosAlerts =
+      role === 'guide' && rysCanGuide(principal, tourCode)
+        ? (db.sosAlerts || []).filter((s) => String(s.tourCode || '').toUpperCase() === tourCode)
+        : undefined;
     sendRysSubscriptionAck(ctx, {
         type: 'joined',
         clientId,
@@ -2003,7 +2103,8 @@ function processClientJsonMessageV49(ctx, msg) {
         announcements: db.announcements.filter((a) => a.tourCode === tourCode || a.tourCode === 'ALL'),
         siyerPoints: db.siyerPoints,
         steps: tourSteps,
-        stats: computeJourneyStats(tourSteps)
+        stats: computeJourneyStats(tourSteps),
+        ...(guideSosAlerts !== undefined ? { sosAlerts: guideSosAlerts } : {})
       });
     broadcastRoomState(ctx.currentRoom);
     return;
@@ -2161,11 +2262,15 @@ function processClientJsonMessageV49(ctx, msg) {
     }
 
     case 'sos-trigger': {
+      if (typeof consumeIpBucket === 'function') {
+        const sosIp = ctx.clientIp || ctx.clientId || 'local';
+        if (!consumeIpBucket(sosIp, 'ws-sos', 20, 60000)) break;
+      }
       recordAndBroadcastSosAlert({
         id: msg.id,
         tourCode: currentRoom.tourCode,
         pilgrimName: sender.name || msg.pilgrimName,
-        phone: sender.phone || msg.phone || '+90 538 000 00 00',
+        phone: sender.phone || msg.phone || '',
         lat: msg.lat,
         lng: msg.lng,
         accuracy: msg.accuracy,
@@ -2253,14 +2358,35 @@ function isRysClientMessage(message){
 
 // WebSocket Connection Handler
 wss.on('connection', (ws, req) => {
+  const wsOrigin = String(req?.headers?.origin || '').trim();
+  if (wsOrigin) {
+    let sameHost = false;
+    try {
+      const parsedOrigin = new URL(wsOrigin);
+      const reqHost = String(req?.headers?.host || '').trim().toLowerCase();
+      sameHost = Boolean(reqHost && parsedOrigin.host.toLowerCase() === reqHost);
+    } catch {}
+    if (!sameHost && !isTrustedCorsOrigin(wsOrigin)) {
+      try {
+        ws.close(1008, 'origin-not-allowed');
+      } catch {}
+      return;
+    }
+  }
+
   ws.isAlive = true;
   ws.isAuthenticated = Boolean(req && isRequestAuthenticated(req));
   ws.on('pong', () => {
     ws.isAlive = true;
   });
 
+  const rawClientIp =
+    (req?.headers?.['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0] : '') ||
+    req?.socket?.remoteAddress ||
+    'local';
   const ctx = {
     clientId: `client-${Date.now()}-${clientSeq++}-${crypto.randomBytes(8).toString('hex')}`,
+    clientIp: String(rawClientIp).trim() || 'local',
     ws,
     currentRoom: null,
     isAuthenticated: ws.isAuthenticated,
@@ -2472,7 +2598,15 @@ function resolveRysRelay(req,res,input){
       if(s.currentRoom)removeClientFromRoom(s.currentRoom,id);
       res.status(409).json({error:'relay-session-expired'});return null;
     }
-  }else s=s||getOrCreateRelaySession(id);
+  }else{
+    if(!s&&typeof consumeIpBucket==='function'){
+      const legacyIp=String((req?.headers?.['x-forwarded-for']?String(req.headers['x-forwarded-for']).split(',')[0]:'')||req?.ip||req?.socket?.remoteAddress||'').trim();
+      if(legacyIp&&!consumeIpBucket(legacyIp,'legacy-relay-create',300,60000)){
+        res.status(429).json({error:'rate-limited'});return null;
+      }
+    }
+    s=s||getOrCreateRelaySession(id);
+  }
   if(s.relayRetired){res.status(409).json({error:'relay-session-retired',reason:s.relayRetiredReason||'handoff'});return null;}
   cleanupStaleRelaySessions();
   return s;
@@ -2524,7 +2658,16 @@ function handleRysNativeHandoff(ctx,msg){
     if(!raw||!['join','family-subscribe','admin-subscribe'].includes(raw.type)||
       JSON.stringify(raw).length>8192){fail('invalid-subscription');return true;}
     const request=JSON.parse(JSON.stringify(raw));
-    const invalid=validateRysHandoff(ctx,request);if(invalid){fail(invalid);return true;}
+    if(typeof isIpBucketLocked==='function'&&ctx.clientIp&&isIpBucketLocked(ctx.clientIp,'ws-pin-fail',60)&&(request.type==='family-subscribe'||request.type==='join'&&request.role!=='guide')){
+      fail('rate-limited');return true;
+    }
+    const invalid=validateRysHandoff(ctx,request);
+    if(invalid){
+      if(invalid==='pin-required'&&typeof consumeIpBucket==='function'&&ctx.clientIp&&String(request.pin||'').trim().length>0){
+        if(!consumeIpBucket(ctx.clientIp,'ws-pin-fail',60,60000)){fail('rate-limited');return true;}
+      }
+      fail(invalid);return true;
+    }
     let source=null;
     if(msg.relayClientId){
       source=httpRelaySessions.get(String(msg.relayClientId));
@@ -2704,6 +2847,7 @@ function retireRysRelayOnAuthFailure(session){
 }
 
 function serveRysRelay(session,req,res,token,context,messages=[]){
+  session.clientIp=String((req?.headers?.['x-forwarded-for']?String(req.headers['x-forwarded-for']).split(',')[0]:'')||req?.ip||req?.socket?.remoteAddress||session.clientIp||'local').trim()||'local';
   if((context&&!isRysClientMessage(context))||!Array.isArray(messages)||messages.length>128||
     !messages.every(isRysClientMessage))return res.status(400).json({error:'relay-invalid-message'});
   if(context&&!['join','family-subscribe','admin-subscribe'].includes(context.type))
@@ -2855,7 +2999,7 @@ app.post('/api/login', loginRateLimiter, (req, res) => {
   });
 });
 
-app.post('/api/logout', (req, res) => {
+app.post('/api/logout', logoutRateLimiter, (req, res) => {
   const tok = extractAuthTokenFromReq(req);
   if (tok) revokeAuthToken(tok);
   const secureCookie = req.secure || req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
@@ -3132,7 +3276,10 @@ app.post('/api/tours', requireAuth, (req, res) => {
     pinProtected: Boolean(cleanPin),
     status: String(body.status || 'active').trim().slice(0, 32),
     capacity: Math.max(1, Math.min(10000, Number(body.capacity) || 100)),
-    registeredCount: Math.max(0, Math.min(10000, Number(body.registeredCount) || 1)),
+    registeredCount:
+      body.registeredCount !== undefined && Number.isFinite(Number(body.registeredCount))
+        ? Math.max(0, Math.min(10000, Number(body.registeredCount)))
+        : 1,
     description: String(body.description || 'Rıdvan Yılmaz Turizm Siyer Umresi Kafilesi').trim().slice(0, 600),
     rooms: [
       { id: 'genel', name: 'Genel Kafile & Tavaf Yayını', guide: cleanGuideName, active: true },
@@ -3183,7 +3330,11 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
   if (typeof body.duration === 'string' && body.duration.trim()) tour.duration = body.duration.trim().slice(0, 80);
   if (typeof body.guideName === 'string' && body.guideName.trim()) {
     tour.guideName = body.guideName.trim().slice(0, 120);
-    if (db.guides.length < 300 && !db.guides.some((g) => g.name.toLowerCase() === tour.guideName.toLowerCase())) {
+    if (
+      !(authedUser && authedUser.assignedTour) &&
+      db.guides.length < 300 &&
+      !db.guides.some((g) => g.name.toLowerCase() === tour.guideName.toLowerCase())
+    ) {
       db.guides.push({
         id: `guide-${Date.now()}`,
         name: tour.guideName,
@@ -3294,6 +3445,7 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 }
 
 app.get('/api/trips/:code/steps', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   const code = String(req.params.code || 'RY-KASIM').toUpperCase().trim();
   const rawTour = findRysTour(code);
   if (!rawTour) {
@@ -3310,17 +3462,42 @@ app.get('/api/trips/:code/steps', (req, res) => {
   const principal = rysPrincipal(extractAuthTokenFromReq(req));
   const isAuthedForTour = rysCanGuide(principal, code);
   const requiresPin = Boolean((rawTour.pinProtected || rawTour.pin) && String(rawTour.pin || '').trim());
-  const pinSatisfied = !requiresPin || isAuthedForTour || String(req.query?.pin || '').trim() === String(rawTour.pin).trim();
+  const suppliedPin = String(req.headers['x-tour-pin'] ?? req.query?.pin ?? '').trim();
+  const reqIp = String(
+    (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0] : '') ||
+      req.ip ||
+      req.socket?.remoteAddress ||
+      'local'
+  ).trim();
+  if (requiresPin && !isAuthedForTour && suppliedPin.length > 0) {
+    if (isIpBucketLocked(reqIp, 'steps-pin-fail', 60)) {
+      return res.status(429).json({
+        success: false,
+        error: 'rate-limited',
+        message: 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.'
+      });
+    }
+    if (suppliedPin !== String(rawTour.pin).trim()) {
+      if (!consumeIpBucket(reqIp, 'steps-pin-fail', 60, 60000)) {
+        return res.status(429).json({
+          success: false,
+          error: 'rate-limited',
+          message: 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.'
+        });
+      }
+    }
+  }
+  const pinSatisfied = !requiresPin || isAuthedForTour || suppliedPin === String(rawTour.pin).trim();
   const tour = isAuthedForTour ? rawTour : sanitizeTourForPublic(rawTour);
   const steps = pinSatisfied ? getTourSteps(code) : [];
   const stats = computeJourneyStats(steps);
-  const allocatedRoom = getOrCreateRoom(code, 'genel');
-  if (!allocatedRoom) {
-    return res.status(503).json({ success: false, error: 'room-capacity' });
-  }
-  const room = serializeRoom(allocatedRoom, false);
-  if (!pinSatisfied && room) {
-    room.guideLocation = null;
+  let room = null;
+  if (pinSatisfied) {
+    const allocatedRoom = getOrCreateRoom(code, 'genel');
+    if (!allocatedRoom) {
+      return res.status(503).json({ success: false, error: 'room-capacity' });
+    }
+    room = serializeRoom(allocatedRoom, false);
   }
   const announcements = pinSatisfied
     ? db.announcements.filter((a) => a.tourCode === code || a.tourCode === 'ALL')
@@ -3949,8 +4126,8 @@ app.use(
 );
 
 app.get('/favicon.ico', (req, res) => {
-  res.type('image/svg+xml');
-  res.sendFile(path.join(__dirname, 'public', 'icons', 'icon-512.svg'));
+  res.type('image/png');
+  res.sendFile(path.join(__dirname, 'public', 'icons', 'icon-192.png'));
 });
 
 app.get('/robots.txt', (req, res) => {

@@ -34,6 +34,24 @@
   window.__ryActiveSocket = null;
   window.__ryActiveGuideChannelId = null;
 
+  function readRysAuthToken() {
+    try {
+      const stored = (localStorage.getItem('ry_auth_token') || '').trim();
+      if (stored) return stored;
+    } catch (e) {}
+    try {
+      if (typeof document !== 'undefined' && typeof document.cookie === 'string') {
+        const entry = document.cookie.split(';').map((c) => c.trim()).find((c) => c.startsWith('ry_auth='));
+        if (entry) {
+          const decoded = decodeURIComponent(entry.slice('ry_auth='.length)).trim();
+          if (decoded) return decoded;
+        }
+      }
+    } catch (e) {}
+    return '';
+  }
+  window.ryReadAuthToken = readRysAuthToken;
+
   window.ryGetDynamicChannelId = function (tourCode, roomId) {
     const cleanCode = String(tourCode || 'RY-KASIM')
       .trim()
@@ -57,7 +75,6 @@
     return window.__ryActiveGuideChannelId;
   };
 
-  const GLOBAL_SOS_TOPIC = 'ridvanses/v2/global/sos';
   // Birincil: test.mosquitto.org (ölçüm: %0 kayıp, p50 47ms) • Yedek: broker.emqx.io
   const CLOUD_BROKERS = ['wss://test.mosquitto.org:8081', 'wss://broker.emqx.io:8084/mqtt'];
 
@@ -341,7 +358,7 @@
       if(this._relayFenced||!this._isRelay||this.readyState!==1||this._closedExplicitly||this._failbackProbe)return;
       const join=this._joinContext,generation=this._transportGeneration||0;
       const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join');
-      const request=mode==='admin-subscribe'?{type:mode,token:(localStorage.getItem('ry_auth_token')||'').trim()}:
+      const request=mode==='admin-subscribe'?{type:mode,token:(typeof readRysAuthToken==='function'?readRysAuthToken():(localStorage.getItem('ry_auth_token')||'').trim())}:
         mode==='family-subscribe'?(join?{type:mode,tourCode:join.tourCode,...(join.pin!==undefined?{pin:join.pin}:{})}:null):join?{...join}:null;
       if(!request)return;
       let probe;try{probe=new NativeWebSocket(this.url);probe.binaryType='arraybuffer';}catch(e){return;}
@@ -549,7 +566,7 @@
             } catch {}
           });
         });
-      }, 'https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js');
+      });
     }
 
 
@@ -847,39 +864,6 @@
           });
           this._broadcastP2PRoomState();
         }
-      } else {
-        if (parsed.type === 'sos-trigger') {
-          const enrichedSos = {
-            ...parsed,
-            alertId: 'sos-' + Date.now(),
-            tourCode: (this._joinContext && this._joinContext.tourCode) || 'RY-KASIM',
-            pilgrimName: (this._joinContext && this._joinContext.name) || 'Hacı Misafir',
-            phone: (this._joinContext && this._joinContext.phone) || ''
-          };
-          this._publishMqtt(enrichedSos);
-          // Global SOS kanalına da yayınla ki Rehber/Acente hangi sekmede olursa olsun anında görsün!
-          this._publishMqtt({
-            _msgId: parsed._msgId,
-            type: 'sos-alert',
-            alert: {
-              id: enrichedSos.alertId,
-              tourCode: enrichedSos.tourCode,
-              pilgrimName: enrichedSos.pilgrimName,
-              phone: enrichedSos.phone,
-              lat: Number(parsed.lat),
-              lng: Number(parsed.lng),
-              accuracy: parsed.accuracy || null,
-              locationNote: parsed.locationNote || 'Canlı Cihaz GPS Konumu',
-              createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-              status: 'active'
-            }
-          }, GLOBAL_SOS_TOPIC);
-        } else {
-          this._publishMqtt({
-            ...parsed,
-            name: (this._joinContext && this._joinContext.name) || 'Hacı Misafir'
-          });
-        }
       }
 
       // v70: authenticate media on the server before public MQTT publication.
@@ -965,7 +949,7 @@
             batch.unshift({...this._lastGuideState});
           }
         }
-        const token=(localStorage.getItem('ry_auth_token')||'').trim();
+        const token=(typeof readRysAuthToken==='function'?readRysAuthToken():(localStorage.getItem('ry_auth_token')||'').trim());
         const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join');
         const context=mode==='admin-subscribe'?{type:mode,token}:
           mode==='family-subscribe'?{type:mode,tourCode:this._joinContext?.tourCode||'RY-KASIM',...(this._joinContext?.pin!==undefined?{pin:this._joinContext.pin}:{})}:
@@ -1097,7 +1081,7 @@
         const isTrustedOrigin =
           parsedUrl.origin === window.location.origin || parsedUrl.origin === VDS_API_ORIGIN;
         if (isTrustedOrigin && apiPath.startsWith('/api/')) {
-          const token = localStorage.getItem('ry_auth_token');
+          const token = readRysAuthToken();
           if (token) {
             init = Object.assign({}, init);
             const mergedHeaders = new Headers(init.headers || (isReqObj ? input.headers : undefined));

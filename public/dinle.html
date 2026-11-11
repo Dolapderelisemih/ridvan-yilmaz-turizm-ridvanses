@@ -16,9 +16,9 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=22" />
-  <script src="/vercel-ws-shim.js?v=78"></script>
+  <script src="/vercel-ws-shim.js?v=79"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=78"></script>
+  <script src="/js/umrah-steps-map.js?v=79"></script>
   <style>
     .app-shell {
       max-width: 540px;
@@ -113,6 +113,8 @@
       cursor: pointer;
       user-select: none;
       -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      touch-action: manipulation;
       text-align: center;
       transition: transform 0.1s;
       box-shadow: 0 8px 20px rgba(220, 38, 38, 0.12);
@@ -261,7 +263,7 @@
         <img src="/icons/app-logo.png?v=19" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="font-size:1rem; margin:0;">Rıdvan Yılmaz Turizm</h1>
-          <span class="brand-sub"><span class="live-dot"></span> RıdvanSes Hacı Canlı Odası</span>
+          <span class="brand-sub"><span class="live-dot"></span> <span id="i18n_brandSub">RıdvanSes Hacı Canlı Odası</span></span>
         </div>
       </a>
       <div class="nav-actions">
@@ -271,7 +273,7 @@
         </button>
         <button type="button" id="navPwaInstallBtn" class="btn btn-gold btn-sm" onclick="triggerPwaInstall()">
           <svg class="svg-icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Yükle
+          <span id="i18n_installShortBtn">Yükle</span>
         </button>
       </div>
     </div>
@@ -293,11 +295,11 @@
       <div style="display:flex; align-items:center; gap:12px; flex:1 1 210px; min-width:0;">
         <img src="/icons/icon-192.png?v=19" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
         <div style="min-width:0;">
-          <div style="font-weight:800; font-size:0.88rem; color:var(--color-gold-bright);">RıdvanSes'i Ana Ekrana Ekleyin</div>
-          <div style="font-size:0.75rem; color:#e2e8f0; line-height:1.35;">Mağaza şifresi gerekmeden tek dokunuşla telefonunuza kurun.</div>
+          <div id="i18n_pwaBannerTitle" style="font-weight:800; font-size:0.88rem; color:var(--color-gold-bright);">RıdvanSes'i Ana Ekrana Ekleyin</div>
+          <div id="i18n_pwaBannerSub" style="font-size:0.75rem; color:#e2e8f0; line-height:1.35;">Mağaza şifresi gerekmeden tek dokunuşla telefonunuza kurun.</div>
         </div>
       </div>
-      <button type="button" class="btn btn-gold btn-sm" style="white-space:nowrap;" onclick="triggerPwaInstall()">
+      <button type="button" id="i18n_pwaBannerBtn" class="btn btn-gold btn-sm" style="white-space:nowrap;" onclick="triggerPwaInstall()">
         Telefona Kur
       </button>
     </div>
@@ -341,8 +343,8 @@
         </div>
 
         <div id="pinInputBox" style="display:none;">
-          <label class="label" for="tourPinInput">Oda PIN Kodu *</label>
-          <input type="password" id="tourPinInput" class="input" style="text-align:center; font-weight:800; letter-spacing:0.16em;" placeholder="PIN kodunu giriniz" autocomplete="off" />
+          <label class="label" for="tourPinInput" id="i18n_pinLabel">Oda PIN Kodu *</label>
+          <input type="password" id="tourPinInput" class="input" style="text-align:center; font-weight:800; letter-spacing:0.16em;" placeholder="PIN" autocomplete="off" />
         </div>
 
         <div>
@@ -366,14 +368,14 @@
 
         <div id="joinError" style="display:none; padding:12px; border-radius:10px; background:var(--color-danger-soft); color:var(--color-danger); font-size:0.86rem; font-weight:700; text-align:center;"></div>
 
-        <button type="submit" class="btn btn-primary" style="width:100%; padding:16px; font-size:1.02rem;" id="i18n_joinBtn">
+        <button type="submit" class="btn btn-primary" style="width:100%; padding:16px; font-size:1.02rem;" id="joinSubmitBtn">
           <svg class="svg-icon svg-icon-lg" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
-          Canlı Yayına Bağlan
+          <span id="i18n_joinBtn">Canlı Yayına Bağlan</span>
         </button>
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; padding-top:6px; border-top:1px solid var(--color-hairline);">
-          <a id="joinRotaBtn" href="/rota?code=RY-KASIM" class="btn btn-secondary btn-sm" style="text-align:center;">📍 Canlı Rota Haritası</a>
-          <a id="joinBookBtn" href="/ani-kitabi?code=RY-KASIM" class="btn btn-outline btn-sm" style="text-align:center;">📖 Umre Hatıra Kitabı</a>
+          <a id="joinRotaBtn" href="/rota?code=RY-KASIM" class="btn btn-secondary btn-sm" style="text-align:center;"><span id="i18n_joinRotaBtn">📍 Canlı Rota Haritası</span></a>
+          <a id="joinBookBtn" href="/ani-kitabi?code=RY-KASIM" class="btn btn-outline btn-sm" style="text-align:center;"><span id="i18n_joinBookBtn">📖 Umre Hatıra Kitabı</span></a>
         </div>
       </form>
     </div>
@@ -413,14 +415,14 @@
               <div style="font-size:0.84rem; color:#cbd5e1; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <strong id="liveGuideName" style="color:var(--color-gold-bright);">Ömer Ali Gültekin</strong>
                 <span>•</span>
-                <span><span id="liveListenerCount">0</span> Dinleyici</span>
+                <span><span id="liveListenerCount">0</span> <span id="i18n_listenersWord">Dinleyici</span></span>
               </div>
             </div>
           </div>
 
           <!-- Konu & Frekans Görselleştirici -->
           <div style="background:rgba(255,255,255,0.06); border:1px solid rgba(197,160,89,0.28); border-radius:16px; padding:14px; margin-bottom:14px;">
-            <div style="font-size:0.7rem; color:var(--color-gold-bright); font-weight:800; letter-spacing:0.06em; text-transform:uppercase;">ŞU ANKİ ANLATIM / BÖLÜM</div>
+            <div id="i18n_currentSectionLabel" style="font-size:0.7rem; color:var(--color-gold-bright); font-weight:800; letter-spacing:0.06em; text-transform:uppercase;">ŞU ANKİ ANLATIM / BÖLÜM</div>
             <div style="font-size:0.93rem; font-weight:700; color:#fff; margin-top:4px; line-height:1.4;" id="liveTopicText">
               Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk
             </div>
@@ -431,7 +433,7 @@
           <div id="liveTawafStageCard" style="display:none; background:linear-gradient(155deg, rgba(197,160,89,0.22) 0%, rgba(6,35,27,0.88) 100%); border:1.5px solid var(--color-gold); border-radius:16px; padding:14px; margin-bottom:14px;">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
               <span id="liveTawafStageBadge" class="badge badge-gold" style="font-size:0.72rem;">TAVAF • 1. ŞAVT</span>
-              <span style="font-size:0.72rem; color:#e2e8f0; font-weight:700;">📿 Hocamızla Birlikte Okuyunuz</span>
+              <span id="i18n_tawafReadTogether" style="font-size:0.72rem; color:#e2e8f0; font-weight:700;">📿 Hocamızla Birlikte Okuyunuz</span>
             </div>
             <div id="liveTawafStageTitle" style="font-weight:800; font-size:0.95rem; color:#fff; margin-bottom:6px;"></div>
             <div id="liveTawafStageArabic" style="font-family:'Amiri', serif; font-size:1.22rem; color:var(--color-gold-bright); direction:rtl; text-align:right; line-height:1.75; margin-bottom:6px;"></div>
@@ -475,7 +477,7 @@
         <div id="guideLiveLocationCard" class="card-luxury" style="display:none; margin-bottom:16px; border:2px solid var(--color-emerald-deep);">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
             <span class="badge badge-live">
-              <span class="live-dot"></span> HOCAMIZIN & KAFİLENİN CANLI KONUMU
+              <span class="live-dot"></span> <span id="i18n_guideLiveBadge">HOCAMIZIN & KAFİLENİN CANLI KONUMU</span>
             </span>
             <span id="pilgrimGuideLocTime" style="font-size:0.75rem; color:var(--color-muted); font-weight:700;">Şimdi</span>
           </div>
@@ -497,10 +499,10 @@
 
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
             <a id="pilgrimGuideDirBtn" href="#" target="_blank" class="btn btn-primary" style="flex:1; padding:12px; font-size:0.86rem;">
-              Hocanın Yanına Yol Tarifi Al
+              <span id="i18n_guideDirBtn">Hocanın Yanına Yol Tarifi Al</span>
             </a>
             <a id="pilgrimGuideMapBtn" href="#" target="_blank" class="btn btn-outline" style="padding:12px; font-size:0.86rem;">
-              Haritada Aç
+              <span id="i18n_openInMapsBtn">Haritada Aç</span>
             </a>
           </div>
         </div>
@@ -515,15 +517,15 @@
         <div class="ps-stats-bar ps-stats-3col" style="margin-bottom:14px;">
           <div class="ps-stat-item">
             <div id="pStatDay" class="ps-stat-val" style="font-size:1.05rem;">3. Gün</div>
-            <div class="ps-stat-lbl">Aktif Aşama</div>
+            <div class="ps-stat-lbl" id="i18n_statStageLbl">Aktif Aşama</div>
           </div>
           <div class="ps-stat-item">
             <div id="pStatKm" class="ps-stat-val" style="font-size:1.05rem;">2.465 km</div>
-            <div class="ps-stat-lbl">Mesafe</div>
+            <div class="ps-stat-lbl" id="i18n_statDistLbl">Mesafe</div>
           </div>
           <div class="ps-stat-item" style="border-right:none;">
             <div id="pStatVisited" class="ps-stat-val" style="font-size:1.05rem;">3 / 8</div>
-            <div class="ps-stat-lbl">Durak</div>
+            <div class="ps-stat-lbl" id="i18n_statStopLbl">Durak</div>
           </div>
         </div>
 
@@ -531,29 +533,29 @@
           <div id="pilgrimRouteMap" class="ps-map-canvas" style="height:285px;"></div>
           <div class="ps-map-controls">
             <div class="ps-map-chip-group">
-              <button type="button" class="ps-map-chip active" onclick="focusPilgrimMap('holy', this)">🕋 Hicaz</button>
-              <button type="button" class="ps-map-chip" onclick="focusPilgrimMap('active', this)">📍 Aktif Durak</button>
-              <button type="button" class="ps-map-chip" onclick="focusPilgrimMap('makkah', this)">Mekke</button>
-              <button type="button" class="ps-map-chip" onclick="focusPilgrimMap('madinah', this)">Medine</button>
-              <button type="button" class="ps-map-chip" onclick="focusPilgrimMap('full', this)">✈️ Tüm Rota</button>
+              <button type="button" class="ps-map-chip active" id="i18n_chipHijaz" onclick="focusPilgrimMap('holy', this)">🕋 Hicaz</button>
+              <button type="button" class="ps-map-chip" id="i18n_chipActive" onclick="focusPilgrimMap('active', this)">📍 Aktif Durak</button>
+              <button type="button" class="ps-map-chip" id="i18n_chipMakkah" onclick="focusPilgrimMap('makkah', this)">Mekke</button>
+              <button type="button" class="ps-map-chip" id="i18n_chipMadinah" onclick="focusPilgrimMap('madinah', this)">Medine</button>
+              <button type="button" class="ps-map-chip" id="i18n_chipFull" onclick="focusPilgrimMap('full', this)">✈️ Tüm Rota</button>
             </div>
           </div>
         </div>
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px;">
-          <button type="button" class="btn btn-primary btn-sm" style="padding:11px 10px;" onclick="shareFamilyLiveRoute()">
+          <button type="button" id="i18n_shareFamilyBtn" class="btn btn-primary btn-sm" style="padding:11px 10px;" onclick="shareFamilyLiveRoute()">
             📲 Ailemle Paylaş
           </button>
           <a id="pilgrimBookLink" href="/ani-kitabi?code=RY-KASIM" class="btn btn-gold btn-sm" style="padding:11px 10px; text-align:center;">
-            📖 Hatıra Kitabım
+            <span id="i18n_myMemoryBookBtn">📖 Hatıra Kitabım</span>
           </a>
         </div>
 
         <!-- KAFİLE OTELİ & KÂBE-İ MUAZZAMA YOL TARİFİ KARTI -->
         <div class="card-luxury" style="margin-bottom:16px; padding:14px 16px; border-color:rgba(202,138,4,0.38); background:linear-gradient(135deg,#fffdf8 0%,#fef3c7 100%);">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;">
-            <span class="badge badge-gold" style="font-size:0.68rem;">🏨 OTELİME & KÂBE'YE DÖNÜŞ REHBERİ</span>
-            <span style="font-size:0.72rem; font-weight:700; color:#92400e;">7/24 Harem Servisi</span>
+            <span class="badge badge-gold" style="font-size:0.68rem;" id="i18n_hotelGuideBadge">🏨 OTELİME & KÂBE'YE DÖNÜŞ REHBERİ</span>
+            <span style="font-size:0.72rem; font-weight:700; color:#92400e;" id="i18n_shuttle247">7/24 Harem Servisi</span>
           </div>
           <div style="font-size:0.9rem; font-weight:800; color:var(--color-emerald-night); margin-bottom:3px;" id="pilgrimMakkahHotelText">
             🏨 Mekke: Mekke Otel Kudi Tower
@@ -563,10 +565,10 @@
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
             <a id="pilgrimHotelDirBtn" href="https://www.google.com/maps/dir/?api=1&destination=21.4008,39.8261&travelmode=walking" target="_blank" rel="noopener" class="btn btn-gold btn-sm" style="padding:10px 8px; font-size:0.76rem; text-align:center;">
-              🏨 Mekke Otelime Yol Tarifi
+              <span id="i18n_hotelDirBtn">🏨 Mekke Otelime Yol Tarifi</span>
             </a>
             <a id="pilgrimKaabaDirBtn" href="https://www.google.com/maps/dir/?api=1&destination=21.4225,39.8262&travelmode=walking" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="padding:10px 8px; font-size:0.76rem; text-align:center; background:#fff;">
-              🕋 Kâbe-i Muazzama Yönü
+              <span id="i18n_kaabaDirBtn">🕋 Kâbe-i Muazzama Yönü</span>
             </a>
           </div>
         </div>
@@ -574,11 +576,11 @@
         <div class="card-luxury" style="margin-bottom:16px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <div>
-              <span class="badge badge-gold">ADIM ADIM SİYER ROTASI</span>
-              <h3 style="font-size:1.12rem; margin-top:5px;">Manevi Yolculuk Adımları</h3>
+              <span class="badge badge-gold" id="i18n_stepRouteBadge">ADIM ADIM SİYER ROTASI</span>
+              <h3 style="font-size:1.12rem; margin-top:5px;" id="i18n_stepRouteTitle">Manevi Yolculuk Adımları</h3>
             </div>
           </div>
-          <p style="font-size:0.8rem; color:var(--color-muted); margin-bottom:14px;">
+          <p style="font-size:0.8rem; color:var(--color-muted); margin-bottom:14px;" id="i18n_stepRouteSub">
             Durağa dokunduğunuzda harita otomatik olarak o mübarek ziyaret noktasına odaklanır.
           </p>
           <div id="pilgrimRouteTimeline" class="ps-timeline"></div>
@@ -590,7 +592,7 @@
         <div class="card-luxury" style="margin-bottom:16px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
             <div>
-              <span class="badge badge-gold">MANEVİ REHBER</span>
+              <span class="badge badge-gold" id="i18n_prayersBadge">MANEVİ REHBER</span>
               <h3 style="font-size:1.2rem; margin-top:6px;" id="i18n_prayersTitle">Tavaf, Sa'y ve Telbiye Duaları</h3>
             </div>
           </div>
@@ -603,7 +605,7 @@
         <div class="card-luxury" style="margin-bottom:16px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
             <h3 style="font-size:1.18rem;" id="i18n_annTitle">Kafile Canlı Duyuruları</h3>
-            <span class="badge badge-emerald">Anlık Bildirim</span>
+            <span class="badge badge-emerald" id="i18n_annInstantBadge">Anlık Bildirim</span>
           </div>
           <div id="annTabPushCard" style="background:var(--color-ground); border:1.5px solid var(--color-gold-border); border-radius:14px; padding:12px 14px; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
             <div style="flex:1 1 190px;">
@@ -620,16 +622,19 @@
       <div id="pilgrimTabSos" class="pilgrim-tab-pane">
         <div class="card-luxury" style="border-color:rgba(220,38,38,0.4);">
           <div style="text-align:center; margin-bottom:16px;">
-            <span class="badge" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca;">ACİL DURUM & KAYIP DESTEĞİ</span>
+            <span class="badge" id="i18n_sosEmergencyBadge" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca;">ACİL DURUM & KAYIP DESTEĞİ</span>
             <h3 style="font-size:1.25rem; color:var(--color-emerald-night); margin-top:8px;" id="i18n_sosTitle">Acil Konum (SOS) Bildirimi</h3>
             <p id="i18n_sosDesc" style="font-size:0.86rem; color:var(--color-muted); margin-top:4px;">
               Kalabalıkta kafileden ayrıldıysanız veya acil yardıma ihtiyacınız varsa aşağıdaki butona <strong>3 saniye basılı tutun</strong>. Tam GPS harita konumunuz rehber hocamıza ve acente merkezine anında iletilir.
             </p>
           </div>
 
-          <div class="sos-hold-btn" id="sosHoldBtn"
+          <div class="sos-hold-btn" id="sosHoldBtn" role="button" tabindex="0"
                onmousedown="startSosHold()" onmouseup="cancelSosHold()" onmouseleave="cancelSosHold()"
-               ontouchstart="startSosHold(event)" ontouchend="cancelSosHold()">
+               ontouchstart="startSosHold(event)" ontouchend="cancelSosHold()" ontouchcancel="cancelSosHold()"
+               oncontextmenu="event.preventDefault()"
+               onkeydown="if(event.key===' '||event.key==='Enter')startSosHold(event)"
+               onkeyup="if(event.key===' '||event.key==='Enter')cancelSosHold()">
             <div class="sos-hold-fill" id="sosHoldFill"></div>
             <span style="position:relative; z-index:2;" id="sosBtnText">
               ACİL DURUM / KAYBOLDUM (3 Sn Basılı Tutun)
@@ -655,7 +660,7 @@
                 🏨 Otelime Yol Tarifi (Kudi Tower)
               </a>
               <a id="sosKaabaDirBtn" href="https://www.google.com/maps/dir/?api=1&destination=21.4225,39.8262&travelmode=walking" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="padding:10px 8px; font-size:0.76rem; text-align:center;">
-                🕋 Kâbe-i Muazzama Yönü
+                <span id="i18n_sosKaabaDirBtn">🕋 Kâbe-i Muazzama Yönü</span>
               </a>
             </div>
           </div>
@@ -700,8 +705,11 @@
       if (!pilgrimUmrahMap && window.UmrahStepsMap) {
         pilgrimUmrahMap = new window.UmrahStepsMap('pilgrimRouteMap', {
           defaultView: 'holy-lands',
-          scrollWheelZoom: false
+          scrollWheelZoom: false,
+          lang: typeof currentLang === 'string' ? currentLang : 'tr'
         });
+      } else if (pilgrimUmrahMap && typeof pilgrimUmrahMap.setLang === 'function' && typeof currentLang === 'string') {
+        pilgrimUmrahMap.setLang(currentLang);
       }
       return pilgrimUmrahMap;
     }
@@ -716,6 +724,7 @@
         if (window.UmrahStepsMap) {
           window.UmrahStepsMap.renderTimeline('pilgrimRouteTimeline', pilgrimJourneySteps, {
             showPrayers: true,
+            lang: typeof currentLang === 'string' ? currentLang : 'tr',
             onSelect: (step) => {
               if (mapInst) mapInst.focusStep(step.id, 14, true);
               const mEl = document.getElementById('pilgrimRouteMap');
@@ -843,7 +852,65 @@
         pushPairBtn: 'Şimdi Eşleştir',
         pushPromptTitle: 'Uygulama Kapalıyken Duyuru Bildirimlerini Açın',
         pushPromptSub: 'Rehber hocamız duyuru yayınladığında kilit ekranınıza bildirim gelmesi için izin verin.',
-        pushPinNeededToast: 'PIN korumalı kafilede bildirim açmak için lütfen önce Oda PIN Kodunu giriniz.'
+        pushPinNeededToast: 'PIN korumalı kafilede bildirim açmak için lütfen önce Oda PIN Kodunu giriniz.',
+        brandSub: 'RıdvanSes Hacı Canlı Odası',
+        installShortBtn: 'Yükle',
+        pwaBannerTitle: "RıdvanSes'i Ana Ekrana Ekleyin",
+        pwaBannerSub: 'Mağaza şifresi gerekmeden tek dokunuşla telefonunuza kurun.',
+        pwaBannerBtn: 'Telefona Kur',
+        pinLabel: 'Oda PIN Kodu *',
+        joinRotaBtn: '📍 Canlı Rota Haritası',
+        joinBookBtn: '📖 Umre Hatıra Kitabı',
+        listenersWord: 'Dinleyici',
+        currentSectionLabel: 'ŞU ANKİ ANLATIM / BÖLÜM',
+        tawafReadTogether: '📿 Hocamızla Birlikte Okuyunuz',
+        guideLiveBadge: 'HOCAMIZIN & KAFİLENİN CANLI KONUMU',
+        guideDirBtn: 'Hocanın Yanına Yol Tarifi Al',
+        openInMapsBtn: 'Haritada Aç',
+        statStageLbl: 'Aktif Aşama',
+        statDistLbl: 'Mesafe',
+        statStopLbl: 'Durak',
+        chipHijaz: '🕋 Hicaz',
+        chipActive: '📍 Aktif Durak',
+        chipMakkah: 'Mekke',
+        chipMadinah: 'Medine',
+        chipFull: '✈️ Tüm Rota',
+        shareFamilyBtn: '📲 Ailemle Paylaş',
+        myMemoryBookBtn: '📖 Hatıra Kitabım',
+        hotelGuideBadge: "🏨 OTELİME & KÂBE'YE DÖNÜŞ REHBERİ",
+        shuttle247: '7/24 Harem Servisi',
+        hotelDirBtn: '🏨 Mekke Otelime Yol Tarifi',
+        kaabaDirBtn: '🕋 Kâbe-i Muazzama Yönü',
+        sosKaabaDirBtn: '🕋 Kâbe-i Muazzama Yönü',
+        stepRouteBadge: 'ADIM ADIM SİYER ROTASI',
+        stepRouteTitle: 'Manevi Yolculuk Adımları',
+        stepRouteSub: 'Durağa dokunduğunuzda harita otomatik olarak o mübarek ziyaret noktasına odaklanır.',
+        prayersBadge: 'MANEVİ REHBER',
+        annInstantBadge: 'Anlık Bildirim',
+        sosEmergencyBadge: 'ACİL DURUM & KAYIP DESTEĞİ',
+        pwaModalTitle: "RıdvanSes'i Telefonunuza Kurun",
+        pwaModalSub: 'App Store veya Google Play şifresi girmeden uygulamayı ana ekranınıza ekleyerek tek dokunuşla canlı yayına katılabilirsiniz:',
+        pwaModalOkBtn: 'Tamam',
+        pushModalTitle: 'Duyuru Bildirimlerini Açın',
+        pushModalSub: 'Rehber hocamız veya yönetim panelinden toplu bir duyuru yayınlandığında, uygulama tamamen kapalıyken bile telefonunuzun ekranına bildirim düşmesi için izin verin.',
+        pushModalAllowBtn: '🔔 Bildirimlere İzin Ver',
+        pushModalLaterBtn: 'Daha Sonra',
+        sosQueuedOfflineTitle: 'İNTERNET BAĞLANTISI YOK — ACİL SOS SIRAYA ALINDI!',
+        sosQueuedOfflineSub: 'Telefonunuz şu an çevrimdışı. Bağlantı gelir gelmez konumunuz otomatik iletilecektir; acil durumda hemen aşağıdaki Rehberi Ara veya WhatsApp butonunu kullanın.',
+        sendViaWhatsapp: "WhatsApp'tan Gönder",
+        addressLabel: 'Açık Adres',
+        coordsLabel: 'GPS Koordinat',
+        meaningLabel: 'Anlamı',
+        noAnnouncementsYet: 'Henüz duyuru bulunmuyor.',
+        newAnnouncementTag: 'YENİ DUYURU',
+        updatedLabel: 'Güncelleme',
+        measureDistance: 'Mesafemi Ölç',
+        measuringDistance: 'Ölçülüyor...',
+        distanceLabel: 'Hocaya Mesafe',
+        locationPermNeeded: 'Konum izni gerekli',
+        iosPushTitle: '📲 iPhone Arka Plan Bildirimi',
+        iosPushSub: 'Kapalı ekranda bildirim almak için Safari > Paylaş > Ana Ekrana Ekle adımlarını tamamlayın.',
+        setupGuideBtn: 'Kurulum Rehberi'
       },
       ar: {
         dir: 'rtl',
@@ -901,7 +968,65 @@
         pushPairBtn: 'ربط الآن',
         pushPromptTitle: 'فعّل إشعارات الإعلانات عند إغلاق التطبيق',
         pushPromptSub: 'اسمح بالإشعارات لتصلك تنبيهات المرشد على شاشة القفل.',
-        pushPinNeededToast: 'يرجى إدخال رمز PIN الخاص بالقافلة أولاً لتفعيل الإشعارات.'
+        pushPinNeededToast: 'يرجى إدخال رمز PIN الخاص بالقافلة أولاً لتفعيل الإشعارات.',
+        brandSub: 'غرفة المعتمر المباشرة — رضوان سيس',
+        installShortBtn: 'تثبيت',
+        pwaBannerTitle: 'أضف رضوان سيس إلى الشاشة الرئيسية',
+        pwaBannerSub: 'ثبّت التطبيق على هاتفك بلمسة واحدة دون كلمة مرور للمتجر.',
+        pwaBannerBtn: 'تثبيت على الهاتف',
+        pinLabel: 'رمز PIN للغرفة *',
+        joinRotaBtn: '📍 خريطة المسار المباشر',
+        joinBookBtn: '📖 كتاب ذكريات العمرة',
+        listenersWord: 'مستمع',
+        currentSectionLabel: 'الشرح / القسم الحالي',
+        tawafReadTogether: '📿 اقرأ مع المرشد',
+        guideLiveBadge: 'الموقع المباشر للمرشد والقافلة',
+        guideDirBtn: 'الاتجاهات إلى موقع المرشد',
+        openInMapsBtn: 'فتح في الخريطة',
+        statStageLbl: 'المرحلة النشطة',
+        statDistLbl: 'المسافة',
+        statStopLbl: 'المحطات',
+        chipHijaz: '🕋 الحجاز',
+        chipActive: '📍 المحطة النشطة',
+        chipMakkah: 'مكة',
+        chipMadinah: 'المدينة',
+        chipFull: '✈️ كامل المسار',
+        shareFamilyBtn: '📲 مشاركة مع العائلة',
+        myMemoryBookBtn: '📖 كتاب ذكرياتي',
+        hotelGuideBadge: '🏨 دليل العودة إلى الفندق والكعبة',
+        shuttle247: 'خدمة الحرم 24/7',
+        hotelDirBtn: '🏨 الاتجاهات إلى فندقي بمكة',
+        kaabaDirBtn: '🕋 اتجاه الكعبة المشرفة',
+        sosKaabaDirBtn: '🕋 اتجاه الكعبة المشرفة',
+        stepRouteBadge: 'مسار السيرة خطوة بخطوة',
+        stepRouteTitle: 'محطات الرحلة الإيمانية',
+        stepRouteSub: 'اضغط على أي محطة للتركيز عليها مباشرة على الخريطة.',
+        prayersBadge: 'الدليل الإيماني',
+        annInstantBadge: 'تنبيه فوري',
+        sosEmergencyBadge: 'دعم الطوارئ والمفقودين',
+        pwaModalTitle: 'تثبيت رضوان سيس على هاتفك',
+        pwaModalSub: 'أضف التطبيق إلى الشاشة الرئيسية للدخول إلى البث المباشر بلمسة واحدة:',
+        pwaModalOkBtn: 'حسناً',
+        pushModalTitle: 'تفعيل إشعارات القافلة',
+        pushModalSub: 'اسمح بالإشعارات لتصلك تنبيهات المرشد والإدارة حتى عندما يكون التطبيق مغلقاً.',
+        pushModalAllowBtn: '🔔 تفعيل الإشعارات',
+        pushModalLaterBtn: 'لاحقاً',
+        sosQueuedOfflineTitle: 'لا يوجد اتصال بالإنترنت — تم حفظ بلاغ الطوارئ!',
+        sosQueuedOfflineSub: 'هاتفك غير متصل حالياً. سيتم إرسال موقعك تلقائياً فور عودة الشبكة؛ للحالات العاجلة اتصل بالمرشد فوراً.',
+        sendViaWhatsapp: 'إرسال عبر واتساب',
+        addressLabel: 'العنوان',
+        coordsLabel: 'إحداثيات GPS',
+        meaningLabel: 'المعنى',
+        noAnnouncementsYet: 'لا توجد إعلانات حالياً.',
+        newAnnouncementTag: 'إعلان جديد',
+        updatedLabel: 'تحديث',
+        measureDistance: 'قياس المسافة',
+        measuringDistance: 'جارٍ القياس...',
+        distanceLabel: 'المسافة للمرشد',
+        locationPermNeeded: 'يلزم إذن الموقع',
+        iosPushTitle: '📲 إشعارات آيفون في الخلفية',
+        iosPushSub: 'لإشعارات شاشة القفل، افتح سفاري > مشاركة > إضافة إلى الشاشة الرئيسية.',
+        setupGuideBtn: 'دليل التثبيت'
       },
       en: {
         dir: 'ltr',
@@ -959,7 +1084,65 @@
         pushPairBtn: 'Pair Now',
         pushPromptTitle: 'Enable Background Announcement Alerts',
         pushPromptSub: 'Allow notifications to receive alerts from your guide on your lock screen.',
-        pushPinNeededToast: 'Please enter the Tour PIN code first to enable notifications for this protected group.'
+        pushPinNeededToast: 'Please enter the Tour PIN code first to enable notifications for this protected group.',
+        brandSub: 'RıdvanSes Live Pilgrim Room',
+        installShortBtn: 'Install',
+        pwaBannerTitle: 'Add RıdvanSes to Home Screen',
+        pwaBannerSub: 'Install in one tap with no app store password needed.',
+        pwaBannerBtn: 'Install App',
+        pinLabel: 'Room PIN Code *',
+        joinRotaBtn: '📍 Live Route Map',
+        joinBookBtn: '📖 Umrah Memory Book',
+        listenersWord: 'Listeners',
+        currentSectionLabel: 'CURRENT TOPIC / SECTION',
+        tawafReadTogether: '📿 Recite Together with Your Guide',
+        guideLiveBadge: 'LIVE GUIDE & GROUP LOCATION',
+        guideDirBtn: 'Directions to Guide',
+        openInMapsBtn: 'Open in Maps',
+        statStageLbl: 'Active Stage',
+        statDistLbl: 'Distance',
+        statStopLbl: 'Stops',
+        chipHijaz: '🕋 Hijaz',
+        chipActive: '📍 Active Stop',
+        chipMakkah: 'Makkah',
+        chipMadinah: 'Madinah',
+        chipFull: '✈️ Full Route',
+        shareFamilyBtn: '📲 Share with Family',
+        myMemoryBookBtn: '📖 Memory Book',
+        hotelGuideBadge: '🏨 HOTEL & KAABA RETURN GUIDE',
+        shuttle247: '24/7 Haram Shuttle',
+        hotelDirBtn: '🏨 Directions to Makkah Hotel',
+        kaabaDirBtn: '🕋 Direction to Kaaba',
+        sosKaabaDirBtn: '🕋 Direction to Kaaba',
+        stepRouteBadge: 'STEP-BY-STEP SEERAH ROUTE',
+        stepRouteTitle: 'Spiritual Journey Stops',
+        stepRouteSub: 'Tap any stop below to focus the map on that blessed location.',
+        prayersBadge: 'SPIRITUAL GUIDE',
+        annInstantBadge: 'Instant Alert',
+        sosEmergencyBadge: 'EMERGENCY & LOST SUPPORT',
+        pwaModalTitle: 'Install RıdvanSes on Your Phone',
+        pwaModalSub: 'Add the app to your home screen without an App Store or Google Play password:',
+        pwaModalOkBtn: 'Done',
+        pushModalTitle: 'Enable Group Notifications',
+        pushModalSub: 'Allow notifications so announcements from your guide appear on your lock screen even when the app is closed.',
+        pushModalAllowBtn: '🔔 Allow Notifications',
+        pushModalLaterBtn: 'Later',
+        sosQueuedOfflineTitle: 'NO INTERNET — SOS QUEUED FOR AUTO-SEND!',
+        sosQueuedOfflineSub: 'Your phone is currently offline. Your SOS will be sent automatically as soon as signal returns; please call your guide directly if urgent.',
+        sendViaWhatsapp: 'Send via WhatsApp',
+        addressLabel: 'Address',
+        coordsLabel: 'GPS Coordinates',
+        meaningLabel: 'Meaning',
+        noAnnouncementsYet: 'No announcements yet.',
+        newAnnouncementTag: 'NEW ALERT',
+        updatedLabel: 'Updated',
+        measureDistance: 'Measure Distance',
+        measuringDistance: 'Measuring...',
+        distanceLabel: 'Distance to Guide',
+        locationPermNeeded: 'Location permission needed',
+        iosPushTitle: '📲 iPhone Background Alerts',
+        iosPushSub: 'In Safari, tap Share > Add to Home Screen to enable lock-screen alerts.',
+        setupGuideBtn: 'Setup Guide'
       },
       fr: {
         dir: 'ltr',
@@ -1017,7 +1200,65 @@
         pushPairBtn: 'Associer',
         pushPromptTitle: 'Activer les Notifications en Arrière-Plan',
         pushPromptSub: 'Autorisez les notifications pour recevoir les annonces sur l’écran verrouillé.',
-        pushPinNeededToast: 'Veuillez d’abord saisir le code PIN du groupe pour activer les notifications.'
+        pushPinNeededToast: 'Veuillez d’abord saisir le code PIN du groupe pour activer les notifications.',
+        brandSub: 'Salle Pèlerin en Direct — RıdvanSes',
+        installShortBtn: 'Installer',
+        pwaBannerTitle: 'Ajouter RıdvanSes à l’Écran d’Accueil',
+        pwaBannerSub: 'Installez en un geste sans mot de passe de boutique.',
+        pwaBannerBtn: 'Installer',
+        pinLabel: 'Code PIN de la Salle *',
+        joinRotaBtn: '📍 Carte du Parcours',
+        joinBookBtn: '📖 Carnet de Souvenirs',
+        listenersWord: 'Auditeurs',
+        currentSectionLabel: 'SUJET / ÉTAPE EN COURS',
+        tawafReadTogether: '📿 Récitez avec le Guide',
+        guideLiveBadge: 'POSITION EN DIRECT DU GUIDE',
+        guideDirBtn: 'Itinéraire vers le Guide',
+        openInMapsBtn: 'Ouvrir la Carte',
+        statStageLbl: 'Étape Active',
+        statDistLbl: 'Distance',
+        statStopLbl: 'Étapes',
+        chipHijaz: '🕋 Hedjaz',
+        chipActive: '📍 Étape Active',
+        chipMakkah: 'La Mecque',
+        chipMadinah: 'Médine',
+        chipFull: '✈️ Parcours Complet',
+        shareFamilyBtn: '📲 Partager en Famille',
+        myMemoryBookBtn: '📖 Mon Carnet',
+        hotelGuideBadge: '🏨 RETOUR HÔTEL & KAABA',
+        shuttle247: 'Navette Haram 24h/24',
+        hotelDirBtn: '🏨 Itinéraire Hôtel La Mecque',
+        kaabaDirBtn: '🕋 Direction de la Kaaba',
+        sosKaabaDirBtn: '🕋 Direction de la Kaaba',
+        stepRouteBadge: 'PARCOURS DE LA SÎRA ÉTAPE PAR ÉTAPE',
+        stepRouteTitle: 'Étapes du Voyage Spirituel',
+        stepRouteSub: 'Touchez une étape pour centrer automatiquement la carte.',
+        prayersBadge: 'GUIDE SPIRITUEL',
+        annInstantBadge: 'Alerte Directe',
+        sosEmergencyBadge: 'URGENCE & ASSISTANCE',
+        pwaModalTitle: 'Installer RıdvanSes sur Votre Téléphone',
+        pwaModalSub: 'Ajoutez l’application à votre écran d’accueil pour rejoindre le direct en un geste :',
+        pwaModalOkBtn: 'Fermer',
+        pushModalTitle: 'Activer les Notifications',
+        pushModalSub: 'Autorisez les notifications pour recevoir les annonces du guide même lorsque l’application est fermée.',
+        pushModalAllowBtn: '🔔 Autoriser les Notifications',
+        pushModalLaterBtn: 'Plus tard',
+        sosQueuedOfflineTitle: 'HORS LIGNE — ALERTE SOS EN ATTENTE D’ENVOI !',
+        sosQueuedOfflineSub: 'Votre téléphone est hors ligne. Votre position sera envoyée dès le retour du réseau ; appelez le guide en cas d’urgence.',
+        sendViaWhatsapp: 'Envoyer sur WhatsApp',
+        addressLabel: 'Adresse',
+        coordsLabel: 'Coordonnées GPS',
+        meaningLabel: 'Sens',
+        noAnnouncementsYet: 'Aucune annonce pour le moment.',
+        newAnnouncementTag: 'NOUVELLE ANNONCE',
+        updatedLabel: 'Mis à jour',
+        measureDistance: 'Mesurer la Distance',
+        measuringDistance: 'Mesure...',
+        distanceLabel: 'Distance au Guide',
+        locationPermNeeded: 'Autorisation GPS requise',
+        iosPushTitle: '📲 Notifications iPhone',
+        iosPushSub: 'Dans Safari, touchez Partager > Sur l’écran d’accueil pour activer les alertes.',
+        setupGuideBtn: 'Guide d’installation'
       },
       id: {
         dir: 'ltr',
@@ -1075,7 +1316,65 @@
         pushPairBtn: 'Tautkan',
         pushPromptTitle: 'Aktifkan Notifikasi Pengumuman Latar Belakang',
         pushPromptSub: 'Izinkan notifikasi agar pengumuman pembimbing tampil di layar kunci.',
-        pushPinNeededToast: 'Silakan masukkan kode PIN rombongan terlebih dahulu untuk mengaktifkan notifikasi.'
+        pushPinNeededToast: 'Silakan masukkan kode PIN rombongan terlebih dahulu untuk mengaktifkan notifikasi.',
+        brandSub: 'Ruang Jamaah Langsung — RıdvanSes',
+        installShortBtn: 'Pasang',
+        pwaBannerTitle: 'Tambahkan RıdvanSes ke Layar Utama',
+        pwaBannerSub: 'Pasang dengan satu sentuhan tanpa kata sandi toko aplikasi.',
+        pwaBannerBtn: 'Pasang Aplikasi',
+        pinLabel: 'Kode PIN Ruangan *',
+        joinRotaBtn: '📍 Peta Rute Langsung',
+        joinBookBtn: '📖 Buku Kenangan Umrah',
+        listenersWord: 'Pendengar',
+        currentSectionLabel: 'PEMBAHASAN / BAGIAN SAAT INI',
+        tawafReadTogether: '📿 Baca Bersama Pembimbing',
+        guideLiveBadge: 'LOKASI LANGSUNG PEMBIMBING & ROMBONGAN',
+        guideDirBtn: 'Arah ke Pembimbing',
+        openInMapsBtn: 'Buka di Peta',
+        statStageLbl: 'Tahap Aktif',
+        statDistLbl: 'Jarak',
+        statStopLbl: 'Perhentian',
+        chipHijaz: '🕋 Hijaz',
+        chipActive: '📍 Titik Aktif',
+        chipMakkah: 'Makkah',
+        chipMadinah: 'Madinah',
+        chipFull: '✈️ Seluruh Rute',
+        shareFamilyBtn: '📲 Bagikan ke Keluarga',
+        myMemoryBookBtn: '📖 Buku Kenanganku',
+        hotelGuideBadge: '🏨 PANDUAN KEMBALI KE HOTEL & KA’BAH',
+        shuttle247: 'Layanan Haram 24/7',
+        hotelDirBtn: '🏨 Arah ke Hotel Makkah',
+        kaabaDirBtn: '🕋 Arah Ka’bah',
+        sosKaabaDirBtn: '🕋 Arah Ka’bah',
+        stepRouteBadge: 'RUTE SIRAH LANGKAH DEMI LANGKAH',
+        stepRouteTitle: 'Langkah Perjalanan Spiritual',
+        stepRouteSub: 'Ketuk perhentian untuk memfokuskan peta ke lokasi ziarah tersebut.',
+        prayersBadge: 'PANDUAN SPIRITUAL',
+        annInstantBadge: 'Info Instan',
+        sosEmergencyBadge: 'DARURAT & BANTUAN TERSESAT',
+        pwaModalTitle: 'Pasang RıdvanSes di Ponsel Anda',
+        pwaModalSub: 'Tambahkan aplikasi ke layar utama tanpa kata sandi App Store atau Google Play:',
+        pwaModalOkBtn: 'Selesai',
+        pushModalTitle: 'Aktifkan Notifikasi Rombongan',
+        pushModalSub: 'Izinkan notifikasi agar pengumuman pembimbing muncul di layar kunci meski aplikasi ditutup.',
+        pushModalAllowBtn: '🔔 Izinkan Notifikasi',
+        pushModalLaterBtn: 'Nanti',
+        sosQueuedOfflineTitle: 'TIDAK ADA INTERNET — SOS DALAM ANTREAN OTOMATIS!',
+        sosQueuedOfflineSub: 'Ponsel sedang offline. Lokasi Anda akan dikirim otomatis saat sinyal kembali; hubungi pembimbing langsung jika darurat.',
+        sendViaWhatsapp: 'Kirim via WhatsApp',
+        addressLabel: 'Alamat',
+        coordsLabel: 'Koordinat GPS',
+        meaningLabel: 'Arti',
+        noAnnouncementsYet: 'Belum ada pengumuman.',
+        newAnnouncementTag: 'INFO BARU',
+        updatedLabel: 'Diperbarui',
+        measureDistance: 'Ukur Jarak',
+        measuringDistance: 'Mengukur...',
+        distanceLabel: 'Jarak ke Pembimbing',
+        locationPermNeeded: 'Izin lokasi diperlukan',
+        iosPushTitle: '📲 Notifikasi Latar iPhone',
+        iosPushSub: 'Di Safari, ketuk Bagikan > Tambah ke Layar Utama untuk mengaktifkan notifikasi.',
+        setupGuideBtn: 'Panduan Pasang'
       },
       ur: {
         dir: 'rtl',
@@ -1133,7 +1432,65 @@
         pushPairBtn: 'ابھی مربوط کریں',
         pushPromptTitle: 'ایپ بند ہونے پر اعلانات کی اطلاعات کھولیں',
         pushPromptSub: 'معلم کے اعلانات لاک اسکرین پر حاصل کرنے کے لیے اجازت دیں۔',
-        pushPinNeededToast: 'اطلاعات فعال کرنے کے لیے پہلے قافلے کا PIN کوڈ درج کریں۔'
+        pushPinNeededToast: 'اطلاعات فعال کرنے کے لیے پہلے قافلے کا PIN کوڈ درج کریں۔',
+        brandSub: 'رضوان سس لائیو حاجی روم',
+        installShortBtn: 'انسٹال',
+        pwaBannerTitle: 'رضوان سس کو ہوم اسکرین پر شامل کریں',
+        pwaBannerSub: 'بغیر اسٹور پاس ورڈ کے ایک کلک میں فون پر انسٹال کریں۔',
+        pwaBannerBtn: 'فون پر انسٹال کریں',
+        pinLabel: 'کمرہ PIN کوڈ *',
+        joinRotaBtn: '📍 لائیو راستے کا نقشہ',
+        joinBookBtn: '📖 عمرہ یادگار کتاب',
+        listenersWord: 'سامعین',
+        currentSectionLabel: 'موجودہ بیان / مرحلہ',
+        tawafReadTogether: '📿 معلم کے ساتھ مل کر پڑھیں',
+        guideLiveBadge: 'معلم اور قافلے کا لائیو مقام',
+        guideDirBtn: 'معلم تک راستہ حاصل کریں',
+        openInMapsBtn: 'نقشے میں کھولیں',
+        statStageLbl: 'فعال مرحلہ',
+        statDistLbl: 'فاصلہ',
+        statStopLbl: 'مقامات',
+        chipHijaz: '🕋 حجاز',
+        chipActive: '📍 فعال مقام',
+        chipMakkah: 'مکہ',
+        chipMadinah: 'مدینہ',
+        chipFull: '✈️ مکمل راستہ',
+        shareFamilyBtn: '📲 اہل خانہ کے ساتھ شیئر کریں',
+        myMemoryBookBtn: '📖 میری یادگار کتاب',
+        hotelGuideBadge: '🏨 ہوٹل اور کعبہ واپسی رہنمائی',
+        shuttle247: '24/7 حرم سروس',
+        hotelDirBtn: '🏨 مکہ ہوٹل کا راستہ',
+        kaabaDirBtn: '🕋 کعبہ معظمہ کی سمت',
+        sosKaabaDirBtn: '🕋 کعبہ معظمہ کی سمت',
+        stepRouteBadge: 'مرحلہ وار سیرت روٹ',
+        stepRouteTitle: 'روحانی سفر کے مراحل',
+        stepRouteSub: 'کسی بھی مقام پر ٹیپ کریں تاکہ نقشہ اس مبارک جگہ پر مرکوز ہو جائے۔',
+        prayersBadge: 'روحانی رہنما',
+        annInstantBadge: 'فوری اطلاع',
+        sosEmergencyBadge: 'ہنگامی اور گمشدگی مدد',
+        pwaModalTitle: 'رضوان سس اپنے فون پر انسٹال کریں',
+        pwaModalSub: 'ایپ کو ہوم اسکرین پر شامل کر کے ایک کلک میں لائیو نشریات میں شامل ہوں:',
+        pwaModalOkBtn: 'ٹھیک ہے',
+        pushModalTitle: 'اعلانات کی اطلاعات کھولیں',
+        pushModalSub: 'اجازت دیں تاکہ ایپ بند ہونے پر بھی معلم کے اعلانات آپ کی اسکرین پر نظر آئیں۔',
+        pushModalAllowBtn: '🔔 اطلاعات کی اجازت دیں',
+        pushModalLaterBtn: 'بعد میں',
+        sosQueuedOfflineTitle: 'انٹرنیٹ کنکشن نہیں ہے — ہنگامی اطلاع محفوظ کر لی گئی!',
+        sosQueuedOfflineSub: 'فون اس وقت آف لائن ہے۔ سگنل آتے ہی آپ کا مقام خودکار طور پر بھیج دیا جائے گا؛ فوری ضرورت میں معلم کو کال کریں۔',
+        sendViaWhatsapp: 'واٹس ایپ پر بھیجیں',
+        addressLabel: 'پتہ',
+        coordsLabel: 'GPS کوآرڈینیٹس',
+        meaningLabel: 'ترجمہ',
+        noAnnouncementsYet: 'ابھی تک کوئی اعلان نہیں ہے۔',
+        newAnnouncementTag: 'نیا اعلان',
+        updatedLabel: 'اپ ڈیٹ',
+        measureDistance: 'فاصلہ معلوم کریں',
+        measuringDistance: 'فاصلہ ناپا جا رہا ہے...',
+        distanceLabel: 'معلم سے فاصلہ',
+        locationPermNeeded: 'لوکیشن کی اجازت درکار ہے',
+        iosPushTitle: '📲 آئی فون پس منظر اطلاعات',
+        iosPushSub: 'لاک اسکرین اطلاعات کے لیے سفاری > شیئر > ہوم اسکرین میں شامل کریں۔',
+        setupGuideBtn: 'انسٹالیشن گائیڈ'
       }
     };
 
@@ -1193,6 +1550,35 @@
       }
       if (typeof updateGuideSpeakingIndicator === 'function' && typeof window.__ryGuideSpeakingNow === 'boolean') {
         updateGuideSpeakingIndicator(window.__ryGuideSpeakingNow);
+      }
+      if (pilgrimUmrahMap && typeof pilgrimUmrahMap.setLang === 'function') {
+        pilgrimUmrahMap.setLang(currentLang);
+      }
+      if (Array.isArray(pilgrimJourneySteps) && pilgrimJourneySteps.length && window.UmrahStepsMap) {
+        window.UmrahStepsMap.renderTimeline('pilgrimRouteTimeline', pilgrimJourneySteps, {
+          showPrayers: true,
+          lang: currentLang,
+          onSelect: (step) => {
+            if (pilgrimUmrahMap) pilgrimUmrahMap.focusStep(step.id, 14, true);
+            const mEl = document.getElementById('pilgrimRouteMap');
+            if (mEl) mEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        });
+      }
+      if (Array.isArray(window._loadedPrayers) && window._loadedPrayers.length && typeof renderPrayers === 'function') {
+        renderPrayers(window._loadedPrayers);
+      }
+      if (Array.isArray(window._loadedAnnouncements) && typeof renderAnnouncements === 'function' && currentTour) {
+        renderAnnouncements(window._loadedAnnouncements);
+      }
+      if (typeof window._lastActiveTawafStage !== 'undefined' && typeof renderLiveTawafStage === 'function') {
+        renderLiveTawafStage(window._lastActiveTawafStage);
+      }
+      if (typeof lastKnownGuideLocation !== 'undefined' && lastKnownGuideLocation && typeof renderGuideLiveLocation === 'function') {
+        renderGuideLiveLocation(lastKnownGuideLocation);
+      }
+      if (currentTour && typeof updatePilgrimHotelNavigationUi === 'function') {
+        updatePilgrimHotelNavigationUi(currentTour);
       }
     }
 
@@ -1390,10 +1776,16 @@
       }
     }
 
+    let isJoiningTour = false;
     document.getElementById('joinForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (isJoiningTour) return;
+      isJoiningTour = true;
+      const submitBtn = document.getElementById('joinSubmitBtn');
+      if (submitBtn) submitBtn.disabled = true;
       intentionalLeave = false;
       ensureAudioContext();
+      startBackgroundKeepAliveAudio();
 
       const code = document.getElementById('tourCodeInput').value.trim().toUpperCase();
       const pin = (document.getElementById('tourPinInput')?.value || '').trim();
@@ -1412,6 +1804,7 @@
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
+          stopBackgroundKeepAliveAudio();
           if (res.status === 403) {
             const pinBox = document.getElementById('pinInputBox');
             if (pinBox) pinBox.style.display = 'block';
@@ -1480,8 +1873,12 @@
 
         connectWebSocket(currentTour.code, roomId, name, phone);
       } catch (err) {
+        stopBackgroundKeepAliveAudio();
         errEl.textContent = 'Sunucu bağlantısı kurulamadı.';
         errEl.style.display = 'block';
+      } finally {
+        isJoiningTour = false;
+        if (submitBtn) submitBtn.disabled = false;
       }
     });
 
@@ -1676,6 +2073,9 @@
           if (msg.announcements) renderAnnouncements(msg.announcements);
           if (msg.siyerPoints) renderPrayers(msg.siyerPoints);
           if (msg.steps) renderPilgrimJourney(msg.steps, msg.stats || null, true);
+          if (msg.type === 'joined' && typeof flushPendingSosQueue === 'function') {
+            void flushPendingSosQueue();
+          }
         }
 
         if (msg.type === 'stream-state') {
@@ -1839,6 +2239,7 @@
     }
 
     function renderLiveTawafStage(stage) {
+      window._lastActiveTawafStage = stage || null;
       const card = document.getElementById('liveTawafStageCard');
       if (!card) return;
       if (!stage || !stage.title) {
@@ -1846,6 +2247,7 @@
         return;
       }
       card.style.display = 'block';
+      const dict = I18N[currentLang] || I18N.tr;
       const bEl = document.getElementById('liveTawafStageBadge');
       const tEl = document.getElementById('liveTawafStageTitle');
       const aEl = document.getElementById('liveTawafStageArabic');
@@ -1855,10 +2257,11 @@
       if (tEl) tEl.textContent = stage.title || '';
       if (aEl) aEl.textContent = stage.arabic || '';
       if (rEl) rEl.textContent = stage.reading || '';
-      if (mEl) mEl.textContent = stage.meaning ? `Anlamı: ${stage.meaning}` : '';
+      if (mEl) mEl.textContent = stage.meaning ? `${dict.meaningLabel || 'Anlamı'}: ${stage.meaning}` : '';
     }
 
     let wasGuideLocationActive = false;
+    let lastKnownGuideLocation = null;
 
     function computeDistanceMeters(lat1, lon1, lat2, lon2) {
       const R = 6371000;
@@ -1872,17 +2275,20 @@
     }
 
     function renderGuideLiveLocation(loc) {
+      const hasValidGuideCoords = Boolean(loc && loc.active && Number.isFinite(Number(loc.lat)) && Number.isFinite(Number(loc.lng)));
+      lastKnownGuideLocation = hasValidGuideCoords ? loc : null;
       if (pilgrimUmrahMap) {
-        pilgrimUmrahMap.updateGuideLocation(loc && loc.active && loc.lat && loc.lng ? loc : null);
+        pilgrimUmrahMap.updateGuideLocation(hasValidGuideCoords ? loc : null);
       }
       const card = document.getElementById('guideLiveLocationCard');
       if (!card) return;
-      if (!loc || !loc.active || !loc.lat || !loc.lng) {
+      if (!hasValidGuideCoords) {
         card.style.display = 'none';
         wasGuideLocationActive = false;
         return;
       }
 
+      const dict = I18N[currentLang] || I18N.tr;
       const lat = Number(loc.lat);
       const lng = Number(loc.lng);
       card.style.display = 'block';
@@ -1892,7 +2298,7 @@
         if (isAudioListening) playNotificationChime();
       }
 
-      document.getElementById('pilgrimGuideLocTime').textContent = `Güncelleme: ${loc.updatedAt || 'Şimdi'}`;
+      document.getElementById('pilgrimGuideLocTime').textContent = `${dict.updatedLabel || 'Güncelleme'}: ${loc.updatedAt || 'Şimdi'}`;
       document.getElementById('pilgrimGuideLocNote').textContent =
         loc.note || `${loc.guideName || 'Rehber Hocamızın'} Canlı Konumu`;
       document.getElementById('pilgrimGuideLocAddr').textContent =
@@ -1923,16 +2329,17 @@
           lng
         );
         distBadge.textContent =
-          distM >= 1000 ? `Mesafe: ${(distM / 1000).toFixed(1)} km` : `Hocaya Mesafe: ~${distM} m`;
+          distM >= 1000 ? `${dict.distanceLabel || 'Mesafe'}: ${(distM / 1000).toFixed(1)} km` : `${dict.distanceLabel || 'Hocaya Mesafe'}: ~${distM} m`;
       } else if (distBadge) {
-        distBadge.innerHTML = `<span style="cursor:pointer; text-decoration:underline;" onclick="measureDistanceToGuide(${lat}, ${lng})">Mesafemi Ölç</span>`;
+        distBadge.innerHTML = `<span style="cursor:pointer; text-decoration:underline;" onclick="measureDistanceToGuide(${lat}, ${lng})">${escapeHtml(dict.measureDistance || 'Mesafemi Ölç')}</span>`;
       }
     }
 
     function measureDistanceToGuide(guideLat, guideLng) {
       const distBadge = document.getElementById('pilgrimDistanceBadge');
       if (!navigator.geolocation || !distBadge) return;
-      distBadge.textContent = 'Ölçülüyor...';
+      const dict = I18N[currentLang] || I18N.tr;
+      distBadge.textContent = dict.measuringDistance || 'Ölçülüyor...';
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           cachedGpsPos = pos;
@@ -1943,10 +2350,10 @@
             guideLng
           );
           distBadge.textContent =
-            distM >= 1000 ? `Mesafe: ${(distM / 1000).toFixed(1)} km` : `Hocaya Mesafe: ~${distM} m`;
+            distM >= 1000 ? `${dict.distanceLabel || 'Mesafe'}: ${(distM / 1000).toFixed(1)} km` : `${dict.distanceLabel || 'Hocaya Mesafe'}: ~${distM} m`;
         },
         () => {
-          distBadge.textContent = 'Konum izni gerekli';
+          distBadge.textContent = dict.locationPermNeeded || 'Konum izni gerekli';
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
       );
@@ -2340,7 +2747,16 @@
         gainNode = audioCtx.createGain();
         gainNode.gain.value = volumeMultiplier;
 
-        // 3. Sıfır-Gecikmeli Doğrusal Soft-Clipper ([-1, +1] Birim Kazançlı Tavan Koruyucu)
+        // 3. %200 Kazançta Bozulmayı Önleyen Tavan Sınırlayıcı + Sıfır-Gecikmeli Doğrusal Soft-Clipper
+        let rxPeakLimiter = null;
+        if (typeof audioCtx.createDynamicsCompressor === 'function') {
+          rxPeakLimiter = audioCtx.createDynamicsCompressor();
+          rxPeakLimiter.threshold.value = -2.5;
+          rxPeakLimiter.knee.value = 6;
+          rxPeakLimiter.ratio.value = 12;
+          rxPeakLimiter.attack.value = 0.002;
+          rxPeakLimiter.release.value = 0.09;
+        }
         let softClipper = null;
         if (typeof audioCtx.createWaveShaper === 'function') {
           softClipper = audioCtx.createWaveShaper();
@@ -2350,12 +2766,16 @@
 
         rxHighPass.connect(rxClarity);
         rxClarity.connect(gainNode);
-        if (softClipper) {
-          gainNode.connect(softClipper);
-          softClipper.connect(audioCtx.destination);
-        } else {
-          gainNode.connect(audioCtx.destination);
+        let tailNode = gainNode;
+        if (rxPeakLimiter) {
+          tailNode.connect(rxPeakLimiter);
+          tailNode = rxPeakLimiter;
         }
+        if (softClipper) {
+          tailNode.connect(softClipper);
+          tailNode = softClipper;
+        }
+        tailNode.connect(audioCtx.destination);
         rxInputNode = rxHighPass;
 
         initRxPlayerWorklet();
@@ -2435,14 +2855,8 @@
       if (gainNode) gainNode.gain.setTargetAtTime(volumeMultiplier, audioCtx.currentTime, 0.010);
     }
 
-    let nextAudioTime = 0;
-    let lastHwEndSample = 0;
     let lastPacketReceivedAt = 0;
-    let lastRawChunkAt = 0;
     let lastReceivedAudioSeq = 0;
-    let rxFallbackSubSeq = 0;
-    let rxHermiteHist = null;
-    let rxHermitePos = 0;
     const activeScheduledSources = [];
     const activeGuideDemoSources=new Map();
 
@@ -2476,63 +2890,6 @@
           src.buffer = null;
         } catch {}
       }
-      nextAudioTime = 0;
-      lastHwEndSample = 0;
-      rxHermiteHist = null;
-      rxHermitePos = 0;
-    }
-
-    function resampleChunkToHwRate(srcArr, srcRate, dstRate, isContiguous) {
-      if (!srcArr || !srcArr.length) return srcArr;
-      if (srcRate === dstRate) {
-        rxHermiteHist = null;
-        return srcArr;
-      }
-      const step = srcRate / dstRate;
-      if (!isContiguous || !rxHermiteHist) {
-        const s0 = srcArr[0];
-        rxHermiteHist = [s0, s0, s0, s0];
-        rxHermitePos = 0;
-      }
-
-      const extLen = 3 + srcArr.length;
-      const ext = new Float32Array(extLen);
-      ext[0] = rxHermiteHist[1];
-      ext[1] = rxHermiteHist[2];
-      ext[2] = rxHermiteHist[3];
-      ext.set(srcArr, 3);
-
-      const maxIdx = srcArr.length;
-      const estOutLen = Math.ceil((maxIdx - rxHermitePos) / step) + 2;
-      const tempOut = new Float32Array(estOutLen);
-      let outIdx = 0;
-
-      while (rxHermitePos < maxIdx) {
-        const iInt = Math.floor(rxHermitePos);
-        const frac = rxHermitePos - iInt;
-        const y0 = ext[iInt];
-        const y1 = ext[iInt + 1];
-        const y2 = ext[iInt + 2];
-        const y3 = iInt + 3 < extLen ? ext[iInt + 3] : y2;
-
-        const c0 = y1;
-        const c1 = 0.5 * (y2 - y0);
-        const c2 = y0 - 2.5 * y1 + 2.0 * y2 - 0.5 * y3;
-        const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
-        tempOut[outIdx++] = ((c3 * frac + c2) * frac + c1) * frac + c0;
-        rxHermitePos += step;
-      }
-
-      rxHermitePos -= maxIdx;
-      const n = srcArr.length;
-      if (n >= 4) {
-        rxHermiteHist = [srcArr[n - 4], srcArr[n - 3], srcArr[n - 2], srcArr[n - 1]];
-      } else {
-        const last = srcArr[n - 1];
-        rxHermiteHist = [last, last, last, last];
-      }
-
-      return tempOut.subarray(0, outIdx);
     }
 
     function handleBinaryAudioFrame(buffer) {
@@ -2697,6 +3054,7 @@
     }
 
     function startSosHold(ev) {
+      if (ev && ev.repeat) return;
       if (ev && ev.cancelable) ev.preventDefault();
       prewarmGpsPosition();
       if (sosInterval) clearInterval(sosInterval);
@@ -2704,7 +3062,7 @@
       const fill = document.getElementById('sosHoldFill');
       sosInterval = setInterval(() => {
         sosProgress += 3.5;
-        fill.style.width = `${Math.min(100, sosProgress)}%`;
+        if (fill) fill.style.width = `${Math.min(100, sosProgress)}%`;
         if (sosProgress >= 100) {
           clearInterval(sosInterval);
           sosInterval = null;
@@ -2722,7 +3080,8 @@
         try { navigator.geolocation.clearWatch(gpsWatchId); } catch {}
         gpsWatchId = null;
       }
-      document.getElementById('sosHoldFill').style.width = '0%';
+      const fill = document.getElementById('sosHoldFill');
+      if (fill) fill.style.width = '0%';
     }
 
     async function reverseGeocodeAddress(lat, lng) {
@@ -2734,8 +3093,9 @@
             try { ctrl.abort(); } catch {}
           }, 2200);
         }
+        const acceptLang = encodeURIComponent(typeof currentLang === 'string' && currentLang ? currentLang : 'tr');
         const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&accept-language=tr`,
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&accept-language=${acceptLang}`,
           ctrl ? { signal: ctrl.signal } : undefined
         );
         if (!res.ok) return null;
@@ -2800,52 +3160,161 @@
       }
     }
 
+    let isFlushingSosQueue = false;
+    async function flushPendingSosQueue() {
+      if (isFlushingSosQueue) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      let queue = [];
+      try {
+        queue = JSON.parse(localStorage.getItem('rys_pending_sos_queue') || '[]');
+      } catch {
+        queue = [];
+      }
+      if (!Array.isArray(queue) || queue.length === 0) return;
+      isFlushingSosQueue = true;
+      const remaining = [];
+      let deliveredAny = false;
+      try {
+        for (const item of queue) {
+          if (!item || !item.id || !item.tourCode) continue;
+          let ok = false;
+          let timer = null;
+          try {
+            const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            if (ac) timer = setTimeout(() => { try { ac.abort(); } catch {} }, 6000);
+            const res = await fetch('/api/sos', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(item),
+              ...(ac ? { signal: ac.signal } : {})
+            });
+            ok = Boolean(res && res.ok);
+          } catch {
+            ok = false;
+          } finally {
+            if (timer) clearTimeout(timer);
+          }
+          if (ok) {
+            deliveredAny = true;
+          } else {
+            remaining.push(item);
+          }
+        }
+        try {
+          if (remaining.length > 0) {
+            localStorage.setItem('rys_pending_sos_queue', JSON.stringify(remaining.slice(-5)));
+          } else {
+            localStorage.removeItem('rys_pending_sos_queue');
+          }
+        } catch {}
+        if (deliveredAny && remaining.length === 0) {
+          const msgEl = document.getElementById('sosStatusMsg');
+          const sosDict = I18N[currentLang] || I18N.tr;
+          if (msgEl && msgEl.getAttribute('data-sos-queued') === '1') {
+            msgEl.removeAttribute('data-sos-queued');
+            msgEl.style.background = '#dcfce7';
+            msgEl.style.color = '#166534';
+            msgEl.style.border = '1px solid #86efac';
+            const titleStrong = msgEl.querySelector('[data-sos-status-title]');
+            if (titleStrong) {
+              titleStrong.textContent = sosDict.sosSentTitle || 'CANLI KONUMUNUZ REHBER HOCAMIZA İLETİLDİ!';
+            }
+            const offlineSub = msgEl.querySelector('[data-sos-offline-sub]');
+            if (offlineSub) offlineSub.remove();
+          }
+          if (typeof showAppToast === 'function') {
+            showAppToast(`✅ ${escapeHtml(sosDict.sosSentTitle || 'CANLI KONUMUNUZ REHBER HOCAMIZA İLETİLDİ!')}`, 4500);
+          }
+        }
+      } finally {
+        isFlushingSosQueue = false;
+      }
+    }
+
     async function triggerSosEmergency() {
-      document.getElementById('sosHoldFill').style.width = '100%';
+      const fill = document.getElementById('sosHoldFill');
+      if (fill) fill.style.width = '100%';
       playNotificationChime();
 
       const sosDict = I18N[currentLang] || I18N.tr;
       const msgEl = document.getElementById('sosStatusMsg');
       msgEl.style.display = 'block';
+      msgEl.style.background = '#dcfce7';
+      msgEl.style.color = '#166534';
+      msgEl.style.border = '1px solid #86efac';
       msgEl.innerHTML = sosDict.sosFetchingGps || `<strong>Telefonunuzun Canlı GPS Konumu Alınıyor...</strong><br/>Ekranda konum izni penceresi çıkarsa lütfen <strong>"İzin Ver"</strong> seçeneğine dokunun.`;
 
       const deliverSosPayload = async (lat, lng, accuracy, note, permWarning = '') => {
         const tourCode = (currentTour && currentTour.code) || document.getElementById('tourCodeInput').value.trim().toUpperCase() || 'RY-KASIM';
         const pilgrimName = document.getElementById('pilgrimNameInput').value.trim() || 'Hacı Misafir';
         const phone = document.getElementById('pilgrimPhoneInput').value.trim();
-        const pin = (document.getElementById('tourPinInput')?.value || '').trim();
+        let pin = (document.getElementById('tourPinInput')?.value || '').trim();
+        if (!pin && tourCode) {
+          try { pin = (sessionStorage.getItem('rys_tour_pin_' + tourCode) || '').trim(); } catch {}
+        }
         const sosId = `sos-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const httpPayload = {
+          id: sosId,
+          tourCode,
+          deviceId: pilgrimDeviceId,
+          ...(pin ? { pin } : {}),
+          pilgrimName,
+          phone,
+          lat,
+          lng,
+          accuracy,
+          locationNote: note
+        };
 
+        let wsSent = false;
         if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'sos-trigger',
-            id: sosId,
-            tourCode,
-            pilgrimName,
-            phone,
-            lat,
-            lng,
-            accuracy,
-            locationNote: note
-          }));
+          try {
+            ws.send(JSON.stringify({
+              type: 'sos-trigger',
+              id: sosId,
+              tourCode,
+              pilgrimName,
+              phone,
+              lat,
+              lng,
+              accuracy,
+              locationNote: note
+            }));
+            wsSent = true;
+          } catch {}
         }
 
-        fetch('/api/sos', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: sosId,
-            tourCode,
-            deviceId: pilgrimDeviceId,
-            ...(pin ? { pin } : {}),
-            pilgrimName,
-            phone,
-            lat,
-            lng,
-            accuracy,
-            locationNote: note
-          })
-        }).catch(() => {});
+        let httpOk = false;
+        let sosTimer = null;
+        try {
+          const sosCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+          if (sosCtrl) {
+            sosTimer = setTimeout(() => {
+              try { sosCtrl.abort(); } catch {}
+            }, 6000);
+          }
+          const sosRes = await fetch('/api/sos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(httpPayload),
+            ...(sosCtrl ? { signal: sosCtrl.signal } : {})
+          });
+          httpOk = Boolean(sosRes && sosRes.ok);
+        } catch {
+          httpOk = false;
+        } finally {
+          if (sosTimer) clearTimeout(sosTimer);
+        }
+
+        const delivered = httpOk || (wsSent && (typeof navigator === 'undefined' || navigator.onLine !== false));
+        if (!delivered) {
+          try {
+            const prevQueue = JSON.parse(localStorage.getItem('rys_pending_sos_queue') || '[]');
+            const nextQueue = Array.isArray(prevQueue) ? prevQueue.filter((q) => q && q.id !== sosId) : [];
+            nextQueue.push(httpPayload);
+            localStorage.setItem('rys_pending_sos_queue', JSON.stringify(nextQueue.slice(-5)));
+          } catch {}
+        }
 
         const gmapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
         const bbox = `${(lng - 0.003).toFixed(5)}%2C${(lat - 0.002).toFixed(5)}%2C${(lng + 0.003).toFixed(5)}%2C${(lat + 0.002).toFixed(5)}`;
@@ -2858,21 +3327,38 @@
           `*Canlı Harita Konumu:* ${gmapsUrl}`
         );
 
+        if (delivered) {
+          msgEl.removeAttribute('data-sos-queued');
+          msgEl.style.background = '#dcfce7';
+          msgEl.style.color = '#166534';
+          msgEl.style.border = '1px solid #86efac';
+        } else {
+          msgEl.setAttribute('data-sos-queued', '1');
+          msgEl.style.background = '#fffbeb';
+          msgEl.style.color = '#92400e';
+          msgEl.style.border = '1.5px solid #f59e0b';
+        }
+
+        const statusTitle = delivered
+          ? (sosDict.sosSentTitle || 'CANLI KONUMUNUZ REHBER HOCAMIZA İLETİLDİ!')
+          : (sosDict.sosQueuedOfflineTitle || 'İNTERNET BAĞLANTISI YOK — ACİL SOS SIRAYA ALINDI!');
+
         msgEl.innerHTML = `
           <div style="margin-bottom:8px;">
-            <strong>${escapeHtml(sosDict.sosSentTitle || 'CANLI KONUMUNUZ REHBER HOCAMIZA İLETİLDİ!')}</strong>
+            <strong data-sos-status-title="1">${escapeHtml(statusTitle)}</strong>
           </div>
+          ${!delivered ? `<div data-sos-offline-sub="1" style="background:#fef3c7; color:#92400e; padding:8px 10px; border-radius:8px; font-size:0.79rem; margin-bottom:8px;">${escapeHtml(sosDict.sosQueuedOfflineSub || 'Telefonunuz şu an çevrimdışı. Bağlantı gelir gelmez konumunuz otomatik iletilecektir; acil durumda hemen aşağıdaki Rehberi Ara veya WhatsApp butonunu kullanın.')}</div>` : ''}
           ${permWarning ? `<div style="background:#fef3c7; color:#92400e; padding:8px 10px; border-radius:8px; font-size:0.78rem; margin-bottom:8px;">${permWarning}</div>` : ''}
           <div style="font-size:0.84rem; margin-bottom:6px;">
-            <strong>Açık Adres:</strong> ${escapeHtml(note)}<br/>
-            <strong>GPS Koordinat:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)} ${accuracy ? `(±${accuracy}m hassasiyet)` : ''}
+            <strong>${escapeHtml(sosDict.addressLabel || 'Açık Adres')}:</strong> ${escapeHtml(note)}<br/>
+            <strong>${escapeHtml(sosDict.coordsLabel || 'GPS Koordinat')}:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)} ${accuracy ? `(±${accuracy}m)` : ''}
           </div>
-          <div style="border-radius:10px; overflow:hidden; border:1px solid #fca5a5; margin:8px 0; height:170px;">
+          ${delivered ? `<div style="border-radius:10px; overflow:hidden; border:1px solid #fca5a5; margin:8px 0; height:170px;">
             <iframe src="${osmEmbedUrl}" style="width:100%; height:100%; border:0;" loading="lazy"></iframe>
-          </div>
+          </div>` : ''}
           <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
-            <a href="${gmapsUrl}" target="_blank" class="btn btn-outline btn-sm" style="flex:1; background:#fff;">Haritada Aç</a>
-            <a href="https://wa.me/905383999666?text=${waText}" target="_blank" class="btn btn-primary btn-sm" style="flex:1;">WhatsApp'tan Gönder</a>
+            ${!delivered ? `<a href="tel:+905383999666" class="btn btn-outline btn-sm" style="flex:1; background:#fff;">📞 ${escapeHtml(sosDict.callGuideBtn || 'Rehberi Ara')}</a>` : `<a href="${gmapsUrl}" target="_blank" class="btn btn-outline btn-sm" style="flex:1; background:#fff;">${escapeHtml(sosDict.openInMapsBtn || 'Haritada Aç')}</a>`}
+            <a href="https://wa.me/905383999666?text=${waText}" target="_blank" class="btn btn-primary btn-sm" style="flex:1;">${escapeHtml(sosDict.sendViaWhatsapp || "WhatsApp'tan Gönder")}</a>
           </div>
         `;
       };
@@ -2885,41 +3371,36 @@
           : `Canlı Telefon GPS Konumu (±${gps.accuracy}m Hassasiyet)`;
         await deliverSosPayload(gps.lat, gps.lng, gps.accuracy, note);
       } catch (err) {
-        const activeStep = Array.isArray(pilgrimJourneySteps)
-          ? pilgrimJourneySteps.find((s) => s.status === 'active') || pilgrimJourneySteps[0]
-          : null;
-        let fallbackLat = activeStep && activeStep.lat ? Number(activeStep.lat) : 21.4225;
-        let fallbackLng = activeStep && activeStep.lng ? Number(activeStep.lng) : 39.8262;
-        let fallbackCity = (activeStep && activeStep.locationLabel) || 'Mescid-i Haram, Mekke-i Mükerreme';
-        let ipTimer = null;
-        try {
-          const ipCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-          if (ipCtrl) {
-            ipTimer = setTimeout(() => {
-              try { ipCtrl.abort(); } catch {}
-            }, 2200);
+        // Yurt dışı dolaşım (roaming) hatlarında operatör IP'si Türkiye gösterebileceği için IP konumu KULLANILMAZ;
+        // sırasıyla rehberin son canlı konumu, aktif kafile durağı veya Kâbe-i Muazzama baz alınır.
+        let fallbackLat = 21.4225;
+        let fallbackLng = 39.8262;
+        let fallbackCity = 'Mescid-i Haram, Mekke-i Mükerreme';
+        if (lastKnownGuideLocation && lastKnownGuideLocation.active && Number.isFinite(Number(lastKnownGuideLocation.lat)) && Number.isFinite(Number(lastKnownGuideLocation.lng))) {
+          fallbackLat = Number(lastKnownGuideLocation.lat);
+          fallbackLng = Number(lastKnownGuideLocation.lng);
+          fallbackCity = lastKnownGuideLocation.address || lastKnownGuideLocation.note || 'Kafile Son Bilinen Konumu';
+        } else {
+          const activeStep = Array.isArray(pilgrimJourneySteps)
+            ? pilgrimJourneySteps.find((s) => s.status === 'active') || pilgrimJourneySteps[0]
+            : null;
+          if (activeStep && Number.isFinite(Number(activeStep.lat)) && Number.isFinite(Number(activeStep.lng))) {
+            fallbackLat = Number(activeStep.lat);
+            fallbackLng = Number(activeStep.lng);
+            fallbackCity = activeStep.locationLabel || activeStep.title || fallbackCity;
           }
-          const ipRes = await fetch('https://ipwho.is/', ipCtrl ? { signal: ipCtrl.signal } : undefined);
-          const ipData = await ipRes.json();
-          if (ipData && ipData.latitude && ipData.longitude) {
-            fallbackLat = Number(ipData.latitude);
-            fallbackLng = Number(ipData.longitude);
-            fallbackCity = [ipData.city, ipData.region, ipData.country].filter(Boolean).join(', ');
-          }
-        } catch {} finally {
-          if (ipTimer) clearTimeout(ipTimer);
         }
 
         const warnText =
           err && err.code === 1
             ? `Telefon tarayıcınızda <strong>Konum (GPS) İzni Reddedilmiş</strong>. Tam sokak noktanız için adres çubuğunun yanındaki kilit simgesine dokunup <strong>Konum → İzin Ver</strong> yapın.`
-            : `Telefonunuzun GPS servisi kapalı olduğu için yaklaşık ağ/kafile konumu (${escapeHtml(fallbackCity)}) gönderildi.`;
+            : `Telefonunuzun GPS servisi kapalı olduğu için kafile durağı konumu (${escapeHtml(fallbackCity)}) baz alındı.`;
 
         await deliverSosPayload(
           fallbackLat,
           fallbackLng,
           null,
-          `${fallbackCity} (Yaklaşık Ağ Konumu — GPS İzni Bekleniyor)`,
+          `${fallbackCity} (Kafile Durağı Yaklaşık Konumu — GPS İzni Bekleniyor)`,
           warnText
         );
       } finally {
@@ -2940,12 +3421,15 @@
     }
 
     function renderAnnouncements(list) {
+      window._loadedAnnouncements = Array.isArray(list) ? list : [];
+      const dict = I18N[currentLang] || I18N.tr;
       const container = document.getElementById('announcementsList');
-      if (!list.length) {
-        container.innerHTML = `<div style="font-size:0.86rem; color:var(--color-muted);">Henüz duyuru bulunmuyor.</div>`;
+      if (!container) return;
+      if (!window._loadedAnnouncements.length) {
+        container.innerHTML = `<div style="font-size:0.86rem; color:var(--color-muted);">${escapeHtml(dict.noAnnouncementsYet || 'Henüz duyuru bulunmuyor.')}</div>`;
         return;
       }
-      container.innerHTML = list.map((a) => `
+      container.innerHTML = window._loadedAnnouncements.map((a) => `
         <div data-ann-id="${escapeHtml(a.id || '')}" style="padding:14px; border-radius:12px; background:${a.urgent ? 'var(--color-gold-soft)' : 'var(--color-ground)'}; border:1px solid var(--color-hairline);">
           <div style="display:flex; justify-content:space-between; font-size:0.76rem; font-weight:700; color:var(--color-emerald-deep);">
             <span>${escapeHtml(a.sender || '')}</span>
@@ -2958,7 +3442,15 @@
     }
 
     function prependAnnouncement(a) {
+      if (!Array.isArray(window._loadedAnnouncements)) window._loadedAnnouncements = [];
+      if (a && a.id) {
+        window._loadedAnnouncements = [a, ...window._loadedAnnouncements.filter((x) => x && x.id !== a.id)];
+      } else if (a) {
+        window._loadedAnnouncements = [a, ...window._loadedAnnouncements];
+      }
+      const dict = I18N[currentLang] || I18N.tr;
       const container = document.getElementById('announcementsList');
+      if (!container) return;
       if (!container.querySelector('[data-ann-id]')) {
         container.innerHTML = '';
       }
@@ -2972,7 +3464,7 @@
       div.style.cssText = 'padding:14px; border-radius:12px; background:var(--color-gold-soft); border:1.5px solid var(--color-gold);';
       div.innerHTML = `
         <div style="display:flex; justify-content:space-between; font-size:0.76rem; font-weight:700; color:var(--color-emerald-deep);">
-          <span>YENİ DUYURU • ${escapeHtml(a.sender || '')}</span>
+          <span>${escapeHtml(dict.newAnnouncementTag || 'YENİ DUYURU')} • ${escapeHtml(a.sender || '')}</span>
           <span>${escapeHtml(a.createdAt || '')}</span>
         </div>
         <div style="font-weight:800; font-size:0.95rem; margin:4px 0; color:var(--color-emerald-night);">${escapeHtml(a.title || '')}</div>
@@ -2983,7 +3475,9 @@
 
     function renderPrayers(points) {
       window._loadedPrayers = Array.isArray(points) ? points : [];
+      const dict = I18N[currentLang] || I18N.tr;
       const container = document.getElementById('prayersList');
+      if (!container) return;
       container.innerHTML = window._loadedPrayers.map((p) => `
         <div class="prayer-card">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
@@ -2991,7 +3485,7 @@
           </div>
           <div class="arabic-text">${escapeHtml(p.arabic || '')}</div>
           <div style="font-size:0.85rem; font-weight:600; color:var(--color-emerald-deep); margin-bottom:6px;"><em>${escapeHtml(p.reading || '')}</em></div>
-          <div style="font-size:0.83rem; color:var(--color-muted);"><strong>Anlamı:</strong> ${escapeHtml(p.meaning || '')}</div>
+          <div style="font-size:0.83rem; color:var(--color-muted);"><strong>${escapeHtml(dict.meaningLabel || 'Anlamı')}:</strong> ${escapeHtml(p.meaning || '')}</div>
         </div>
       `).join('');
     }
@@ -3000,6 +3494,7 @@
       window.__ryRxPlayerLoad?.cancel?.();
       intentionalLeave = true;rxAudioSourceId=null;rxStreamActive=null;rxStreamMode=null;rxAudioStateSeq=null;rxAudioStateEnded=false;rxAudioMediaEpoch=null;
       currentTour = null;
+      if (typeof cancelSosHold === 'function') cancelSosHold();
       if (window._ryWsReconnectTimeout) {
         clearTimeout(window._ryWsReconnectTimeout);
         window._ryWsReconnectTimeout = null;
@@ -3026,6 +3521,33 @@
       stopAllActiveSources();
       stopBackgroundKeepAliveAudio();
       releaseWakeLock();
+      if (typeof renderLiveTawafStage === 'function') renderLiveTawafStage(null);
+      if (typeof renderGuideLiveLocation === 'function') renderGuideLiveLocation(null);
+      if (typeof pilgrimJourneySteps !== 'undefined') pilgrimJourneySteps = [];
+      if (typeof window !== 'undefined') {
+        window._loadedPrayers = [];
+        window._loadedAnnouncements = [];
+        window._lastActiveTawafStage = null;
+      }
+      if (typeof pilgrimUmrahMap !== 'undefined' && pilgrimUmrahMap) {
+        try {
+          pilgrimUmrahMap.setSteps([]);
+          pilgrimUmrahMap.updateGuideLocation(null);
+        } catch {}
+      }
+      const annDot = document.getElementById('annUnreadDot');
+      if (annDot && annDot.style) annDot.style.display = 'none';
+      const routeDot = document.getElementById('routeUnreadDot');
+      if (routeDot && routeDot.style) routeDot.style.display = 'none';
+      const sosMsg = document.getElementById('sosStatusMsg');
+      if (sosMsg && sosMsg.style && sosMsg.getAttribute?.('data-sos-queued') !== '1') {
+        sosMsg.style.display = 'none';
+        sosMsg.innerHTML = '';
+      }
+      if (typeof switchPilgrimTab === 'function' && typeof document.querySelectorAll === 'function') {
+        const firstNavBtn = document.querySelector('#pilgrimBottomNav .p-nav-btn');
+        switchPilgrimTab('pilgrimTabPlayer', firstNavBtn);
+      }
       if (typeof navigator !== 'undefined' && navigator && 'mediaSession' in navigator) {
         try {
           navigator.mediaSession.playbackState = 'none';
@@ -3238,7 +3760,7 @@
               const swTarget=(registration.active&&typeof registration.active.postMessage==='function'?registration.active:null)||navigator.serviceWorker?.controller;
               const apiOrig=(typeof window!=='undefined'&&(window.ryVdsOrigin||(window.location&&window.location.origin)))||'';
               if(swTarget&&typeof swTarget.postMessage==='function'){
-                swTarget.postMessage({type:'SYNC_PUSH_META',meta:{kind:'pilgrim',endpoint:json.endpoint,subscriptionToken:saved.subscriptionToken,tourCode:context.tourCode,lang:currentLang,deviceId:pilgrimDeviceId,apiOrigin:apiOrig}});
+                swTarget.postMessage({type:'SYNC_PUSH_META',kind:'pilgrim',meta:{kind:'pilgrim',endpoint:json.endpoint,subscriptionToken:saved.subscriptionToken,tourCode:context.tourCode,lang:currentLang,deviceId:pilgrimDeviceId,apiOrigin:apiOrig}});
               }
             }catch(e){}
             if(current()){state.status='subscribed';state.lastError='';state.tourCode=context.tourCode;result=true;}
@@ -3287,12 +3809,12 @@
           tag:tag||'ridvanses-notify',data:{url:code?'/dinle?code='+encodeURIComponent(code):'/dinle'}});
       }
     }
-    window.addEventListener('online',()=>{if(rysWebPushState().context)void syncWebPushSubscription();});
+    window.addEventListener('online',()=>{if(rysWebPushState().context)void syncWebPushSubscription();void flushPendingSosQueue();});
     navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(rysWebPushState().context)void syncWebPushSubscription();});
     navigator.serviceWorker?.addEventListener('message',(ev)=>{if(ev.data?.type==='PUSH_SUBSCRIPTION_CHANGED'&&rysWebPushState().context)void syncWebPushSubscription();});
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=78').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=79').catch(() => {});
     }
 
     let subscribedBannerDismissed = false;
@@ -3323,7 +3845,7 @@
         return;
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=78').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=79').catch(() => {});
       }
       // iOS WebKit zorunluluğu: setWebPushTour senkron çalışır, Notification.requestPermission() doğrudan dokunuş içinde çağrılır.
       const state = rysWebPushState();
@@ -3496,10 +4018,10 @@
       const annBtn = document.getElementById('annTabPushBtn');
       if (annTitle && annSub && annBtn) {
         if (isIos && !standalone) {
-          annTitle.textContent = '📲 iPhone Arka Plan Bildirimi';
-          annSub.textContent = 'Kapalı ekranda bildirim almak için Safari > Paylaş > Ana Ekrana Ekle adımlarını tamamlayın.';
+          annTitle.textContent = dict.iosPushTitle || '📲 iPhone Arka Plan Bildirimi';
+          annSub.textContent = dict.iosPushSub || 'Kapalı ekranda bildirim almak için Safari > Paylaş > Ana Ekrana Ekle adımlarını tamamlayın.';
           annBtn.style.display = 'inline-flex';
-          annBtn.textContent = 'Kurulum Rehberi';
+          annBtn.textContent = dict.setupGuideBtn || 'Kurulum Rehberi';
         } else if (subscribed) {
           annTitle.textContent = `✅ ${dict.pushActiveBannerTitle || 'Kapalı Ekran Bildirimleri Aktif'} (${tourLabel})`;
           annSub.textContent = dict.pushActiveBannerSub || 'Uygulama kapalıyken yayınlanan tüm duyurular kilit ekranınıza düşer.';
@@ -3784,11 +4306,11 @@
   <div class="modal-backdrop" id="pwaModal" onclick="if(event.target===this)closePwaModal()">
     <div class="card-luxury" style="max-width:440px; width:100%; max-height:calc(100dvh - 32px); overflow-y:auto;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <h3 style="font-size:1.2rem; color:var(--color-emerald-night); margin:0;">RıdvanSes'i Telefonunuza Kurun</h3>
+        <h3 id="i18n_pwaModalTitle" style="font-size:1.2rem; color:var(--color-emerald-night); margin:0;">RıdvanSes'i Telefonunuza Kurun</h3>
         <button type="button" class="btn btn-outline btn-sm" onclick="closePwaModal()">✕</button>
       </div>
 
-      <p style="font-size:0.86rem; color:var(--color-muted); margin-bottom:14px; line-height:1.4;">
+      <p id="i18n_pwaModalSub" style="font-size:0.86rem; color:var(--color-muted); margin-bottom:14px; line-height:1.4;">
         App Store veya Google Play şifresi girmeden uygulamayı ana ekranınıza ekleyerek tek dokunuşla canlı yayına katılabilirsiniz:
       </p>
 
@@ -3829,7 +4351,7 @@
         <button type="button" class="btn btn-gold" id="pwaModalActionBtn" style="flex:1;" onclick="handlePwaModalAction()">
           Bildirim İzni Ver
         </button>
-        <button type="button" class="btn btn-primary" style="flex:1;" onclick="closePwaModal()">Tamam</button>
+        <button type="button" id="i18n_pwaModalOkBtn" class="btn btn-primary" style="flex:1;" onclick="closePwaModal()">Tamam</button>
       </div>
     </div>
   </div>
@@ -3837,15 +4359,15 @@
   <div class="modal-backdrop" id="pushOnboardingModal" onclick="if(event.target===this)closePushOnboardingModal()">
     <div class="card-luxury" style="max-width:410px; width:100%; max-height:calc(100dvh - 32px); overflow-y:auto; text-align:center;">
       <div style="width:58px; height:58px; margin:0 auto 12px; border-radius:18px; background:linear-gradient(135deg, #0b4636, #06231b); border:1.5px solid var(--color-gold); display:flex; align-items:center; justify-content:center; font-size:1.7rem;">🔔</div>
-      <h3 style="font-size:1.22rem; color:var(--color-emerald-night); margin:0 0 8px;">Duyuru Bildirimlerini Açın</h3>
-      <p style="font-size:0.88rem; color:var(--color-muted); line-height:1.5; margin:0 0 18px;">
+      <h3 id="i18n_pushModalTitle" style="font-size:1.22rem; color:var(--color-emerald-night); margin:0 0 8px;">Duyuru Bildirimlerini Açın</h3>
+      <p id="i18n_pushModalSub" style="font-size:0.88rem; color:var(--color-muted); line-height:1.5; margin:0 0 18px;">
         Rehber hocamız veya yönetim panelinden toplu bir duyuru yayınlandığında, <strong>uygulama tamamen kapalıyken bile</strong> telefonunuzun ekranına bildirim düşmesi için izin verin.
       </p>
       <div style="display:flex; flex-direction:column; gap:8px;">
-        <button type="button" class="btn btn-gold" style="width:100%; padding:14px; font-size:0.98rem;" onclick="activatePilgrimPushUi()">
+        <button type="button" id="i18n_pushModalAllowBtn" class="btn btn-gold" style="width:100%; padding:14px; font-size:0.98rem;" onclick="activatePilgrimPushUi()">
           🔔 Bildirimlere İzin Ver
         </button>
-        <button type="button" class="btn btn-outline btn-sm" style="width:100%;" onclick="closePushOnboardingModal()">
+        <button type="button" id="i18n_pushModalLaterBtn" class="btn btn-outline btn-sm" style="width:100%;" onclick="closePushOnboardingModal()">
           Daha Sonra
         </button>
       </div>

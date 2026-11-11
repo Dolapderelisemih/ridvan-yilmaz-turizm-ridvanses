@@ -5,9 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dijital Umre Hatıra Kitabı &amp; Ziyaret Beratı — Rıdvan Yılmaz Turizm</title>
   <meta name="description" content="Rıdvan Yılmaz Turizm Umre ve Siyer yolculuğunuzun baskıya hazır A4 manevi hatıra kitapçığı ve imzalı Umre Ziyaret Beratı." />
-  <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
+  <meta name="theme-color" content="#06231b" />
+  <link rel="manifest" href="/manifest.json?v=19" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
   <link rel="stylesheet" href="/css/style.css?v=22" />
-  <script src="/vercel-ws-shim.js?v=78"></script>
+  <script src="/vercel-ws-shim.js?v=79"></script>
   <style>
     body {
       background: #e9e2d5;
@@ -161,7 +164,9 @@
       body {
         background: #ffffff !important;
       }
-      .book-toolbar {
+      .book-toolbar,
+      #bookPinGateBox,
+      #bookUnknownBox {
         display: none !important;
       }
       .book-stage {
@@ -234,7 +239,7 @@
 
   <div id="bookUnknownBox" style="display:none;max-width:520px;margin:18px auto 0;padding:18px 20px;border-radius:16px;background:#fef2f2;border:1.5px solid #fecaca;color:#b91c1c;font-weight:700;box-shadow:var(--shadow-soft);"></div>
 
-  <div id="bookStageContainer" class="book-stage">
+  <div id="bookStageContainer" class="book-stage" style="display:none;">
     <!-- SAYFA 1: LÜKS KAPAK SAYFASI -->
     <section class="book-page book-cover">
       <div class="ornate-inner-frame">
@@ -537,19 +542,31 @@
       }
 
       async function loadBookData() {
+        const pinGate = document.getElementById('bookPinGateBox');
+        const pinErr = document.getElementById('bookPinErrorMsg');
+        const unknownBox = document.getElementById('bookUnknownBox');
+        const bookStage = document.getElementById('bookStageContainer');
+        const printBtn = document.getElementById('printBookBtn');
         try {
           const activePin = getSavedBookPin(code);
-          const stepUrl = `/api/trips/${encodeURIComponent(code)}/steps${activePin ? `?pin=${encodeURIComponent(activePin)}` : ''}`;
-          const res = await fetch(stepUrl);
+          const stepUrl = `/api/trips/${encodeURIComponent(code)}/steps`;
+          const res = await fetch(stepUrl, activePin ? { headers: { 'X-Tour-Pin': activePin } } : undefined);
           const data = await res.json();
-          const pinGate = document.getElementById('bookPinGateBox');
-          const pinErr = document.getElementById('bookPinErrorMsg');
-          const unknownBox = document.getElementById('bookUnknownBox');
-          const bookStage = document.getElementById('bookStageContainer');
+          if (res.status === 429 || (data && data.error === 'rate-limited')) {
+            if (bookStage) bookStage.style.display = 'none';
+            if (printBtn) printBtn.disabled = true;
+            if (pinGate) pinGate.style.display = 'block';
+            if (pinErr) {
+              pinErr.textContent = data.message || 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.';
+              pinErr.style.display = 'block';
+            }
+            return;
+          }
           if (data && data.error === 'tour-unknown') {
             isBookPinProtected = false;
             if (pinGate) pinGate.style.display = 'none';
             if (bookStage) bookStage.style.display = 'none';
+            if (printBtn) printBtn.disabled = true;
             if (unknownBox) {
               unknownBox.innerHTML = `“${escapeHtml(code)}” koduna ait aktif bir kafile bulunamadı. Lütfen üst menüden geçerli bir kafile seçiniz.`;
               unknownBox.style.display = 'block';
@@ -565,6 +582,7 @@
             }
             if (pinGate) pinGate.style.display = 'block';
             if (bookStage) bookStage.style.display = 'none';
+            if (printBtn) printBtn.disabled = true;
             if (pinErr) {
               if (activePin) {
                 pinErr.textContent = 'Girilen PIN kodu hatalı. Lütfen tekrar deneyiniz.';
@@ -578,6 +596,7 @@
           if (pinGate) pinGate.style.display = 'none';
           if (pinErr) pinErr.style.display = 'none';
           if (bookStage) bookStage.style.display = 'flex';
+          if (printBtn) printBtn.disabled = false;
           if (data && data.success) {
             const tour = data.tour || {};
             currentBookTour = tour;
@@ -627,11 +646,17 @@
           }
         } catch (e) {
           console.warn('Hatıra kitabı yüklenemedi:', e);
+          if (bookStage) bookStage.style.display = 'none';
+          if (printBtn) printBtn.disabled = true;
+          if (unknownBox) {
+            unknownBox.textContent = 'İnternet bağlantısı kurulamadı veya hatıra kitabı verisi yüklenemedi. Lütfen bağlantınızı kontrol edip sayfayı yenileyiniz.';
+            unknownBox.style.display = 'block';
+          }
         }
       }
 
       if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=78').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=79').catch(() => {});
       }
 
       loadBookData();

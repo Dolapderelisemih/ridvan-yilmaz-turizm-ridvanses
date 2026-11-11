@@ -7,6 +7,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
+  <meta name="theme-color" content="#06231b" />
   <link rel="manifest" href="/manifest.json?v=19" />
   <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
@@ -17,7 +18,8 @@
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
-      const hasCookie = document.cookie.split(';').some((c) => c.trim().startsWith('ry_auth='));
+      const cookieEntry = document.cookie.split(';').map((c) => c.trim()).find((c) => c.startsWith('ry_auth='));
+      const hasCookie = Boolean(cookieEntry);
       if (!hasCookie && !savedToken) {
         window.location.replace('/login?next=' + encodeURIComponent(window.location.pathname + window.location.search));
       } else if (!hasCookie && savedToken) {
@@ -28,12 +30,13 @@
     async function ryLogout() {
       window.ryGuideSessionReplaced = true;
       try { if (typeof stopMicBroadcast === 'function') stopMicBroadcast(); } catch {}
+      try { if (typeof stopGuideLocationSharing === 'function') stopGuideLocationSharing(); } catch {}
       try {
         if (navigator.serviceWorker && navigator.serviceWorker.controller) {
           navigator.serviceWorker.controller.postMessage({ type: 'SYNC_PUSH_META', kind: 'sos', meta: null });
         }
       } catch {}
-      const savedTok = (localStorage.getItem('ry_auth_token') || '').trim();
+      const savedTok = (window.ryReadAuthToken ? window.ryReadAuthToken() : (localStorage.getItem('ry_auth_token') || '').trim());
       try {
         const sosReceipt = JSON.parse(localStorage.getItem('rys_sos_push_receipt') || 'null');
         if (sosReceipt && sosReceipt.endpoint && sosReceipt.subscriptionToken) {
@@ -57,8 +60,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=78"></script>
-  <script src="/js/umrah-steps-map.js?v=78"></script>
+  <script src="/vercel-ws-shim.js?v=79"></script>
+  <script src="/js/umrah-steps-map.js?v=79"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -364,6 +367,7 @@
               <label for="guideAcousticModeSelect" style="font-weight:700; color:#E2C785;">🎛️ Ses Kalitesi Modu:</label>
               <select id="guideAcousticModeSelect" class="studio-select" style="flex:1; min-width:210px; padding:6px 10px; font-size:0.75rem;" onchange="onAcousticModeChange()">
                 <option value="studio_crystal_hd" style="color:#000;" selected>💎 Saf Stüdyo Kristal HD (24 kHz Geniş-Bant • Doğal Ses &amp; Akıllı Yan Ses Kalkanı)</option>
+                <option value="noisy_crowd" style="color:#000;">🛡️ Kalabalık Tavaf &amp; Rüzgâr Kalkanı (+3.2 dB Netlik EQ • Güçlü Uğultu Kesici)</option>
               </select>
             </div>
           </div>
@@ -571,6 +575,7 @@
 
     let guideToursCache = [];
     let guideBootstrapReady = false;
+    let currentGuideUser = null;
 
     function syncGuideNavLinks() {
       const code = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').trim().toUpperCase();
@@ -609,8 +614,11 @@
     }
 
     function onTourSelectionChange() {
-      if (isSharingGuideLocation && ws && ws.readyState === WebSocket.OPEN) {
-        try { ws.send(JSON.stringify({ type: 'guide-location-update', active: false })); } catch {}
+      if (currentActiveTawafId && ws && ws.readyState === WebSocket.OPEN) {
+        try { ws.send(JSON.stringify({ type: 'tawaf-stage-update', clear: true })); } catch {}
+      }
+      if (isSharingGuideLocation) {
+        stopGuideLocationSharing();
       }
       updateTawafButtonsUi(null);
       const code = document.getElementById('guideTourSelect').value;
@@ -626,6 +634,10 @@
       applyTourTopicDefault(code);
       syncGuideNavLinks();
       switchGuideRoom();
+      updateGuideMediaSession();
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && localStorage.getItem('rys_sos_push_receipt')) {
+        syncGuideSosPushSubscription(true, true);
+      }
       fetch('/api/bootstrap')
         .then((r) => r.json())
         .then((data) => {
@@ -675,6 +687,10 @@
           handleGuideAuthExpired();
           return;
         }
+        if (data && data.user) {
+          currentGuideUser = data.user;
+          try { localStorage.setItem('user', JSON.stringify(data.user)); } catch {}
+        }
         if (data && data.guides && data.guides.length > 0) {
           const gSel = document.getElementById('guideNameSelect');
           const currentG = gSel.value;
@@ -722,6 +738,9 @@
         guideBootstrapReady = true;
         connectGuideWs();
         loadGuideSteps();
+        if ('serviceWorker' in navigator && typeof Notification !== 'undefined' && Notification.permission === 'granted' && localStorage.getItem('rys_sos_push_receipt')) {
+          syncGuideSosPushSubscription(true);
+        }
       });
 
     let ws = null;
@@ -779,7 +798,7 @@
           ? window.ryGetDynamicChannelId(tourCode, roomId)
           : `ridvanses-${String(tourCode || 'RY-KASIM').toLowerCase()}-${roomId}-guide-v26`;
 
-      const authToken = (localStorage.getItem('ry_auth_token') || '').trim();
+      const authToken = (window.ryReadAuthToken ? window.ryReadAuthToken() : (localStorage.getItem('ry_auth_token') || '').trim());
       ws.send(JSON.stringify({
         type: 'join',
         role: 'guide',
@@ -873,12 +892,26 @@
 
         if(msg.type==='session-replaced'){fenceGuideSession();return;}
         if(msg.type==='auth-error'){fenceGuideSession(true);if(typeof handleGuideAuthExpired==='function')handleGuideAuthExpired(msg.message);return;}
+        if(msg.type==='subscription-error'||msg.type==='tour-unknown'){
+          stopMicBroadcast();
+          const banner=document.getElementById('guideAuthErrorBanner');
+          if(banner){
+            banner.textContent=msg.message||'⚠️ Seçili kafileye bağlanılamadı. Lütfen aktif bir kafile seçiniz.';
+            banner.style.display='block';
+          }
+          return;
+        }
         if (msg.type === 'joined' || msg.type === 'room-state') {
           renderRoomState(msg.room);
           if (msg.steps) renderGuideStepsList(msg.steps);
           if (Array.isArray(msg.announcements)) {
             guideAnnouncements = msg.announcements;
             renderGuideAnnouncements();
+          }
+          if (Array.isArray(msg.sosAlerts)) {
+            const selCode = (document.getElementById('guideTourSelect')?.value || '').trim().toUpperCase();
+            activeSosAlerts = msg.sosAlerts.filter((a) => a && a.status === 'active' && (!selCode || !a.tourCode || String(a.tourCode).toUpperCase() === selCode));
+            if (typeof renderSosBanner === 'function') renderSosBanner();
           }
         }
 
@@ -900,6 +933,8 @@
         }
 
         if (msg.type === 'sos-alert' && msg.alert) {
+          const selCode = (document.getElementById('guideTourSelect')?.value || '').trim().toUpperCase();
+          if (selCode && msg.alert.tourCode && String(msg.alert.tourCode).toUpperCase() !== selCode) return;
           activeSosAlerts = activeSosAlerts.filter((a) => a.id !== msg.alert.id);
           activeSosAlerts.unshift(msg.alert);
           playSosEmergencyTone();
@@ -1289,6 +1324,7 @@
           topic
         }));
       }
+      updateGuideMediaSession();
     }
 
     let latestConnectedPilgrims = [];
@@ -1386,6 +1422,7 @@
     let isGuideMicMuted = false; // Yanındaki kişiyle özel konuşurken yayını düşürmeden geçici susturma
     let guideWakeLockSentinel = null;
     let isVoiceLoopbackTesting = false;
+    let isCapturingLoopbackSamples = false;
     let loopbackRecordedChunks = [];
 
     function updateGuideMicGain(val) {
@@ -1436,16 +1473,25 @@
       }
     }
 
+    function getGuideAcousticPreset() {
+      const mode = document.getElementById('guideAcousticModeSelect')?.value || 'studio_crystal_hd';
+      if (mode === 'noisy_crowd') {
+        return { highPassHz: 110, lowPassHz: 10000, mudCutDb: -3.0, presenceDb: 3.2 };
+      }
+      return { highPassHz: 85, lowPassHz: 10500, mudCutDb: -2.5, presenceDb: 2.0 };
+    }
+
     async function onAcousticModeChange() {
+      const preset = getGuideAcousticPreset();
       if (guideHighPassNode && guideLowPassNode) {
-        guideHighPassNode.frequency.value = 85;
-        guideLowPassNode.frequency.value = 10500;
+        guideHighPassNode.frequency.value = preset.highPassHz;
+        guideLowPassNode.frequency.value = preset.lowPassHz;
       }
       if (guideMudCutNode) {
-        guideMudCutNode.gain.value = -2.5;
+        guideMudCutNode.gain.value = preset.mudCutDb;
       }
       if (guidePresenceNode) {
-        guidePresenceNode.gain.value = 3.2;
+        guidePresenceNode.gain.value = preset.presenceDb;
       }
       if (isMicBroadcasting) {
         await healGuideMicrophoneIfNeeded(true);
@@ -1722,7 +1768,9 @@
       }
 
       if (isVoiceLoopbackTesting) {
-        loopbackRecordedChunks.push({ samples: a.slice(), sampleRate: 24000 });
+        if (isCapturingLoopbackSamples) {
+          loopbackRecordedChunks.push({ samples: a.slice(), sampleRate: 24000 });
+        }
         return;
       }
 
@@ -1801,11 +1849,12 @@
           noiseSuppression:false,autoGainControl:false,channelCount:1,sampleRate:48000}});}
         catch(error){check();stream=await navigator.mediaDevices.getUserMedia({audio:true});}
         check();
+        const preset=typeof getGuideAcousticPreset==='function'?getGuideAcousticPreset():{highPassHz:85,mudCutDb:-2.5,presenceDb:2.8,lowPassHz:9500};
         const source=own(ctx.createMediaStreamSource(stream));
-        const highPass=own(ctx.createBiquadFilter());highPass.type='highpass';highPass.frequency.value=85;highPass.Q.value = -3.0103;
-        const mudCut=own(ctx.createBiquadFilter());mudCut.type='peaking';mudCut.frequency.value=210;mudCut.Q.value=1.2;mudCut.gain.value=-2.5;
-        const presence=own(ctx.createBiquadFilter());presence.type='peaking';presence.frequency.value=3200;presence.Q.value=.85;presence.gain.value=2;
-        const lowPass=own(ctx.createBiquadFilter());lowPass.type='lowpass';lowPass.frequency.value=10500;lowPass.Q.value = -3.0103;
+        const highPass=own(ctx.createBiquadFilter());highPass.type='highpass';highPass.frequency.value=preset.highPassHz;highPass.Q.value = -3.0103;
+        const mudCut=own(ctx.createBiquadFilter());mudCut.type='peaking';mudCut.frequency.value=210;mudCut.Q.value=1.2;mudCut.gain.value=preset.mudCutDb;
+        const presence=own(ctx.createBiquadFilter());presence.type='peaking';presence.frequency.value=3200;presence.Q.value=.85;presence.gain.value=preset.presenceDb;
+        const lowPass=own(ctx.createBiquadFilter());lowPass.type='lowpass';lowPass.frequency.value=preset.lowPassHz;lowPass.Q.value = -3.0103;
         const gain=own(ctx.createGain());gain.gain.value=guideMicGainMultiplier;
         const zero=own(ctx.createGain());zero.gain.value=0;
         source.connect(highPass);highPass.connect(mudCut);mudCut.connect(presence);presence.connect(lowPass);lowPass.connect(gain);
@@ -1924,6 +1973,34 @@
       setInterval(guideBackgroundHeartbeatTick, 2500);
     }
 
+    function cancelGuideVoiceLoopback() {
+      if (!isVoiceLoopbackTesting && !isCapturingLoopbackSamples && !guideLoopbackSource) return;
+      ++guideMicGeneration;
+      guideMicSetupJob?.cancel();
+      guideMicSetupJob = null;
+      isVoiceLoopbackTesting = false;
+      isCapturingLoopbackSamples = false;
+      loopbackRecordedChunks = [];
+      if (guideLoopbackSource) {
+        try { guideLoopbackSource.stop(); guideLoopbackSource.disconnect(); } catch (e) {}
+        guideLoopbackSource = null;
+      }
+      disconnectGuideAudioNodes();
+      if (micStream) {
+        stopGuideMicrophoneStream(micStream);
+        micStream = null;
+      }
+      const testBtn = document.getElementById('testMyVoiceBtn');
+      if (testBtn) {
+        testBtn.disabled = false;
+        testBtn.textContent = '🎧 Sesimi Test Et (4 Sn Kaydet & Dinle)';
+      }
+      const statusBox = document.getElementById('voiceTestStatusBox');
+      if (statusBox) {
+        statusBox.style.display = 'none';
+      }
+    }
+
     async function testGuideVoiceLoopback() {
       const testBtn = document.getElementById('testMyVoiceBtn');
       const statusBox = document.getElementById('voiceTestStatusBox');
@@ -1939,6 +2016,7 @@
       try {
         loopbackRecordedChunks = [];
         isVoiceLoopbackTesting = true;
+        isCapturingLoopbackSamples = true;
         const installed=await setupGuideMicrophoneGraph();
         if(installed!==guideMicGeneration||testVersion!==guideMicGeneration)return;
 
@@ -1954,8 +2032,8 @@
         await new Promise((r) => setTimeout(r, 4000));
 
         if(testVersion!==guideMicGeneration)return;
-        // Kaydı durdur (hoparlörden çalarken mikrofona geri girmemesi için önce mikrofonu kapatıyoruz!)
-        isVoiceLoopbackTesting = false;
+        // Kaydı durdur (hoparlörden çalarken mikrofona geri girmemesi için önce mikrofonu kapatıyoruz, fakat isVoiceLoopbackTesting dinletme bitene kadar true kalıyor!)
+        isCapturingLoopbackSamples = false;
         disconnectGuideAudioNodes();
         if (micStream) {
           stopGuideMicrophoneStream(micStream);
@@ -1983,6 +2061,11 @@
           statusBox.innerHTML = '🔊 <strong>Kayıt Tamamlandı — Şimdi Dinliyorsunuz:</strong> Bu test yalnız mikrofon kaydınızı dinletir; canlı bağlantı kalitesini ölçmez.';
         }
 
+        if (audioCtx && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+          await audioCtx.resume().catch(() => {});
+        }
+        if(testVersion!==guideMicGeneration||!audioCtx)return;
+
         const buf = audioCtx.createBuffer(1, merged.length, sr);
         buf.copyToChannel(merged, 0);
         const src = audioCtx.createBufferSource();
@@ -2006,7 +2089,7 @@
         }
       } finally {
         if(testVersion===guideMicGeneration){
-        isVoiceLoopbackTesting = false;loopbackRecordedChunks=[];
+        isVoiceLoopbackTesting = false;isCapturingLoopbackSamples = false;loopbackRecordedChunks=[];
         if(guideLoopbackSource){try{guideLoopbackSource.disconnect();}catch(e){}guideLoopbackSource=null;}
         if (testBtn) {
           testBtn.disabled = false;
@@ -2027,7 +2110,9 @@
         return;
       }
 
-      if(isVoiceLoopbackTesting)return;
+      if (isVoiceLoopbackTesting || guideLoopbackSource) {
+        cancelGuideVoiceLoopback();
+      }
 
       // Demo ses akışı açıksa otomatik kapat ki gerçek mikrofonun arkasına demo nota sesi karışmasın!
       if (isDemoBroadcasting) {
@@ -2138,7 +2223,7 @@
 
     function stopMicBroadcast() {
       ++guideMicGeneration;guideMicSetupJob?.cancel();guideMicSetupJob=null;
-      guideMicStarting=false;guideMicHealTicket=null;isHealingGuideMic=false;isVoiceLoopbackTesting=false;
+      guideMicStarting=false;guideMicHealTicket=null;isHealingGuideMic=false;isVoiceLoopbackTesting=false;isCapturingLoopbackSamples=false;
       clearTimeout(guideDeviceChangeTimer);guideDeviceChangeTimer=null;guideDeviceChangePending=false;
       if(guideLoopbackSource){try{guideLoopbackSource.stop();guideLoopbackSource.disconnect();}catch(e){}guideLoopbackSource=null;}
       isMicBroadcasting=false;
@@ -2302,6 +2387,7 @@
         `;
         return;
       }
+      const isScopedGuide = Boolean(currentGuideUser && currentGuideUser.assignedTour);
       container.innerHTML = guideAnnouncements
         .map(
           (a) => `
@@ -2317,9 +2403,9 @@
                 ${escapeHtml(a.message || '')}
               </div>
             </div>
-            <button type="button" class="btn btn-outline btn-sm" style="padding:4px 9px; font-size:0.73rem; color:var(--color-danger); border-color:#FCA5A5; flex-shrink:0;" data-guide-action="delete-ann" data-id="${escapeHtml(a.id)}">
+            ${isScopedGuide && a.tourCode === 'ALL' ? '' : `<button type="button" class="btn btn-outline btn-sm" style="padding:4px 9px; font-size:0.73rem; color:var(--color-danger); border-color:#FCA5A5; flex-shrink:0;" data-guide-action="delete-ann" data-id="${escapeHtml(a.id)}">
               Sil
-            </button>
+            </button>`}
           </div>
         `
         )
@@ -2391,7 +2477,7 @@
           <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
             <div>
               <div style="color:var(--color-danger); font-weight:800; font-size:1.05rem;">
-                ACİL SOS KONUM ALARMI — ${safeName} (${safePhone}) ${safeTour ? `<span class="badge badge-gold" style="margin-left:6px;">${safeTour}</span>` : ''}
+                ACİL SOS KONUM ALARMI — ${safeName}${safePhone ? ` (${safePhone})` : ''} ${safeTour ? `<span class="badge badge-gold" style="margin-left:6px;">${safeTour}</span>` : ''}
               </div>
               <div style="font-size:0.86rem; color:var(--color-ink); margin-top:4px;">
                 <strong>Açık Konum:</strong> ${safeNote}<br/>
@@ -2401,7 +2487,7 @@
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
               <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">Yol Tarifi Aç (Google Maps)</a>
               <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Haritada Gör</a>
-              <a href="tel:${safePhone}" class="btn btn-outline btn-sm">Hemen Ara</a>
+              ${safePhone ? `<a href="tel:${safePhone}" class="btn btn-outline btn-sm">Hemen Ara</a>` : ''}
               <button type="button" class="btn btn-primary btn-sm" data-guide-action="resolve-sos" data-id="${safeId}">Hacıya Ulaşıldı</button>
               <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger); border-color:#FCA5A5;" data-guide-action="delete-sos" data-id="${safeId}">Kaydı Sil</button>
             </div>
@@ -2424,7 +2510,7 @@
         handleGuideAuthExpired();
         return;
       }
-      if (!res || !res.ok) return;
+      if (!res || (!res.ok && res.status !== 404)) return;
       activeSosAlerts = activeSosAlerts.filter((a) => a.id !== id);
       renderSosBanner();
     }
@@ -2436,7 +2522,7 @@
         handleGuideAuthExpired();
         return;
       }
-      if (!res || !res.ok) return;
+      if (!res || (!res.ok && res.status !== 404)) return;
       activeSosAlerts = activeSosAlerts.filter((a) => a.id !== id);
       renderSosBanner();
     }
@@ -2538,28 +2624,46 @@
     }
 
     async function fetchFallbackIpPosition() {
-      let ipTimer = null;
-      try {
-        const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-        if (ctrl) {
-          ipTimer = setTimeout(() => {
-            try { ctrl.abort(); } catch {}
-          }, 2200);
-        }
-        const r = await fetch('https://ipwho.is/', ctrl ? { signal: ctrl.signal } : undefined);
-        const d = await r.json();
-        if (d && d.latitude && d.longitude) {
-          return {
-            lat: Number(d.latitude),
-            lng: Number(d.longitude),
-            accuracy: 45,
-            city: [d.city, d.region, d.country].filter(Boolean).join(', ')
-          };
-        }
-      } catch {} finally {
-        if (ipTimer) clearTimeout(ipTimer);
+      const activeStep = (guideJourneySteps || []).find((s) => s && s.status === 'active') || (guideJourneySteps || [])[0] || null;
+      if (activeStep && Number.isFinite(Number(activeStep.lat)) && Number.isFinite(Number(activeStep.lng))) {
+        return {
+          lat: Number(activeStep.lat),
+          lng: Number(activeStep.lng),
+          accuracy: 35,
+          city: [activeStep.title, activeStep.locationLabel].filter(Boolean).join(' — ') || 'Mescid-i Haram, Mekke'
+        };
       }
       return { lat: 21.4225, lng: 39.8262, accuracy: 25, city: 'Mescid-i Haram, Mekke' };
+    }
+
+    function stopGuideLocationSharing() {
+      const wasSharing = isSharingGuideLocation;
+      isSharingGuideLocation = false;
+      lastGuideLocState = null;
+      if (guideLocWatchId !== null && navigator.geolocation) {
+        try { navigator.geolocation.clearWatch(guideLocWatchId); } catch {}
+        guideLocWatchId = null;
+      }
+      const btn = document.getElementById('toggleGuideLocBtn');
+      const badge = document.getElementById('guideLocStatusBadge');
+      const previewBox = document.getElementById('guideLocPreviewBox');
+      if (btn) {
+        btn.textContent = '📍 Konumumu Kafileyle Canlı Paylaşmayı Aç';
+        btn.className = 'btn btn-primary';
+      }
+      if (badge) {
+        badge.innerHTML = 'PAYLAŞIM KAPALI';
+        badge.style.cssText = 'background:#F1F5F9; color:#475569; border:1px solid #CBD5E1;';
+      }
+      if (previewBox) previewBox.style.display = 'none';
+      if (wasSharing && ws && ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({
+            type: 'guide-location-update',
+            active: false
+          }));
+        } catch {}
+      }
     }
 
     function refreshGuideLocationNow() {
@@ -2586,25 +2690,7 @@
       const previewBox = document.getElementById('guideLocPreviewBox');
 
       if (isSharingGuideLocation) {
-        // KAPAT
-        isSharingGuideLocation = false;
-        lastGuideLocState = null;
-        if (guideLocWatchId !== null && navigator.geolocation) {
-          navigator.geolocation.clearWatch(guideLocWatchId);
-          guideLocWatchId = null;
-        }
-        btn.textContent = '📍 Konumumu Kafileyle Canlı Paylaşmayı Aç';
-        btn.className = 'btn btn-primary';
-        badge.innerHTML = 'PAYLAŞIM KAPALI';
-        badge.style.cssText = 'background:#F1F5F9; color:#475569; border:1px solid #CBD5E1;';
-        previewBox.style.display = 'none';
-
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'guide-location-update',
-            active: false
-          }));
-        }
+        stopGuideLocationSharing();
         return;
       }
 
@@ -2678,7 +2764,7 @@
       return Uint8Array.from(text, (ch) => ch.charCodeAt(0));
     }
 
-    async function syncGuideSosPushSubscription(silent = false) {
+    async function syncGuideSosPushSubscription(silent = false, forceSelectedTour = false) {
       const btn = document.getElementById('guideSosPushBtn');
       if (!('Notification' in window) || !('serviceWorker' in navigator)) {
         if (!silent) alert('Bu tarayıcı kapalı ekran bildirimlerini desteklemiyor.');
@@ -2693,7 +2779,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=78');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=79');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -2710,7 +2796,7 @@
         let revision = Math.max(Date.now() * 1024, prevRev + 1);
         localStorage.setItem('rys_sos_push_rev', String(revision));
         const selectedTourCode = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').trim().toUpperCase();
-        const tourCode = (silent && receipt && receipt.tourCode === 'ALL') ? 'ALL' : selectedTourCode;
+        const tourCode = (!forceSelectedTour && silent && receipt && receipt.tourCode === 'ALL') ? 'ALL' : selectedTourCode;
         const buildPayload = (rev) => ({
           endpoint: json.endpoint,
           keys: json.keys,
@@ -2746,6 +2832,7 @@
           if (swTarget) {
             swTarget.postMessage({
               type: 'SYNC_PUSH_META',
+              kind: 'sos',
               meta: {
                 kind: 'sos',
                 endpoint: json.endpoint,
@@ -2805,15 +2892,12 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=78').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=79').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED' && localStorage.getItem('rys_sos_push_receipt')) {
           syncGuideSosPushSubscription(true);
         }
       });
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && localStorage.getItem('rys_sos_push_receipt')) {
-        setTimeout(() => { syncGuideSosPushSubscription(true); }, 800);
-      }
     }
   </script>
 </body>

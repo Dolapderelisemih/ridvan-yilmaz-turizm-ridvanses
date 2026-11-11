@@ -6,10 +6,12 @@
   <title>Canlı Manevi Rota & Aile Takip Ekranı — Rıdvan Yılmaz Turizm</title>
   <meta name="description" content="Rıdvan Yılmaz Turizm Umre kafilesinin kutsal topraklardaki canlı manevi yolculuk rotasını, ziyaret edilen Siyer duraklarını ve rehber konumunu canlı takip edin." />
   <meta name="theme-color" content="#06231b" />
-  <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
+  <link rel="manifest" href="/manifest.json?v=19" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=22" />
-  <script src="/vercel-ws-shim.js?v=78"></script>
+  <script src="/vercel-ws-shim.js?v=79"></script>
   <style>
     .rota-hero-strip {
       background:
@@ -261,7 +263,7 @@
   <div id="rotaToast" class="toast-banner"></div>
 
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=78"></script>
+  <script src="/js/umrah-steps-map.js?v=79"></script>
   <script>
     (function () {
       const params = new URLSearchParams(window.location.search);
@@ -462,18 +464,40 @@
         }
       }
 
+      function clearStaleRouteView() {
+        currentSteps = [];
+        routeMap.setSteps([], { autoFit: false });
+        routeMap.updateGuideLocation(null);
+        renderFamilyTawafStage(null);
+        document.getElementById('statListeners').textContent = '0 Kişi';
+        renderAnnouncements([]);
+      }
+
       async function fetchStepsRest(autoFit = false) {
         try {
           const pinVal = getSavedTourPin(currentCode);
-          const qs = pinVal ? `?pin=${encodeURIComponent(pinVal)}` : '';
-          const res = await fetch(`/api/trips/${encodeURIComponent(currentCode)}/steps${qs}`);
-          const json = await res.json();
+          const headers = pinVal ? { 'X-Tour-Pin': pinVal } : {};
+          const res = await fetch(`/api/trips/${encodeURIComponent(currentCode)}/steps`, { headers });
+          const json = await res.json().catch(() => ({}));
           const pinGate = document.getElementById('rotaPinGateBox');
           const pinErr = document.getElementById('rotaPinErrorMsg');
+          if (res.status === 429 || (json && json.error === 'rate-limited')) {
+            subscriptionBlocked = true;
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+            clearStaleRouteView();
+            if (pinGate) pinGate.style.display = 'block';
+            if (pinErr) {
+              pinErr.textContent = json.message || 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.';
+              pinErr.style.display = 'block';
+            }
+            return;
+          }
           if (json && json.error === 'tour-unknown') {
             subscriptionBlocked = true;
             if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
             if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+            clearStaleRouteView();
             if (pinGate) pinGate.style.display = 'none';
             document.getElementById('familyTimeline').innerHTML =
               `<div style="padding:18px;border-radius:12px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-weight:700;font-size:0.88rem;">“${escapeHtml(currentCode)}” koduna ait aktif bir kafile bulunamadı. Lütfen kafile kodunu kontrol ediniz.</div>`;
@@ -483,6 +507,7 @@
             subscriptionBlocked = true;
             if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
             if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+            clearStaleRouteView();
             if (pinGate) pinGate.style.display = 'block';
             if (pinErr) {
               if (pinVal) {
@@ -733,7 +758,7 @@
       }
 
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=78').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=79').catch(() => {});
       }
 
       updateLinks(currentCode);

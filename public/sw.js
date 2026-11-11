@@ -1,7 +1,7 @@
 // PATCH: sw-v53
 // PATCH: sw-v53
 // PATCH: sw-v53
-const CACHE_NAME = 'ridvanses-pwa-v78';
+const CACHE_NAME = 'ridvanses-pwa-v79';
 const PUSH_META_CACHE = 'ridvanses-push-meta-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -10,16 +10,18 @@ const ASSETS_TO_CACHE = [
   '/ani-kitabi',
   '/kullanim-rehberi',
   '/css/style.css?v=22',
-  '/vercel-ws-shim.js?v=78',
+  '/vercel-ws-shim.js?v=79',
   '/vendor/leaflet/leaflet.js',
   '/vendor/leaflet/leaflet.css',
   '/vendor/mqtt/mqtt.min.js',
-  '/js/umrah-steps-map.js?v=78',
+  '/js/umrah-steps-map.js?v=79',
   '/pcm-capture-worklet.js?v=72-audio',
   '/pcm-player-worklet.js?v=72-audio',
   '/manifest.json',
   '/icons/icon-512.png',
+  '/icons/icon-512-maskable.png',
   '/icons/icon-192.png',
+  '/icons/icon-192-maskable.png',
   '/icons/apple-touch-icon.png',
   '/icons/app-logo.png'
 ];
@@ -52,16 +54,17 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   const ownOrigin = self.location && self.location.origin ? self.location.origin : url.origin;
+  const lowerPath = url.pathname.toLowerCase();
   if (
     url.origin !== ownOrigin ||
-    url.pathname.startsWith('/api/') ||
-    url.pathname.startsWith('/ws') ||
-    url.pathname.startsWith('/rehber') ||
-    url.pathname.startsWith('/hoca') ||
-    url.pathname.startsWith('/panel') ||
-    url.pathname.startsWith('/acente') ||
-    url.pathname.startsWith('/yaka-karti') ||
-    url.pathname.startsWith('/login')
+    lowerPath.startsWith('/api/') ||
+    lowerPath.startsWith('/ws') ||
+    lowerPath.startsWith('/rehber') ||
+    lowerPath.startsWith('/hoca') ||
+    lowerPath.startsWith('/panel') ||
+    lowerPath.startsWith('/acente') ||
+    lowerPath.startsWith('/yaka-karti') ||
+    lowerPath.startsWith('/login')
   ) {
     return;
   }
@@ -80,6 +83,11 @@ self.addEventListener('fetch', (event) => {
         if (exact) return exact;
         const cleanHit = await caches.match(url.pathname, { ignoreSearch: true });
         if (cleanHit) return cleanHit;
+        if (lowerPath.endsWith('.html')) {
+          const stripped = url.pathname.slice(0, -5) || '/';
+          const altHit = await caches.match(stripped, { ignoreSearch: true });
+          if (altHit) return altHit;
+        }
         if (event.request.mode === 'navigate') {
           return (
             (await caches.match('/dinle', { ignoreSearch: true })) ||
@@ -99,7 +107,7 @@ self.addEventListener('fetch', (event) => {
 function rysNotificationUrl(value){
   try{
     const url=new URL(value||'/dinle',self.location.origin);
-    if(url.origin===self.location.origin&&['/dinle','/rehber','/panel','/rota','/ani-kitabi'].includes(url.pathname))return url.href;
+    if(url.origin===self.location.origin&&['/dinle','/rehber','/panel','/rota','/ani-kitabi','/kullanim-rehberi'].includes(url.pathname))return url.href;
   }catch(e){}
   return new URL('/dinle',self.location.origin).href;
 }
@@ -146,7 +154,7 @@ async function rysLoadPushMeta(kind) {
 
 self.addEventListener('message',event=>{
   if(event.data?.type==='SHOW_NOTIFICATION'){event.waitUntil(showRysNotification(event.data));return;}
-  if(event.data?.type==='SYNC_PUSH_META'){event.waitUntil(rysSavePushMeta(event.data.kind,event.data.meta));}
+  if(event.data?.type==='SYNC_PUSH_META'){event.waitUntil(rysSavePushMeta(event.data.kind||event.data.meta?.kind,event.data.meta));}
 });
 self.addEventListener('push',event=>{
   let data={};

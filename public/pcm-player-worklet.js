@@ -123,7 +123,6 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     this.lastArrival = null;
     this.lastSeq = null;
     this.stats = { late: 0, duplicate: 0, concealed: 0, resync: 0, queueDropped:0, catchupDropped:0 };
-    this.phraseSeen = new Set();
     this.tail = new Float32Array(Math.max(2, Math.round(this.rate * 0.005)));
     this.blend = new Float32Array(this.tail.length);
     this.tailPos = 0;
@@ -357,6 +356,8 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
       this.fi = 480;
       this.haveHistory = false;this.missing=0;this.pendingQueueBlend=false;this.catchupAge=0;this.catchupArmed=false;this.plc=new RysPitchPlc();
       this.rxFir=this.rate<24000?new RysOutputFir(this.rate):null;this.sourceFade=0;
+      this.lastArrival = null;
+      this.lastSeq = null;
       this.resetFrom = this.lastOut;
       this.resetFade = 0;
     }

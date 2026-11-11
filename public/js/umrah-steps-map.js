@@ -52,6 +52,123 @@
       .replace(/'/g, '&#39;');
   }
 
+  const MAP_I18N = {
+    tr: {
+      layerClassic: '🗺️ Klasik Rota Haritası',
+      layerSat: '🛰️ Kâbe & Harem Uydu',
+      layerStreet: '🌍 Detaylı Sokak Haritası',
+      badgeActive: '● ŞU AN BURADAYIZ',
+      badgeCompleted: '✓ Ziyaret Edildi',
+      badgePlanned: 'Planlanan Durak',
+      statusActiveShort: '● Şu An Buradayız',
+      liveGpsPin: '🎙️ Canlı GPS',
+      liveGuideTitle: '● CANLI REHBER KONUMU',
+      guideDefault: 'Rehber Hoca',
+      lastUpdated: 'Son güncelleme:',
+      justNow: 'Şimdi',
+      mapsDirBtn: 'Google Haritalar Yol Tarifi →',
+      emptySteps: 'Henüz tanımlanmış manevi yolculuk durağı bulunmuyor.',
+      stepWord: 'Durak'
+    },
+    ar: {
+      layerClassic: '🗺️ خريطة المسار الكلاسيكية',
+      layerSat: '🛰️ الكعبة والحرم (قمر صناعي)',
+      layerStreet: '🌍 خريطة الشوارع التفصيلية',
+      badgeActive: '● نحن هنا الآن',
+      badgeCompleted: '✓ تمت الزيارة',
+      badgePlanned: 'محطة مخططة',
+      statusActiveShort: '● نحن هنا الآن',
+      liveGpsPin: '🎙️ موقع مباشر',
+      liveGuideTitle: '● موقع المرشد المباشر',
+      guideDefault: 'المرشد الديني',
+      lastUpdated: 'آخر تحديث:',
+      justNow: 'الآن',
+      mapsDirBtn: 'الاتجاهات عبر خرائط Google ←',
+      emptySteps: 'لا توجد محطات مسار مسجلة بعد.',
+      stepWord: 'المحطة'
+    },
+    en: {
+      layerClassic: '🗺️ Classic Route Map',
+      layerSat: '🛰️ Kaaba & Haram Satellite',
+      layerStreet: '🌍 Detailed Street Map',
+      badgeActive: '● WE ARE HERE NOW',
+      badgeCompleted: '✓ Visited',
+      badgePlanned: 'Planned Stop',
+      statusActiveShort: '● Current Stop',
+      liveGpsPin: '🎙️ Live GPS',
+      liveGuideTitle: '● LIVE GUIDE LOCATION',
+      guideDefault: 'Tour Guide',
+      lastUpdated: 'Last updated:',
+      justNow: 'Just now',
+      mapsDirBtn: 'Google Maps Directions →',
+      emptySteps: 'No spiritual journey stops have been defined yet.',
+      stepWord: 'Stop'
+    },
+    fr: {
+      layerClassic: '🗺️ Carte d’itinéraire classique',
+      layerSat: '🛰️ Kaaba & Haram (Satellite)',
+      layerStreet: '🌍 Plan détaillé des rues',
+      badgeActive: '● NOUS SOMMES ICI',
+      badgeCompleted: '✓ Visité',
+      badgePlanned: 'Étape prévue',
+      statusActiveShort: '● Étape actuelle',
+      liveGpsPin: '🎙️ GPS en direct',
+      liveGuideTitle: '● POSITION DU GUIDE EN DIRECT',
+      guideDefault: 'Guide spirituel',
+      lastUpdated: 'Dernière mise à jour :',
+      justNow: 'À l’instant',
+      mapsDirBtn: 'Itinéraire Google Maps →',
+      emptySteps: 'Aucune étape du parcours spirituel n’est encore définie.',
+      stepWord: 'Étape'
+    },
+    id: {
+      layerClassic: '🗺️ Peta Rute Klasik',
+      layerSat: '🛰️ Satelit Ka’bah & Haram',
+      layerStreet: '🌍 Peta Jalan Detail',
+      badgeActive: '● KITA DI SINI SEKARANG',
+      badgeCompleted: '✓ Telah Dikunjungi',
+      badgePlanned: 'Perhentian Terencana',
+      statusActiveShort: '● Lokasi Saat Ini',
+      liveGpsPin: '🎙️ GPS Langsung',
+      liveGuideTitle: '● LOKASI PEMBIMBING LANGSUNG',
+      guideDefault: 'Ustaz Pembimbing',
+      lastUpdated: 'Pembaruan terakhir:',
+      justNow: 'Baru saja',
+      mapsDirBtn: 'Petunjuk Arah Google Maps →',
+      emptySteps: 'Belum ada perhentian perjalanan ruhani yang ditentukan.',
+      stepWord: 'Perhentian'
+    },
+    ur: {
+      layerClassic: '🗺️ کلاسک روٹ نقشہ',
+      layerSat: '🛰️ کعبہ و حرم سیٹلائٹ',
+      layerStreet: '🌍 تفصیلی گلیوں کا نقشہ',
+      badgeActive: '● ہم اس وقت یہاں ہیں',
+      badgeCompleted: '✓ زیارت مکمل',
+      badgePlanned: 'طے شدہ مقام',
+      statusActiveShort: '● موجودہ مقام',
+      liveGpsPin: '🎙️ لائیو GPS',
+      liveGuideTitle: '● رہنما کا لائیو مقام',
+      guideDefault: 'رہنما استاذ',
+      lastUpdated: 'آخری اپڈیٹ:',
+      justNow: 'ابھی',
+      mapsDirBtn: 'گوگل میپس راستہ ←',
+      emptySteps: 'ابھی تک کوئی روحانی سفر کا مقام درج نہیں کیا گیا۔',
+      stepWord: 'مقام'
+    }
+  };
+
+  function getMapDict(explicitLang) {
+    const raw = String(
+      explicitLang ||
+        global.RYS_MAP_LANG ||
+        (typeof document !== 'undefined' && document.documentElement ? document.documentElement.lang : '') ||
+        'tr'
+    )
+      .toLowerCase()
+      .slice(0, 2);
+    return MAP_I18N[raw] || MAP_I18N.tr;
+  }
+
   // Generates a subtle Polarsteps-like curved flight arc for long-distance legs (>250 km)
   function buildSegmentCoords(p1, p2) {
     const lat1 = Number(p1[0]);
@@ -142,13 +259,14 @@
 
       topoLayer.addTo(this.map);
 
+      const md = getMapDict(this.options.lang);
+      const layerMap = {};
+      layerMap[md.layerClassic] = topoLayer;
+      layerMap[md.layerSat] = satHybridLayer;
+      layerMap[md.layerStreet] = osmStreetLayer;
       L.control
         .layers(
-          {
-            '🗺️ Klasik Rota Haritası': topoLayer,
-            '🛰️ Kâbe & Harem Uydu': satHybridLayer,
-            '🌍 Detaylı Sokak Haritası': osmStreetLayer
-          },
+          layerMap,
           null,
           { position: 'topright', collapsed: true }
         )
@@ -258,12 +376,13 @@
           popupAnchor: [0, -size / 2]
         });
 
+        const md = getMapDict(this.options.lang);
         const statusBadge =
           status === 'active'
-            ? '<span style="background:#0b4636;color:#e0be77;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;">● ŞU AN BURADAYIZ</span>'
+            ? `<span style="background:#0b4636;color:#e0be77;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;">${escapeHtml(md.badgeActive)}</span>`
             : status === 'completed'
-            ? '<span style="background:#e6f2ee;color:#0b4636;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;">✓ Ziyaret Edildi</span>'
-            : '<span style="background:#f1eae0;color:#53635c;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;">Planlanan Durak</span>';
+            ? `<span style="background:#e6f2ee;color:#0b4636;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;">${escapeHtml(md.badgeCompleted)}</span>`
+            : `<span style="background:#f1eae0;color:#53635c;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;">${escapeHtml(md.badgePlanned)}</span>`;
 
         const popupHtml = `
           <div style="font-family:'Plus Jakarta Sans',sans-serif;min-width:210px;max-width:265px;padding:2px;">
@@ -273,7 +392,7 @@
             </div>
             <div style="font-size:14px;font-weight:800;color:#06231b;line-height:1.3;margin-bottom:4px;">${num}. ${escapeHtml(step.title)}</div>
             <div style="font-size:11.5px;color:#53635c;font-weight:600;margin-bottom:6px;">📍 ${escapeHtml(step.locationLabel || '')} • ${Number(step.distanceKm) || 0} km</div>
-            ${step.guideNote ? `<div style="font-size:12px;color:#0f1d18;line-height:1.45;background:#faf7f2;padding:7px 9px;border-radius:8px;border-left:3px solid #c5a059;">${escapeHtml(step.guideNote)}</div>` : ''}
+            ${step.guideNote ? `<div style="font-size:12px;color:#0f1d18;line-height:1.45;background:#faf7f2;padding:7px 9px;border-radius:8px;border-inline-start:3px solid #c5a059;">${escapeHtml(step.guideNote)}</div>` : ''}
           </div>
         `;
 
@@ -324,12 +443,13 @@
       const lng = Number(this.guideLocation.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
-      const guideName = this.guideLocation.guideName || 'Rehber Hoca';
+      const md = getMapDict(this.options.lang);
+      const guideName = this.guideLocation.guideName || md.guideDefault;
       const icon = L.divIcon({
         className: 'ps-pin-wrapper',
-        html: `<div class="ps-guide-live-pin">🎙️ Canlı GPS</div>`,
-        iconSize: [108, 28],
-        iconAnchor: [54, 34],
+        html: `<div class="ps-guide-live-pin">${escapeHtml(md.liveGpsPin)}</div>`,
+        iconSize: [118, 28],
+        iconAnchor: [59, 34],
         popupAnchor: [0, -30]
       });
 
@@ -337,13 +457,21 @@
       this.guideMarker = L.marker([lat, lng], { icon, zIndexOffset: 1500 })
         .bindPopup(
           `<div style="font-family:'Plus Jakarta Sans',sans-serif;min-width:195px;">
-            <div style="font-size:11px;font-weight:800;color:#dc2626;text-transform:uppercase;">● CANLI REHBER KONUMU</div>
+            <div style="font-size:11px;font-weight:800;color:#dc2626;text-transform:uppercase;">${escapeHtml(md.liveGuideTitle)}</div>
             <div style="font-size:14px;font-weight:800;color:#06231b;margin:3px 0;">${escapeHtml(guideName)}</div>
-            <div style="font-size:11.5px;color:#53635c;margin-bottom:8px;">Son güncelleme: ${escapeHtml(this.guideLocation.updatedAt || 'Şimdi')}</div>
-            <a href="${mapsUrl}" target="_blank" rel="noopener" style="display:inline-block;background:#0b4636;color:#fff;font-size:11.5px;font-weight:700;padding:6px 10px;border-radius:8px;text-decoration:none;">Google Haritalar Yol Tarifi →</a>
+            <div style="font-size:11.5px;color:#53635c;margin-bottom:8px;">${escapeHtml(md.lastUpdated)} ${escapeHtml(this.guideLocation.updatedAt || md.justNow)}</div>
+            <a href="${mapsUrl}" target="_blank" rel="noopener" style="display:inline-block;background:#0b4636;color:#fff;font-size:11.5px;font-weight:700;padding:6px 10px;border-radius:8px;text-decoration:none;">${escapeHtml(md.mapsDirBtn)}</a>
           </div>`
         )
         .addTo(this.map);
+    }
+
+    async setLang(lang) {
+      this.options.lang = lang;
+      await this._readyPromise;
+      if (!this.map) return;
+      if (this.steps.length) this._drawSteps(false);
+      if (this.guideLocation) this._drawGuidePin();
     }
 
     async focusStep(stepOrId, zoom = 14, openPopup = true) {
@@ -400,22 +528,25 @@
     static renderTimeline(container, steps, options = {}) {
       const el = typeof container === 'string' ? document.getElementById(container) : container;
       if (!el) return;
+      const md = getMapDict(options.lang);
       const list = Array.isArray(steps) ? steps.slice().sort((a, b) => (a.order || 0) - (b.order || 0)) : [];
       if (!list.length) {
-        el.innerHTML = '<div style="padding:18px;text-align:center;color:var(--color-muted);font-size:0.88rem;">Henüz tanımlanmış manevi yolculuk durağı bulunmuyor.</div>';
+        el.innerHTML = `<div style="padding:18px;text-align:center;color:var(--color-muted);font-size:0.88rem;">${escapeHtml(md.emptySteps)}</div>`;
         return;
       }
 
+      const currentLang = String(options.lang || global.RYS_MAP_LANG || 'tr').toLowerCase().slice(0, 2);
       el.innerHTML = list
         .map((step, idx) => {
           const status = ['completed', 'active', 'planned'].includes(step.status) ? step.status : 'planned';
           const statusText =
             status === 'active'
-              ? '● Şu An Buradayız'
+              ? md.statusActiveShort
               : status === 'completed'
-              ? '✓ Ziyaret Edildi'
-              : 'Planlanan Durak';
+              ? md.badgeCompleted
+              : md.badgePlanned;
           const num = step.order || idx + 1;
+          const stepOrdinalLabel = currentLang === 'tr' ? `${num}. ${md.stepWord}` : `${md.stepWord} ${num}`;
           const adminActions = options.editable
             ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--color-hairline);" onclick="event.stopPropagation();">
                 ${
@@ -440,8 +571,8 @@
             <div class="ps-step-card is-${status}" data-step-id="${escapeHtml(step.id)}">
               <span class="ps-step-dot"></span>
               <div class="ps-step-head">
-                <span class="ps-step-day">${num}. Durak • ${escapeHtml(step.dayLabel || '')}</span>
-                <span class="ps-step-status ${status}">${statusText}</span>
+                <span class="ps-step-day">${escapeHtml(stepOrdinalLabel)} • ${escapeHtml(step.dayLabel || '')}</span>
+                <span class="ps-step-status ${status}">${escapeHtml(statusText)}</span>
               </div>
               <div class="ps-step-title">${escapeHtml(step.title)}</div>
               <div class="ps-step-loc">📍 ${escapeHtml(step.locationLabel || '')} • <strong>${Number(step.distanceKm) || 0} km</strong> ${step.timestamp ? `• ${escapeHtml(step.timestamp)}` : ''}</div>
