@@ -7,7 +7,7 @@
   <title>Baskıya Hazır Hacı Yaka Kartı & QR Kod | Rıdvan Yılmaz Turizm</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/yaka-karti" />
-  <link rel="stylesheet" href="/css/style.css?v=21" />
+  <link rel="stylesheet" href="/css/style.css?v=22" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -20,7 +20,7 @@
       }
     })();
   </script>
-  <script src="/vercel-ws-shim.js?v=77"></script>
+  <script src="/vercel-ws-shim.js?v=78"></script>
   <style>
     .print-toolbar {
       background: linear-gradient(155deg, #06231B 0%, #093529 100%);
@@ -177,6 +177,7 @@
 
   <script>
     const params = new URLSearchParams(window.location.search);
+    const badgeRoom = (params.get('room') || 'genel').trim() === 'siyer' ? 'siyer' : 'genel';
     if (params.get('code')) {
       const sel = document.getElementById('tourCodePicker');
       const code = params.get('code').toUpperCase();
@@ -265,8 +266,11 @@
         madinahHotel: '2 Gün Medine Konaklama (Merkezi Bölge)'
       };
 
-      const qrRes = await fetch(`/api/qr?code=${encodeURIComponent(code)}`);
-      const qrJson = await qrRes.json();
+      let qrJson = { dataUrl: '' };
+      try {
+        const qrRes = await fetch(`/api/qr?code=${encodeURIComponent(code)}&room=${encodeURIComponent(badgeRoom)}`);
+        if (qrRes.ok) qrJson = await qrRes.json();
+      } catch (e) {}
       if (currentSeq !== renderSeq) return;
 
       let samplePilgrims = [];
@@ -305,7 +309,7 @@
             <span class="badge badge-gold" style="font-size:0.8rem;">KAFİLE KODU: ${escapeHtml(tour.code)}</span>
 
             <div class="qr-box">
-              <img src="${qrImgOrigin}/api/qr-img?code=${encodeURIComponent(tour.code)}&name=${encodeURIComponent(pName)}" onerror="this.onerror=null;this.src='${escapeHtml(qrJson.dataUrl || '')}'" alt="QR Code ${escapeHtml(tour.code)} - ${escapeHtml(pName)}" />
+              <img src="${qrImgOrigin}/api/qr-img?code=${encodeURIComponent(tour.code)}&room=${encodeURIComponent(badgeRoom)}&name=${encodeURIComponent(pName)}" onerror="this.onerror=null;if('${escapeHtml(qrJson.dataUrl || '')}')this.src='${escapeHtml(qrJson.dataUrl || '')}';" alt="QR Code ${escapeHtml(tour.code)} - ${escapeHtml(pName)}" />
             </div>
 
             <div style="font-size:0.79rem; color:var(--color-muted); max-width:265px; margin:0 auto 14px; line-height:1.45;">

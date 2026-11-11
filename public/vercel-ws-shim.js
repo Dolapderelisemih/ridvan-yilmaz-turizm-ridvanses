@@ -338,14 +338,14 @@
     }
 
     _tryNativeFailback(){
-      if(!this._isRelay||this.readyState!==1||this._closedExplicitly||this._failbackProbe)return;
+      if(this._relayFenced||!this._isRelay||this.readyState!==1||this._closedExplicitly||this._failbackProbe)return;
       const join=this._joinContext,generation=this._transportGeneration||0;
       const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join');
       const request=mode==='admin-subscribe'?{type:mode,token:(localStorage.getItem('ry_auth_token')||'').trim()}:
         mode==='family-subscribe'?(join?{type:mode,tourCode:join.tourCode,...(join.pin!==undefined?{pin:join.pin}:{})}:null):join?{...join}:null;
       if(!request)return;
       let probe;try{probe=new NativeWebSocket(this.url);probe.binaryType='arraybuffer';}catch(e){return;}
-      this._failbackProbe=probe;let finished=false,commitSent=false,handoffId=null;
+      this._failbackProbe=probe;let finished=false,commitSent=false,probeFenced=false,handoffId=null;
       const valid=()=>!this._closedExplicitly&&this._isRelay&&this.readyState===1&&
         (this._transportGeneration||0)===generation;
       const cancel=()=>{
@@ -354,15 +354,16 @@
         if(this._cancelNativeProbe===cancel)this._cancelNativeProbe=null;
         probe.onopen=null;probe.onmessage=null;probe.onerror=null;probe.onclose=null;
         try{probe.close();}catch(e){}
-        // A commit ACK may have been lost. Never reuse a possibly retired source ID.
-        if(commitSent||this._relayFenced)this._resetRelaySession();
+        // A commit ACK may have been lost. Never reuse a possibly retired source ID,
+        // and never clear permanent auth/PIN fencing when an unrelated probe cancels.
+        if(commitSent||probeFenced)this._resetRelaySession();
       };
       const timer=setTimeout(cancel,5000);this._cancelNativeProbe=cancel;
       probe.onerror=cancel;probe.onclose=cancel;
       probe.onopen=()=>{
         if(!valid()){cancel();return;}
         // No HTTP source may appear behind a source-less prepare. An old open response is harmless.
-        if(!this._relayClientId||!this._relayKey){this._resetRelaySession();this._relayFenced=true;}
+        if(!this._relayClientId||!this._relayKey){this._resetRelaySession();this._relayFenced=true;probeFenced=true;}
         try{probe.send(JSON.stringify({type:'handoff-prepare',subscription:request,
           relayClientId:this._relayClientId||null,relayKey:this._relayKey||null}));}catch(e){cancel();}
       };
@@ -734,9 +735,11 @@
           this._clearPresence?.();
           this._sendQueue.length=0;this._audioCoalescer?.clear();this._lastGuideState=null;
         }
-        if(subscription&&this._isRelay&&this.readyState===1&&!this._closedExplicitly){
+        if(subscription&&this._relayFenced&&this._isRelay&&this.readyState===1&&!this._closedExplicitly){
           this._relayFenced=false;
           if(!this._pollTimer)this._pollTimer=setInterval(()=>this._flushAndPoll(),100);
+          if(typeof this.url==='string'&&!this.url.includes('.vercel.app/ws')&&!this._vdsFailbackTimer)
+            this._vdsFailbackTimer=setInterval(()=>this._tryNativeFailback(),12000);
         }
       }
 
@@ -851,7 +854,7 @@
             alertId: 'sos-' + Date.now(),
             tourCode: (this._joinContext && this._joinContext.tourCode) || 'RY-KASIM',
             pilgrimName: (this._joinContext && this._joinContext.name) || 'Hacı Misafir',
-            phone: (this._joinContext && this._joinContext.phone) || '+90 538 399 96 66'
+            phone: (this._joinContext && this._joinContext.phone) || ''
           };
           this._publishMqtt(enrichedSos);
           // Global SOS kanalına da yayınla ki Rehber/Acente hangi sekmede olursa olsun anında görsün!
@@ -997,6 +1000,7 @@
             this._clearPresence?.();
             this._relayFenced=true;
             if(this._pollTimer){clearInterval(this._pollTimer);this._pollTimer=null;}
+            if(this._vdsFailbackTimer){clearInterval(this._vdsFailbackTimer);this._vdsFailbackTimer=null;}
             batch.length=0;this._sendQueue.length=0;this._audioCoalescer?.clear();
             this._deliverIncomingMessage({
               type:'auth-error',
@@ -1017,10 +1021,19 @@
           throw Error('Relay HTTP '+res.status);
         }
         if(!sameRoute()){success=true;return;}
-        if(Number.isSafeInteger(submittedGuideEpoch)&&!payload.messages?.some?.(m=>m.type==='auth-error'||m.type==='pin-error'))
+        if(Number.isSafeInteger(submittedGuideEpoch)&&!payload.messages?.some?.(m=>m.type==='auth-error'||m.type==='pin-error'||m.type==='tour-unknown'))
           this._relayGuideStateAckEpoch=submittedGuideEpoch;
         this._prunePresence?.();
         if(Array.isArray(payload.mqttPublications))for(const f of payload.mqttPublications)this._publishMqtt?.(f);
+        const terminalSubErr=Array.isArray(payload.messages)&&payload.messages.some(m=>
+          m&&(m.type==='pin-error'||m.type==='tour-unknown'||m.type==='subscription-error'));
+        if(terminalSubErr){
+          this._clearPresence?.();
+          this._relayFenced=true;
+          if(this._pollTimer){clearInterval(this._pollTimer);this._pollTimer=null;}
+          if(this._vdsFailbackTimer){clearInterval(this._vdsFailbackTimer);this._vdsFailbackTimer=null;}
+          this._sendQueue.length=0;this._audioCoalescer?.clear();
+        }
         if(Array.isArray(payload.messages))for(const m of payload.messages)this._deliverIncomingMessage(m);
         success=true;
       }catch(e){

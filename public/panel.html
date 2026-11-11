@@ -14,7 +14,7 @@
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/panel" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=21" />
+  <link rel="stylesheet" href="/css/style.css?v=22" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -28,6 +28,11 @@
     })();
     async function ryLogout() {
       const savedTok = (localStorage.getItem('ry_auth_token') || '').trim();
+      try {
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'SYNC_PUSH_META', kind: 'sos', meta: null });
+        }
+      } catch {}
       try {
         const sosReceipt = JSON.parse(localStorage.getItem('rys_sos_push_receipt') || 'null');
         if (sosReceipt && sosReceipt.endpoint && sosReceipt.subscriptionToken) {
@@ -51,9 +56,9 @@
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=77"></script>
+  <script src="/vercel-ws-shim.js?v=78"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=47"></script>
+  <script src="/js/umrah-steps-map.js?v=78"></script>
   <style>
     .dashboard-layout {
       display: grid;
@@ -382,7 +387,7 @@
           </div>
         </div>
 
-        <div class="card" style="margin-top:24px;">
+        <div class="card" id="overviewRequestsCard" style="margin-top:24px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
             <div>
               <h3 style="font-size:1.15rem; margin:0;">Ana Sayfadan Gelen Ön Kayıt &amp; Bilgi Talepleri</h3>
@@ -421,7 +426,7 @@
             </div>
 
             <div style="text-align:center; background:var(--color-ground); border:2px dashed var(--color-emerald-deep); border-radius:16px; padding:22px; margin-bottom:16px;">
-              <img id="qrPreviewImg" src="" alt="Kafile QR Kodu" style="width:210px; height:210px; border-radius:14px; background:#fff; padding:10px; box-shadow:var(--shadow-soft); margin:0 auto;" />
+              <img id="qrPreviewImg" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Kafile QR Kodu" style="width:210px; height:210px; border-radius:14px; background:#fff; padding:10px; box-shadow:var(--shadow-soft); margin:0 auto;" />
               <div style="font-weight:800; color:var(--color-emerald-night); margin-top:12px;" id="qrTourLabel">RY-KASIM</div>
               <div style="font-size:0.8rem; color:var(--color-muted); word-break:break-all; margin-top:4px;" id="qrJoinUrlText"></div>
             </div>
@@ -877,7 +882,7 @@
         dlBtn.href = data.dataUrl;
         dlBtn.download = `RidvanYilmazTurizm-${data.code}-QR.png`;
 
-        document.getElementById('openPrintableBadgeBtn').href = `/yaka-karti?code=${encodeURIComponent(data.code)}`;
+        document.getElementById('openPrintableBadgeBtn').href = `/yaka-karti?code=${encodeURIComponent(data.code)}&room=${encodeURIComponent(room)}`;
       } catch (e) {
         console.error(e);
       }
@@ -924,7 +929,7 @@
     function renderAll() {
       if (!appState) return;
       const scopedAgency = isScopedSubAgency();
-      ['overviewAddTourBtn', 'sideBtnRequests', 'sideAdminDivider', 'sideAdminGroupTitle', 'sideBtnRea', 'guideFormCard', 'overviewSimSosBtn', 'tabSosSimBtn'].forEach((id) => {
+      ['overviewAddTourBtn', 'overviewRequestsCard', 'sideBtnRequests', 'sideAdminDivider', 'sideAdminGroupTitle', 'sideBtnRea', 'guideFormCard', 'overviewSimSosBtn', 'tabSosSimBtn'].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.style.display = scopedAgency ? 'none' : '';
       });
@@ -932,6 +937,14 @@
       const isEditingTour = Boolean(document.getElementById('editingTourIdInput')?.value);
       if (tourFormCardEl) {
         tourFormCardEl.style.display = scopedAgency && !isEditingTour ? 'none' : '';
+      }
+      const toursTabGridEl = document.getElementById('toursTabGrid');
+      if (toursTabGridEl) {
+        toursTabGridEl.style.gridTemplateColumns = scopedAgency && !isEditingTour ? '1fr' : '';
+      }
+      const guidesTabGridEl = document.getElementById('guidesTabGrid');
+      if (guidesTabGridEl) {
+        guidesTabGridEl.style.gridTemplateColumns = scopedAgency ? '1fr' : '';
       }
       document.getElementById('statToursCount').textContent = appState.tours.length;
       document.getElementById('statGuidesCount').textContent = appState.guides.length;
@@ -944,9 +957,16 @@
         if (navRehber) navRehber.href = `/rehber?code=${primaryCode}`;
         if (seasonEl && appState.tours[0].dateText) seasonEl.textContent = appState.tours[0].dateText;
       }
-      const totalListeners = (appState.liveRooms || [])
-        .filter((r) => r.roomId === 'genel')
-        .reduce((acc, r) => acc + (r.totalListeners || 0), 0);
+      const listenersByTour = new Map();
+      for (const r of (appState.liveRooms || [])) {
+        const tc = String(r.tourCode || '');
+        const count = Number(r.totalListeners ?? r.roomListenerCount) || 0;
+        if (!listenersByTour.has(tc) || count > listenersByTour.get(tc)) {
+          listenersByTour.set(tc, count);
+        }
+      }
+      let totalListeners = 0;
+      for (const c of listenersByTour.values()) totalListeners += c;
       document.getElementById('statListenersCount').textContent = totalListeners;
       const activeSos = (appState.sosAlerts || []).filter((s) => s.status === 'active').length;
       document.getElementById('statSosCount').textContent = activeSos;
@@ -990,8 +1010,9 @@
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:14px 16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline); margin-bottom:10px;">
           <div>
             <div style="font-weight:800; color:var(--color-emerald-night);">
-              <span class="live-dot" style="display:inline-block; margin-right:6px;"></span>
+              ${r.isLive ? '<span class="live-dot" style="display:inline-block; margin-right:6px;"></span>' : '<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#94a3b8; margin-right:6px; vertical-align:middle;"></span>'}
               ${escapeHtml(r.tourCode)} (${escapeHtml(String(r.roomId || '').toUpperCase())}) — ${escapeHtml(r.guideName)}
+              <span class="badge ${r.isLive ? 'badge-live' : 'badge-gold'}" style="margin-left:6px; font-size:0.68rem;">${r.isLive ? 'CANLI YAYIN' : 'HAZIR'}</span>
             </div>
             <div style="font-size:0.8rem; color:var(--color-muted); margin-top:2px;">${escapeHtml(r.currentTopic)}</div>
           </div>
@@ -1061,7 +1082,7 @@
             <span>Hedef: ${escapeHtml(a.tourCode)} • ${escapeHtml(a.sender)}</span>
             <div style="display:flex; align-items:center; gap:8px;">
               <span>${escapeHtml(a.createdAt)}</span>
-              <button type="button" class="btn btn-outline btn-sm" style="padding:2px 8px; font-size:0.7rem; color:var(--color-danger);" data-panel-action="delete-ann" data-id="${escapeHtml(a.id)}">Sil</button>
+              ${scopedAgency && a.tourCode === 'ALL' ? '' : `<button type="button" class="btn btn-outline btn-sm" style="padding:2px 8px; font-size:0.7rem; color:var(--color-danger);" data-panel-action="delete-ann" data-id="${escapeHtml(a.id)}">Sil</button>`}
             </div>
           </div>
           <div style="font-weight:800; color:var(--color-emerald-night); margin:4px 0;">${escapeHtml(a.title)}</div>
@@ -1164,8 +1185,6 @@
       if (fullReqBox) fullReqBox.innerHTML = reqHtml;
     }
 
-    fetchAdminData();
-
     async function openRawReaReport() {
       try {
         const res = await fetch('/api/rea-report');
@@ -1176,7 +1195,12 @@
         const rawJson = await res.json();
         const blob = new Blob([JSON.stringify(rawJson, null, 2)], { type: 'application/json;charset=utf-8' });
         const blobUrl = URL.createObjectURL(blob);
-        window.open(blobUrl, '_blank', 'noopener');
+        const dl = document.createElement('a');
+        dl.href = blobUrl;
+        dl.download = 'ridvanses-rea-report.json';
+        document.body.appendChild(dl);
+        dl.click();
+        dl.remove();
         setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
       } catch (e) {}
     }
@@ -1230,13 +1254,13 @@
         `;
       } catch (e) {}
     }
-    loadReaReport();
 
     let adminWsInstance = null;
     let adminWsReconnectTimer = null;
 
     // Real-time Admin WebSocket
     function connectAdminWs() {
+      if (window.__adminWsScopedNoGlobal || isScopedSubAgency()) return;
       if (adminWsReconnectTimer) {
         clearTimeout(adminWsReconnectTimer);
         adminWsReconnectTimer = null;
@@ -1275,13 +1299,20 @@
               try { adminWs.close(); } catch {}
               return;
             }
-            fetch('/api/rea-report').then((r) => {
-              if (r.status === 401) handleAdminAuthExpired();
+            fetch('/api/bootstrap').then((r) => r.json()).then((d) => {
+              if (d && d.authenticated === false) handleAdminAuthExpired();
+              else if (d && d.user && d.user.assignedTour) {
+                appState = d;
+                window.__adminWsScopedNoGlobal = true;
+                try { adminWs.close(); } catch {}
+              }
             }).catch(() => {});
             return;
           }
           if (msg.type === 'admin-rooms-update' && appState) {
             appState.liveRooms = msg.rooms;
+            if (Array.isArray(msg.sosAlerts)) appState.sosAlerts = msg.sosAlerts;
+            if (Array.isArray(msg.announcements)) appState.announcements = msg.announcements;
             renderAll();
           }
           if ((msg.type === 'sos-alert' || msg.type === 'sos-resolved') && appState) {
@@ -1331,18 +1362,33 @@
       };
       adminWs.onerror = () => {};
     }
-    connectAdminWs();
+
+    (async function initAdminPanel() {
+      await fetchAdminData();
+      if (!appState) return;
+      if (isScopedSubAgency()) {
+        window.__adminWsScopedNoGlobal = true;
+        if (!window.__adminScopedPollTimer) {
+          window.__adminScopedPollTimer = setInterval(() => {
+            if (document.visibilityState !== 'hidden') fetchAdminData();
+          }, 10000);
+        }
+      } else {
+        loadReaReport();
+        connectAdminWs();
+      }
+    })();
 
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
-        if (!adminWsInstance || (adminWsInstance.readyState !== WebSocket.OPEN && adminWsInstance.readyState !== WebSocket.CONNECTING)) {
+        if (!window.__adminWsScopedNoGlobal && !isScopedSubAgency() && (!adminWsInstance || (adminWsInstance.readyState !== WebSocket.OPEN && adminWsInstance.readyState !== WebSocket.CONNECTING))) {
           connectAdminWs();
         }
         fetchAdminData();
       }
     });
     window.addEventListener('online', () => {
-      connectAdminWs();
+      if (!window.__adminWsScopedNoGlobal && !isScopedSubAgency()) connectAdminWs();
       fetchAdminData();
     });
 
@@ -1381,6 +1427,8 @@
       document.getElementById('tourFormDescInput').value = tour.description || '';
       const tourCard = document.getElementById('tourFormCard');
       if (tourCard) tourCard.style.display = '';
+      const toursGrid = document.getElementById('toursTabGrid');
+      if (toursGrid) toursGrid.style.gridTemplateColumns = '';
       document.getElementById('tourFormTitle').textContent = `Kafileyi Düzenle (${tour.code})`;
       document.getElementById('tourFormSubmitBtn').textContent = 'Değişiklikleri Kaydet';
       document.getElementById('cancelEditTourBtn').style.display = 'inline-flex';
@@ -1401,6 +1449,8 @@
       document.getElementById('cancelEditTourBtn').style.display = 'none';
       const tourCard = document.getElementById('tourFormCard');
       if (tourCard && isScopedSubAgency()) tourCard.style.display = 'none';
+      const toursGrid = document.getElementById('toursTabGrid');
+      if (toursGrid) toursGrid.style.gridTemplateColumns = isScopedSubAgency() ? '1fr' : '';
     }
 
     document.getElementById('createTourForm').addEventListener('submit', async (e) => {
@@ -1556,7 +1606,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=77');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=78');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -1570,32 +1620,47 @@
         let receipt = null;
         try { receipt = JSON.parse(localStorage.getItem('rys_sos_push_receipt') || 'null'); } catch {}
         const prevRev = Number(localStorage.getItem('rys_sos_push_rev') || 0);
-        const revision = Math.max(Date.now() * 1024, prevRev + 1);
+        let revision = Math.max(Date.now() * 1024, prevRev + 1);
         localStorage.setItem('rys_sos_push_rev', String(revision));
         let deviceId = localStorage.getItem('rys_admin_device_id');
         if (!deviceId) {
           deviceId = 'adm-' + Math.random().toString(36).slice(2, 12);
           localStorage.setItem('rys_admin_device_id', deviceId);
         }
-        const res = await fetch('/api/push/subscribe-sos', {
+        const targetTourCode = isScopedSubAgency()
+          ? ((appState && appState.user && appState.user.assignedTour) || (appState && appState.tours && appState.tours[0] && appState.tours[0].code) || 'RY-KASIM')
+          : 'ALL';
+        const postSosSub = (rev) => fetch('/api/push/subscribe-sos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             endpoint: json.endpoint,
             keys: json.keys,
-            tourCode: 'ALL',
+            tourCode: targetTourCode,
             deviceId,
-            revision,
+            revision: rev,
             ...(receipt && receipt.endpoint === json.endpoint ? { subscriptionToken: receipt.subscriptionToken } : {})
           })
         });
+        let res = await postSosSub(revision);
         if (res.status === 401) {
           handleAdminAuthExpired();
           return false;
         }
-        const saved = await res.json();
+        let saved = await res.json().catch(() => ({}));
+        if (res.status === 409 && saved && Number.isFinite(saved.revision)) {
+          revision = saved.revision + 1;
+          localStorage.setItem('rys_sos_push_rev', String(revision));
+          res = await postSosSub(revision);
+          saved = await res.json().catch(() => ({}));
+        }
         if (!res.ok || !saved.success) throw new Error(saved.error || 'SOS bildirimi kaydedilemedi');
-        localStorage.setItem('rys_sos_push_receipt', JSON.stringify({ endpoint: json.endpoint, subscriptionToken: saved.subscriptionToken, tourCode: saved.tourCode }));
+        const nextMeta = { endpoint: json.endpoint, subscriptionToken: saved.subscriptionToken, tourCode: saved.tourCode };
+        localStorage.setItem('rys_sos_push_receipt', JSON.stringify(nextMeta));
+        try {
+          const swTarget = reg.active || navigator.serviceWorker.controller;
+          if (swTarget) swTarget.postMessage({ type: 'SYNC_PUSH_META', kind: 'sos', meta: nextMeta });
+        } catch {}
         if (btn) {
           btn.className = 'btn btn-outline btn-sm';
           btn.textContent = '✅ SOS Bildirimi Aktif';
@@ -1639,7 +1704,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=77').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=78').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED' && localStorage.getItem('rys_sos_push_receipt')) {
           syncAdminSosPush(true);

@@ -15,10 +15,10 @@
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=21" />
-  <script src="/vercel-ws-shim.js?v=77"></script>
+  <link rel="stylesheet" href="/css/style.css?v=22" />
+  <script src="/vercel-ws-shim.js?v=78"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=47"></script>
+  <script src="/js/umrah-steps-map.js?v=78"></script>
   <style>
     .app-shell {
       max-width: 540px;
@@ -120,7 +120,7 @@
     .sos-hold-fill {
       position: absolute;
       top: 0;
-      left: 0;
+      inset-inline-start: 0;
       bottom: 0;
       width: 0%;
       background: rgba(220, 38, 38, 0.25);
@@ -827,7 +827,23 @@
         guideWaiting: '⏸️ Hoca Beklemede — Bağlantınız Aktif',
         tapToUnmute: '🔊 Sesi Duyabilmek İçin Ekrana Dokunun',
         sosFetchingGps: '<strong>Telefonunuzun Canlı GPS Konumu Alınıyor...</strong><br/>Ekranda konum izni penceresi çıkarsa lütfen <strong>"İzin Ver"</strong> seçeneğine dokunun.',
-        sosSentTitle: 'CANLI KONUMUNUZ REHBER HOCAMIZA İLETİLDİ!'
+        sosSentTitle: 'CANLI KONUMUNUZ REHBER HOCAMIZA İLETİLDİ!',
+        wakeLockActiveTitle: 'Tavaf Ekran Koruyucu: Aktif',
+        wakeLockActiveBtn: 'Korumayı Kapat',
+        wakeLockOffTitle: 'Tavaf Ekran Koruyucu: Kapalı',
+        pushActiveBadge: '🔔 Aktif',
+        pushEnableBadge: '🔔 Bildirim Aç',
+        pushActiveBannerTitle: 'Arka Plan Bildirimleri Aktif',
+        pushActiveBannerSub: 'Uygulama kapalıyken bile duyurular telefonunuza bildirim olarak düşer.',
+        pushTestBtn: 'Test Et',
+        pushDeniedTitle: 'Bildirim İzni Kapalı',
+        pushDeniedSub: 'Telefon Ayarları > Bildirimler > RıdvanSes menüsünden bildirimlere izin veriniz.',
+        pushPairTitle: 'Bildirim Eşleştirmesini Tamamlayın',
+        pushPairSub: 'Bu telefonu kafile duyuru sunucusuna kaydetmek için dokunun.',
+        pushPairBtn: 'Şimdi Eşleştir',
+        pushPromptTitle: 'Uygulama Kapalıyken Duyuru Bildirimlerini Açın',
+        pushPromptSub: 'Rehber hocamız duyuru yayınladığında kilit ekranınıza bildirim gelmesi için izin verin.',
+        pushPinNeededToast: 'PIN korumalı kafilede bildirim açmak için lütfen önce Oda PIN Kodunu giriniz.'
       },
       ar: {
         dir: 'rtl',
@@ -869,7 +885,23 @@
         guideWaiting: '⏸️ المرشد في الانتظار — اتصالك نشط',
         tapToUnmute: '🔊 اضغط على الشاشة لتشغيل الصوت',
         sosFetchingGps: '<strong>جارٍ تحديد موقع GPS المباشر...</strong><br/>يرجى الضغط على <strong>"سماح"</strong> إذا ظهرت نافذة إذن الموقع.',
-        sosSentTitle: 'تم إرسال موقعك المباشر إلى المرشد والمركز!'
+        sosSentTitle: 'تم إرسال موقعك المباشر إلى المرشد والمركز!',
+        wakeLockActiveTitle: 'حماية الشاشة أثناء الطواف: مفعّلة',
+        wakeLockActiveBtn: 'إيقاف الحماية',
+        wakeLockOffTitle: 'حماية الشاشة: متوقفة',
+        pushActiveBadge: '🔔 مفعّل',
+        pushEnableBadge: '🔔 تفعيل التنبيهات',
+        pushActiveBannerTitle: 'إشعارات الخلفية مفعّلة',
+        pushActiveBannerSub: 'تصلك إعلانات القافلة حتى عندما يكون التطبيق مغلقاً بالكامل.',
+        pushTestBtn: 'تجربة',
+        pushDeniedTitle: 'إذن الإشعارات مغلق',
+        pushDeniedSub: 'يرجى تفعيل الإشعارات من إعدادات الهاتف > الإشعارات > RıdvanSes.',
+        pushPairTitle: 'إكمال ربط الإشعارات',
+        pushPairSub: 'اضغط لتسجيل هذا الهاتف في تنبيهات القافلة.',
+        pushPairBtn: 'ربط الآن',
+        pushPromptTitle: 'فعّل إشعارات الإعلانات عند إغلاق التطبيق',
+        pushPromptSub: 'اسمح بالإشعارات لتصلك تنبيهات المرشد على شاشة القفل.',
+        pushPinNeededToast: 'يرجى إدخال رمز PIN الخاص بالقافلة أولاً لتفعيل الإشعارات.'
       },
       en: {
         dir: 'ltr',
@@ -911,7 +943,23 @@
         guideWaiting: '⏸️ Guide Standing By — Connected',
         tapToUnmute: '🔊 Tap Screen to Hear Live Audio',
         sosFetchingGps: '<strong>Acquiring Live GPS Location...</strong><br/>Please tap <strong>"Allow"</strong> if prompted for location access.',
-        sosSentTitle: 'YOUR LIVE LOCATION HAS BEEN SENT TO YOUR GUIDE!'
+        sosSentTitle: 'YOUR LIVE LOCATION HAS BEEN SENT TO YOUR GUIDE!',
+        wakeLockActiveTitle: 'Tawaf Screen Lock Guard: Active',
+        wakeLockActiveBtn: 'Disable Guard',
+        wakeLockOffTitle: 'Tawaf Screen Lock Guard: Off',
+        pushActiveBadge: '🔔 Active',
+        pushEnableBadge: '🔔 Enable Alerts',
+        pushActiveBannerTitle: 'Background Notifications Active',
+        pushActiveBannerSub: 'Group announcements arrive on your lock screen even when the app is closed.',
+        pushTestBtn: 'Test',
+        pushDeniedTitle: 'Notifications Blocked',
+        pushDeniedSub: 'Please enable notifications in Phone Settings > Notifications > RıdvanSes.',
+        pushPairTitle: 'Complete Notification Pairing',
+        pushPairSub: 'Tap to register this phone for group announcements.',
+        pushPairBtn: 'Pair Now',
+        pushPromptTitle: 'Enable Background Announcement Alerts',
+        pushPromptSub: 'Allow notifications to receive alerts from your guide on your lock screen.',
+        pushPinNeededToast: 'Please enter the Tour PIN code first to enable notifications for this protected group.'
       },
       fr: {
         dir: 'ltr',
@@ -953,7 +1001,23 @@
         guideWaiting: '⏸️ Guide en Attente — Connecté',
         tapToUnmute: '🔊 Touchez l’Écran pour Activer le Son',
         sosFetchingGps: '<strong>Obtention de votre position GPS...</strong><br/>Veuillez appuyer sur <strong>« Autoriser »</strong>.',
-        sosSentTitle: 'VOTRE POSITION EN DIRECT A ÉTÉ ENVOYÉE AU GUIDE !'
+        sosSentTitle: 'VOTRE POSITION EN DIRECT A ÉTÉ ENVOYÉE AU GUIDE !',
+        wakeLockActiveTitle: 'Écran Éveillé : Actif',
+        wakeLockActiveBtn: 'Désactiver',
+        wakeLockOffTitle: 'Écran Éveillé : Désactivé',
+        pushActiveBadge: '🔔 Actif',
+        pushEnableBadge: '🔔 Alertes',
+        pushActiveBannerTitle: 'Notifications Arrière-Plan Actives',
+        pushActiveBannerSub: 'Vous recevrez les annonces du groupe même lorsque l’application est fermée.',
+        pushTestBtn: 'Tester',
+        pushDeniedTitle: 'Notifications Bloquées',
+        pushDeniedSub: 'Activez les notifications dans Réglages > Notifications > RıdvanSes.',
+        pushPairTitle: 'Terminer l’Association',
+        pushPairSub: 'Touchez pour enregistrer cet appareil aux annonces du groupe.',
+        pushPairBtn: 'Associer',
+        pushPromptTitle: 'Activer les Notifications en Arrière-Plan',
+        pushPromptSub: 'Autorisez les notifications pour recevoir les annonces sur l’écran verrouillé.',
+        pushPinNeededToast: 'Veuillez d’abord saisir le code PIN du groupe pour activer les notifications.'
       },
       id: {
         dir: 'ltr',
@@ -995,7 +1059,23 @@
         guideWaiting: '⏸️ Pembimbing Siaga — Terhubung',
         tapToUnmute: '🔊 Ketuk Layar untuk Mendengar Suara',
         sosFetchingGps: '<strong>Mengambil Lokasi GPS Langsung...</strong><br/>Silakan ketuk <strong>"Izinkan"</strong> jika diminta.',
-        sosSentTitle: 'LOKASI LANGSUNG ANDA TELAH DIKIRIM KE PEMBIMBING!'
+        sosSentTitle: 'LOKASI LANGSUNG ANDA TELAH DIKIRIM KE PEMBIMBING!',
+        wakeLockActiveTitle: 'Pelindung Layar Thawaf: Aktif',
+        wakeLockActiveBtn: 'Matikan',
+        wakeLockOffTitle: 'Pelindung Layar Thawaf: Nonaktif',
+        pushActiveBadge: '🔔 Aktif',
+        pushEnableBadge: '🔔 Notifikasi',
+        pushActiveBannerTitle: 'Notifikasi Latar Belakang Aktif',
+        pushActiveBannerSub: 'Pengumuman rombongan tetap masuk ke layar kunci saat aplikasi ditutup.',
+        pushTestBtn: 'Uji',
+        pushDeniedTitle: 'Izin Notifikasi Diblokir',
+        pushDeniedSub: 'Aktifkan notifikasi di Pengaturan Telepon > Notifikasi > RıdvanSes.',
+        pushPairTitle: 'Selesaikan Penautan Notifikasi',
+        pushPairSub: 'Ketuk untuk mendaftarkan ponsel ini ke pengumuman rombongan.',
+        pushPairBtn: 'Tautkan',
+        pushPromptTitle: 'Aktifkan Notifikasi Pengumuman Latar Belakang',
+        pushPromptSub: 'Izinkan notifikasi agar pengumuman pembimbing tampil di layar kunci.',
+        pushPinNeededToast: 'Silakan masukkan kode PIN rombongan terlebih dahulu untuk mengaktifkan notifikasi.'
       },
       ur: {
         dir: 'rtl',
@@ -1037,32 +1117,58 @@
         guideWaiting: '⏸️ معلم انتظار میں — آپ کا کنکشن فعال ہے',
         tapToUnmute: '🔊 آواز سننے کے لیے اسکرین کو چھوئیں',
         sosFetchingGps: '<strong>آپ کا لائیو GPS مقام حاصل کیا جا رہا ہے...</strong><br/>اجازت مانگنے پر <strong>"Allow"</strong> دبائیں۔',
-        sosSentTitle: 'آپ کا لائیو مقام معلم کو بھیج دیا گیا ہے!'
+        sosSentTitle: 'آپ کا لائیو مقام معلم کو بھیج دیا گیا ہے!',
+        wakeLockActiveTitle: 'طواف اسکرین محافظ: فعال',
+        wakeLockActiveBtn: 'بند کریں',
+        wakeLockOffTitle: 'طواف اسکرین محافظ: بند',
+        pushActiveBadge: '🔔 فعال',
+        pushEnableBadge: '🔔 اطلاعات کھولیں',
+        pushActiveBannerTitle: 'پس منظر اطلاعات فعال ہیں',
+        pushActiveBannerSub: 'ایپ بند ہونے پر بھی قافلے کے اعلانات لاک اسکرین پر موصول ہوں گے۔',
+        pushTestBtn: 'ٹیسٹ',
+        pushDeniedTitle: 'اطلاعات کی اجازت بند ہے',
+        pushDeniedSub: 'فون سیٹنگز > Notifications > RıdvanSes سے اطلاعات فعال کریں۔',
+        pushPairTitle: 'اطلاعات کا ربط مکمل کریں',
+        pushPairSub: 'اس فون کو قافلے کے اعلانات کے ساتھ مربوط کرنے کے لیے چھوئیں۔',
+        pushPairBtn: 'ابھی مربوط کریں',
+        pushPromptTitle: 'ایپ بند ہونے پر اعلانات کی اطلاعات کھولیں',
+        pushPromptSub: 'معلم کے اعلانات لاک اسکرین پر حاصل کرنے کے لیے اجازت دیں۔',
+        pushPinNeededToast: 'اطلاعات فعال کرنے کے لیے پہلے قافلے کا PIN کوڈ درج کریں۔'
       }
     };
 
     let currentLang = 'tr';
     function setLang(lang, btnEl) {
       currentLang = I18N[lang] ? lang : 'tr';
+      try { localStorage.setItem('ridvanses_lang', currentLang); } catch {}
       const dict = I18N[currentLang];
       document.getElementById('htmlRoot').setAttribute('dir', dict.dir);
       document.getElementById('htmlRoot').setAttribute('lang', currentLang);
       document.querySelectorAll('.lang-btn').forEach((b) => b.classList.remove('active'));
-      if (btnEl) btnEl.classList.add('active');
+      if (btnEl) {
+        btnEl.classList.add('active');
+      } else {
+        const matchedBtn = Array.from(document.querySelectorAll('.lang-btn')).find((b) => (b.getAttribute('onclick') || '').includes(`'${currentLang}'`));
+        if (matchedBtn) matchedBtn.classList.add('active');
+      }
 
       Object.keys(dict).forEach((k) => {
         const el = document.getElementById(`i18n_${k}`);
         if (el) el.textContent = dict[k];
       });
-      if (!wakeLockSentinel) {
-        const wlTitle = document.getElementById('wakeLockStatusTitle');
-        const wlSub = document.getElementById('wakeLockStatusSub');
-        const wlBtn = document.getElementById('wakeLockBtn');
+      const wlTitle = document.getElementById('wakeLockStatusTitle');
+      const wlSub = document.getElementById('wakeLockStatusSub');
+      const wlBtn = document.getElementById('wakeLockBtn');
+      if (typeof wakeLockSentinel !== 'undefined' && wakeLockSentinel && !wakeLockSentinel.released) {
+        if (wlTitle && dict.wakeLockActiveTitle) wlTitle.textContent = dict.wakeLockActiveTitle;
+        if (wlSub && dict.wakeLockStatusSub) wlSub.textContent = dict.wakeLockStatusSub;
+        if (wlBtn && dict.wakeLockActiveBtn) wlBtn.textContent = dict.wakeLockActiveBtn;
+      } else {
         if (wlTitle && dict.wakeLockStatusTitle) wlTitle.textContent = dict.wakeLockStatusTitle;
         if (wlSub && dict.wakeLockStatusSub) wlSub.textContent = dict.wakeLockStatusSub;
         if (wlBtn && dict.wakeLockBtn) wlBtn.textContent = dict.wakeLockBtn;
       }
-      if (typeof window.__rysSyncPushUi === 'function' && rysWebPushState().status === 'subscribed') {
+      if (typeof window.__rysSyncPushUi === 'function') {
         window.__rysSyncPushUi();
       } else {
         const pTitle = document.getElementById('annTabPushTitle');
@@ -1109,10 +1215,15 @@
     let availableToursCache = [];
     let availableHotelsCache = [];
 
-    // Parse URL query params & restore saved pilgrim name/phone/PIN
+    // Parse URL query params & restore saved pilgrim name/phone/PIN/tour/room/lang
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('code')) {
       document.getElementById('tourCodeInput').value = urlParams.get('code').toUpperCase();
+    } else {
+      try {
+        const savedCode = (localStorage.getItem('ridvanses_saved_tour_code') || '').trim().toUpperCase();
+        if (savedCode) document.getElementById('tourCodeInput').value = savedCode;
+      } catch {}
     }
     if (urlParams.get('pin')) {
       const initCode = (urlParams.get('code') || document.getElementById('tourCodeInput').value || 'RY-KASIM').trim().toUpperCase();
@@ -1148,10 +1259,10 @@
     if (urlParams.get('name')) {
       document.getElementById('pilgrimNameInput').value = urlParams.get('name');
     }
-    if (urlParams.get('lang') && I18N[urlParams.get('lang')]) {
-      const targetLang = urlParams.get('lang');
-      const btn = Array.from(document.querySelectorAll('.lang-btn')).find((b) => b.getAttribute('onclick').includes(`'${targetLang}'`));
-      setLang(targetLang, btn);
+    const initLangParam = urlParams.get('lang') || (function () { try { return localStorage.getItem('ridvanses_lang') || ''; } catch { return ''; } })();
+    if (initLangParam && I18N[initLangParam]) {
+      const btn = Array.from(document.querySelectorAll('.lang-btn')).find((b) => (b.getAttribute('onclick') || '').includes(`'${initLangParam}'`));
+      setLang(initLangParam, btn);
     }
 
     function selectTourCodePill(code) {
@@ -1213,12 +1324,15 @@
             }).join('');
           }
           if (!urlParams.get('code')) {
-            document.getElementById('tourCodeInput').value = data.tours[0].code;
+            let preferredCode = '';
+            try { preferredCode = (localStorage.getItem('ridvanses_saved_tour_code') || '').trim().toUpperCase(); } catch {}
+            const matchedSaved = preferredCode && data.tours.find((t) => String(t.code || '').toUpperCase() === preferredCode);
+            document.getElementById('tourCodeInput').value = matchedSaved ? matchedSaved.code : data.tours[0].code;
           }
           syncJoinCodeUi();
-          if (urlParams.get('room')) {
+          const wantedRoom = (urlParams.get('room') || (function () { try { return localStorage.getItem('ridvanses_saved_room') || ''; } catch { return ''; } })()).trim();
+          if (wantedRoom) {
             const roomSel = document.getElementById('roomSelect');
-            const wantedRoom = urlParams.get('room').trim();
             if (roomSel && Array.from(roomSel.options).some((o) => o.value === wantedRoom)) {
               roomSel.value = wantedRoom;
             }
@@ -1280,15 +1394,12 @@
       e.preventDefault();
       intentionalLeave = false;
       ensureAudioContext();
-      if (!isAudioListening) {
-        toggleAudioPlayback();
-      }
 
       const code = document.getElementById('tourCodeInput').value.trim().toUpperCase();
       const pin = (document.getElementById('tourPinInput')?.value || '').trim();
       const roomId = document.getElementById('roomSelect').value;
       const name = document.getElementById('pilgrimNameInput').value.trim() || 'Hacı Misafir';
-      const phone = document.getElementById('pilgrimPhoneInput').value.trim() || '+90 538 000 00 00';
+      const phone = document.getElementById('pilgrimPhoneInput').value.trim();
 
       const errEl = document.getElementById('joinError');
       errEl.style.display = 'none';
@@ -1312,19 +1423,24 @@
         }
 
         currentTour = data.tour;
+        if (!isAudioListening) {
+          toggleAudioPlayback();
+        }
         try {
           if (pin) sessionStorage.setItem('rys_tour_pin_' + currentTour.code, pin);
         } catch {}
         setWebPushTour(currentTour.code,pin);
-        try { localStorage.setItem('ridvanses_push_tour_code', currentTour.code); } catch {}
+        try {
+          localStorage.setItem('ridvanses_push_tour_code', currentTour.code);
+          localStorage.setItem('ridvanses_saved_tour_code', currentTour.code);
+          localStorage.setItem('ridvanses_saved_room', roomId);
+        } catch {}
         if (typeof window.__rysSyncPushUi === 'function') window.__rysSyncPushUi();
         setTimeout(() => { if (typeof maybeOpenPushOnboardingModal === 'function') maybeOpenPushOnboardingModal(); }, 350);
         updatePilgrimHotelNavigationUi(currentTour);
         try {
           localStorage.setItem('ridvanses_pilgrim_name', name);
-          if (phone && phone !== '+90 538 000 00 00') {
-            localStorage.setItem('ridvanses_pilgrim_phone', phone);
-          }
+          localStorage.setItem('ridvanses_pilgrim_phone', phone);
         } catch {}
 
         document.getElementById('joinView').style.display = 'none';
@@ -1496,11 +1612,19 @@
           return;
         }
 
-        if (msg.type === 'pin-error' || (msg.type === 'subscription-error' && msg.code === 'tour-unknown')) {
+        if (msg.type === 'pin-error' || msg.type === 'tour-unknown' || (msg.type === 'subscription-error' && msg.code === 'tour-unknown')) {
           try {
             if (msg.type === 'pin-error' && currentTour && currentTour.code) {
               sessionStorage.removeItem('rys_tour_pin_' + currentTour.code);
             }
+          } catch {}
+          try {
+            const ps = rysWebPushState();
+            ps.context = null;
+            ps.status = 'idle';
+            ps.tourCode = '';
+            ps.generation++;
+            window.__rysSyncPushUi?.();
           } catch {}
           leaveRoom();
           const pinBox = document.getElementById('pinInputBox');
@@ -1633,13 +1757,21 @@
           prependAnnouncement(msg.announcement);
           const dot = document.getElementById('annUnreadDot');
           if (dot) dot.style.display = 'block';
-          playNotificationChime();
+          if (isAudioListening) playNotificationChime();
           sendServiceWorkerNotification(msg.announcement.title,msg.announcement.message,'ridvanses-ann-'+msg.announcement.id);
         }
 
         if (msg.type === 'announcement-deleted' && msg.id) {
-          const el = document.querySelector(`[data-ann-id="${msg.id}"]`);
-          if (el) el.remove();
+          const targetId = String(msg.id);
+          const container = document.getElementById('announcementsList');
+          if (container) {
+            Array.from(container.querySelectorAll('[data-ann-id]')).forEach((el) => {
+              if (el.getAttribute('data-ann-id') === targetId) el.remove();
+            });
+            if (!container.querySelector('[data-ann-id]')) {
+              renderAnnouncements([]);
+            }
+          }
         }
       };
 
@@ -1757,7 +1889,7 @@
 
       if (!wasGuideLocationActive) {
         wasGuideLocationActive = true;
-        playNotificationChime();
+        if (isAudioListening) playNotificationChime();
       }
 
       document.getElementById('pilgrimGuideLocTime').textContent = `Güncelleme: ${loc.updatedAt || 'Şimdi'}`;
@@ -2074,7 +2206,7 @@
       if (!currentTour || intentionalLeave || rxProbePending) return;
       const roomId = document.getElementById('roomSelect')?.value || 'genel';
       const name = document.getElementById('pilgrimNameInput')?.value?.trim() || 'Hacı Misafir';
-      const phone = document.getElementById('pilgrimPhoneInput')?.value?.trim() || '+90 538 000 00 00';
+      const phone = document.getElementById('pilgrimPhoneInput')?.value?.trim() || '';
       const reconnect = () => connectWebSocket(currentTour.code, roomId, name, phone);
       const socket = ws;
       if (!socket || socket.readyState === WebSocket.CLOSED) {
@@ -2586,6 +2718,10 @@
         clearInterval(sosInterval);
         sosInterval = null;
       }
+      if (gpsWatchId !== null && navigator.geolocation) {
+        try { navigator.geolocation.clearWatch(gpsWatchId); } catch {}
+        gpsWatchId = null;
+      }
       document.getElementById('sosHoldFill').style.width = '0%';
     }
 
@@ -2676,7 +2812,8 @@
       const deliverSosPayload = async (lat, lng, accuracy, note, permWarning = '') => {
         const tourCode = (currentTour && currentTour.code) || document.getElementById('tourCodeInput').value.trim().toUpperCase() || 'RY-KASIM';
         const pilgrimName = document.getElementById('pilgrimNameInput').value.trim() || 'Hacı Misafir';
-        const phone = document.getElementById('pilgrimPhoneInput').value.trim() || '+90 538 399 96 66';
+        const phone = document.getElementById('pilgrimPhoneInput').value.trim();
+        const pin = (document.getElementById('tourPinInput')?.value || '').trim();
         const sosId = `sos-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -2699,6 +2836,8 @@
           body: JSON.stringify({
             id: sosId,
             tourCode,
+            deviceId: pilgrimDeviceId,
+            ...(pin ? { pin } : {}),
             pilgrimName,
             phone,
             lat,
@@ -2783,6 +2922,11 @@
           `${fallbackCity} (Yaklaşık Ağ Konumu — GPS İzni Bekleniyor)`,
           warnText
         );
+      } finally {
+        if (gpsWatchId !== null && navigator.geolocation) {
+          try { navigator.geolocation.clearWatch(gpsWatchId); } catch {}
+          gpsWatchId = null;
+        }
       }
     }
 
@@ -2855,6 +2999,7 @@
     function leaveRoom() {
       window.__ryRxPlayerLoad?.cancel?.();
       intentionalLeave = true;rxAudioSourceId=null;rxStreamActive=null;rxStreamMode=null;rxAudioStateSeq=null;rxAudioStateEnded=false;rxAudioMediaEpoch=null;
+      currentTour = null;
       if (window._ryWsReconnectTimeout) {
         clearTimeout(window._ryWsReconnectTimeout);
         window._ryWsReconnectTimeout = null;
@@ -2869,6 +3014,7 @@
         ws = null;
       }
       isAudioListening = false;
+      if (typeof stopPilgrimAudioGuardTimer === 'function') stopPilgrimAudioGuardTimer();
       const btn = document.getElementById('toggleAudioBtn');
       const orb = document.getElementById('playerOrb');
       const dict = I18N[currentLang] || I18N.tr;
@@ -2880,7 +3026,13 @@
       stopAllActiveSources();
       stopBackgroundKeepAliveAudio();
       releaseWakeLock();
-      if (gpsWatchId !== null && navigator.geolocation) {
+      if (typeof navigator !== 'undefined' && navigator && 'mediaSession' in navigator) {
+        try {
+          navigator.mediaSession.playbackState = 'none';
+          navigator.mediaSession.metadata = null;
+        } catch {}
+      }
+      if (typeof gpsWatchId !== 'undefined' && gpsWatchId !== null && typeof navigator !== 'undefined' && navigator && navigator.geolocation) {
         try { navigator.geolocation.clearWatch(gpsWatchId); } catch {}
         gpsWatchId = null;
       }
@@ -3069,9 +3221,10 @@
             if(!current())continue;
             let receipt=null;try{receipt=JSON.parse(localStorage.getItem('rys_push_receipt')||'null');}catch(e){}
             const json=subscription.toJSON();
+            const hasOwnerCap=receipt?.subscriptionToken&&(receipt.endpoint===json.endpoint||receipt.tourCode===context.tourCode);
             let body={endpoint:json.endpoint,keys:json.keys,tourCode:context.tourCode,pin:context.pin,
               lang:currentLang,deviceId:pilgrimDeviceId,revision:nextWebPushRevision(),
-              ...(receipt?.endpoint===json.endpoint?{subscriptionToken:receipt.subscriptionToken}:{})};
+              ...(hasOwnerCap?{subscriptionToken:receipt.subscriptionToken}:{})};
             let response=await webPushFetch('/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
             let saved=await response.json();
             if(response.status===409&&saved.error==='stale-subscription'&&current()){
@@ -3080,7 +3233,14 @@
               saved=await response.json();
             }
             if(!response.ok||!saved.success)throw Error('Bildirim aboneliği kaydedilemedi');
-            try{localStorage.setItem('rys_push_receipt',JSON.stringify({endpoint:json.endpoint,subscriptionToken:saved.subscriptionToken}));}catch(e){}
+            try{localStorage.setItem('rys_push_receipt',JSON.stringify({endpoint:json.endpoint,subscriptionToken:saved.subscriptionToken,tourCode:context.tourCode}));}catch(e){}
+            try{
+              const swTarget=(registration.active&&typeof registration.active.postMessage==='function'?registration.active:null)||navigator.serviceWorker?.controller;
+              const apiOrig=(typeof window!=='undefined'&&(window.ryVdsOrigin||(window.location&&window.location.origin)))||'';
+              if(swTarget&&typeof swTarget.postMessage==='function'){
+                swTarget.postMessage({type:'SYNC_PUSH_META',meta:{kind:'pilgrim',endpoint:json.endpoint,subscriptionToken:saved.subscriptionToken,tourCode:context.tourCode,lang:currentLang,deviceId:pilgrimDeviceId,apiOrigin:apiOrig}});
+              }
+            }catch(e){}
             if(current()){state.status='subscribed';state.lastError='';state.tourCode=context.tourCode;result=true;}
           }catch(e){if(current()){state.status='retry';state.lastError=String(e?.message||e||'');}}
         }while(completed!==state.generation);
@@ -3132,7 +3292,7 @@
     navigator.serviceWorker?.addEventListener('message',(ev)=>{if(ev.data?.type==='PUSH_SUBSCRIPTION_CHANGED'&&rysWebPushState().context)void syncWebPushSubscription();});
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=77').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=78').catch(() => {});
     }
 
     let subscribedBannerDismissed = false;
@@ -3163,7 +3323,7 @@
         return;
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=77').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=78').catch(() => {});
       }
       // iOS WebKit zorunluluğu: setWebPushTour senkron çalışır, Notification.requestPermission() doğrudan dokunuş içinde çağrılır.
       const state = rysWebPushState();
@@ -3173,7 +3333,24 @@
         (function(){ try { return localStorage.getItem('ridvanses_push_tour_code'); } catch { return ''; } })() ||
         'RY-KASIM'
       ).trim().toUpperCase();
-      const rawPin = (document.getElementById('tourPinInput')?.value || '').trim();
+      let rawPin = (document.getElementById('tourPinInput')?.value || '').trim();
+      if (!rawPin && rawCode) {
+        try { rawPin = (sessionStorage.getItem('rys_tour_pin_' + rawCode) || '').trim(); } catch {}
+      }
+      let receipt = null;
+      try { receipt = JSON.parse(localStorage.getItem('rys_push_receipt') || 'null'); } catch {}
+      const matchedTour = (availableToursCache || []).find((t) => String(t.code || '').toUpperCase() === rawCode);
+      const needsPin = Boolean(matchedTour && (matchedTour.pinProtected || matchedTour.pinRequired));
+      const hasOwnerToken = Boolean(receipt && receipt.subscriptionToken && receipt.tourCode === rawCode);
+      if (needsPin && !currentTour && !rawPin && !hasOwnerToken) {
+        closePushOnboardingModal();
+        const pinBox = document.getElementById('pinInputBox');
+        if (pinBox) pinBox.style.display = 'block';
+        document.getElementById('tourPinInput')?.focus();
+        const dict = I18N[currentLang] || I18N.tr;
+        showAppToast(dict.pushPinNeededToast || 'PIN korumalı kafilede bildirim açmak için lütfen önce Oda PIN Kodunu giriniz.', 5000);
+        return;
+      }
       if (rawCode && (!state.context || state.context.tourCode !== rawCode || (rawPin && state.context.pin !== rawPin))) {
         setWebPushTour(rawCode, rawPin);
         try { localStorage.setItem('ridvanses_push_tour_code', rawCode); } catch {}
@@ -3202,11 +3379,19 @@
         }
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && !rysWebPushState().context) {
           let code = '';
-          try { code = (localStorage.getItem('ridvanses_push_tour_code') || '').trim().toUpperCase(); } catch {}
+          let receipt = null;
+          try {
+            code = (localStorage.getItem('ridvanses_push_tour_code') || '').trim().toUpperCase();
+            receipt = JSON.parse(localStorage.getItem('rys_push_receipt') || 'null');
+          } catch {}
+          if (!code && receipt && receipt.tourCode) code = String(receipt.tourCode).trim().toUpperCase();
           if (!code) code = (document.getElementById('tourCodeInput')?.value || 'RY-KASIM').trim().toUpperCase();
           const matched = (availableToursCache || []).find((t) => String(t.code || '').toUpperCase() === code);
-          if (code && (!matched || (!matched.pinProtected && !matched.pinRequired))) {
-            setWebPushTour(code, '');
+          let savedPin = '';
+          try { savedPin = (sessionStorage.getItem('rys_tour_pin_' + code) || '').trim(); } catch {}
+          const hasOwnerToken = Boolean(receipt && receipt.subscriptionToken && receipt.tourCode === code);
+          if (code && (!matched || (!matched.pinProtected && !matched.pinRequired) || savedPin || hasOwnerToken)) {
+            setWebPushTour(code, savedPin);
           }
         }
       } catch {}
@@ -3214,6 +3399,7 @@
     };
 
     window.__rysSyncPushUi = function () {
+      const dict = I18N[currentLang] || I18N.tr;
       const isIos = isIosDevice();
       const standalone = isStandaloneApp();
       const supported = ('Notification' in window) && ('serviceWorker' in navigator);
@@ -3255,10 +3441,10 @@
           navPushBtn.style.display = 'inline-flex';
           if (subscribed) {
             navPushBtn.className = 'btn btn-outline btn-sm';
-            navPushBtn.innerHTML = '🔔 Aktif';
+            navPushBtn.innerHTML = dict.pushActiveBadge || '🔔 Aktif';
           } else {
             navPushBtn.className = 'btn btn-gold btn-sm';
-            navPushBtn.innerHTML = '🔔 Bildirim Aç';
+            navPushBtn.innerHTML = dict.pushEnableBadge || '🔔 Bildirim Aç';
           }
         }
 
@@ -3269,35 +3455,35 @@
             pushBanner.style.display = 'flex';
             if (subscribed) {
               if (bannerIcon) bannerIcon.textContent = '✅';
-              if (bannerTitle) bannerTitle.textContent = `Arka Plan Bildirimleri Aktif (${tourLabel})`;
-              if (bannerSub) bannerSub.textContent = 'Uygulama tamamen kapalıyken bile duyurular telefonunuza bildirim olarak düşer.';
+              if (bannerTitle) bannerTitle.textContent = `${dict.pushActiveBannerTitle || 'Arka Plan Bildirimleri Aktif'} (${tourLabel})`;
+              if (bannerSub) bannerSub.textContent = dict.pushActiveBannerSub || 'Uygulama tamamen kapalıyken bile duyurular telefonunuza bildirim olarak düşer.';
               if (bannerBtn) {
                 bannerBtn.style.display = 'inline-flex';
-                bannerBtn.textContent = 'Test Et';
+                bannerBtn.textContent = dict.pushTestBtn || 'Test Et';
               }
               if (bannerDismiss) bannerDismiss.style.display = 'inline-flex';
             } else if (perm === 'denied') {
               if (bannerIcon) bannerIcon.textContent = '⚠️';
-              if (bannerTitle) bannerTitle.textContent = 'Bildirim İzni Kapalı';
-              if (bannerSub) bannerSub.textContent = 'Telefon Ayarları > Bildirimler > RıdvanSes menüsünden bildirimlere izin veriniz.';
+              if (bannerTitle) bannerTitle.textContent = dict.pushDeniedTitle || 'Bildirim İzni Kapalı';
+              if (bannerSub) bannerSub.textContent = dict.pushDeniedSub || 'Telefon Ayarları > Bildirimler > RıdvanSes menüsünden bildirimlere izin veriniz.';
               if (bannerBtn) bannerBtn.style.display = 'none';
               if (bannerDismiss) bannerDismiss.style.display = 'none';
             } else if (perm === 'granted') {
               if (bannerIcon) bannerIcon.textContent = '🔔';
-              if (bannerTitle) bannerTitle.textContent = 'Bildirim Eşleştirmesini Tamamlayın';
-              if (bannerSub) bannerSub.textContent = 'Bu telefonu kafile duyuru sunucusuna kaydetmek için dokunun.';
+              if (bannerTitle) bannerTitle.textContent = dict.pushPairTitle || 'Bildirim Eşleştirmesini Tamamlayın';
+              if (bannerSub) bannerSub.textContent = dict.pushPairSub || 'Bu telefonu kafile duyuru sunucusuna kaydetmek için dokunun.';
               if (bannerBtn) {
                 bannerBtn.style.display = 'inline-flex';
-                bannerBtn.textContent = 'Şimdi Eşleştir';
+                bannerBtn.textContent = dict.pushPairBtn || 'Şimdi Eşleştir';
               }
               if (bannerDismiss) bannerDismiss.style.display = 'none';
             } else {
               if (bannerIcon) bannerIcon.textContent = '🔔';
-              if (bannerTitle) bannerTitle.textContent = 'Uygulama Kapalıyken Duyuru Bildirimlerini Açın';
-              if (bannerSub) bannerSub.textContent = 'Rehber hocamız veya yönetim duyuru yayınladığında kilit ekranınıza bildirim gelmesi için izin verin.';
+              if (bannerTitle) bannerTitle.textContent = dict.pushPromptTitle || 'Uygulama Kapalıyken Duyuru Bildirimlerini Açın';
+              if (bannerSub) bannerSub.textContent = dict.pushPromptSub || 'Rehber hocamız veya yönetim duyuru yayınladığında kilit ekranınıza bildirim gelmesi için izin verin.';
               if (bannerBtn) {
                 bannerBtn.style.display = 'inline-flex';
-                bannerBtn.textContent = 'Bildirimlere İzin Ver';
+                bannerBtn.textContent = dict.annTabPushBtn || 'Bildirimlere İzin Ver';
               }
               if (bannerDismiss) bannerDismiss.style.display = 'none';
             }
@@ -3315,19 +3501,19 @@
           annBtn.style.display = 'inline-flex';
           annBtn.textContent = 'Kurulum Rehberi';
         } else if (subscribed) {
-          annTitle.textContent = `✅ Kapalı Ekran Bildirimleri Aktif (${tourLabel})`;
-          annSub.textContent = 'Uygulama kapalıyken yayınlanan tüm duyurular kilit ekranınıza düşer.';
+          annTitle.textContent = `✅ ${dict.pushActiveBannerTitle || 'Kapalı Ekran Bildirimleri Aktif'} (${tourLabel})`;
+          annSub.textContent = dict.pushActiveBannerSub || 'Uygulama kapalıyken yayınlanan tüm duyurular kilit ekranınıza düşer.';
           annBtn.style.display = 'inline-flex';
-          annBtn.textContent = 'Test Bildirimi';
+          annBtn.textContent = dict.pushTestBtn || 'Test Bildirimi';
         } else if (perm === 'denied') {
-          annTitle.textContent = '⚠️ Bildirim İzni Engellenmiş';
-          annSub.textContent = 'Telefon Ayarları > Bildirimler > RıdvanSes bölümünden izin veriniz.';
+          annTitle.textContent = `⚠️ ${dict.pushDeniedTitle || 'Bildirim İzni Engellenmiş'}`;
+          annSub.textContent = dict.pushDeniedSub || 'Telefon Ayarları > Bildirimler > RıdvanSes bölümünden izin veriniz.';
           annBtn.style.display = 'none';
         } else {
-          annTitle.textContent = '🔔 Kapalı Ekran Bildirimleri Kapalı';
-          annSub.textContent = 'Uygulama kapalıyken de duyuru alabilmek için bildirimlere izin verin.';
+          annTitle.textContent = dict.annTabPushTitle || '🔔 Kapalı Ekran Bildirimleri Kapalı';
+          annSub.textContent = dict.annTabPushSub || 'Uygulama kapalıyken de duyuru alabilmek için bildirimlere izin verin.';
           annBtn.style.display = 'inline-flex';
-          annBtn.textContent = 'Bildirimlere İzin Ver';
+          annBtn.textContent = dict.annTabPushBtn || 'Bildirimlere İzin Ver';
         }
       }
     };
@@ -3342,7 +3528,8 @@
     let rysWakePending=null;
     async function requestWakeLock(){
       wakeLockDesired=true;
-      const title=document.getElementById('wakeLockStatusTitle'),sub=document.getElementById('wakeLockStatusSub');
+      const title=document.getElementById('wakeLockStatusTitle'),sub=document.getElementById('wakeLockStatusSub'),btn=document.getElementById('wakeLockBtn');
+      const dict=(typeof I18N!=='undefined'&&typeof currentLang!=='undefined'&&I18N[currentLang])||null;
       if(wakeLockSentinel&&!wakeLockSentinel.released)return;
       if(rysWakePending)return rysWakePending;
       if(!navigator.wakeLock||document.visibilityState!=='visible')return;
@@ -3353,11 +3540,14 @@
           wakeLockSentinel=sentinel;
           sentinel.addEventListener('release',()=>{
             if(wakeLockSentinel===sentinel)wakeLockSentinel=null;
-            if(title)title.textContent='Ekran koruması bırakıldı';
+            const d=(typeof I18N!=='undefined'&&typeof currentLang!=='undefined'&&I18N[currentLang])||null;
+            if(title)title.textContent=(d&&d.wakeLockStatusTitle)||'Ekran koruması bırakıldı';
+            if(btn)btn.textContent=(d&&d.wakeLockBtn)||'Ekran Kilidini Önle';
           });
-          if(title)title.textContent='Ekran açık tutma etkin';
-          if(sub)sub.textContent='İşletim sistemi ses kesintileri ayrıca yönetilir.';
-        }catch(e){if(title)title.textContent='Ekran açık tutma kullanılamıyor';}
+          if(title)title.textContent=(dict&&dict.wakeLockActiveTitle)||'Ekran açık tutma etkin';
+          if(sub)sub.textContent=(dict&&dict.wakeLockStatusSub)||'İşletim sistemi ses kesintileri ayrıca yönetilir.';
+          if(btn)btn.textContent=(dict&&dict.wakeLockActiveBtn)||'Korumayı Kapat';
+        }catch(e){if(title)title.textContent=(dict&&dict.wakeLockStatusTitle)||'Ekran açık tutma kullanılamıyor';}
         finally{rysWakePending=null;}
       })();return rysWakePending;
     }
@@ -3370,14 +3560,15 @@
         } catch (e) {}
         wakeLockSentinel = null;
       }
+      const dict = I18N[currentLang] || I18N.tr;
       const titleEl = document.getElementById('wakeLockStatusTitle');
       const btnEl = document.getElementById('wakeLockBtn');
-      if (titleEl) titleEl.textContent = 'Tavaf Ekran Kilidi Koruyucu Kapalı';
-      if (btnEl) btnEl.textContent = 'Ekran Kilidini Önle';
+      if (titleEl) titleEl.textContent = dict.wakeLockOffTitle || 'Tavaf Ekran Kilidi Koruyucu Kapalı';
+      if (btnEl) btnEl.textContent = dict.wakeLockBtn || 'Ekran Kilidini Önle';
     }
 
     function toggleWakeLockMode() {
-      if (wakeLockSentinel || wakeLockDesired) {
+      if ((wakeLockSentinel && !wakeLockSentinel.released) || (rysWakePending && wakeLockDesired)) {
         releaseWakeLock();
       } else {
         requestWakeLock();
@@ -3425,7 +3616,7 @@
         lastPilgrimBgReconnectAt = now;
         const roomId = document.getElementById('roomSelect')?.value || 'genel';
         const name = document.getElementById('pilgrimNameInput')?.value?.trim() || 'Hacı Misafir';
-        const phone = document.getElementById('pilgrimPhoneInput')?.value?.trim() || '+90 538 000 00 00';
+        const phone = document.getElementById('pilgrimPhoneInput')?.value?.trim() || '';
         connectWebSocket(currentTour.code, roomId, name, phone);
       }
     }
@@ -3501,7 +3692,7 @@
       writeStr(36, 'data');
       view.setUint32(40, numSamples * 2, true);
       for (let i = 0; i < numSamples; i++) {
-        view.setInt16(44 + i * 2, 0, true);
+        view.setInt16(44 + i * 2, (i & 1) ? 1 : -1, true);
       }
       const bytes = new Uint8Array(buffer);
       let binary = '';
@@ -3512,6 +3703,7 @@
     }
 
     let bgAudioListenersAttached = false;
+    let ignoringBgPause = false;
 
     function attachBgKeepAliveAudioListeners(audioEl) {
       if (!audioEl || bgAudioListenersAttached) return;
@@ -3520,6 +3712,7 @@
       // <audio> kanalını duraklattığında ve AudioContext gerçekten kesildiğinde kurtarma döngüsünü başlat!
       ['pause', 'ended', 'stalled'].forEach((evt) => {
         audioEl.addEventListener(evt, () => {
+          if (ignoringBgPause) return;
           if (isAudioListening && !intentionalLeave) {
             handleSystemAudioInterruption('bg-audio-' + evt);
           }
@@ -3547,7 +3740,10 @@
 
     function stopBackgroundKeepAliveAudio() {
       const audioEl = document.getElementById('bgKeepAliveAudio');
-      if (audioEl) audioEl.pause();
+      if (audioEl) {
+        ignoringBgPause = true;
+        try { audioEl.pause(); } finally { setTimeout(() => { ignoringBgPause = false; }, 0); }
+      }
     }
 
     // PATCH: media-pilgrim-v51
@@ -3582,11 +3778,11 @@
   </script>
 
   <!-- IN-APP TOAST BILDIRIM KUTUSU -->
-  <div id="appToast" style="position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:10000; display:none; background:var(--color-emerald-night); color:#fff; border:1.5px solid var(--color-gold); border-radius:18px; padding:14px 22px; font-size:0.88rem; font-weight:600; line-height:1.5; box-shadow:0 12px 36px rgba(10,61,48,0.35); text-align:center; max-width:92%; width:auto; pointer-events:auto; transition:opacity 0.25s ease;"></div>
+  <div id="appToast" style="position:fixed; top:calc(16px + env(safe-area-inset-top, 0px)); left:50%; transform:translateX(-50%); z-index:10000; display:none; background:var(--color-emerald-night); color:#fff; border:1.5px solid var(--color-gold); border-radius:18px; padding:14px 22px; font-size:0.88rem; font-weight:600; line-height:1.5; box-shadow:0 12px 36px rgba(10,61,48,0.35); text-align:center; max-width:92%; width:auto; pointer-events:auto; transition:opacity 0.25s ease;"></div>
 
   <!-- PWA TELEFONA KURULUM REHBER MODALI -->
   <div class="modal-backdrop" id="pwaModal" onclick="if(event.target===this)closePwaModal()">
-    <div class="card-luxury" style="max-width:440px; width:100%;">
+    <div class="card-luxury" style="max-width:440px; width:100%; max-height:calc(100dvh - 32px); overflow-y:auto;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
         <h3 style="font-size:1.2rem; color:var(--color-emerald-night); margin:0;">RıdvanSes'i Telefonunuza Kurun</h3>
         <button type="button" class="btn btn-outline btn-sm" onclick="closePwaModal()">✕</button>
@@ -3639,7 +3835,7 @@
   </div>
   <!-- ANA EKRAN UYGULAMASI OTOMATİK BİLDİRİM İZNİ MODALI -->
   <div class="modal-backdrop" id="pushOnboardingModal" onclick="if(event.target===this)closePushOnboardingModal()">
-    <div class="card-luxury" style="max-width:410px; width:100%; text-align:center;">
+    <div class="card-luxury" style="max-width:410px; width:100%; max-height:calc(100dvh - 32px); overflow-y:auto; text-align:center;">
       <div style="width:58px; height:58px; margin:0 auto 12px; border-radius:18px; background:linear-gradient(135deg, #0b4636, #06231b); border:1.5px solid var(--color-gold); display:flex; align-items:center; justify-content:center; font-size:1.7rem;">🔔</div>
       <h3 style="font-size:1.22rem; color:var(--color-emerald-night); margin:0 0 8px;">Duyuru Bildirimlerini Açın</h3>
       <p style="font-size:0.88rem; color:var(--color-muted); line-height:1.5; margin:0 0 18px;">

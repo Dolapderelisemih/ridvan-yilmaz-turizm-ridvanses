@@ -85,8 +85,8 @@
   <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
   <title>Rıdvan Yılmaz Turizm | RıdvanSes — Dijital Sesli Rehberlik & Kafile Sistemi</title>
-  <link rel="stylesheet" href="/css/style.css?v=21" />
-  <script src="/vercel-ws-shim.js?v=77"></script>
+  <link rel="stylesheet" href="/css/style.css?v=22" />
+  <script src="/vercel-ws-shim.js?v=78"></script>
   <style>
     .hero {
       padding: 64px 0 76px;
@@ -922,25 +922,46 @@
       }
     }
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=77').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=78').catch(() => {});
     }
     loadBootstrap();
 
     // Contact Form Handler
     document.getElementById('contactForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const fd = new FormData(e.target);
-      const payload = Object.fromEntries(fd.entries());
-      const res = await fetch('/api/demo-request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const out = await res.json();
+      const form = e.target;
+      const submitBtn = form.querySelector('button[type="submit"]');
+      if (submitBtn && submitBtn.disabled) return;
       const fb = document.getElementById('contactFeedback');
-      fb.style.display = 'block';
-      fb.textContent = out.message || 'Talebiniz başarıyla alındı.';
-      e.target.reset();
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        const fd = new FormData(form);
+        const payload = Object.fromEntries(fd.entries());
+        const res = await fetch('/api/demo-request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const out = await res.json().catch(() => ({}));
+        fb.style.display = 'block';
+        if (res.ok) {
+          fb.style.background = 'var(--color-emerald-soft)';
+          fb.style.color = 'var(--color-emerald-night)';
+          fb.textContent = out.message || 'Talebiniz başarıyla alındı.';
+          form.reset();
+        } else {
+          fb.style.background = '#fef2f2';
+          fb.style.color = '#b91c1c';
+          fb.textContent = out.message || 'Talebiniz gönderilemedi, lütfen bilgilerinizi kontrol ediniz.';
+        }
+      } catch (err) {
+        fb.style.display = 'block';
+        fb.style.background = '#fef2f2';
+        fb.style.color = '#b91c1c';
+        fb.textContent = 'Bağlantı hatası oluştu, lütfen tekrar deneyin.';
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
     });
   </script>
 </body>

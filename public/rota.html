@@ -8,8 +8,8 @@
   <meta name="theme-color" content="#06231b" />
   <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=21" />
-  <script src="/vercel-ws-shim.js?v=77"></script>
+  <link rel="stylesheet" href="/css/style.css?v=22" />
+  <script src="/vercel-ws-shim.js?v=78"></script>
   <style>
     .rota-hero-strip {
       background:
@@ -56,8 +56,9 @@
     .toast-banner {
       position: fixed;
       bottom: 20px;
-      right: 20px;
-      max-width: 360px;
+      right: 16px;
+      left: auto;
+      max-width: min(360px, calc(100vw - 32px));
       background: var(--color-emerald-night);
       color: #ffffff;
       border: 1px solid var(--color-gold);
@@ -260,7 +261,7 @@
   <div id="rotaToast" class="toast-banner"></div>
 
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=47"></script>
+  <script src="/js/umrah-steps-map.js?v=78"></script>
   <script>
     (function () {
       const params = new URLSearchParams(window.location.search);
@@ -272,6 +273,7 @@
       let ws = null;
       let pollTimer = null;
       let wsReconnectTimer = null;
+      let subscriptionBlocked = false;
 
       function getSavedTourPin(code) {
         const clean = String(code || '').toUpperCase().trim();
@@ -469,15 +471,22 @@
           const pinGate = document.getElementById('rotaPinGateBox');
           const pinErr = document.getElementById('rotaPinErrorMsg');
           if (json && json.error === 'tour-unknown') {
+            subscriptionBlocked = true;
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
             if (pinGate) pinGate.style.display = 'none';
             document.getElementById('familyTimeline').innerHTML =
               `<div style="padding:18px;border-radius:12px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-weight:700;font-size:0.88rem;">“${escapeHtml(currentCode)}” koduna ait aktif bir kafile bulunamadı. Lütfen kafile kodunu kontrol ediniz.</div>`;
             return;
           }
           if (json && json.pinRequired) {
+            subscriptionBlocked = true;
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
             if (pinGate) pinGate.style.display = 'block';
             if (pinErr) {
               if (pinVal) {
+                setSavedTourPin(currentCode, '');
                 pinErr.textContent = 'Girilen PIN kodu hatalı. Lütfen tekrar deneyiniz.';
                 pinErr.style.display = 'block';
               } else {
@@ -489,6 +498,7 @@
               '<div style="padding:16px;text-align:center;color:var(--color-muted);font-size:0.86rem;">🔒 Rota adımlarını görmek için yukarıdaki kutuya kafile PIN kodunu giriniz.</div>';
             return;
           }
+          subscriptionBlocked = false;
           if (pinGate) pinGate.style.display = 'none';
           if (pinErr) pinErr.style.display = 'none';
           if (json && json.success) {
@@ -534,18 +544,28 @@
             try {
               const msg = JSON.parse(ev.data);
               if (msg.type === 'pin-error') {
+                subscriptionBlocked = true;
                 setSavedTourPin(currentCode, '');
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+                try { if (ws) { ws.onclose = null; ws.onerror = null; ws.close(); ws = null; } } catch (_) {}
                 const pinGate = document.getElementById('rotaPinGateBox');
                 if (pinGate) pinGate.style.display = 'block';
                 document.getElementById('syncIndicator').textContent = '🔒 PIN Gerekli';
                 fetchStepsRest(false);
                 return;
               }
-              if (msg.type === 'subscription-error' && msg.code === 'tour-unknown') {
+              if (msg.type === 'tour-unknown' || (msg.type === 'subscription-error' && msg.code === 'tour-unknown')) {
+                subscriptionBlocked = true;
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+                if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+                try { if (ws) { ws.onclose = null; ws.onerror = null; ws.close(); ws = null; } } catch (_) {}
                 document.getElementById('syncIndicator').textContent = 'Kafile Bulunamadı';
+                fetchStepsRest(false);
                 return;
               }
               if (msg.type === 'family-state') {
+                subscriptionBlocked = false;
                 applyJourneyPayload(msg, false);
               } else if (msg.type === 'steps-updated') {
                 applyJourneyPayload(msg, false);
@@ -596,36 +616,47 @@
             } catch (_) {}
           };
           ws.onerror = () => {
-            startFallbackPolling();
+            if (!subscriptionBlocked) startFallbackPolling();
           };
-          ws.onclose = () => {
+          ws.onclose = (ev) => {
+            if (ev && (ev.code === 4003 || ev.code === 4004)) {
+              subscriptionBlocked = true;
+              if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+              fetchStepsRest(false);
+              return;
+            }
+            if (subscriptionBlocked) return;
             startFallbackPolling();
             if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
             wsReconnectTimer = setTimeout(connectRealtime, 3500);
           };
         } catch (_) {
-          startFallbackPolling();
-          if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
-          wsReconnectTimer = setTimeout(connectRealtime, 3500);
+          if (!subscriptionBlocked) {
+            startFallbackPolling();
+            if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+            wsReconnectTimer = setTimeout(connectRealtime, 3500);
+          }
         }
       }
 
       function startFallbackPolling() {
-        if (pollTimer) return;
+        if (pollTimer || subscriptionBlocked) return;
         document.getElementById('syncIndicator').textContent = 'Otomatik Senkron';
-        pollTimer = setInterval(() => fetchStepsRest(false), 8000);
+        pollTimer = setInterval(() => {
+          if (!subscriptionBlocked) fetchStepsRest(false);
+        }, 8000);
       }
 
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
-          if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) {
+          if (!subscriptionBlocked && (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING))) {
             connectRealtime();
           }
           fetchStepsRest(false);
         }
       });
       window.addEventListener('online', () => {
-        connectRealtime();
+        if (!subscriptionBlocked) connectRealtime();
         fetchStepsRest(false);
       });
 
@@ -650,6 +681,7 @@
         const val = String(codeInput.value || '').toUpperCase().trim();
         if (!val) return;
         currentCode = val;
+        subscriptionBlocked = false;
         const url = new URL(window.location.href);
         url.searchParams.set('code', currentCode);
         window.history.replaceState({}, '', url.toString());
@@ -668,11 +700,14 @@
       document.getElementById('shareWhatsappBtn').addEventListener('click', () => {
         const shareUrl = `${window.location.origin}/rota?code=${encodeURIComponent(currentCode)}`;
         const tourName = currentTour ? currentTour.name : 'Kasım Umresi Kafilesi';
+        const pinNotice = (currentTour && (currentTour.pinProtected || currentTour.pinRequired)) || getSavedTourPin(currentCode)
+          ? '\n🔒 Not: Kafile özel PIN korumalıdır; açılışta kafile PIN kodunu giriniz.'
+          : '';
         const text =
           `🕋 *Rıdvan Yılmaz Turizm — Canlı Manevi Yolculuk & Aile Takip Haritası*\n\n` +
           `Kıymetli Ailemiz ve Yakınlarımız,\n` +
           `*${tourName}* kafilemizin Mekke-i Mükerreme ve Medine-i Münevvere'deki canlı rotasını, ziyaret ettiğimiz Siyer duraklarını ve dualarımızı uygulama indirmeden aşağıdaki bağlantıdan canlı takip edebilirsiniz:\n\n` +
-          `📍 *Canlı Haritayı Aç:* ${shareUrl}`;
+          `📍 *Canlı Haritayı Aç:* ${shareUrl}${pinNotice}`;
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
       });
 
@@ -682,6 +717,7 @@
         const submitRotaPin = () => {
           const entered = String(rotaPinInp.value || '').trim();
           if (!entered) return;
+          subscriptionBlocked = false;
           setSavedTourPin(currentCode, entered);
           updateLinks(currentCode);
           fetchStepsRest(true);
@@ -697,7 +733,7 @@
       }
 
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=77').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=78').catch(() => {});
       }
 
       updateLinks(currentCode);

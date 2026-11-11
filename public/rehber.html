@@ -13,7 +13,7 @@
   <title>Rehber (Hoca) Canlı Yayın Stüdyosu | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/rehber" />
-  <link rel="stylesheet" href="/css/style.css?v=21" />
+  <link rel="stylesheet" href="/css/style.css?v=22" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -26,6 +26,13 @@
       }
     })();
     async function ryLogout() {
+      window.ryGuideSessionReplaced = true;
+      try { if (typeof stopMicBroadcast === 'function') stopMicBroadcast(); } catch {}
+      try {
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'SYNC_PUSH_META', kind: 'sos', meta: null });
+        }
+      } catch {}
       const savedTok = (localStorage.getItem('ry_auth_token') || '').trim();
       try {
         const sosReceipt = JSON.parse(localStorage.getItem('rys_sos_push_receipt') || 'null');
@@ -50,8 +57,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=77"></script>
-  <script src="/js/umrah-steps-map.js?v=47"></script>
+  <script src="/vercel-ws-shim.js?v=78"></script>
+  <script src="/js/umrah-steps-map.js?v=78"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -563,14 +570,16 @@
     }
 
     let guideToursCache = [];
+    let guideBootstrapReady = false;
 
     function syncGuideNavLinks() {
       const code = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').trim().toUpperCase();
+      const room = (document.getElementById('guideRoomSelect')?.value || 'genel').trim();
       const enc = encodeURIComponent(code);
       const rBtn = document.getElementById('navGuideRotaBtn');
       const dBtn = document.getElementById('navGuideDinleBtn');
       if (rBtn) rBtn.href = `/rota?code=${enc}`;
-      if (dBtn) dBtn.href = `/dinle?code=${enc}`;
+      if (dBtn) dBtn.href = `/dinle?code=${enc}&room=${encodeURIComponent(room)}`;
     }
 
     function ensureGuideOptionExists(guideName, subtitle = 'Kafile Rehberi') {
@@ -586,10 +595,26 @@
       }
     }
 
+    function applyTourTopicDefault(code) {
+      const topicInput = document.getElementById('topicInput');
+      if (!topicInput) return;
+      const tourObj = guideToursCache.find((t) => t.code === code);
+      if (code === 'RY-KASIM') {
+        topicInput.value = 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk';
+      } else if (tourObj && tourObj.name) {
+        topicInput.value = `${tourObj.name} — Canlı Siyer & Tavaf Rehberliği`;
+      } else {
+        topicInput.value = 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti';
+      }
+    }
+
     function onTourSelectionChange() {
+      if (isSharingGuideLocation && ws && ws.readyState === WebSocket.OPEN) {
+        try { ws.send(JSON.stringify({ type: 'guide-location-update', active: false })); } catch {}
+      }
+      updateTawafButtonsUi(null);
       const code = document.getElementById('guideTourSelect').value;
       const gSel = document.getElementById('guideNameSelect');
-      const topicInput = document.getElementById('topicInput');
       const tourObj = guideToursCache.find((t) => t.code === code);
       if (tourObj && tourObj.guideName) {
         ensureGuideOptionExists(tourObj.guideName, `${tourObj.code} Rehberi`);
@@ -598,32 +623,58 @@
         ensureGuideOptionExists('Ömer Ali Gültekin', 'Kasım Umresi Rehberi');
         gSel.value = 'Ömer Ali Gültekin';
       }
-      if (code === 'RY-KASIM') {
-        if (topicInput) topicInput.value = 'Kasım Umresi — Kâbe’nin Huzuru & Peygamber Efendimizin ﷺ İzinde Manevi Yolculuk';
-      } else if (tourObj && tourObj.name) {
-        if (topicInput) topicInput.value = `${tourObj.name} — Canlı Siyer & Tavaf Rehberliği`;
-      } else {
-        if (topicInput) topicInput.value = 'Kâbe-i Muazzama Tavaf Duaları & Siyer-i Nebi Sohbeti';
-      }
+      applyTourTopicDefault(code);
       syncGuideNavLinks();
       switchGuideRoom();
+      fetch('/api/bootstrap')
+        .then((r) => r.json())
+        .then((data) => {
+          const activeCode = (document.getElementById('guideTourSelect')?.value || code).toUpperCase();
+          if (data && Array.isArray(data.sosAlerts)) {
+            activeSosAlerts = data.sosAlerts.filter((a) => a.status === 'active' && (!a.tourCode || a.tourCode === activeCode));
+            renderSosBanner();
+          }
+          if (data && Array.isArray(data.announcements)) {
+            guideAnnouncements = data.announcements.filter((a) => a.tourCode === activeCode || a.tourCode === 'ALL');
+            renderGuideAnnouncements();
+          }
+        })
+        .catch(() => {});
     }
 
     const urlParams = new URLSearchParams(window.location.search);
 
     if (urlParams.get('code')) {
       const sel = document.getElementById('guideTourSelect');
-      const code = urlParams.get('code').toUpperCase();
-      if (Array.from(sel.options).some((o) => o.value === code)) {
+      const code = urlParams.get('code').trim().toUpperCase();
+      if (code) {
+        if (!Array.from(sel.options).some((o) => o.value === code)) {
+          const opt = document.createElement('option');
+          opt.value = code;
+          opt.style.color = '#000';
+          opt.textContent = code;
+          sel.appendChild(opt);
+        }
         sel.value = code;
+      }
+    }
+    if (urlParams.get('room')) {
+      const rSel = document.getElementById('guideRoomSelect');
+      const rVal = urlParams.get('room').trim().toLowerCase();
+      if (rSel && (rVal === 'genel' || rVal === 'siyer')) {
+        rSel.value = rVal;
       }
     }
     syncGuideNavLinks();
 
-    // Bootstrap turları dinamik yükle
+    // Bootstrap turları dinamik yükle; WS bağlantısını doğru tur seçildikten sonra başlat
     fetch('/api/bootstrap')
       .then((r) => r.json())
       .then((data) => {
+        if (data && data.authenticated === false) {
+          handleGuideAuthExpired();
+          return;
+        }
         if (data && data.guides && data.guides.length > 0) {
           const gSel = document.getElementById('guideNameSelect');
           const currentG = gSel.value;
@@ -639,7 +690,8 @@
           });
           const tSel = document.getElementById('guideTourSelect');
           const prevVal = tSel.value;
-          const wantedCode = (urlParams.get('code') || prevVal || '').toUpperCase();
+          const assigned = (data.user && data.user.assignedTour ? String(data.user.assignedTour) : '').toUpperCase();
+          const wantedCode = (urlParams.get('code') || assigned || prevVal || '').trim().toUpperCase();
           tSel.innerHTML = data.tours.map((t) => `<option value="${escapeHtml(t.code)}" style="color:#000;">${escapeHtml(t.code)} — ${escapeHtml(t.name)}</option>`).join('');
           if (data.tours.some((t) => t.code === wantedCode)) {
             tSel.value = wantedCode;
@@ -650,10 +702,8 @@
             ensureGuideOptionExists(activeTour.guideName, `${activeTour.code} Rehberi`);
             gSel.value = activeTour.guideName;
           }
+          applyTourTopicDefault(tSel.value);
           syncGuideNavLinks();
-          if (tSel.value !== prevVal) {
-            switchGuideRoom();
-          }
         }
         if (data && Array.isArray(data.sosAlerts)) {
           const currentCode = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').toUpperCase();
@@ -666,7 +716,13 @@
           renderGuideAnnouncements();
         }
       })
-      .catch((e) => console.log('Rehber bootstrap err:', e));
+      .catch((e) => console.log('Rehber bootstrap err:', e))
+      .finally(() => {
+        if (window.ryGuideSessionReplaced) return;
+        guideBootstrapReady = true;
+        connectGuideWs();
+        loadGuideSteps();
+      });
 
     let ws = null;
     let audioCtx = null;
@@ -859,6 +915,17 @@
       ws.onclose = (ev) => {
         if(!current())return;
         if(ev?.code===4009){fenceGuideSession();return;}
+        if(ev?.code===4004||ev?.code===4003){
+          stopMicBroadcast();
+          const banner = document.getElementById('guideAuthErrorBanner');
+          if (banner) {
+            banner.textContent = ev.code === 4004
+              ? '⚠️ Seçili kafile silindi veya kapatıldı. Lütfen üst menüden başka bir aktif kafile seçiniz.'
+              : '⛔ Bu kafile için yayın yetkiniz sonlandırıldı.';
+            banner.style.display = 'block';
+          }
+          return;
+        }
         if(window.ryGuideSessionReplaced)return;
         const retryMs = isMicBroadcasting || isDemoBroadcasting ? 600 : 1500;
         console.warn(`Rehber bağlantısı kapandı, ${retryMs} ms içinde otomatik yeniden bağlanılacak...`);
@@ -996,10 +1063,16 @@
       }
     }
 
-    connectGuideWs();
-    loadGuideSteps();
-
     function switchGuideRoom() {
+      syncGuideNavLinks();
+      const banner = document.getElementById('guideAuthErrorBanner');
+      if (banner && !window.ryGuideSessionReplaced) banner.style.display = 'none';
+      if (isMicBroadcasting && micStream && typeof window.ryBroadcastGuideStream === 'function') {
+        const activeTourCode = document.getElementById('guideTourSelect')?.value || 'RY-KASIM';
+        const activeRoomId = document.getElementById('guideRoomSelect')?.value || 'genel';
+        try { window.ryBroadcastGuideStream(micStream, activeTourCode, activeRoomId); } catch {}
+      }
+      if (!guideBootstrapReady) return;
       if (ws && ws.readyState === WebSocket.OPEN) {
         sendGuideJoinAndSync();
       } else {
@@ -1486,6 +1559,7 @@
     }
 
     function recoverGuideLiveSession() {
+      if (!guideBootstrapReady || window.ryGuideSessionReplaced) return;
       if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) {
         connectGuideWs();
       }
@@ -1816,7 +1890,7 @@
     }
 
     function guideBackgroundHeartbeatTick() {
-      if(window.ryGuideSessionReplaced)return;
+      if(!guideBootstrapReady||window.ryGuideSessionReplaced)return;
       if (isMicBroadcasting) {
         healGuideMicrophoneIfNeeded();
         const el = document.getElementById('guideBgKeepAliveAudio');
@@ -2070,6 +2144,14 @@
       isMicBroadcasting=false;
       // Release hardware before optional UI/transport hooks can fail.
       disconnectGuideAudioNodes();const stream=micStream;micStream=null;stopGuideMicrophoneStream(stream);
+      const micButton=document.getElementById('startMicBtn');
+      if(micButton){micButton.textContent='🎙️ Gerçek Mikrofonla Canlı Yayını Başlat';micButton.className='btn btn-gold';}
+      const srcLabel=document.getElementById('micSourceLabel');
+      if(srcLabel&&!window.ryGuideSessionReplaced)srcLabel.textContent='Yayın Kaynağı: Hazır (24 kHz Saf Stüdyo Kristal HD • Boğukluk Giderici EQ Aktif)';
+      const dbLabel=document.getElementById('dbMeterText');
+      if(dbLabel)dbLabel.textContent='Ses Seviyesi: Beklemede';
+      const specBox=typeof specEl!=='undefined'?specEl:document.getElementById('guideSpectrum');
+      if(specBox&&typeof specBox.querySelectorAll==='function'){specBox.querySelectorAll('.spectrum-bar').forEach(b=>{b.style.height='8px';});}
       const testButton=document.getElementById('testMyVoiceBtn');
       if(testButton){testButton.disabled=false;testButton.textContent='🎧 Sesimi Test Et (4 Sn Kaydet & Dinle)';}
       toggleGuideMicMute(false);stopBroadcastClock();disableGuideKeepAlive();
@@ -2161,7 +2243,7 @@
       document.getElementById('annMsgInput').value = msg;
     }
 
-    function sendQuickAnnouncement() {
+    async function sendQuickAnnouncement() {
       const title = document.getElementById('annTitleInput').value.trim();
       const message = document.getElementById('annMsgInput').value.trim();
       if (!title || !message) return;
@@ -2172,9 +2254,39 @@
           message,
           urgent: true
         }));
+        document.getElementById('annTitleInput').value = '';
+        document.getElementById('annMsgInput').value = '';
+        return;
       }
-      document.getElementById('annTitleInput').value = '';
-      document.getElementById('annMsgInput').value = '';
+      try {
+        const tourCode = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').trim().toUpperCase();
+        const sender = document.getElementById('guideNameSelect')?.value || 'Rehber Hoca';
+        const res = await fetch('/api/announcements', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tourCode, sender, title, message, urgent: true })
+        });
+        if (res.status === 401) {
+          handleGuideAuthExpired();
+          return;
+        }
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          alert(out.message || 'Duyuru gönderilemedi, lütfen bağlantınızı kontrol ediniz.');
+          return;
+        }
+        if (out && out.announcement) {
+          guideAnnouncements = [
+            out.announcement,
+            ...guideAnnouncements.filter((a) => a.id !== out.announcement.id)
+          ];
+          renderGuideAnnouncements();
+        }
+        document.getElementById('annTitleInput').value = '';
+        document.getElementById('annMsgInput').value = '';
+      } catch (e) {
+        alert('Duyuru gönderilirken bağlantı hatası oluştu.');
+      }
     }
 
     function renderGuideAnnouncements() {
@@ -2226,24 +2338,29 @@
       renderGuideAnnouncements();
     }
 
+    let sosToneAudioCtx = null;
+
     function playSosEmergencyTone() {
       try {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (!audioCtx) audioCtx = new AudioContextClass();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+        if (!sosToneAudioCtx || sosToneAudioCtx.state === 'closed') {
+          sosToneAudioCtx = new AudioContextClass();
+        }
+        if (sosToneAudioCtx.state === 'suspended') sosToneAudioCtx.resume().catch(() => {});
         [880, 660, 880].forEach((freq, idx) => {
           setTimeout(() => {
             try {
-              const osc = audioCtx.createOscillator();
-              const g = audioCtx.createGain();
+              if (!sosToneAudioCtx || sosToneAudioCtx.state === 'closed') return;
+              const osc = sosToneAudioCtx.createOscillator();
+              const g = sosToneAudioCtx.createGain();
               osc.type = 'triangle';
-              osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-              g.gain.setValueAtTime(0.18, audioCtx.currentTime);
-              g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.22);
+              osc.frequency.setValueAtTime(freq, sosToneAudioCtx.currentTime);
+              g.gain.setValueAtTime(0.18, sosToneAudioCtx.currentTime);
+              g.gain.exponentialRampToValueAtTime(0.001, sosToneAudioCtx.currentTime + 0.22);
               osc.connect(g);
-              g.connect(audioCtx.destination);
+              g.connect(sosToneAudioCtx.destination);
               osc.start();
-              osc.stop(audioCtx.currentTime + 0.23);
+              osc.stop(sosToneAudioCtx.currentTime + 0.23);
             } catch {}
           }, idx * 240);
         });
@@ -2313,6 +2430,7 @@
     }
 
     async function deleteSosGuide(id) {
+      if (!confirm('Bu SOS kaydını kalıcı olarak silmek istediğinize emin misiniz?')) return;
       const res = await fetch(`/api/sos/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null);
       if (res && res.status === 401) {
         handleGuideAuthExpired();
@@ -2385,6 +2503,7 @@
       if (!isSharingGuideLocation) return;
       const note = document.getElementById('guideLocNoteInput').value.trim() || 'Kafile Rehber Hocamızın Canlı Konumu';
       const address = await reverseGeocodeGuide(lat, lng);
+      if (!isSharingGuideLocation) return;
       const timeStr = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
       lastGuideLocState = {
@@ -2448,10 +2567,12 @@
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
+            if (!isSharingGuideLocation) return;
             publishGuideCoordinates(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
           },
           async () => {
             const fb = await fetchFallbackIpPosition();
+            if (!isSharingGuideLocation) return;
             publishGuideCoordinates(fb.lat, fb.lng, fb.accuracy);
           },
           { enableHighAccuracy: true, timeout: 12000, maximumAge: 5000 }
@@ -2499,10 +2620,12 @@
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
+            if (!isSharingGuideLocation) return;
             publishGuideCoordinates(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
           },
           async () => {
             const fb = await fetchFallbackIpPosition();
+            if (!isSharingGuideLocation) return;
             if (fb.city) lastGeocodedAddress = fb.city;
             publishGuideCoordinates(fb.lat, fb.lng, fb.accuracy);
           },
@@ -2511,6 +2634,7 @@
 
         guideLocWatchId = navigator.geolocation.watchPosition(
           (pos) => {
+            if (!isSharingGuideLocation) return;
             publishGuideCoordinates(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
           },
           () => {},
@@ -2518,12 +2642,14 @@
         );
       } else {
         const fb = await fetchFallbackIpPosition();
+        if (!isSharingGuideLocation) return;
         if (fb.city) lastGeocodedAddress = fb.city;
         publishGuideCoordinates(fb.lat, fb.lng, fb.accuracy);
       }
     }
 
     function handleGuideAuthExpired(customMessage) {
+      fenceGuideSession(true);
       const banner = document.getElementById('guideAuthErrorBanner');
       if (banner) {
         banner.textContent =
@@ -2567,7 +2693,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=77');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=78');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -2581,28 +2707,56 @@
         let receipt = null;
         try { receipt = JSON.parse(localStorage.getItem('rys_sos_push_receipt') || 'null'); } catch {}
         const prevRev = Number(localStorage.getItem('rys_sos_push_rev') || 0);
-        const revision = Math.max(Date.now() * 1024, prevRev + 1);
+        let revision = Math.max(Date.now() * 1024, prevRev + 1);
         localStorage.setItem('rys_sos_push_rev', String(revision));
-        const tourCode = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').trim().toUpperCase();
-        const res = await fetch('/api/push/subscribe-sos', {
+        const selectedTourCode = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').trim().toUpperCase();
+        const tourCode = (silent && receipt && receipt.tourCode === 'ALL') ? 'ALL' : selectedTourCode;
+        const buildPayload = (rev) => ({
+          endpoint: json.endpoint,
+          keys: json.keys,
+          tourCode,
+          deviceId: guideDeviceId,
+          revision: rev,
+          ...(receipt && receipt.subscriptionToken ? { subscriptionToken: receipt.subscriptionToken } : {})
+        });
+        let res = await fetch('/api/push/subscribe-sos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            endpoint: json.endpoint,
-            keys: json.keys,
-            tourCode,
-            deviceId: guideDeviceId,
-            revision,
-            ...(receipt && receipt.endpoint === json.endpoint ? { subscriptionToken: receipt.subscriptionToken } : {})
-          })
+          body: JSON.stringify(buildPayload(revision))
         });
         if (res.status === 401) {
           handleGuideAuthExpired();
           return false;
         }
-        const saved = await res.json();
+        let saved = await res.json().catch(() => ({}));
+        if (res.status === 409 && saved && saved.error === 'stale-subscription') {
+          revision = Math.max(Date.now() * 1024, Number(saved.revision || 0) + 1);
+          localStorage.setItem('rys_sos_push_rev', String(revision));
+          res = await fetch('/api/push/subscribe-sos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(buildPayload(revision))
+          });
+          saved = await res.json().catch(() => ({}));
+        }
         if (!res.ok || !saved.success) throw new Error(saved.error || 'SOS bildirimi kaydedilemedi');
         localStorage.setItem('rys_sos_push_receipt', JSON.stringify({ endpoint: json.endpoint, subscriptionToken: saved.subscriptionToken, tourCode: saved.tourCode }));
+        try {
+          const swTarget = (reg && reg.active) || (navigator.serviceWorker && navigator.serviceWorker.controller);
+          if (swTarget) {
+            swTarget.postMessage({
+              type: 'SYNC_PUSH_META',
+              meta: {
+                kind: 'sos',
+                endpoint: json.endpoint,
+                subscriptionToken: saved.subscriptionToken,
+                tourCode: saved.tourCode,
+                deviceId: guideDeviceId,
+                apiOrigin: window.ryVdsOrigin || window.location.origin
+              }
+            });
+          }
+        } catch {}
         if (btn) {
           btn.className = 'btn btn-outline btn-sm';
           btn.textContent = `✅ SOS Bildirimi Aktif (${saved.tourCode})`;
@@ -2651,7 +2805,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=77').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=78').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED' && localStorage.getItem('rys_sos_push_receipt')) {
           syncGuideSosPushSubscription(true);

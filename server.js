@@ -55,11 +55,17 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '512kb' }));
 app.use(express.urlencoded({ extended: true, limit: '64kb' }));
 app.use((err, req, res, next) => {
+  if (res.headersSent || req.aborted || res.destroyed || (err && err.type === 'request.aborted')) {
+    return;
+  }
   if (
     err &&
     (err.type === 'entity.parse.failed' ||
       err.type === 'encoding.unsupported' ||
+      err.type === 'charset.unsupported' ||
       err.type === 'entity.too.large' ||
+      err.type === 'stream.not.readable' ||
+      err.type === 'stream.encoding.set' ||
       err.status === 400 ||
       err.status === 413 ||
       err.status === 415)
@@ -92,7 +98,7 @@ const RYS_CSP_HEADER = [
   "img-src 'self' data: blob: https:",
   "media-src 'self' data: blob: mediastream:",
   "worker-src 'self' blob:",
-  "connect-src 'self' https://ses.ridvanyilmazturizm.com https://*.ridvanyilmazturizm.com https://ridvanses.vercel.app https://*.vercel.app https://nominatim.openstreetmap.org https://ipwho.is https://unpkg.com wss: ws:",
+  "connect-src 'self' https://ses.ridvanyilmazturizm.com https://*.ridvanyilmazturizm.com https://ridvanses.vercel.app https://nominatim.openstreetmap.org https://ipwho.is https://unpkg.com wss://ses.ridvanyilmazturizm.com wss://*.ridvanyilmazturizm.com wss://broker.emqx.io:8084 wss://test.mosquitto.org:8081 ws://localhost:* ws://127.0.0.1:*",
   "frame-src 'self' https://www.openstreetmap.org",
   "frame-ancestors 'self'",
   "base-uri 'self'",
@@ -119,6 +125,12 @@ app.use((req, res, next) => {
   }
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
+  }
+  try {
+    const qIdx = req.url.indexOf('?');
+    decodeURIComponent(qIdx >= 0 ? req.url.slice(0, qIdx) : req.url);
+  } catch {
+    return res.status(400).json({ success: false, error: 'invalid-url', message: 'Geçersiz istek adresi.' });
   }
   next();
 });
@@ -525,14 +537,21 @@ function rysSosPushSubscribe(body,principal){
   const previous=rysSosPushSubs.get(target.url.href);
   if(previous){
     const sameSecret=previous.keys.auth===auth.toString('base64url')&&previous.keys.p256dh===p.toString('base64url');
-    const capability=typeof body.subscriptionToken==='string'&&body.subscriptionToken===previous.subscriptionToken;
+    const supTok=typeof body.subscriptionToken==='string'?body.subscriptionToken:'';
+    const capability=supTok.length===43&&typeof previous.subscriptionToken==='string'&&
+      Buffer.byteLength(supTok)===Buffer.byteLength(previous.subscriptionToken)&&
+      crypto.timingSafeEqual(Buffer.from(supTok),Buffer.from(previous.subscriptionToken));
     if(!sameSecret&&!capability)throw rysPushFail(403,'subscription-owner-required');
     if(body.revision<previous.revision||body.revision===previous.revision&&code!==previous.tourCode)
       throw Object.assign(rysPushFail(409,'stale-subscription'),{revision:previous.revision});
   }
+  const rawAuthTok=typeof body._rawAuthToken==='string'?body._rawAuthToken.trim():'';
+  const authTokenHash=rawAuthTok?crypto.createHash('sha256').update(rawAuthTok).digest('hex'):previous?.authTokenHash||null;
+  const sessExp=rawAuthTok&&typeof activeAuthSessions!=='undefined'?activeAuthSessions.get(rawAuthTok)?.expiresAt:null;
   let s={endpoint:target.url.href,keys:{p256dh:p.toString('base64url'),auth:auth.toString('base64url')},
     tourCode:code,role:rysCanAdmin(principal)?'admin':'guide',deviceId:body.deviceId.trim(),
     revision:body.revision,subscriptionToken:previous?.subscriptionToken||crypto.randomBytes(32).toString('base64url'),
+    authTokenHash,expiresAt:sessExp||(Date.now()+SESSION_TTL_MS),
     vapidKey:rysPushVapid.publicKey,isSos:true,updatedAt:Date.now()};
   if(previous&&previous.tourCode===s.tourCode&&previous.keys.auth===s.keys.auth&&previous.keys.p256dh===s.keys.p256dh){
     Object.assign(previous,s);s=previous;
@@ -554,15 +573,22 @@ function rysPushSubscribe(body){
   const code=typeof body?.tourCode==='string'?body.tourCode.toUpperCase().trim():'';
   if(!code||code.length>96)throw rysPushFail(400,'invalid-tour');
   const tour=findRysTour(code);if(!tour)throw rysPushFail(404,'tour-unknown');
-  if(String(tour.pin||'').trim()&&String(tour.pin).trim()!==String(body.pin||'').trim())throw rysPushFail(403,'pin-error');
   const target=rysPushEndpoint(body.endpoint);
   const p=rysPushPoint(body.keys?.p256dh),auth=rysPushB64(body.keys?.auth,16);
   if(typeof body.deviceId!=='string'||!body.deviceId.trim()||body.deviceId.length>128||
     !Number.isSafeInteger(body.revision)||body.revision<1)throw rysPushFail(400,'invalid-subscription');
   const previous=rysPushSubs.get(target.url.href);
+  const supTok=typeof body.subscriptionToken==='string'?body.subscriptionToken:'';
+  const hasOwnerCapability=!!previous&&previous.tourCode===code&&supTok.length===43&&
+    typeof previous.subscriptionToken==='string'&&Buffer.byteLength(supTok)===Buffer.byteLength(previous.subscriptionToken)&&
+    crypto.timingSafeEqual(Buffer.from(supTok),Buffer.from(previous.subscriptionToken));
+  if(String(tour.pin||'').trim()&&!hasOwnerCapability&&String(tour.pin).trim()!==String(body.pin||'').trim())
+    throw rysPushFail(403,'pin-error');
   if(previous){
     const sameSecret=previous.keys.auth===auth.toString('base64url')&&previous.keys.p256dh===p.toString('base64url');
-    const capability=typeof body.subscriptionToken==='string'&&body.subscriptionToken===previous.subscriptionToken;
+    const capability=supTok.length===43&&typeof previous.subscriptionToken==='string'&&
+      Buffer.byteLength(supTok)===Buffer.byteLength(previous.subscriptionToken)&&
+      crypto.timingSafeEqual(Buffer.from(supTok),Buffer.from(previous.subscriptionToken));
     if(!sameSecret&&!capability)throw rysPushFail(403,'subscription-owner-required');
     if(body.revision<previous.revision||body.revision===previous.revision&&code!==previous.tourCode)
       throw Object.assign(rysPushFail(409,'stale-subscription'),{revision:previous.revision});
@@ -577,6 +603,46 @@ function rysPushSubscribe(body){
   if(previous&&previous!==s)rysPushCancel(s.endpoint,previous);
   rysPushSubs.delete(s.endpoint);rysPushSubs.set(s.endpoint,s);rysPushPrune();rysPushPersist();
   return {success:true,subscriptionToken:s.subscriptionToken,revision:s.revision};
+}
+function rysPushRotate(body){
+  const supplied=typeof body?.subscriptionToken==='string'?body.subscriptionToken:'';
+  if(supplied.length!==43)throw rysPushFail(403,'subscription-owner-required');
+  const isSos=Boolean(body?.isSos);
+  const store=isSos?rysSosPushSubs:rysPushSubs;
+  let oldEntry=null;
+  if(typeof body?.oldEndpoint==='string'&&body.oldEndpoint){
+    try{oldEntry=store.get(rysPushEndpoint(body.oldEndpoint).url.href)||null;}catch(e){}
+  }
+  if(!oldEntry){
+    for(const cand of store.values()){
+      if(typeof cand.subscriptionToken==='string'&&Buffer.byteLength(cand.subscriptionToken)===Buffer.byteLength(supplied)&&
+        crypto.timingSafeEqual(Buffer.from(supplied),Buffer.from(cand.subscriptionToken))){oldEntry=cand;break;}
+    }
+  }
+  if(!oldEntry)throw rysPushFail(404,'subscription-not-found');
+  const a=Buffer.from(supplied),b=Buffer.from(oldEntry.subscriptionToken||'');
+  if(a.length!==b.length||!crypto.timingSafeEqual(a,b))throw rysPushFail(403,'subscription-owner-required');
+  if(isSos&&oldEntry.expiresAt&&Date.now()>oldEntry.expiresAt){
+    rysSosPushDrop(oldEntry.endpoint);rysSosPushPersist();
+    throw rysPushFail(401,'session-expired');
+  }
+  if(!isSos&&!findRysTour(oldEntry.tourCode)){
+    rysPushDrop(oldEntry.endpoint);rysPushPersist();
+    throw rysPushFail(404,'tour-unknown');
+  }
+  const target=rysPushEndpoint(body.endpoint);
+  const p=rysPushPoint(body.keys?.p256dh),auth=rysPushB64(body.keys?.auth,16);
+  const nextRev=(Number.isSafeInteger(oldEntry.revision)?oldEntry.revision:1)+1;
+  const updated={...oldEntry,endpoint:target.url.href,
+    keys:{p256dh:p.toString('base64url'),auth:auth.toString('base64url')},
+    subscriptionToken:crypto.randomBytes(32).toString('base64url'),
+    revision:nextRev,vapidKey:rysPushVapid.publicKey,updatedAt:Date.now()};
+  if(oldEntry.endpoint!==updated.endpoint){
+    if(isSos)rysSosPushDrop(oldEntry.endpoint);else rysPushDrop(oldEntry.endpoint);
+  }
+  store.delete(updated.endpoint);store.set(updated.endpoint,updated);
+  if(isSos){rysSosPushPrune();rysSosPushPersist();}else{rysPushPrune();rysPushPersist();}
+  return {success:true,subscriptionToken:updated.subscriptionToken,revision:updated.revision,tourCode:updated.tourCode};
 }
 function rysPushUnsubscribe(body){
   const target=rysPushEndpoint(body?.endpoint),s=rysPushSubs.get(target.url.href);
@@ -704,7 +770,7 @@ app.get('/api/push/vapid-public-key',(req,res)=>{
   if(!rysPushVapid)return res.status(503).json({success:false,error:rysPushInitError||'push-unavailable'});
   return res.json({success:true,publicKey:rysPushVapid.publicKey});
 });
-for(const [route,handler] of [['subscribe',rysPushSubscribe],['unsubscribe',rysPushUnsubscribe]]){
+for(const [route,handler] of [['subscribe',rysPushSubscribe],['unsubscribe',rysPushUnsubscribe],['rotate',rysPushRotate]]){
   app.post('/api/push/'+route,createRateLimiter({max:1200,windowMs:60000}),(req,res)=>{
     res.setHeader('Cache-Control','no-store');
     if(!rysPushVapid)return res.status(503).json({success:false,error:'push-unavailable'});
@@ -716,8 +782,9 @@ app.post('/api/push/subscribe-sos',createRateLimiter({max:240,windowMs:60000}),(
   res.setHeader('Cache-Control','no-store');
   if(!rysPushVapid)return res.status(503).json({success:false,error:'push-unavailable'});
   try{
-    const principal=rysPrincipal(extractAuthTokenFromReq(req)||req.body?.authToken);
-    return res.json(rysSosPushSubscribe(req.body,principal));
+    const rawTok=extractAuthTokenFromReq(req)||String(req.body?.authToken||'').trim();
+    const principal=rysPrincipal(rawTok);
+    return res.json(rysSosPushSubscribe({...req.body,_rawAuthToken:rawTok},principal));
   }catch(e){return res.status(e.status||400).json({success:false,error:e.message,...(e.revision?{revision:e.revision}:{})});}
 });
 app.post('/api/push/unsubscribe-sos',createRateLimiter({max:240,windowMs:60000}),(req,res)=>{
@@ -748,6 +815,12 @@ function rysSosPushPayload(alertItem){
 }
 function queueRysPushSos(alertItem){
   if(!rysPushVapid||!alertItem?.id||!rysSosPushSubs.size)return;
+  const now=Date.now();
+  let droppedExpired=false;
+  for(const [ep,s] of rysSosPushSubs){
+    if(s.expiresAt&&now>s.expiresAt){rysSosPushDrop(ep);droppedExpired=true;}
+  }
+  if(droppedExpired)rysSosPushPersist();
   const code=String(alertItem.tourCode||'RY-KASIM').toUpperCase().trim();
   const targets=Array.from(rysSosPushSubs.values()).filter(s=>s.tourCode==='ALL'||s.tourCode===code);
   if(!targets.length)return;
@@ -758,13 +831,18 @@ function queueRysPushSos(alertItem){
     const worker=async()=>{
       while(idx<targets.length){
         const s=targets[idx++];
-        if(rysSosPushSubs.get(s.endpoint)!==s)continue;
-        try{
-          const status=await rysPushSend(s,payload);
-          if((status===404||status===410)&&rysSosPushSubs.get(s.endpoint)===s){
-            rysSosPushDrop(s.endpoint);rysSosPushPersist();
-          }
-        }catch(e){}
+        for(let attempt=0;attempt<3;attempt++){
+          if(rysSosPushSubs.get(s.endpoint)!==s)break;
+          try{
+            const status=await rysPushSend(s,payload);
+            if((status===404||status===410)&&rysSosPushSubs.get(s.endpoint)===s){
+              rysSosPushDrop(s.endpoint);rysSosPushPersist();break;
+            }
+            if(status>=200&&status<300)break;
+            if(status!==429&&status<500)break;
+          }catch(e){}
+          if(attempt<2)await new Promise(r=>setTimeout(r,attempt===0?1000:3000));
+        }
       }
     };
     await Promise.all(Array.from({length:Math.min(4,targets.length)},()=>worker()));
@@ -1086,6 +1164,7 @@ function broadcastToGuidesInTour(tourCode, payload) {
 // Auth Constants & Helpers (Rehber Yayını & Acente Paneli Yetkili Girişi — .env Üzerinden Yönetilir)
 const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || 'ridvanyilmazturizm@gmail.com').trim().toLowerCase();
 const ADMIN_PASSWORD_ENV = String(process.env.ADMIN_PASSWORD || '').trim();
+const SELAMET_USERNAME_ENV = String(process.env.SELAMET_USERNAME || '').trim().toLowerCase();
 const SELAMET_PASSWORD_ENV = String(process.env.SELAMET_PASSWORD || '').trim();
 const ADMIN_PASSWORD_SHA256 = '5493a522fbec2df9e753e4befd4fca615a2d43f5a4c09350e7fe578b5cce316f';
 const SELAMET_PASSWORD_SHA256 = '0b7eea0794148d756d8b8cbe7d97ac6153c2abe52fe3d20938f9c751b2b73b5a';
@@ -1145,6 +1224,17 @@ function revokeAuthToken(token) {
   const clean = String(token || '').trim();
   if (!clean) return;
   activeAuthSessions.delete(clean);
+  if (typeof rysSosPushSubs !== 'undefined' && rysSosPushSubs && rysSosPushSubs.size) {
+    const revokedHash = crypto.createHash('sha256').update(clean).digest('hex');
+    let droppedSos = false;
+    for (const [ep, sub] of rysSosPushSubs) {
+      if (sub && sub.authTokenHash && sub.authTokenHash === revokedHash) {
+        rysSosPushDrop(ep);
+        droppedSos = true;
+      }
+    }
+    if (droppedSos && typeof rysSosPushPersist === 'function') rysSosPushPersist();
+  }
   if (clean !== AUTH_TOKEN_VALUE && typeof revokedAuthTokens !== 'undefined' && revokedAuthTokens) {
     revokedAuthTokens.add(clean);
     if (typeof pruneAuthState === 'function') pruneAuthState();
@@ -1217,20 +1307,40 @@ const demoRequestRateLimiter = createRateLimiter({
   max: 15,
   message: 'Çok fazla talep gönderildi. Lütfen daha sonra tekrar deneyiniz.'
 });
+const relayOpenRateLimiter = createRateLimiter({
+  scope: 'relay-open',
+  windowMs: 60000,
+  max: 1200,
+  message: 'Çok fazla yedek oturum açma isteği gönderildi.'
+});
 
 function verifyPassword(candidate, envPass, fallbackSha256) {
   const clean = String(candidate || '').trim();
   if (!clean) return false;
-  if (envPass) return clean === envPass;
+  if (envPass) {
+    const candDigest = crypto.createHash('sha256').update(clean).digest();
+    const envDigest = crypto.createHash('sha256').update(String(envPass)).digest();
+    return crypto.timingSafeEqual(candDigest, envDigest);
+  }
   const hash = crypto.createHash('sha256').update(clean).digest('hex');
-  return hash === fallbackSha256;
+  if (typeof fallbackSha256 !== 'string' || fallbackSha256.length !== hash.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(fallbackSha256));
 }
 
 function isValidAuthToken(token) {
   const clean = String(token || '').trim();
   if (!clean) return false;
   if (typeof revokedAuthTokens !== 'undefined' && revokedAuthTokens && revokedAuthTokens.has(clean)) return false;
-  if (typeof AUTH_TOKEN_VALUE === 'string' && AUTH_TOKEN_VALUE && clean === AUTH_TOKEN_VALUE) return true;
+  if (
+    typeof AUTH_TOKEN_VALUE === 'string' &&
+    AUTH_TOKEN_VALUE &&
+    (typeof crypto !== 'undefined' && typeof Buffer !== 'undefined'
+      ? Buffer.byteLength(clean) === Buffer.byteLength(AUTH_TOKEN_VALUE) &&
+        crypto.timingSafeEqual(Buffer.from(clean), Buffer.from(AUTH_TOKEN_VALUE))
+      : clean === AUTH_TOKEN_VALUE)
+  ) {
+    return true;
+  }
   const sess = typeof activeAuthSessions !== 'undefined' && activeAuthSessions ? activeAuthSessions.get(clean) : null;
   if (sess) {
     if (Date.now() > sess.expiresAt) {
@@ -1564,6 +1674,7 @@ function removeClientFromRoom(room, clientId, graceMs = 2500) {
 }
 
 // HTTP Relay Sessions for Serverless (Vercel) Fallback
+const MAX_HTTP_RELAY_SESSIONS = 4096;
 const httpRelaySessions = new Map(); // clientId -> { clientId, ws, outbox: [], currentRoom: null, lastSeen: number }
 
 function cleanupStaleRelaySessions() {
@@ -1575,6 +1686,22 @@ function cleanupStaleRelaySessions() {
         removeClientFromRoom(sess.currentRoom, cid);
       }
     }
+  }
+  const maxRelayCap = typeof MAX_HTTP_RELAY_SESSIONS === 'number' ? MAX_HTTP_RELAY_SESSIONS : 4096;
+  while (httpRelaySessions.size > maxRelayCap) {
+    let victimId = null;
+    for (const [cid, sess] of httpRelaySessions.entries()) {
+      const member = sess.currentRoom?.clients?.get(cid);
+      if (member?.role !== 'guide' && !sess.ws?.isAdmin) {
+        victimId = cid;
+        break;
+      }
+    }
+    if (!victimId) victimId = httpRelaySessions.keys().next().value;
+    if (!victimId) break;
+    const victim = httpRelaySessions.get(victimId);
+    httpRelaySessions.delete(victimId);
+    if (victim?.currentRoom) removeClientFromRoom(victim.currentRoom, victimId);
   }
 }
 
@@ -2133,7 +2260,7 @@ wss.on('connection', (ws, req) => {
   });
 
   const ctx = {
-    clientId: `client-${Date.now()}-${clientSeq++}`,
+    clientId: `client-${Date.now()}-${clientSeq++}-${crypto.randomBytes(8).toString('hex')}`,
     ws,
     currentRoom: null,
     isAuthenticated: ws.isAuthenticated,
@@ -2321,6 +2448,16 @@ function closeRysRelay56(req,res){
 }
 function resolveRysRelay(req,res,input){
   const id=String(input?.clientId||'');
+  if(!id||id.length>160||id.startsWith('client-')){
+    res.status(403).json({error:'relay-key-required'});return null;
+  }
+  if(typeof wss!=='undefined'&&wss&&wss.clients){
+    for(const wsClient of wss.clients){
+      if(wsClient?.rysAuthContext?.clientId===id){
+        res.status(403).json({error:'relay-key-required'});return null;
+      }
+    }
+  }
   let s=httpRelaySessions.get(id);
   if(id.startsWith('rys56-')){
     if(!s){res.status(409).json({error:'relay-session-expired'});return null;}
@@ -2337,6 +2474,7 @@ function resolveRysRelay(req,res,input){
     }
   }else s=s||getOrCreateRelaySession(id);
   if(s.relayRetired){res.status(409).json({error:'relay-session-retired',reason:s.relayRetiredReason||'handoff'});return null;}
+  cleanupStaleRelaySessions();
   return s;
 }
 function digestRysSubscription(m){
@@ -2618,7 +2756,9 @@ app.post('/api/ws-relay',(req,res)=>{
     return res.status(400).json({error:'relay-invalid-message'});
   if(['relay-open','relay-close'].includes(req.body?.type)&&!isRysClientMessage(req.body))
     return res.status(400).json({error:'relay-invalid-message'});
-  if(req.body?.type==='relay-open'&&req.body.version===56)return openRysRelay56(res);
+  if(req.body?.type==='relay-open'&&req.body.version===56){
+    return relayOpenRateLimiter(req,res,()=>openRysRelay56(res));
+  }
   if(req.body?.type==='relay-close'&&req.body.version===56)return closeRysRelay56(req,res);
   const {clientId,messages,joinContext,subscriptionContext,token}=req.body||{};
   const context=subscriptionContext||joinContext||null;
@@ -2680,7 +2820,10 @@ app.post('/api/login', loginRateLimiter, (req, res) => {
       assignedTour: null
     };
   } else if (
-    (cleanEmail === 'info@selametturizm.com' || cleanEmail === 'selamet@selametturizm.com' || cleanEmail === 'selamet') &&
+    (cleanEmail === 'info@selametturizm.com' ||
+      cleanEmail === 'selamet@selametturizm.com' ||
+      cleanEmail === 'selamet' ||
+      (SELAMET_USERNAME_ENV && cleanEmail === SELAMET_USERNAME_ENV)) &&
     verifyPassword(cleanPass, SELAMET_PASSWORD_ENV, SELAMET_PASSWORD_SHA256)
   ) {
     user = {
@@ -2928,7 +3071,12 @@ function evictTourLiveSubscribers(tourCode, reason = 'pin-changed') {
     if (ws.familyTourCode === code) {
       ws.familyTourCode = null;
       try {
-        if (ws.readyState === WebSocket.OPEN) ws.send(familyErrPayload);
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(familyErrPayload);
+          if (!ws.isHttpRelay) {
+            ws.close(isDeleted ? 4004 : 4003, isDeleted ? 'tour-deleted' : 'pin-changed');
+          }
+        }
       } catch (e) {}
     }
   });
@@ -3349,10 +3497,10 @@ app.delete('/api/trips/:code/steps/:stepId', requireAuth, (req, res) => {
 app.post('/api/guides', requireAuth, (req, res) => {
   const body = req.body || {};
   const principal = rysPrincipal(extractAuthTokenFromReq(req));
-  const assignedTour = String(body.assignedTour || principal?.assignedTour || 'RY-KASIM').toUpperCase().trim();
-  if (!rysCanGuide(principal, assignedTour)) {
-    return res.status(403).json({ success: false, message: 'Başka bir kafileye rehber ekleme yetkiniz yok.' });
+  if (!rysCanAdmin(principal)) {
+    return res.status(403).json({ success: false, message: 'Yeni rehber ekleme yetkisi yalnızca ana acente yöneticisine açıktır.' });
   }
+  const assignedTour = String(body.assignedTour || 'RY-KASIM').toUpperCase().trim();
   if (!findRysTour(assignedTour)) {
     return res.status(404).json({ success: false, message: 'Atanacak kafile kodu bulunamadı.' });
   }
@@ -3360,7 +3508,7 @@ app.post('/api/guides', requireAuth, (req, res) => {
     return res.status(400).json({ success: false, message: 'Maksimum rehber kaydı sınırına (300) ulaşıldı.' });
   }
   const guide = {
-    id: `guide-${Date.now()}`,
+    id: `guide-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
     name: String(body.name || 'Yeni Rehber Hoca').trim().slice(0, 120),
     title: String(body.title || 'Kafile İrşad Rehberi').trim().slice(0, 140),
     phone: String(body.phone || '+90 538 399 96 66').trim().slice(0, 40),
@@ -3375,14 +3523,17 @@ app.post('/api/guides', requireAuth, (req, res) => {
 });
 
 app.delete('/api/guides/:id', requireAuth, (req, res) => {
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  if (!rysCanAdmin(principal)) {
+    return res.status(403).json({ success: false, message: 'Rehber kaydı silme yetkisi yalnızca ana acente yöneticisine açıktır.' });
+  }
   const targetId = req.params.id;
   const targetGuide = db.guides.find((g) => g.id === targetId);
   if (!targetGuide) {
     return res.status(404).json({ success: false, message: 'Silinecek rehber bulunamadı.' });
   }
-  const principal = rysPrincipal(extractAuthTokenFromReq(req));
-  if (!rysCanGuide(principal, targetGuide.assignedTour || 'RY-KASIM')) {
-    return res.status(403).json({ success: false, message: 'Bu rehber kaydını silme yetkiniz yok.' });
+  if (db.guides.length <= 1) {
+    return res.status(400).json({ success: false, message: 'Sistemde en az bir aktif rehber kaydı bulunmalıdır.' });
   }
   db.guides = db.guides.filter((g) => g.id !== targetId);
   saveState(db);
@@ -3458,28 +3609,40 @@ app.delete('/api/announcements/:id', requireAuth, (req, res) => {
 // 7. SOS Emergency API
 function recordAndBroadcastSosAlert(raw) {
   const nowMs = Date.now();
-  const requestedId = raw.id ? String(raw.id).trim().slice(0, 96) : '';
+  const requestedId = raw.id ? String(raw.id).trim().slice(0, 64) : '';
+  const safeClientSosId = /^sos-[A-Za-z0-9_-]{4,60}$/.test(requestedId) ? requestedId : '';
   const tourCode = String(raw.tourCode || 'RY-KASIM').toUpperCase().trim().slice(0, 96);
   const pilgrimName = String(raw.pilgrimName || 'Hacı Misafir').trim().slice(0, 120);
 
   const existing = db.sosAlerts.find(
     (s) =>
-      (requestedId && s.id === requestedId) ||
-      (s.status === 'active' &&
-        s.tourCode === tourCode &&
-        s.pilgrimName === pilgrimName &&
-        s.createdAtMs &&
-        nowMs - s.createdAtMs < 10000)
+      s.status === 'active' &&
+      ((safeClientSosId && s.id === safeClientSosId && s.tourCode === tourCode) ||
+        (s.tourCode === tourCode &&
+          s.pilgrimName === pilgrimName &&
+          s.createdAtMs &&
+          nowMs - s.createdAtMs < 10000))
   );
   if (existing) {
-    return existing;
+    return {
+      id: existing.id,
+      tourCode: existing.tourCode,
+      status: existing.status,
+      isTest: Boolean(existing.isTest),
+      duplicate: true
+    };
   }
 
+  const idAlreadyUsed = safeClientSosId && db.sosAlerts.some((s) => s.id === safeClientSosId);
+  const finalId = safeClientSosId && !idAlreadyUsed
+    ? safeClientSosId
+    : `sos-${nowMs}-${crypto.randomBytes(4).toString('hex')}`;
+  const rawPhone = String(raw.phone == null ? '' : raw.phone).trim().slice(0, 40);
   const alertItem = {
-    id: requestedId || `sos-${nowMs}`,
+    id: finalId,
     tourCode,
     pilgrimName,
-    phone: String(raw.phone || '+90 538 000 00 00').trim().slice(0, 40),
+    phone: rawPhone,
     lat: Number(raw.lat) || 21.4225,
     lng: Number(raw.lng) || 39.8262,
     accuracy: raw.accuracy ? Number(raw.accuracy) : null,
@@ -3506,11 +3669,29 @@ function recordAndBroadcastSosAlert(raw) {
 app.post('/api/sos', sosRateLimiter, (req, res) => {
   const body = req.body || {};
   const tourCode = String(body.tourCode || 'RY-KASIM').toUpperCase().trim();
-  if (!findRysTour(tourCode)) {
+  const tour = findRysTour(tourCode);
+  if (!tour) {
     return res.status(404).json({ success: false, error: 'tour-unknown', message: 'Geçersiz kafile kodu.' });
   }
   const principal = rysPrincipal(extractAuthTokenFromReq(req));
-  const isAuthedTest = Boolean(body.isTest && rysCanGuide(principal, tourCode));
+  const isAuthedGuide = rysCanGuide(principal, tourCode);
+  const requiredPin = String(tour.pin || '').trim();
+  if (requiredPin && !isAuthedGuide) {
+    const suppliedPin = String(body.pin || req.headers['x-tour-pin'] || '').trim();
+    if (suppliedPin && suppliedPin !== requiredPin) {
+      const reqDeviceId = String(body.deviceId || '').trim();
+      const inLiveRoom = Boolean(
+        reqDeviceId &&
+          getTourRooms(tourCode).some((r) =>
+            Array.from(r.clients.values()).some((c) => c.deviceId && c.deviceId === reqDeviceId)
+          )
+      );
+      if (!inLiveRoom) {
+        return res.status(403).json({ success: false, error: 'pin-error', message: 'Bu kafile için geçerli PIN kodu gereklidir.' });
+      }
+    }
+  }
+  const isAuthedTest = Boolean(body.isTest && isAuthedGuide);
   const alertItem = recordAndBroadcastSosAlert({ ...body, tourCode, isTest: isAuthedTest });
   res.json({ success: true, alert: alertItem });
 });
@@ -3806,6 +3987,15 @@ Object.entries(routeMap).forEach(([routePath, fileName]) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(__dirname, 'public', fileName));
   });
+});
+
+app.use((err, req, res, next) => {
+  if (res.headersSent || req.aborted || res.destroyed) return;
+  if (err instanceof URIError || (err && err.status === 400)) {
+    return res.status(400).json({ success: false, error: 'invalid-url', message: 'Geçersiz istek adresi.' });
+  }
+  const status = err && err.status >= 400 && err.status < 600 ? err.status : 500;
+  return res.status(status).json({ success: false, error: 'server-error', message: 'İstek işlenirken sunucu hatası oluştu.' });
 });
 
 if (!process.env.VERCEL) {

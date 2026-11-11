@@ -9,8 +9,8 @@
   <title>Yetkili Girişi (Rehber & Acente) | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/login" />
-  <link rel="stylesheet" href="/css/style.css?v=21" />
-  <script src="/vercel-ws-shim.js?v=77"></script>
+  <link rel="stylesheet" href="/css/style.css?v=22" />
+  <script src="/vercel-ws-shim.js?v=78"></script>
   <style>
     .login-shell {
       max-width: 460px;
@@ -120,21 +120,28 @@
   <script>
     const params = new URLSearchParams(window.location.search);
     let nextUrl = params.get('next') || '/panel';
-    if (!/^\/(?!\/|\\)/.test(nextUrl)) nextUrl = '/panel';
+    if (!/^\/(?!\/|\\)/.test(nextUrl) || nextUrl.startsWith('/login')) nextUrl = '/panel';
 
     const titleEl = document.getElementById('loginTargetTitle');
     const badgeEl = document.getElementById('loginTargetBadge');
     const mainBtn = document.getElementById('mainSubmitBtn');
 
-    if (nextUrl.startsWith('/rehber') || nextUrl.startsWith('/hoca')) {
-      badgeEl.textContent = 'REHBER (HOCA) YAYIN KONSOLU';
-      titleEl.textContent = 'Rehber Yayını Yetkili Girişi';
-      mainBtn.textContent = 'Giriş Yap ve Rehber Yayınına Geç →';
-    } else if (nextUrl.startsWith('/panel') || nextUrl.startsWith('/acente')) {
-      badgeEl.textContent = 'ACENTE YÖNETİM PANELİ';
-      titleEl.textContent = 'Acente Paneli Yetkili Girişi';
-      mainBtn.textContent = 'Giriş Yap ve Acente Paneline Geç →';
+    function updateLoginTargetUi() {
+      if (nextUrl.startsWith('/rehber') || nextUrl.startsWith('/hoca')) {
+        badgeEl.textContent = 'REHBER (HOCA) YAYIN KONSOLU';
+        titleEl.textContent = 'Rehber Yayını Yetkili Girişi';
+        mainBtn.textContent = 'Giriş Yap ve Rehber Yayınına Geç →';
+      } else if (nextUrl.startsWith('/panel') || nextUrl.startsWith('/acente')) {
+        badgeEl.textContent = 'ACENTE YÖNETİM PANELİ';
+        titleEl.textContent = 'Acente Paneli Yetkili Girişi';
+        mainBtn.textContent = 'Giriş Yap ve Acente Paneline Geç →';
+      } else {
+        badgeEl.textContent = 'YETKİLİ GÜVENLİK GİRİŞİ';
+        titleEl.textContent = 'Rehber & Acente Paneli Girişi';
+        mainBtn.textContent = 'Giriş Yap ve Devam Et →';
+      }
     }
+    updateLoginTargetUi();
 
     function togglePassVisibility() {
       const passInput = document.getElementById('password');
@@ -150,16 +157,21 @@
 
     function submitWithTarget(target) {
       nextUrl = target;
+      updateLoginTargetUi();
       document.getElementById('loginForm').requestSubmit();
     }
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (mainBtn.disabled) return;
       const errBox = document.getElementById('loginErrorBox');
       errBox.style.display = 'none';
 
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value.trim();
+      const origText = mainBtn.textContent;
+      mainBtn.disabled = true;
+      mainBtn.textContent = 'Doğrulanıyor...';
 
       try {
         const res = await fetch('/api/login', {
@@ -172,6 +184,8 @@
         if (!res.ok || !data.token) {
           errBox.textContent = data.message || 'Kullanıcı adı veya şifre hatalı!';
           errBox.style.display = 'block';
+          mainBtn.disabled = false;
+          mainBtn.textContent = origText;
           return;
         }
 
@@ -184,6 +198,8 @@
       } catch (err) {
         errBox.textContent = 'Bağlantı hatası oluştu, lütfen tekrar deneyin.';
         errBox.style.display = 'block';
+        mainBtn.disabled = false;
+        mainBtn.textContent = origText;
       }
     });
   </script>

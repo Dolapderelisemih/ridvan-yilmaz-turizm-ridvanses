@@ -1,19 +1,20 @@
 // PATCH: sw-v53
 // PATCH: sw-v53
 // PATCH: sw-v53
-const CACHE_NAME = 'ridvanses-pwa-v77';
+const CACHE_NAME = 'ridvanses-pwa-v78';
+const PUSH_META_CACHE = 'ridvanses-push-meta-v1';
 const ASSETS_TO_CACHE = [
   '/',
   '/dinle',
   '/rota',
   '/ani-kitabi',
   '/kullanim-rehberi',
-  '/css/style.css?v=21',
-  '/vercel-ws-shim.js?v=77',
+  '/css/style.css?v=22',
+  '/vercel-ws-shim.js?v=78',
   '/vendor/leaflet/leaflet.js',
   '/vendor/leaflet/leaflet.css',
   '/vendor/mqtt/mqtt.min.js',
-  '/js/umrah-steps-map.js',
+  '/js/umrah-steps-map.js?v=78',
   '/pcm-capture-worklet.js?v=72-audio',
   '/pcm-player-worklet.js?v=72-audio',
   '/manifest.json',
@@ -41,7 +42,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => k !== CACHE_NAME && k !== PUSH_META_CACHE).map((k) => caches.delete(k)))
     )
   );
   self.clients.claim();
@@ -116,8 +117,36 @@ function showRysNotification(message){
     data:{url:rysNotificationUrl(data.data?.url||data.url)}
   });
 }
+async function rysSavePushMeta(kind, meta) {
+  const safeKind = kind === 'sos' ? 'sos' : 'pilgrim';
+  const reqUrl = 'https://push-meta.rys.local/' + safeKind;
+  try {
+    const cache = await caches.open(PUSH_META_CACHE);
+    if (!meta || typeof meta !== 'object') {
+      await cache.delete(reqUrl);
+      return;
+    }
+    await cache.put(reqUrl, new Response(JSON.stringify(meta), {
+      headers: { 'Content-Type': 'application/json' }
+    }));
+  } catch (e) {}
+}
+
+async function rysLoadPushMeta(kind) {
+  const safeKind = kind === 'sos' ? 'sos' : 'pilgrim';
+  try {
+    const cache = await caches.open(PUSH_META_CACHE);
+    const hit = await cache.match('https://push-meta.rys.local/' + safeKind);
+    if (!hit) return null;
+    return await hit.json();
+  } catch (e) {
+    return null;
+  }
+}
+
 self.addEventListener('message',event=>{
-  if(event.data?.type==='SHOW_NOTIFICATION')event.waitUntil(showRysNotification(event.data));
+  if(event.data?.type==='SHOW_NOTIFICATION'){event.waitUntil(showRysNotification(event.data));return;}
+  if(event.data?.type==='SYNC_PUSH_META'){event.waitUntil(rysSavePushMeta(event.data.kind,event.data.meta));}
 });
 self.addEventListener('push',event=>{
   let data={};
@@ -142,9 +171,12 @@ self.addEventListener('notificationclick',event=>{
 self.addEventListener('pushsubscriptionchange',event=>{
   event.waitUntil((async()=>{
     try{
-      const opts=event.oldSubscription?.options||{userVisibleOnly:true};
-      if(!opts.applicationServerKey){
-        const keyRes=await fetch('/api/push/public-key');
+      const apiOrigin=self.location.hostname.endsWith('.vercel.app')?'https://ses.ridvanyilmazturizm.com':self.location.origin;
+      const subOpts={userVisibleOnly:true};
+      if(event.oldSubscription?.options?.applicationServerKey){
+        subOpts.applicationServerKey=event.oldSubscription.options.applicationServerKey;
+      }else{
+        const keyRes=await fetch(apiOrigin+'/api/push/vapid-public-key',{cache:'no-store'});
         const keyJson=await keyRes.json();
         if(keyJson?.publicKey){
           const b64=String(keyJson.publicKey).replace(/-/g,'+').replace(/_/g,'/');
@@ -152,11 +184,39 @@ self.addEventListener('pushsubscriptionchange',event=>{
           const raw=atob(pad);
           const arr=new Uint8Array(raw.length);
           for(let i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
-          opts.applicationServerKey=arr;
+          subOpts.applicationServerKey=arr;
         }
       }
-      if(self.registration?.pushManager&&opts.applicationServerKey){
-        await self.registration.pushManager.subscribe(opts);
+      const newSub=event.newSubscription||(self.registration?.pushManager&&subOpts.applicationServerKey
+        ? await self.registration.pushManager.subscribe(subOpts)
+        : null);
+      const newJson=newSub&&(typeof newSub.toJSON==='function'?newSub.toJSON():newSub);
+      if(newJson?.endpoint&&newJson?.keys){
+        for(const kind of ['pilgrim','sos']){
+          const meta=await rysLoadPushMeta(kind);
+          if(!meta?.subscriptionToken)continue;
+          try{
+            const rotRes=await fetch(apiOrigin+'/api/push/rotate',{
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({
+                oldEndpoint:event.oldSubscription?.endpoint||meta.endpoint||'',
+                subscriptionToken:meta.subscriptionToken,
+                endpoint:newJson.endpoint,
+                keys:newJson.keys,
+                isSos:kind==='sos'
+              })
+            });
+            if(rotRes.ok){
+              const rotData=await rotRes.json().catch(()=>({}));
+              await rysSavePushMeta(kind,{
+                ...meta,
+                endpoint:newJson.endpoint,
+                subscriptionToken:rotData?.subscriptionToken||meta.subscriptionToken
+              });
+            }
+          }catch(e){}
+        }
       }
       const clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});
       for(const client of clients){

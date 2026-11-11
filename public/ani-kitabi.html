@@ -6,8 +6,8 @@
   <title>Dijital Umre Hatıra Kitabı &amp; Ziyaret Beratı — Rıdvan Yılmaz Turizm</title>
   <meta name="description" content="Rıdvan Yılmaz Turizm Umre ve Siyer yolculuğunuzun baskıya hazır A4 manevi hatıra kitapçığı ve imzalı Umre Ziyaret Beratı." />
   <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
-  <link rel="stylesheet" href="/css/style.css?v=21" />
-  <script src="/vercel-ws-shim.js?v=77"></script>
+  <link rel="stylesheet" href="/css/style.css?v=22" />
+  <script src="/vercel-ws-shim.js?v=78"></script>
   <style>
     body {
       background: #e9e2d5;
@@ -366,7 +366,7 @@
           </div>
 
           <div style="text-align:center;">
-            <img id="certQrImg" src="" alt="Dijital Rota QR" style="width:96px;height:96px;border-radius:10px;border:1px solid var(--color-gold);padding:4px;background:#fff;margin:0 auto;display:none;" />
+            <img id="certQrImg" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Dijital Rota QR" style="width:96px;height:96px;border-radius:10px;border:1px solid var(--color-gold);padding:4px;background:#fff;margin:0 auto;display:none;" />
             <div style="font-size:0.66rem;font-weight:700;color:var(--color-muted);margin-top:4px;">Dijital Rota Hafızası</div>
           </div>
 
@@ -398,6 +398,8 @@
       const params = new URLSearchParams(window.location.search);
       let code = (params.get('code') || 'RY-KASIM').toUpperCase().trim();
       let tourPinParam = (params.get('pin') || '').trim();
+      let currentBookTour = null;
+      let isBookPinProtected = false;
       function getSavedBookPin(c) {
         const clean = String(c || '').toUpperCase().trim();
         try {
@@ -406,13 +408,14 @@
             if (v) return v;
           }
         } catch (_) {}
-        return tourPinParam;
+        return clean === code ? tourPinParam : '';
       }
       function setSavedBookPin(c, p) {
         const clean = String(c || '').toUpperCase().trim();
         try {
           if (typeof sessionStorage !== 'undefined') {
             if (p) sessionStorage.setItem('rys_tour_pin_' + clean, String(p).trim());
+            else sessionStorage.removeItem('rys_tour_pin_' + clean);
           }
         } catch (_) {}
       }
@@ -505,7 +508,9 @@
           shareUrl = shareUrlObj.toString();
         } catch (_) {}
         const pName = nameInput.value.trim() || 'Umre Hatıra Kitapçığımız';
-        const pinNotice = getSavedBookPin(code) ? '\n🔒 Not: Kafile özel PIN korumalıdır; açılışta kafile PIN kodunu giriniz.' : '';
+        const pinNotice = (isBookPinProtected || getSavedBookPin(code))
+          ? '\n🔒 Not: Kafile özel PIN korumalıdır; açılışta kafile PIN kodunu giriniz.'
+          : '';
         const text =
           `📖 *Rıdvan Yılmaz Turizm — Dijital Umre Hatıra Kitabı & Ziyaret Beratı*\n\n` +
           `${pName} için hazırlanan adım adım Kutsal Topraklar Siyer Günlüğü ve Hatıra Beratını görüntülemek için:\n${shareUrl}${pinNotice}`;
@@ -542,6 +547,7 @@
           const unknownBox = document.getElementById('bookUnknownBox');
           const bookStage = document.getElementById('bookStageContainer');
           if (data && data.error === 'tour-unknown') {
+            isBookPinProtected = false;
             if (pinGate) pinGate.style.display = 'none';
             if (bookStage) bookStage.style.display = 'none';
             if (unknownBox) {
@@ -552,6 +558,11 @@
           }
           if (unknownBox) unknownBox.style.display = 'none';
           if (data && data.pinRequired) {
+            isBookPinProtected = true;
+            if (activePin) {
+              tourPinParam = '';
+              setSavedBookPin(code, '');
+            }
             if (pinGate) pinGate.style.display = 'block';
             if (bookStage) bookStage.style.display = 'none';
             if (pinErr) {
@@ -569,6 +580,8 @@
           if (bookStage) bookStage.style.display = 'flex';
           if (data && data.success) {
             const tour = data.tour || {};
+            currentBookTour = tour;
+            isBookPinProtected = Boolean(tour.pinProtected || tour.pinRequired);
             const steps = Array.isArray(data.steps) ? data.steps : [];
             const stats = data.stats || {};
 
@@ -618,7 +631,7 @@
       }
 
       if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=77').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=78').catch(() => {});
       }
 
       loadBookData();
