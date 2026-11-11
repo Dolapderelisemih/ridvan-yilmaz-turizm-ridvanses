@@ -86,7 +86,7 @@
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
   <title>Rıdvan Yılmaz Turizm | RıdvanSes — Dijital Sesli Rehberlik & Kafile Sistemi</title>
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=74"></script>
+  <script src="/vercel-ws-shim.js?v=75"></script>
   <style>
     .hero {
       padding: 64px 0 76px;
@@ -907,14 +907,7 @@
       }
     }
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=74').catch(() => {});
-    }
-    if (
-      window.location.pathname === '/' &&
-      ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
-        window.navigator.standalone === true)
-    ) {
-      window.location.replace('/dinle?source=pwa');
+      navigator.serviceWorker.register('/sw.js?v=75').catch(() => {});
     }
     loadBootstrap();
 

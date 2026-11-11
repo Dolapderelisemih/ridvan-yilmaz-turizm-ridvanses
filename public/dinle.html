@@ -16,7 +16,7 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=74"></script>
+  <script src="/vercel-ws-shim.js?v=75"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
@@ -265,6 +265,7 @@
         </div>
       </a>
       <div class="nav-actions">
+        <a href="/" id="i18n_navHomeBtn" class="btn btn-outline btn-sm" style="padding:6px 10px; font-size:0.76rem;">Ana Sayfa</a>
         <button type="button" id="navPushBtn" class="btn btn-gold btn-sm" style="display:none;" onclick="activatePilgrimPushUi()">
           🔔 Bildirim Aç
         </button>
@@ -816,7 +817,8 @@
         navRoute: 'Rota',
         navPrayers: 'Dualar',
         navAnn: 'Duyuru',
-        navSos: 'SOS'
+        navSos: 'SOS',
+        navHomeBtn: 'Ana Sayfa'
       },
       ar: {
         dir: 'rtl',
@@ -850,7 +852,8 @@
         navRoute: 'المسار',
         navPrayers: 'الأدعية',
         navAnn: 'إعلانات',
-        navSos: 'طوارئ'
+        navSos: 'طوارئ',
+        navHomeBtn: 'الرئيسية'
       },
       en: {
         dir: 'ltr',
@@ -884,7 +887,8 @@
         navRoute: 'Route',
         navPrayers: 'Prayers',
         navAnn: 'Alerts',
-        navSos: 'SOS'
+        navSos: 'SOS',
+        navHomeBtn: 'Home'
       },
       fr: {
         dir: 'ltr',
@@ -918,7 +922,8 @@
         navRoute: 'Route',
         navPrayers: 'Prières',
         navAnn: 'Infos',
-        navSos: 'SOS'
+        navSos: 'SOS',
+        navHomeBtn: 'Accueil'
       },
       id: {
         dir: 'ltr',
@@ -952,7 +957,8 @@
         navRoute: 'Rute',
         navPrayers: 'Doa',
         navAnn: 'Info',
-        navSos: 'SOS'
+        navSos: 'SOS',
+        navHomeBtn: 'Beranda'
       },
       ur: {
         dir: 'rtl',
@@ -986,7 +992,8 @@
         navRoute: 'راستہ',
         navPrayers: 'دعائیں',
         navAnn: 'اعلانات',
-        navSos: 'ایمرجنسی'
+        navSos: 'ایمرجنسی',
+        navHomeBtn: 'صفحہ اول'
       }
     };
 
@@ -3020,7 +3027,7 @@
     navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(rysWebPushState().context)void syncWebPushSubscription();});
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=74').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=75').catch(() => {});
     }
 
     let subscribedBannerDismissed = false;
@@ -3051,7 +3058,7 @@
         return;
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=74').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=75').catch(() => {});
       }
       // iOS WebKit zorunluluğu: setWebPushTour senkron çalışır, Notification.requestPermission() doğrudan dokunuş içinde çağrılır.
       const state = rysWebPushState();

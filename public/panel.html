@@ -36,7 +36,7 @@
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=74"></script>
+  <script src="/vercel-ws-shim.js?v=75"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
@@ -1472,7 +1472,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=74');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=75');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -1538,7 +1538,7 @@
     }
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=74').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=75').catch(() => {});
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && localStorage.getItem('rys_sos_push_receipt')) {
         setTimeout(() => { syncAdminSosPush(true); }, 800);
       }
