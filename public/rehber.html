@@ -13,7 +13,7 @@
   <title>Rehber (Hoca) Canlı Yayın Stüdyosu | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/rehber" />
-  <link rel="stylesheet" href="/css/style.css?v=20" />
+  <link rel="stylesheet" href="/css/style.css?v=21" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -50,7 +50,7 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=76"></script>
+  <script src="/vercel-ws-shim.js?v=77"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .console-wrap {
@@ -765,14 +765,18 @@
       }
     }
 
-    function fenceGuideSession(){
+    function fenceGuideSession(isAuthError){
       if(window.ryGuideSessionReplaced)return;
       window.ryGuideSessionReplaced=true;
       clearTimeout(guideWsReconnectTimer);guideWsReconnectTimer=null;
       isDemoBroadcasting=false;++guideDemoGeneration;clearInterval(demoInterval);demoInterval=null;
       stopMicBroadcast();
+      const micBtn=document.getElementById('startMicBtn');
+      if(micBtn){micBtn.textContent='🎙️ Gerçek Mikrofonla Canlı Yayını Başlat';micBtn.className='btn btn-gold';}
+      const demoBtn=document.getElementById('startDemoStreamBtn');
+      if(demoBtn){demoBtn.textContent='📡 Demo Siyer Ses Akışı Gönder (Test)';demoBtn.className='btn btn-outline';}
       const label=document.getElementById('micSourceLabel');
-      if(label)label.textContent='Yayın başka bir sekmede devralındı. Yeniden devralmak için sayfayı yenileyin.';
+      if(label)label.textContent=isAuthError?'Oturum doğrulaması sona erdi; yayın durduruldu.':'Yayın başka bir sekmede devralındı. Yeniden devralmak için sayfayı yenileyin.';
     }
     function connectGuideWs() {
       if(window.ryGuideSessionReplaced)return;
@@ -812,7 +816,7 @@
         }
 
         if(msg.type==='session-replaced'){fenceGuideSession();return;}
-        if(msg.type==='auth-error'){fenceGuideSession();if(typeof handleGuideAuthExpired==='function')handleGuideAuthExpired(msg.message);return;}
+        if(msg.type==='auth-error'){fenceGuideSession(true);if(typeof handleGuideAuthExpired==='function')handleGuideAuthExpired(msg.message);return;}
         if (msg.type === 'joined' || msg.type === 'room-state') {
           renderRoomState(msg.room);
           if (msg.steps) renderGuideStepsList(msg.steps);
@@ -1924,7 +1928,7 @@
         if(err.name==='AbortError'||testVersion!==guideMicGeneration)return;
         if (statusBox) {
           statusBox.style.display = 'block';
-          statusBox.innerHTML = '⚠️ Mikrofon testi başlatılamadı: ' + (err.message || err.name);
+          statusBox.innerHTML = '⚠️ Mikrofon testi başlatılamadı: ' + escapeHtml(err.message || err.name);
         }
       } finally {
         if(testVersion===guideMicGeneration){
@@ -2201,7 +2205,7 @@
                 ${escapeHtml(a.message || '')}
               </div>
             </div>
-            <button type="button" class="btn btn-outline btn-sm" style="padding:4px 9px; font-size:0.73rem; color:var(--color-danger); border-color:#FCA5A5; flex-shrink:0;" onclick="deleteGuideAnnouncement('${escapeHtml(a.id)}')">
+            <button type="button" class="btn btn-outline btn-sm" style="padding:4px 9px; font-size:0.73rem; color:var(--color-danger); border-color:#FCA5A5; flex-shrink:0;" data-guide-action="delete-ann" data-id="${escapeHtml(a.id)}">
               Sil
             </button>
           </div>
@@ -2212,7 +2216,12 @@
 
     async function deleteGuideAnnouncement(id) {
       if (!id) return;
-      await fetch(`/api/announcements/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+      const res = await fetch(`/api/announcements/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null);
+      if (res && res.status === 401) {
+        handleGuideAuthExpired();
+        return;
+      }
+      if (!res || !res.ok) return;
       guideAnnouncements = guideAnnouncements.filter((a) => a.id !== id);
       renderGuideAnnouncements();
     }
@@ -2276,8 +2285,8 @@
               <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">Yol Tarifi Aç (Google Maps)</a>
               <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Haritada Gör</a>
               <a href="tel:${safePhone}" class="btn btn-outline btn-sm">Hemen Ara</a>
-              <button class="btn btn-primary btn-sm" onclick="resolveSos('${safeId}')">Hacıya Ulaşıldı</button>
-              <button class="btn btn-outline btn-sm" style="color:var(--color-danger); border-color:#FCA5A5;" onclick="deleteSosGuide('${safeId}')">Kaydı Sil</button>
+              <button type="button" class="btn btn-primary btn-sm" data-guide-action="resolve-sos" data-id="${safeId}">Hacıya Ulaşıldı</button>
+              <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger); border-color:#FCA5A5;" data-guide-action="delete-sos" data-id="${safeId}">Kaydı Sil</button>
             </div>
           </div>
           <div style="border-radius:12px; overflow:hidden; border:2px solid #FCA5A5; height:210px; background:#F8FAFC;">
@@ -2289,17 +2298,27 @@
     }
 
     async function resolveSos(id) {
-      await fetch(`/api/sos/${id}/resolve`, {
+      const res = await fetch(`/api/sos/${encodeURIComponent(id)}/resolve`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolvedBy: document.getElementById('guideNameSelect').value })
-      }).catch(() => {});
+      }).catch(() => null);
+      if (res && res.status === 401) {
+        handleGuideAuthExpired();
+        return;
+      }
+      if (!res || !res.ok) return;
       activeSosAlerts = activeSosAlerts.filter((a) => a.id !== id);
       renderSosBanner();
     }
 
     async function deleteSosGuide(id) {
-      await fetch(`/api/sos/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+      const res = await fetch(`/api/sos/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => null);
+      if (res && res.status === 401) {
+        handleGuideAuthExpired();
+        return;
+      }
+      if (!res || !res.ok) return;
       activeSosAlerts = activeSosAlerts.filter((a) => a.id !== id);
       renderSosBanner();
     }
@@ -2548,7 +2567,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=76');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=77');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -2621,8 +2640,23 @@
       }
     }
 
+    document.addEventListener('click', (ev) => {
+      const btn = ev.target && ev.target.closest ? ev.target.closest('[data-guide-action]') : null;
+      if (!btn) return;
+      const action = btn.getAttribute('data-guide-action');
+      const id = btn.getAttribute('data-id') || '';
+      if (action === 'delete-ann') deleteGuideAnnouncement(id);
+      else if (action === 'resolve-sos') resolveSos(id);
+      else if (action === 'delete-sos') deleteSosGuide(id);
+    });
+
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=76').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=77').catch(() => {});
+      navigator.serviceWorker.addEventListener('message', (ev) => {
+        if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED' && localStorage.getItem('rys_sos_push_receipt')) {
+          syncGuideSosPushSubscription(true);
+        }
+      });
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && localStorage.getItem('rys_sos_push_receipt')) {
         setTimeout(() => { syncGuideSosPushSubscription(true); }, 800);
       }

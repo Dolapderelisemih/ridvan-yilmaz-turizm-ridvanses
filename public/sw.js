@@ -1,14 +1,18 @@
 // PATCH: sw-v53
 // PATCH: sw-v53
 // PATCH: sw-v53
-const CACHE_NAME = 'ridvanses-pwa-v76';
+const CACHE_NAME = 'ridvanses-pwa-v77';
 const ASSETS_TO_CACHE = [
   '/',
   '/dinle',
   '/rota',
   '/ani-kitabi',
-  '/css/style.css',
-  '/vercel-ws-shim.js?v=76',
+  '/kullanim-rehberi',
+  '/css/style.css?v=21',
+  '/vercel-ws-shim.js?v=77',
+  '/vendor/leaflet/leaflet.js',
+  '/vendor/leaflet/leaflet.css',
+  '/vendor/mqtt/mqtt.min.js',
   '/js/umrah-steps-map.js',
   '/pcm-capture-worklet.js?v=72-audio',
   '/pcm-player-worklet.js?v=72-audio',
@@ -46,7 +50,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
+  const ownOrigin = self.location && self.location.origin ? self.location.origin : url.origin;
   if (
+    url.origin !== ownOrigin ||
     url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/ws') ||
     url.pathname.startsWith('/rehber') ||
@@ -71,15 +77,19 @@ self.addEventListener('fetch', (event) => {
       .catch(async () => {
         const exact = await caches.match(event.request);
         if (exact) return exact;
-        const ownOrigin = self.location && self.location.origin ? self.location.origin : url.origin;
-        if (url.origin === ownOrigin) {
-          const cleanHit = await caches.match(url.pathname, { ignoreSearch: true });
-          if (cleanHit) return cleanHit;
-          if (event.request.mode === 'navigate') {
-            return (await caches.match('/dinle', { ignoreSearch: true })) || caches.match('/');
-          }
+        const cleanHit = await caches.match(url.pathname, { ignoreSearch: true });
+        if (cleanHit) return cleanHit;
+        if (event.request.mode === 'navigate') {
+          return (
+            (await caches.match('/dinle', { ignoreSearch: true })) ||
+            (await caches.match('/', { ignoreSearch: true })) ||
+            new Response('Çevrimdışı bağlantı bekleniyor...', {
+              status: 503,
+              headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+            })
+          );
         }
-        return null;
+        return new Response('', { status: 503, statusText: 'Offline' });
       })
   );
 });
@@ -88,7 +98,7 @@ self.addEventListener('fetch', (event) => {
 function rysNotificationUrl(value){
   try{
     const url=new URL(value||'/dinle',self.location.origin);
-    if(url.origin===self.location.origin&&['/dinle','/rehber','/panel'].includes(url.pathname))return url.href;
+    if(url.origin===self.location.origin&&['/dinle','/rehber','/panel','/rota','/ani-kitabi'].includes(url.pathname))return url.href;
   }catch(e){}
   return new URL('/dinle',self.location.origin).href;
 }
@@ -128,4 +138,30 @@ self.addEventListener('notificationclick',event=>{
     if(active?.navigate){try{const navigated=await active.navigate(target);if(navigated)return await navigated.focus();}catch(e){}}
     return self.clients.openWindow(target);
   }));
+});
+self.addEventListener('pushsubscriptionchange',event=>{
+  event.waitUntil((async()=>{
+    try{
+      const opts=event.oldSubscription?.options||{userVisibleOnly:true};
+      if(!opts.applicationServerKey){
+        const keyRes=await fetch('/api/push/public-key');
+        const keyJson=await keyRes.json();
+        if(keyJson?.publicKey){
+          const b64=String(keyJson.publicKey).replace(/-/g,'+').replace(/_/g,'/');
+          const pad=b64+'='.repeat((4-(b64.length%4))%4);
+          const raw=atob(pad);
+          const arr=new Uint8Array(raw.length);
+          for(let i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
+          opts.applicationServerKey=arr;
+        }
+      }
+      if(self.registration?.pushManager&&opts.applicationServerKey){
+        await self.registration.pushManager.subscribe(opts);
+      }
+      const clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+      for(const client of clients){
+        try{client.postMessage({type:'PUSH_SUBSCRIPTION_CHANGED'});}catch(e){}
+      }
+    }catch(e){}
+  })());
 });

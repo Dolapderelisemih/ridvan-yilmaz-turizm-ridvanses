@@ -660,6 +660,10 @@ tr:last-child td {
   box-shadow: var(--shadow-strong);
 }
 
+.ps-stats-bar.ps-stats-3col {
+  grid-template-columns: repeat(3, 1fr);
+}
+
 .ps-stat-item {
   text-align: center;
   padding: 4px 6px;
@@ -1033,5 +1037,45 @@ tr:last-child td {
     justify-content: center;
     padding-top: 4px;
     border-top: 1px dashed var(--color-hairline);
+  }
+}
+
+@media (max-width: 380px) {
+  .container {
+    padding: 0 12px;
+  }
+  .navbar-inner {
+    gap: 6px;
+  }
+  .brand {
+    gap: 8px;
+  }
+  .brand-logo {
+    height: 34px;
+    padding: 2px 4px;
+  }
+  .brand-title {
+    font-size: 0.86rem;
+  }
+  .brand-sub {
+    font-size: 0.63rem;
+  }
+  .nav-actions {
+    gap: 4px;
+  }
+  .nav-actions .btn-sm {
+    padding: 6px 9px;
+    font-size: 0.72rem;
+  }
+  .ps-stats-bar.ps-stats-3col {
+    padding: 8px 6px;
+    gap: 3px;
+  }
+  .ps-stat-val {
+    font-size: 1.02rem;
+  }
+  .ps-stat-lbl {
+    font-size: 0.6rem;
+    letter-spacing: 0.03em;
   }
 }

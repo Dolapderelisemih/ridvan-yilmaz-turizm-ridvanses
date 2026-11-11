@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Canlı Manevi Rota & Aile Takip Ekranı — Rıdvan Yılmaz Turizm</title>
-  <meta name="description" content="Rıdvan Yılmaz Turizm Umre kafilesinin kutsal topraklardaki canlı manevi yolculuk rotasını, ziyaret edilen Siyer duraklarını ve rehber konumunu şifresiz takip edin." />
+  <meta name="description" content="Rıdvan Yılmaz Turizm Umre kafilesinin kutsal topraklardaki canlı manevi yolculuk rotasını, ziyaret edilen Siyer duraklarını ve rehber konumunu canlı takip edin." />
   <meta name="theme-color" content="#06231b" />
   <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=20" />
-  <script src="/vercel-ws-shim.js?v=76"></script>
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="/css/style.css?v=21" />
+  <script src="/vercel-ws-shim.js?v=77"></script>
   <style>
     .rota-hero-strip {
       background:
@@ -108,7 +108,7 @@
         <div style="max-width:700px;">
           <div style="display:inline-flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
             <span id="heroLiveBadge" class="badge badge-live"><span class="pulse-dot"></span> CANLI MANEVİ ROTA AKTİF</span>
-            <span style="font-size:0.78rem;color:var(--color-gold-bright);font-weight:700;">Şifresiz Aile Takip Ekranı</span>
+            <span id="rotaAccessBadge" style="font-size:0.78rem;color:var(--color-gold-bright);font-weight:700;">Canlı Aile Takip Ekranı</span>
           </div>
           <h1 id="tourTitle" style="font-size:clamp(1.45rem, 3vw, 2.1rem);color:#ffffff;margin-bottom:6px;">
             Kasım Umresi Kafilesi — Manevi Yolculuk Haritası
@@ -259,7 +259,7 @@
 
   <div id="rotaToast" class="toast-banner"></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/vendor/leaflet/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <script>
     (function () {
@@ -293,7 +293,14 @@
           }
         } catch (_) {}
       }
-      if (initialUrlPin) setSavedTourPin(currentCode, initialUrlPin);
+      if (initialUrlPin) {
+        setSavedTourPin(currentCode, initialUrlPin);
+        try {
+          const cleanUrl = new URL(window.location.href);
+          cleanUrl.searchParams.delete('pin');
+          window.history.replaceState({}, '', cleanUrl.toString());
+        } catch (_) {}
+      }
 
       function escapeHtml(str) {
         return String(str ?? '')
@@ -333,12 +340,10 @@
 
       function updateLinks(code) {
         const enc = encodeURIComponent(code);
-        const savedPin = getSavedTourPin(code);
-        const pinSuffix = savedPin ? `&pin=${encodeURIComponent(savedPin)}` : '';
         document.getElementById('topListenBtn').href = `/dinle?code=${enc}`;
         document.getElementById('bannerListenBtn').href = `/dinle?code=${enc}`;
-        document.getElementById('topBookBtn').href = `/ani-kitabi?code=${enc}${pinSuffix}`;
-        document.getElementById('bannerBookBtn').href = `/ani-kitabi?code=${enc}${pinSuffix}`;
+        document.getElementById('topBookBtn').href = `/ani-kitabi?code=${enc}`;
+        document.getElementById('bannerBookBtn').href = `/ani-kitabi?code=${enc}`;
       }
 
       function renderAnnouncements(list) {
@@ -368,6 +373,12 @@
         if (!data) return;
         if (data.tour) {
           currentTour = data.tour;
+          const accessBadge = document.getElementById('rotaAccessBadge');
+          if (accessBadge) {
+            accessBadge.textContent = (data.tour.pinProtected || data.tour.pinRequired)
+              ? '🔒 PIN Korumalı Aile Takip Ekranı'
+              : 'Canlı Aile Takip Ekranı';
+          }
           document.getElementById('tourTitle').textContent = `${data.tour.name} — Manevi Yolculuk Haritası`;
           document.getElementById('tourMeta').innerHTML =
             `Rehber: <strong>${escapeHtml(data.tour.guideName || 'Ömer Ali Gültekin')}</strong> • ${escapeHtml(data.tour.dateText || '')} • ${escapeHtml(data.tour.duration || '')}`;
@@ -523,9 +534,11 @@
             try {
               const msg = JSON.parse(ev.data);
               if (msg.type === 'pin-error') {
+                setSavedTourPin(currentCode, '');
                 const pinGate = document.getElementById('rotaPinGateBox');
                 if (pinGate) pinGate.style.display = 'block';
                 document.getElementById('syncIndicator').textContent = '🔒 PIN Gerekli';
+                fetchStepsRest(false);
                 return;
               }
               if (msg.type === 'subscription-error' && msg.code === 'tour-unknown') {
@@ -633,7 +646,7 @@
         });
       });
 
-      document.getElementById('loadCodeBtn').addEventListener('click', () => {
+      const triggerLoadCode = () => {
         const val = String(codeInput.value || '').toUpperCase().trim();
         if (!val) return;
         currentCode = val;
@@ -643,6 +656,13 @@
         updateLinks(currentCode);
         fetchStepsRest(true);
         connectRealtime();
+      };
+      document.getElementById('loadCodeBtn').addEventListener('click', triggerLoadCode);
+      codeInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          triggerLoadCode();
+        }
       });
 
       document.getElementById('shareWhatsappBtn').addEventListener('click', () => {
@@ -677,7 +697,7 @@
       }
 
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=76').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=77').catch(() => {});
       }
 
       updateLinks(currentCode);

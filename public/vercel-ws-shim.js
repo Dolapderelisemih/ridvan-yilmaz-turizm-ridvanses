@@ -6,7 +6,7 @@
   const NativeWebSocket = window.WebSocket;
   if (!NativeWebSocket) return;
 
-  function loadScriptOnce(src, globalName, cb) {
+  function loadScriptOnce(src, globalName, cb, fallbackSrc) {
     if (window[globalName]) {
       cb();
       return;
@@ -20,6 +20,12 @@
     s.src = src;
     s.async = true;
     s.onload = () => cb();
+    s.onerror = () => {
+      if (fallbackSrc) {
+        s.remove();
+        loadScriptOnce(fallbackSrc, globalName, cb);
+      }
+    };
     document.head.appendChild(s);
   }
 
@@ -472,7 +478,7 @@
       const current=()=>this._mqttGeneration===generation&&this._isRelay&&
         this.readyState===1&&!this._closedExplicitly;
       if(!current())return;
-      loadScriptOnce('https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js', 'mqtt', () => {
+      loadScriptOnce('/vendor/mqtt/mqtt.min.js', 'mqtt', () => {
         if (!current()||!window.mqtt) return;
 
         const codeClean = joinMsg ? this._sanitizeCode(joinMsg.tourCode) : 'ALL';
@@ -542,7 +548,7 @@
             } catch {}
           });
         });
-      });
+      }, 'https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js');
     }
 
 
@@ -727,6 +733,10 @@
         if(subscription&&previousRoute!==this._relayRoutingKey()){
           this._clearPresence?.();
           this._sendQueue.length=0;this._audioCoalescer?.clear();this._lastGuideState=null;
+        }
+        if(subscription&&this._isRelay&&this.readyState===1&&!this._closedExplicitly){
+          this._relayFenced=false;
+          if(!this._pollTimer)this._pollTimer=setInterval(()=>this._flushAndPoll(),100);
         }
       }
 
@@ -983,7 +993,19 @@
         const payload=await res.json();if(!current())return;
         if(!res.ok){
           if(res.status===409&&payload.error==='relay-request-stale'){success=true;return;}
-          if(res.status===401)this._clearPresence?.();
+          if(res.status===401||res.status===403){
+            this._clearPresence?.();
+            this._relayFenced=true;
+            if(this._pollTimer){clearInterval(this._pollTimer);this._pollTimer=null;}
+            batch.length=0;this._sendQueue.length=0;this._audioCoalescer?.clear();
+            this._deliverIncomingMessage({
+              type:'auth-error',
+              status:res.status,
+              error:payload?.error||'unauthorized',
+              message:payload?.message||'Oturum süresi doldu veya yetkiniz bulunmuyor.'
+            });
+            success=true;return;
+          }
           if(res.status===409){
             if(payload.reason==='replaced'){this._fenceReplaced();success=true;return;}
             if(payload.error==='relay-session-retired'&&this._failbackProbe)this._relayFenced=true;
@@ -1050,35 +1072,49 @@
     window.fetch = function (input, init) {
       let targetInput = input;
       let isCrossOriginVdsApi = false;
+      let reqMethod = 'GET';
+      let apiPath = '';
       try {
-        const urlStr = typeof input === 'string' ? input : (input && input.url) || '';
+        const isReqObj = typeof Request !== 'undefined' && input instanceof Request;
+        const isUrlObj = typeof URL !== 'undefined' && input instanceof URL;
+        const urlStr = typeof input === 'string' ? input : isUrlObj ? input.toString() : (input && input.url) || '';
+        reqMethod = String((init && init.method) || (isReqObj && input.method) || 'GET').toUpperCase();
         const parsedUrl = new URL(urlStr, window.location.origin);
+        apiPath = parsedUrl.pathname || '';
         const isTrustedOrigin =
           parsedUrl.origin === window.location.origin || parsedUrl.origin === VDS_API_ORIGIN;
-        if (isTrustedOrigin && parsedUrl.pathname.startsWith('/api/')) {
+        if (isTrustedOrigin && apiPath.startsWith('/api/')) {
           const token = localStorage.getItem('ry_auth_token');
           if (token) {
             init = Object.assign({}, init);
-            const mergedHeaders = new Headers(
-              init.headers || (typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined)
-            );
+            const mergedHeaders = new Headers(init.headers || (isReqObj ? input.headers : undefined));
             mergedHeaders.set('Authorization', 'Bearer ' + token);
             init.headers = mergedHeaders;
           }
           if (
-            typeof input === 'string' &&
-            urlStr.startsWith('/api/') &&
+            parsedUrl.origin === window.location.origin &&
             window.location &&
             window.location.host &&
             window.location.host.includes('vercel.app')
           ) {
-            targetInput = VDS_API_ORIGIN + urlStr;
+            const vdsUrl = VDS_API_ORIGIN + apiPath + (parsedUrl.search || '');
+            targetInput = isReqObj ? new Request(vdsUrl, input) : vdsUrl;
             isCrossOriginVdsApi = true;
           }
         }
       } catch (e) {}
       if (isCrossOriginVdsApi) {
-        return origFetch.call(this, targetInput, init).catch(() => origFetch.call(this, input, init));
+        const canReadFallback =
+          (reqMethod === 'GET' || reqMethod === 'HEAD') &&
+          !apiPath.startsWith('/api/ws-relay') &&
+          !apiPath.startsWith('/api/push/') &&
+          !apiPath.startsWith('/api/rea-report');
+        return origFetch.call(this, targetInput, init).catch((err) => {
+          if (!canReadFallback || (err && err.name === 'AbortError') || (init && init.signal && init.signal.aborted)) {
+            throw err;
+          }
+          return origFetch.call(this, input, init);
+        });
       }
       return origFetch.call(this, targetInput, init);
     };

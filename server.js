@@ -50,9 +50,10 @@ const wss = new WebSocketServer({
   perMessageDeflate: false
 });
 
+app.disable('x-powered-by');
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '512kb' }));
+app.use(express.urlencoded({ extended: true, limit: '64kb' }));
 app.use((err, req, res, next) => {
   if (
     err &&
@@ -83,11 +84,28 @@ function isTrustedCorsOrigin(origin) {
 }
 
 // Güvenlik Başlıkları (Security Headers) & Cross-Origin Destek
+const RYS_CSP_HEADER = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' blob: https://unpkg.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' data: blob: mediastream:",
+  "worker-src 'self' blob:",
+  "connect-src 'self' https://ses.ridvanyilmazturizm.com https://*.ridvanyilmazturizm.com https://ridvanses.vercel.app https://*.vercel.app https://nominatim.openstreetmap.org https://ipwho.is https://unpkg.com wss: ws:",
+  "frame-src 'self' https://www.openstreetmap.org",
+  "frame-ancestors 'self'",
+  "base-uri 'self'",
+  "form-action 'self' https://wa.me"
+].join('; ');
+
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), payment=(), usb=(), geolocation=(self), microphone=(self)');
+  res.setHeader('Content-Security-Policy', RYS_CSP_HEADER);
   res.setHeader('Vary', 'Origin');
   if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
@@ -1365,7 +1383,16 @@ function refreshRysNativeAuth(ctx){
   ctx.currentRoom=null;ctx.ws.isAdmin=false;ctx.ws.familyTourCode=null;
   clearRysHandoff(ctx);
   if(room?.clients.has(ctx.clientId))removeClientFromRoom(room,ctx.clientId,0);
-  try{ctx.ws.terminate();}catch(e){}
+  try{
+    if(ctx.ws.readyState===WebSocket.OPEN){
+      ctx.ws.send(JSON.stringify({type:'auth-error',message:'Oturumunuz sonlandırıldı. Lütfen tekrar giriş yapınız.'}));
+      ctx.ws.close(4001,'auth-revoked');
+      const fallbackTerm=setTimeout(()=>{try{ctx.ws.terminate();}catch(e){}},250);
+      fallbackTerm.unref?.();
+    }else{
+      ctx.ws.terminate();
+    }
+  }catch(e){try{ctx.ws.terminate();}catch(_){}}
   return false;
 }
 
@@ -2025,13 +2052,14 @@ function processClientJsonMessageV49(ctx, msg) {
       const ann = {
         id: `ann-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`,
         tourCode: currentRoom.tourCode,
-        title: msg.title || 'Rehber Duyurusu',
-        message: msg.message || '',
-        sender: sender.name,
+        title: String(msg.title || 'Rehber Duyurusu').trim().slice(0, 140) || 'Rehber Duyurusu',
+        message: String(msg.message || '').trim().slice(0, 1200),
+        sender: String(sender.name || 'Rehber Hoca').trim().slice(0, 120),
         createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
         urgent: Boolean(msg.urgent)
       };
       db.announcements.unshift(ann);
+      if (db.announcements.length > 100) db.announcements.length = 100;
       saveState(db);
       queueRysPushAnnouncement(ann);
       for (const r of getTourRooms(currentRoom.tourCode)) {
@@ -2852,42 +2880,119 @@ app.post('/api/join-tour', joinTourRateLimiter, (req, res) => {
 });
 
 // 4. Tour CRUD (Agency Panel)
+const RYS_TOUR_CODE_RE = /^[A-Z0-9_:-]{2,32}$/;
+
+function evictTourLiveSubscribers(tourCode, reason = 'pin-changed') {
+  const code = String(tourCode || '').toUpperCase().trim();
+  if (!code) return;
+  const isDeleted = reason === 'tour-deleted';
+  const roomErrPayload = isDeleted
+    ? JSON.stringify({ type: 'tour-unknown', code: 'tour-unknown', message: 'Bu kafile sonlandırıldı.' })
+    : JSON.stringify({ type: 'pin-error', message: 'Kafile PIN kodu güncellendi. Lütfen yeni PIN kodu ile tekrar katılınız.' });
+  const familyErrPayload = isDeleted
+    ? JSON.stringify({ type: 'subscription-error', code: 'tour-unknown', message: 'Bu kafile sonlandırıldı.' })
+    : JSON.stringify({ type: 'pin-error', message: 'Kafile PIN kodu güncellendi.' });
+
+  for (const room of getTourRooms(code)) {
+    for (const [cid, client] of Array.from(room.clients.entries())) {
+      if (!isDeleted && client.role === 'guide') continue;
+      try {
+        if (client.ws && client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(roomErrPayload);
+        }
+      } catch (e) {}
+      if (client.ws && client.ws.rysAuthContext && client.ws.rysAuthContext.currentRoom === room) {
+        client.ws.rysAuthContext.currentRoom = null;
+      }
+      const relaySess = httpRelaySessions.get(cid);
+      if (relaySess) {
+        relaySess.currentRoom = null;
+        relaySess.relayDigest = null;
+      }
+      room.clients.delete(cid);
+      if (!isDeleted && client.ws && !client.ws.isHttpRelay) {
+        try { client.ws.close(4003, 'pin-changed'); } catch (e) {}
+      } else if (isDeleted && client.ws && !client.ws.isHttpRelay) {
+        try { client.ws.close(4004, 'tour-deleted'); } catch (e) {}
+      }
+    }
+    if (isDeleted) {
+      dropRysRoom(room);
+    } else {
+      if (!room.clients.size) room.idleSince = Date.now();
+      broadcastRoomState(room);
+    }
+  }
+
+  wss.clients.forEach((ws) => {
+    if (ws.familyTourCode === code) {
+      ws.familyTourCode = null;
+      try {
+        if (ws.readyState === WebSocket.OPEN) ws.send(familyErrPayload);
+      } catch (e) {}
+    }
+  });
+  for (const sess of httpRelaySessions.values()) {
+    if (sess.ws.familyTourCode === code) {
+      sess.ws.familyTourCode = null;
+      sess.relayDigest = null;
+      try { sess.ws.send(familyErrPayload); } catch (e) {}
+    }
+  }
+
+  for (const [endpoint, sub] of rysPushSubs) {
+    if (sub.tourCode === code) rysPushDrop(endpoint);
+  }
+  db.pushSubscriptions = Array.from(rysPushSubs.values());
+}
+
 app.post('/api/tours', requireAuth, (req, res) => {
   const authedUser = getAuthenticatedUser(req);
   if (authedUser && authedUser.assignedTour) {
     return res.status(403).json({ success: false, message: 'Alt acente hesabı yeni kafile oluşturamaz.' });
   }
+  if (db.tours.length >= 200) {
+    return res.status(400).json({ success: false, message: 'Maksimum aktif kafile sınırına (200) ulaşıldı.' });
+  }
   const body = req.body || {};
   const code = String(body.code || `RY-${Math.floor(1000 + Math.random() * 9000)}`).toUpperCase().trim();
+  if (!RYS_TOUR_CODE_RE.test(code) || code === 'ALL') {
+    return res.status(400).json({
+      success: false,
+      message: 'Kafile kodu yalnızca harf, rakam, tire (-) veya alt çizgi (_) içerebilir (2–24 karakter).'
+    });
+  }
   if (db.tours.some((t) => String(t.code || '').toUpperCase() === code)) {
     return res.status(400).json({
       success: false,
       message: `"${code}" kafile kodu zaten kullanımda. Lütfen farklı bir kafile kodu belirleyiniz.`
     });
   }
+  const cleanPin = String(body.pin || '').trim().slice(0, 32);
+  const cleanGuideName = String(body.guideName || 'Rıdvan Yılmaz Hoca').trim().slice(0, 120) || 'Rıdvan Yılmaz Hoca';
   const newTour = {
     id: `tour-${Date.now()}`,
     code,
-    name: body.name || 'Yeni Siyer Umresi Kafilesi',
-    dateText: body.dateText || '2026 - 2027 Sezonu',
-    duration: body.duration || '15 Gün',
-    guideId: body.guideId || 'guide-1',
-    guideName: body.guideName || 'Rıdvan Yılmaz Hoca',
-    makkahHotel: body.makkahHotel || 'Mekke Otel Kudi Tower',
-    madinahHotel: body.madinahHotel || 'Medine Merkezi Ravza Oteli',
-    pin: body.pin || '',
-    pinProtected: Boolean(body.pin),
-    status: body.status || 'active',
-    capacity: Number(body.capacity) || 100,
-    registeredCount: Number(body.registeredCount) || 1,
-    description: body.description || 'Rıdvan Yılmaz Turizm Siyer Umresi Kafilesi',
+    name: String(body.name || 'Yeni Siyer Umresi Kafilesi').trim().slice(0, 140) || 'Yeni Siyer Umresi Kafilesi',
+    dateText: String(body.dateText || '2026 - 2027 Sezonu').trim().slice(0, 80),
+    duration: String(body.duration || '15 Gün').trim().slice(0, 80),
+    guideId: String(body.guideId || 'guide-1').trim().slice(0, 64),
+    guideName: cleanGuideName,
+    makkahHotel: String(body.makkahHotel || 'Mekke Otel Kudi Tower').trim().slice(0, 160),
+    madinahHotel: String(body.madinahHotel || 'Medine Merkezi Ravza Oteli').trim().slice(0, 160),
+    pin: cleanPin,
+    pinProtected: Boolean(cleanPin),
+    status: String(body.status || 'active').trim().slice(0, 32),
+    capacity: Math.max(1, Math.min(10000, Number(body.capacity) || 100)),
+    registeredCount: Math.max(0, Math.min(10000, Number(body.registeredCount) || 1)),
+    description: String(body.description || 'Rıdvan Yılmaz Turizm Siyer Umresi Kafilesi').trim().slice(0, 600),
     rooms: [
-      { id: 'genel', name: 'Genel Kafile & Tavaf Yayını', guide: body.guideName || 'Rıdvan Yılmaz Hoca', active: true },
-      { id: 'siyer', name: 'Siyer-i Nebi Sohbet Odası', guide: body.guideName || 'Rıdvan Yılmaz Hoca', active: true }
+      { id: 'genel', name: 'Genel Kafile & Tavaf Yayını', guide: cleanGuideName, active: true },
+      { id: 'siyer', name: 'Siyer-i Nebi Sohbet Odası', guide: cleanGuideName, active: true }
     ]
   };
   db.tours.unshift(newTour);
-  if (newTour.guideName && !db.guides.some((g) => g.name.toLowerCase() === newTour.guideName.toLowerCase())) {
+  if (newTour.guideName && db.guides.length < 300 && !db.guides.some((g) => g.name.toLowerCase() === newTour.guideName.toLowerCase())) {
     db.guides.push({
       id: `guide-${Date.now()}`,
       name: newTour.guideName,
@@ -2924,12 +3029,13 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
     return res.status(403).json({ success: false, message: 'Yalnızca kendi acentenize atanmış kafileyi düzenleyebilirsiniz.' });
   }
   const body = req.body || {};
-  if (typeof body.name === 'string' && body.name.trim()) tour.name = body.name.trim();
-  if (typeof body.dateText === 'string' && body.dateText.trim()) tour.dateText = body.dateText.trim();
-  if (typeof body.duration === 'string' && body.duration.trim()) tour.duration = body.duration.trim();
+  const prevPin = String(tour.pin || '').trim();
+  if (typeof body.name === 'string' && body.name.trim()) tour.name = body.name.trim().slice(0, 140);
+  if (typeof body.dateText === 'string' && body.dateText.trim()) tour.dateText = body.dateText.trim().slice(0, 80);
+  if (typeof body.duration === 'string' && body.duration.trim()) tour.duration = body.duration.trim().slice(0, 80);
   if (typeof body.guideName === 'string' && body.guideName.trim()) {
-    tour.guideName = body.guideName.trim();
-    if (!db.guides.some((g) => g.name.toLowerCase() === tour.guideName.toLowerCase())) {
+    tour.guideName = body.guideName.trim().slice(0, 120);
+    if (db.guides.length < 300 && !db.guides.some((g) => g.name.toLowerCase() === tour.guideName.toLowerCase())) {
       db.guides.push({
         id: `guide-${Date.now()}`,
         name: tour.guideName,
@@ -2951,23 +3057,30 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
       r.tourName = tour.name;
     }
   }
-  if (typeof body.makkahHotel === 'string' && body.makkahHotel.trim()) tour.makkahHotel = body.makkahHotel.trim();
-  if (typeof body.madinahHotel === 'string' && body.madinahHotel.trim()) tour.madinahHotel = body.madinahHotel.trim();
-  if (typeof body.description === 'string') tour.description = body.description.trim();
-  if (typeof body.status === 'string' && body.status.trim()) tour.status = body.status.trim();
+  if (typeof body.makkahHotel === 'string' && body.makkahHotel.trim()) tour.makkahHotel = body.makkahHotel.trim().slice(0, 160);
+  if (typeof body.madinahHotel === 'string' && body.madinahHotel.trim()) tour.madinahHotel = body.madinahHotel.trim().slice(0, 160);
+  if (typeof body.description === 'string') tour.description = body.description.trim().slice(0, 600);
+  if (typeof body.status === 'string' && body.status.trim()) tour.status = body.status.trim().slice(0, 32);
   if (body.capacity !== undefined && Number.isFinite(Number(body.capacity))) {
-    tour.capacity = Math.max(1, Number(body.capacity));
+    tour.capacity = Math.max(1, Math.min(10000, Number(body.capacity)));
   }
   if (body.registeredCount !== undefined && Number.isFinite(Number(body.registeredCount))) {
-    tour.registeredCount = Math.max(0, Number(body.registeredCount));
+    tour.registeredCount = Math.max(0, Math.min(10000, Number(body.registeredCount)));
   }
+  let pinTightened = false;
   if (typeof body.pin === 'string') {
-    tour.pin = body.pin.trim();
+    tour.pin = body.pin.trim().slice(0, 32);
     tour.pinProtected = Boolean(tour.pin);
+    if (tour.pinProtected && tour.pin !== prevPin) {
+      pinTightened = true;
+    }
   }
 
   for (const r of getTourRooms(tour.code)) {
     r.tourName = tour.name;
+  }
+  if (pinTightened) {
+    evictTourLiveSubscribers(tour.code, 'pin-changed');
   }
   saveState(db);
   const firstRoom = getTourRooms(tour.code)[0];
@@ -2987,11 +3100,16 @@ app.delete('/api/tours/:id', requireAuth, (req, res) => {
   if (authedUser && authedUser.assignedTour) {
     return res.status(403).json({ success: false, message: 'Alt acente hesabı kafile silemez.' });
   }
-  const targetId = req.params.id;
-  const deletedTour = db.tours.find((t) => t.id === targetId || t.code === targetId);
-  const deletedCode = deletedTour ? deletedTour.code : targetId;
-  db.tours = db.tours.filter((t) => t.id !== targetId && t.code !== targetId);
+  const targetId = String(req.params.id || '').trim();
+  const targetUpper = targetId.toUpperCase();
+  const deletedTour = db.tours.find((t) => t.id === targetId || String(t.code || '').toUpperCase() === targetUpper);
+  if (!deletedTour) {
+    return res.status(404).json({ success: false, message: 'Silinecek kafile bulunamadı.' });
+  }
+  const deletedCode = String(deletedTour.code || '').toUpperCase().trim();
+  db.tours = db.tours.filter((t) => t.id !== deletedTour.id);
   if (deletedCode) {
+    evictTourLiveSubscribers(deletedCode, 'tour-deleted');
     db.announcements = db.announcements.filter((a) => a.tourCode !== deletedCode);
     if (db.journeySteps && db.journeySteps[deletedCode]) {
       delete db.journeySteps[deletedCode];
@@ -3029,28 +3147,30 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 app.get('/api/trips/:code/steps', (req, res) => {
   const code = String(req.params.code || 'RY-KASIM').toUpperCase().trim();
-  const rawTour = db.tours.find((t) => t.code.toUpperCase() === code) || db.tours[0] || {
-    code,
-    name: 'Kasım Umresi Kafilesi',
-    guideName: 'Ömer Ali Gültekin',
-    dateText: 'Kasım 2026 • 10 Gün',
-    duration: '10 Gün (8 Mekke + 2 Medine)',
-    makkahHotel: 'Mekke Otel Kudi Tower',
-    madinahHotel: '2 Gün Medine Konaklama (Merkezi Bölge)'
-  };
+  const rawTour = findRysTour(code);
+  if (!rawTour) {
+    return res.status(404).json({
+      success: false,
+      error: 'tour-unknown',
+      tour: null,
+      steps: [],
+      stats: computeJourneyStats([]),
+      room: null,
+      announcements: []
+    });
+  }
   const principal = rysPrincipal(extractAuthTokenFromReq(req));
   const isAuthedForTour = rysCanGuide(principal, code);
-  const requiresPin = Boolean(rawTour && (rawTour.pinProtected || rawTour.pin) && String(rawTour.pin || '').trim());
+  const requiresPin = Boolean((rawTour.pinProtected || rawTour.pin) && String(rawTour.pin || '').trim());
   const pinSatisfied = !requiresPin || isAuthedForTour || String(req.query?.pin || '').trim() === String(rawTour.pin).trim();
   const tour = isAuthedForTour ? rawTour : sanitizeTourForPublic(rawTour);
   const steps = pinSatisfied ? getTourSteps(code) : [];
   const stats = computeJourneyStats(steps);
-  const allocatedRoom=getOrCreateRoom(code,'genel');
-  if(!allocatedRoom){
-    if(findRysTour(code))return res.status(503).json({success:false,error:'room-capacity'});
-    return res.json({success:false,error:'tour-unknown',tour:null,steps:[],stats:computeJourneyStats([]),room:null,announcements:[]});
+  const allocatedRoom = getOrCreateRoom(code, 'genel');
+  if (!allocatedRoom) {
+    return res.status(503).json({ success: false, error: 'room-capacity' });
   }
-  const room=serializeRoom(allocatedRoom,false);
+  const room = serializeRoom(allocatedRoom, false);
   if (!pinSatisfied && room) {
     room.guideLocation = null;
   }
@@ -3071,12 +3191,18 @@ app.get('/api/trips/:code/steps', (req, res) => {
 
 app.post('/api/trips/:code/steps', requireAuth, (req, res) => {
   const code = String(req.params.code || 'RY-KASIM').toUpperCase().trim();
+  if (!findRysTour(code)) {
+    return res.status(404).json({ success: false, error: 'tour-unknown', message: 'Kafile bulunamadı.' });
+  }
   const principal = rysPrincipal(extractAuthTokenFromReq(req));
   if (!rysCanGuide(principal, code)) {
     return res.status(403).json({ success: false, message: 'Bu kafilenin rotası üzerinde işlem yetkiniz yok.' });
   }
   const body = req.body || {};
   const steps = getTourSteps(code);
+  if (steps.length >= 100) {
+    return res.status(400).json({ success: false, message: 'Bir kafile için en fazla 100 rota durağı eklenebilir.' });
+  }
 
   const lat = Number(body.lat) || 21.4225;
   const lng = Number(body.lng) || 39.8262;
@@ -3112,21 +3238,26 @@ app.post('/api/trips/:code/steps', requireAuth, (req, res) => {
   const newStep = {
     id: `step-${Date.now()}`,
     order: insertIndex + 1,
-    dayLabel: body.dayLabel || `Canlı Durak • ${nowStr}`,
-    title: body.title || 'Yeni Siyer & Ziyaret Durağı',
-    locationLabel: body.locationLabel || 'Kutsal Topraklar • Canlı Konum',
-    category: body.category || 'siyer',
+    dayLabel: String(body.dayLabel || `Canlı Durak • ${nowStr}`).trim().slice(0, 120),
+    title: String(body.title || 'Yeni Siyer & Ziyaret Durağı').trim().slice(0, 180) || 'Yeni Siyer & Ziyaret Durağı',
+    locationLabel: String(body.locationLabel || 'Kutsal Topraklar • Canlı Konum').trim().slice(0, 160),
+    category: String(body.category || 'siyer').trim().slice(0, 40),
     lat,
     lng,
     distanceKm: computedKm,
     status,
-    timestamp: body.timestamp || `Bugün ${nowStr}`,
-    guideNote:
+    timestamp: String(body.timestamp || `Bugün ${nowStr}`).trim().slice(0, 80),
+    guideNote: String(
       body.guideNote ||
-      'Rehber hocamız eşliğinde bu mübarek noktada Siyer-i Nebi sohbeti ve dua halkası gerçekleştirildi.',
-    prayerSummary:
-      body.prayerSummary ||
-      'Allâhümme salli alâ seyyidinâ Muhammedin ve alâ âli seyyidinâ Muhammed.'
+        'Rehber hocamız eşliğinde bu mübarek noktada Siyer-i Nebi sohbeti ve dua halkası gerçekleştirildi.'
+    )
+      .trim()
+      .slice(0, 1200),
+    prayerSummary: String(
+      body.prayerSummary || 'Allâhümme salli alâ seyyidinâ Muhammedin ve alâ âli seyyidinâ Muhammed.'
+    )
+      .trim()
+      .slice(0, 800)
   };
 
   steps.splice(insertIndex, 0, newStep);
@@ -3155,13 +3286,13 @@ app.patch('/api/trips/:code/steps/:stepId', requireAuth, (req, res) => {
   }
 
   const target = steps[idx];
-  if (typeof body.title === 'string' && body.title.trim()) target.title = body.title.trim();
-  if (typeof body.dayLabel === 'string' && body.dayLabel.trim()) target.dayLabel = body.dayLabel.trim();
-  if (typeof body.locationLabel === 'string' && body.locationLabel.trim()) target.locationLabel = body.locationLabel.trim();
-  if (typeof body.category === 'string' && body.category.trim()) target.category = body.category.trim();
-  if (typeof body.guideNote === 'string') target.guideNote = body.guideNote.trim();
-  if (typeof body.prayerSummary === 'string') target.prayerSummary = body.prayerSummary.trim();
-  if (typeof body.timestamp === 'string') target.timestamp = body.timestamp.trim();
+  if (typeof body.title === 'string' && body.title.trim()) target.title = body.title.trim().slice(0, 180);
+  if (typeof body.dayLabel === 'string' && body.dayLabel.trim()) target.dayLabel = body.dayLabel.trim().slice(0, 120);
+  if (typeof body.locationLabel === 'string' && body.locationLabel.trim()) target.locationLabel = body.locationLabel.trim().slice(0, 160);
+  if (typeof body.category === 'string' && body.category.trim()) target.category = body.category.trim().slice(0, 40);
+  if (typeof body.guideNote === 'string') target.guideNote = body.guideNote.trim().slice(0, 1200);
+  if (typeof body.prayerSummary === 'string') target.prayerSummary = body.prayerSummary.trim().slice(0, 800);
+  if (typeof body.timestamp === 'string') target.timestamp = body.timestamp.trim().slice(0, 80);
   if (Number.isFinite(Number(body.lat)) && body.lat !== undefined) target.lat = Number(body.lat);
   if (Number.isFinite(Number(body.lng)) && body.lng !== undefined) target.lng = Number(body.lng);
   if (Number.isFinite(Number(body.distanceKm)) && body.distanceKm !== undefined) {
@@ -3222,6 +3353,12 @@ app.post('/api/guides', requireAuth, (req, res) => {
   if (!rysCanGuide(principal, assignedTour)) {
     return res.status(403).json({ success: false, message: 'Başka bir kafileye rehber ekleme yetkiniz yok.' });
   }
+  if (!findRysTour(assignedTour)) {
+    return res.status(404).json({ success: false, message: 'Atanacak kafile kodu bulunamadı.' });
+  }
+  if (db.guides.length >= 300) {
+    return res.status(400).json({ success: false, message: 'Maksimum rehber kaydı sınırına (300) ulaşıldı.' });
+  }
   const guide = {
     id: `guide-${Date.now()}`,
     name: String(body.name || 'Yeni Rehber Hoca').trim().slice(0, 120),
@@ -3263,9 +3400,9 @@ app.post('/api/announcements', requireAuth, (req, res) => {
   const ann = {
     id: `ann-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`,
     tourCode,
-    title: body.title || 'Kafile Duyurusu',
-    message: body.message || '',
-    sender: body.sender || 'Rıdvan Yılmaz Turizm Operasyon',
+    title: String(body.title || 'Kafile Duyurusu').trim().slice(0, 140) || 'Kafile Duyurusu',
+    message: String(body.message || '').trim().slice(0, 1200),
+    sender: String(body.sender || 'Rıdvan Yılmaz Turizm Operasyon').trim().slice(0, 120),
     createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
     urgent: Boolean(body.urgent)
   };
@@ -3350,6 +3487,7 @@ function recordAndBroadcastSosAlert(raw) {
     createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
     createdAtMs: nowMs,
     status: 'active',
+    isTest: Boolean(raw.isTest),
     resolvedBy: null
   };
   db.sosAlerts.unshift(alertItem);
@@ -3358,14 +3496,22 @@ function recordAndBroadcastSosAlert(raw) {
 
   broadcastToGuidesInTour(alertItem.tourCode, { type: 'sos-alert', alert: alertItem });
   broadcastToAdmins({ type: 'sos-alert', alert: alertItem, sosAlerts: db.sosAlerts });
-  queueRysPushSos(alertItem);
-  sendEmergencySosEmail(alertItem);
+  if (!alertItem.isTest) {
+    queueRysPushSos(alertItem);
+    sendEmergencySosEmail(alertItem);
+  }
   return alertItem;
 }
 
 app.post('/api/sos', sosRateLimiter, (req, res) => {
   const body = req.body || {};
-  const alertItem = recordAndBroadcastSosAlert(body);
+  const tourCode = String(body.tourCode || 'RY-KASIM').toUpperCase().trim();
+  if (!findRysTour(tourCode)) {
+    return res.status(404).json({ success: false, error: 'tour-unknown', message: 'Geçersiz kafile kodu.' });
+  }
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  const isAuthedTest = Boolean(body.isTest && rysCanGuide(principal, tourCode));
+  const alertItem = recordAndBroadcastSosAlert({ ...body, tourCode, isTest: isAuthedTest });
   res.json({ success: true, alert: alertItem });
 });
 
@@ -3477,16 +3623,41 @@ app.get('/api/rea-report', requireAuth, async (req, res) => {
 });
 
 // 9. QR Code & WhatsApp Invite Generator Endpoint
+function resolveTrustedPublicBaseUrl(req) {
+  const isAllowedPublicOrigin = (candidate) => {
+    if (!candidate || typeof candidate !== 'string') return null;
+    try {
+      const u = new URL(candidate);
+      if (u.origin === 'https://ses.ridvanyilmazturizm.com' || u.origin === 'https://ridvanses.vercel.app') {
+        return u.origin;
+      }
+      if (/^http:\/\/(?:localhost|127\.0\.0\.1):\d+$/.test(u.origin)) {
+        return u.origin;
+      }
+    } catch (e) {}
+    return null;
+  };
+  if (req.query && req.query.baseUrl) {
+    const allowedOverride = isAllowedPublicOrigin(String(req.query.baseUrl).trim());
+    if (allowedOverride) return allowedOverride;
+  }
+  const rawHost = String(req.get('host') || '').trim().toLowerCase();
+  const proto = req.headers['x-forwarded-proto']
+    ? String(req.headers['x-forwarded-proto']).split(',')[0].trim().toLowerCase()
+    : req.protocol || 'https';
+  const inferred = isAllowedPublicOrigin(`${proto === 'http' ? 'http' : 'https'}://${rawHost}`);
+  return inferred || 'https://ses.ridvanyilmazturizm.com';
+}
+
 app.get('/api/qr-img', async (req, res) => {
   try {
     const code = String(req.query.code || 'RY-KASIM').toUpperCase().trim();
-    const room = String(req.query.room || 'genel').trim();
-    const pilgrimName = String(req.query.name || '').trim();
-    const host = req.headers['x-forwarded-host'] || req.get('host') || 'localhost:3000';
-    const proto = req.headers['x-forwarded-proto']
-      ? String(req.headers['x-forwarded-proto']).split(',')[0].trim()
-      : req.protocol || 'http';
-    const baseUrl = req.query.baseUrl || `${proto}://${host}`;
+    if (!findRysTour(code)) {
+      return res.status(404).send('');
+    }
+    const room = String(req.query.room || 'genel').trim().slice(0, 64);
+    const pilgrimName = String(req.query.name || '').trim().slice(0, 80);
+    const baseUrl = resolveTrustedPublicBaseUrl(req);
     let joinUrl = `${baseUrl}/dinle?code=${encodeURIComponent(code)}&room=${encodeURIComponent(room)}`;
     if (pilgrimName) {
       joinUrl += `&name=${encodeURIComponent(pilgrimName)}`;
@@ -3510,27 +3681,19 @@ app.get('/api/qr-img', async (req, res) => {
 app.get('/api/qr', async (req, res) => {
   try {
     const code = String(req.query.code || 'RY-KASIM').toUpperCase().trim();
-    const room = String(req.query.room || 'genel').trim();
-    const pilgrimName = String(req.query.name || '').trim();
-    const host = req.headers['x-forwarded-host'] || req.get('host') || 'localhost:3000';
-    const proto = req.headers['x-forwarded-proto']
-      ? String(req.headers['x-forwarded-proto']).split(',')[0].trim()
-      : req.protocol || 'http';
-    const baseUrl = req.query.baseUrl || `${proto}://${host}`;
+    const tour = findRysTour(code);
+    if (!tour) {
+      return res.status(404).json({ success: false, error: 'tour-unknown', message: 'Kafile bulunamadı.' });
+    }
+    const room = String(req.query.room || 'genel').trim().slice(0, 64);
+    const pilgrimName = String(req.query.name || '').trim().slice(0, 80);
+    const baseUrl = resolveTrustedPublicBaseUrl(req);
     let joinUrl = `${baseUrl}/dinle?code=${encodeURIComponent(code)}&room=${encodeURIComponent(room)}`;
     if (pilgrimName) {
       joinUrl += `&name=${encodeURIComponent(pilgrimName)}`;
     }
     const familyTrackUrl = `${baseUrl}/rota?code=${encodeURIComponent(code)}`;
     const keepsakeBookUrl = `${baseUrl}/ani-kitabi?code=${encodeURIComponent(code)}`;
-
-    const tour = db.tours.find((t) => t.code.toUpperCase() === code) || db.tours[0] || {
-      code,
-      name: `Kasım Umresi Kafilesi`,
-      guideName: 'Ömer Ali Gültekin',
-      makkahHotel: 'Mekke Otel Kudi Tower',
-      madinahHotel: '2 Gün Medine Konaklama'
-    };
 
     const dataUrl = await QRCode.toDataURL(joinUrl, {
       width: 360,
@@ -3541,14 +3704,18 @@ app.get('/api/qr', async (req, res) => {
       }
     });
 
+    const isPinTour = Boolean((tour.pinProtected || tour.pin) && String(tour.pin || '').trim());
+    const accessPhrase = isPinTour
+      ? 'uygulama indirmeden, acentemizin paylaştığı kafile PIN kodunuzla'
+      : 'uygulama veya şifre gerekmeden';
     const whatsappText =
       `🕋 *Rıdvan Yılmaz Turizm — Canlı Rehberlik & Manevi Rota*\n\n` +
       `Kıymetli Misafirimiz,\n` +
-      `*${tour.name}* (${tour.guideName}) canlı sesli rehberlik odamıza uygulama veya şifre gerekmeden aşağıdaki bağlantıya dokunarak hemen katılabilirsiniz:\n\n` +
+      `*${tour.name}* (${tour.guideName}) canlı sesli rehberlik odamıza ${accessPhrase} aşağıdaki bağlantıya dokunarak hemen katılabilirsiniz:\n\n` +
       `🎧 *Canlı Yayına Katıl:* ${joinUrl}\n` +
       `📍 *Aile Canlı Rota Takibi:* ${familyTrackUrl}\n` +
       `📖 *Umre Hatıra Kitapçığı:* ${keepsakeBookUrl}\n` +
-      `🔑 *Kafile Kodu:* ${tour.code}\n` +
+      `🔑 *Kafile Kodu:* ${tour.code}${isPinTour ? ' (🔒 PIN Korumalı)' : ''}\n` +
       `🏨 *Mekke Otel:* ${tour.makkahHotel}\n` +
       `🚨 *Acil İletişim:* +90 538 399 96 66`;
 

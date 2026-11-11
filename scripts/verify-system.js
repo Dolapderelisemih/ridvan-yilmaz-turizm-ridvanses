@@ -435,14 +435,14 @@ async function runStep2And3LiveServerAndWsTests() {
 
   assertCondition(
     'ADIM-3.4 (KRİTİK-01, KRİTİK-03, YÜKSEK-03)',
-    'Rastgele kafile kodu DB şişirmedi, alt acente yetki sınırı (403) korundu ve /api/logout oturum jetonunu sunucuda iptal etti (401)',
-    fakeStepsRes.status === 200 &&
+    'Rastgele kafile kodu 404 tour-unknown döndü ve DB şişirmedi, alt acente yetki sınırı (403) korundu ve /api/logout oturum jetonunu sunucuda iptal etti (401)',
+    fakeStepsRes.status === 404 &&
       !pollutedJourneySteps &&
       selametLoginRes.status === 200 &&
       selametCreateTourRes.status === 403 &&
       selametLogoutRes.status === 200 &&
       selametAfterLogoutRes.status === 401,
-    `DB Kirlenmedi: ${!pollutedJourneySteps}, Alt Acente Kısıtı: ${selametCreateTourRes.status}, Logout Sonrası: ${selametAfterLogoutRes.status}`
+    `FakeSteps: ${fakeStepsRes.status}, DB Kirlenmedi: ${!pollutedJourneySteps}, Alt Acente Kısıtı: ${selametCreateTourRes.status}, Logout Sonrası: ${selametAfterLogoutRes.status}`
   );
 
   // 3.5 PIN Korumalı Kafile CRUD, WebSocket PIN Doğrulaması (YÜKSEK-02) ve 0ms Rehber Oda Değişimi (YÜKSEK-04)
@@ -766,6 +766,7 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
 
   const swSandbox = {
     self: {
+      location: { origin: 'https://ses.ridvanyilmazturizm.com' },
       skipWaiting: () => {},
       clients: { claim: () => {}, matchAll: async () => [] },
       registration: {},
@@ -773,6 +774,7 @@ async function runStep4FrontendPwaAndAtomicWriteChecks() {
         if (type === 'fetch') fetchListener = fn;
       }
     },
+    Response,
     caches: {
       open: async () => ({
         addAll: async () => {},
@@ -1569,9 +1571,9 @@ async function runStep5V54AudioChecks(){
     if(mode!=='join')assert.equal(body.joinContext??null,null);
     else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
   }
-  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v76"));assert(sw.includes('/vercel-ws-shim.js?v=76'));
+  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v77"));assert(sw.includes('/vercel-ws-shim.js?v=77'));
   for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
-    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'76',f+' stale shim');
+    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'77',f+' stale shim');
   }
   if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
   console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
@@ -2536,7 +2538,7 @@ async function runStep5V60AudioChecks(){
     p.rxFir.r.fill(1);p.playing=true;p.expected=0;p.missing=15;
     p.process([],[[new Float32Array(128)]]);assert(!p.playing);assert(p.rxFir.r.every(x=>x===0));
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v76'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v77'));
   for(const asset of ['pcm-player-worklet.js?v=72-audio','pcm-capture-worklet.js?v=72-audio'])assert(sw.includes(asset));
   assert(guide.includes('pcm-capture-worklet.js?v=72-audio'));assert(read('public/dinle.html').includes('pcm-player-worklet.js?v=72-audio'));
   console.log('V60 UNIT METRICS '+JSON.stringify({lifecycleChecks:checks,alias}));
@@ -2746,7 +2748,7 @@ async function runStep5V61AudioChecks(){
     assert(published.filter(m=>['room-state','stream-state'].includes(m.type)).every(m=>(m.audioSourceId||m.room?.audioSourceId)==='stable-page'));
     checks.push('MQTT-room-and-stream-source-parity');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v77'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));
   assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V61 UNIT METRICS '+JSON.stringify({checks,reset,capture24kFrames:frames.length}));
   recordResult('ADIM-5.V61','Socket/Blob/retry/source ownership; 5-rate reset/starvation de-click; 24k capture; source schema/digest/MQTT; cache61',true);
@@ -2985,7 +2987,7 @@ async function runStep5V62AudioChecks(){
     }
     checks.push('failed-poll-retry-keeps-latest-stop-and-resume-only');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v77'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V62 UNIT METRICS '+JSON.stringify({checks,coalescerPostStopAudio:0,receiverPostStopFrames:0}));
   recordResult('ADIM-5.V62','Stop/mode/source barriers across coalescer, relay, receiver, demo lifecycle and server; idle reconnect; cache62',true);
   console.log('V62 UNIT PASS');
@@ -3170,7 +3172,7 @@ async function runStep5V63AudioChecks(){
     const epoch=h.g.rxAudioDeliveryEpoch;s.onmessage({data:JSON.stringify({type:'room-state',room:{...state(1,true),audioStateKnown:true}})});
     assert(h.player.q.has(1001));assert.equal(h.g.rxAudioDeliveryEpoch,epoch);checks.push('unknown-to-known-live-snapshot-preserves-current-pcm');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v77'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V63 UNIT METRICS '+JSON.stringify({checks,snapshotRecovered:true,staleStateResets:0,renewalFirstPcmPreserved:true}));
   recordResult('ADIM-5.V63','Ordered state/snapshot recovery; terminal disconnect; source reset; inheritance; MQTT parity; renewal state-before-PCM; cache63',true);
   console.log('V63 UNIT PASS');
@@ -3357,7 +3359,7 @@ async function runStep5V64AudioChecks(){
     deliver(state(12,12,true,'mic'));assert.equal(stopped,1);assert.equal(h.g.activeGuideDemoSources.size,0);
     checks.push('demo-topic-keeps-current-note-and-mode-change-stops-it');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v77'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V64 UNIT METRICS '+JSON.stringify({checks,postResumeOldFrames:0,capturedOldBatchFrames:0,currentPendingPreserved:true,topicTimelinePreserved:true}));
   recordResult('ADIM-5.V64','Media epoch across PCM/synth/coalescer/server/receiver; topic continuity; Blob fencing; stop-resume during relay-open; pending-media preservation; cache64',true);console.log('V64 UNIT PASS');
 }
@@ -3521,7 +3523,7 @@ async function runStep5V65AudioChecks(){
     const good=member('rys56-good','c'.repeat(48));g.serveRysRelay(good,{auth:true,method:'POST',body:{requestSeq:1}},response(),'good',{type:'join',role:'guide'});assert.equal(good.lastSeen,35001);
     checks.push('auth-failure-retires-verified-privileged-capability-public-ID-cannot-disconnect-legacy-no-failed-lease-renewal');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v77'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V65 UNIT METRICS '+JSON.stringify({checks,unprimedFrames:0,retryFirstPcmPreserved:true,fullQueueStopDelivered:true,failedAuthLeaseExtensions:0}));
   recordResult('ADIM-5.V65','Controller readiness; retry control-first and latched full-queue stop; submitted-epoch ACK; auth-failure cleanup and lease/public-ID safety; cache65',true);console.log('V65 UNIT PASS');
 }
@@ -3695,7 +3697,7 @@ async function runStep5V66AudioChecks(){
     h.s.close();assert(h.clients.every(c=>c.ended===1));assert.equal(h.received.length,0);
     checks.push('100-replacements-bounded-active-clients-invalidate-before-synchronous-end');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('vercel-ws-shim.js?v=76'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v77'));assert(sw.includes('vercel-ws-shim.js?v=77'));
   assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V66 UNIT METRICS '+JSON.stringify({checks,clientsAfterDelayedClose:0,staleDelivered:0,activeClientsMax:2,replacements:100}));
   recordResult('ADIM-5.V66','MQTT loader/client/suback/timer ownership across route, close and native takeover; bounded replacement; cache66',true);console.log('V66 UNIT PASS');
@@ -3817,7 +3819,7 @@ async function runStep5V67AudioChecks(){
     sockets.clear();const idle=member('idle-expired','json-expired');g.heartbeat();assert.equal(idle.ws.terminated,1);assert.equal(idle.currentRoom,null);
     checks.push('real-binary-and-JSON-ingress-reject-expired-credentials-idle-heartbeat-cleans-membership');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('vercel-ws-shim.js?v=76'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v77'));assert(sw.includes('vercel-ws-shim.js?v=77'));
   assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V67 UNIT METRICS '+JSON.stringify({checks,expiredGuidePresent:false,expiryGraceMs:0,revokedGuideTerminated:1,revokedAdminTerminated:1,healthyTerminated:0,publicFamilyTerminated:0,cancelledPrepare:true}));
   recordResult('ADIM-5.V67','Native live credential expiry/revoke, token rotation, pending handoff cleanup, public-family isolation and HTTP/static compatibility; cache67',true);console.log('V67 UNIT PASS');
@@ -3977,7 +3979,7 @@ async function runStep5V68AudioChecks(){
     assert.equal(h.room('siyer').audioSourceId,'page');assert.equal(h.room('siyer').audioMediaEpoch,10);assert.equal(h.room('siyer').isLive,true);
     checks.push('dedicated-guide-downgrade-restores-General-source-state-epoch-inheritance');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('vercel-ws-shim.js?v=76'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v77'));assert(sw.includes('vercel-ws-shim.js?v=77'));
   assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V68 UNIT METRICS '+JSON.stringify({checks,collisionCases,crossRoleGuideEvictions:0,downgradeOwner:null,sameRoleReconnect:true,terminalStop:true,coveredByGenel:true}));
   recordResult('ADIM-5.V68','Role-isolated device dedup; native/HTTP/legacy collisions; same-role reconnect; same-socket downgrade/owner release/terminal stop and General inheritance; cache68',true);console.log('V68 UNIT PASS');
@@ -4158,7 +4160,7 @@ async function runStep5V69AudioChecks(){
     assert.equal(h.room().activePublisherClientId,null);assert(h.room('target').clients.has('current'));
     checks.push('cross-tour-prior-guide-removal-does-not-suppress-target-tour-reconciliation');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('vercel-ws-shim.js?v=76'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v77'));assert(sw.includes('vercel-ws-shim.js?v=77'));
   assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V69 UNIT METRICS '+JSON.stringify({checks,vacatedOwners:0,reconciliationsPerAffectedTour:1,sameRoomTerminalControls:0,generalControllerReady:true,crossTourSync:true}));
   recordResult('ADIM-5.V69','Cross-room guide replacement owner cleanup; terminal/General reconciliation after membership install; same-room continuity; existing-context and duplicate-room coverage; cache69',true);console.log('V69 UNIT PASS');
@@ -5051,9 +5053,9 @@ async function runStep5V73PushChecks(){
   ui.sendServiceWorkerNotification('Dua','Toplanma','ridvanses-ann-same-id');
   assert.equal(messages.at(-1).tag,'ridvanses-ann-same-id');
   assert(messages.at(-1).data.url.includes('code=T'));
-  assert(read('public/sw.js').includes("ridvanses-pwa-v76"));
+  assert(read('public/sw.js').includes("ridvanses-pwa-v77"));
   for(const f of ['index','dinle','rehber','panel','login','rota','ani-kitabi','yaka-karti'])
-    assert(read('public/'+f+'.html').includes('/vercel-ws-shim.js?v=76'),f);
+    assert(read('public/'+f+'.html').includes('/vercel-ws-shim.js?v=77'),f);
   assert(read('public/sw.js').includes('pcm-player-worklet.js?v=72-audio'));
   console.log('V73 UNIT METRICS '+JSON.stringify({rfc8291KnownAnswer:true,keyFormats:3,persistedIdentity:true,leadingZeroScalar:true,dnsRebindingDenied:true,staleDnsFenced:true,
     capacityPerTour:512,capacityGlobal:4096,pendingAnnouncements:8,fanoutBatch:64,maxConcurrent,
@@ -5438,8 +5440,12 @@ async function runStep5V74AuditUnitChecks(){
     return els.get(id);
   };
   const bookSandbox={
-    window:{location:{search:'?code=RY-KASIM&name=Hac%C4%B1%20Test',origin:'https://ses.ridvanyilmazturizm.com'}},
+    window:{
+      location:{href:'https://ses.ridvanyilmazturizm.com/ani-kitabi?code=RY-KASIM&name=Hac%C4%B1%20Test',search:'?code=RY-KASIM&name=Hac%C4%B1%20Test',origin:'https://ses.ridvanyilmazturizm.com'},
+      history:{replaceState(){}}
+    },
     document:{getElementById:getEl},
+    URL,
     URLSearchParams,
     Date,
     Math,
@@ -5510,7 +5516,7 @@ async function runStep5V74AuditUnitChecks(){
   const indexHtml=fs.readFileSync(path.join(PUBLIC_DIR,'index.html'),'utf8');
   assert(!indexHtml.includes("location.replace('/dinle"),'index.html must not force-redirect standalone PWA away from home page');
   const dinleHtml=fs.readFileSync(path.join(PUBLIC_DIR,'dinle.html'),'utf8');
-  assert(!dinleHtml.includes('/sw.js?v=73')&&!dinleHtml.includes('/sw.js?v=74')&&!dinleHtml.includes('/sw.js?v=75'),'dinle.html must register latest sw.js?v=76');
+  assert(!dinleHtml.includes('/sw.js?v=73')&&!dinleHtml.includes('/sw.js?v=74')&&!dinleHtml.includes('/sw.js?v=75')&&!dinleHtml.includes('/sw.js?v=76'),'dinle.html must register latest sw.js?v=77');
   assert(!dinleHtml.includes('<a href="/rehber">'),'dinle.html navbar must not expose /rehber link to pilgrims');
   const i18nMatch=/const\s+I18N\s*=\s*\{[\s\S]*?\n\s*\};/.exec(dinleHtml);
   assert(i18nMatch,'I18N dictionary found in dinle.html');
@@ -5657,11 +5663,13 @@ async function runStep5V76AuditChecks() {
     const swCalls = [];
     const swCtx = {
       self: {
+        location: { origin: 'https://ses.ridvanyilmazturizm.com' },
         skipWaiting() {},
         clients: { claim() {}, matchAll: async () => [] },
         registration: {},
         addEventListener: (t, fn) => { if (t === 'fetch') swFetchHandler = fn; }
       },
+      Response,
       caches: {
         open: async () => ({ addAll: async () => {}, put: async () => {} }),
         keys: async () => [],
@@ -5709,6 +5717,270 @@ async function runStep5V76AuditChecks() {
   recordResult('ADIM-5.V76', 'WS/Relay/Handoff family PIN koruması, /panel/ normalize guard, sıkı CORS, Selamet 403/QR/Guide izolasyonu, SW ignoreSearch çevrimdışı kabuk, bozuk JSON 400 ve ryLogout sırası doğrulandı', true);
 }
 
+async function runStep5V77AuditChecks() {
+  const assert = require('node:assert/strict');
+  const { WebSocket } = require('ws');
+  const baseUrl = `http://127.0.0.1:${TEST_PORT}`;
+  const wsUrl = `ws://127.0.0.1:${TEST_PORT}/ws`;
+  const stamp = Date.now().toString(36).toUpperCase();
+  const rotTourCode = `RY-V77-${stamp}`;
+
+  const adminLoginRes = await fetch(`${baseUrl}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: process.env.ADMIN_USERNAME || 'ridvanyilmazturizm@gmail.com',
+      password: process.env.ADMIN_PASSWORD || Buffer.from('ZG9sYXBkZXJlbGkxNg==', 'base64').toString('utf8')
+    })
+  });
+  assert.equal(adminLoginRes.status, 200);
+  const adminTok = (await adminLoginRes.json()).token;
+  const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${adminTok}` };
+
+  const sockets = [];
+  let createdSosIds = [];
+  try {
+    // 1. Security headers & local vendor bundles
+    const headRes = await fetch(`${baseUrl}/dinle`);
+    assert.equal(headRes.status, 200);
+    assert.equal(headRes.headers.get('x-powered-by'), null, 'X-Powered-By must be disabled');
+    assert((headRes.headers.get('content-security-policy') || '').includes("frame-ancestors 'self'"), 'CSP header must be set');
+    assert((headRes.headers.get('permissions-policy') || '').includes('microphone=(self)'), 'Permissions-Policy header must be set');
+
+    for (const asset of ['/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css', '/vendor/mqtt/mqtt.min.js']) {
+      const r = await fetch(`${baseUrl}${asset}`);
+      assert.equal(r.status, 200, `Local vendor asset ${asset} must return 200`);
+    }
+
+    // 2. QR origin spoofing protection & unknown tour 404
+    const spoofQrRes = await fetch(`${baseUrl}/api/qr?code=RY-KASIM&baseUrl=${encodeURIComponent('https://evil-phishing.example')}`, {
+      headers: { 'X-Forwarded-Host': 'evil-phishing.example', 'X-Forwarded-Proto': 'https' }
+    });
+    assert.equal(spoofQrRes.status, 200);
+    const spoofQrData = await spoofQrRes.json();
+    assert(!String(spoofQrData.joinUrl || '').includes('evil-phishing.example'), '/api/qr must ignore untrusted baseUrl and X-Forwarded-Host');
+    assert.equal((await fetch(`${baseUrl}/api/qr?code=OLMAYAN-TUR-V77`)).status, 404, '/api/qr must return 404 for unknown tour');
+    assert.equal((await fetch(`${baseUrl}/api/qr-img?code=OLMAYAN-TUR-V77`)).status, 404, '/api/qr-img must return 404 for unknown tour');
+
+    // 3. Tour code validation + live PIN rotation & tour deletion eviction
+    const badCodeRes = await fetch(`${baseUrl}/api/tours`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ code: "RY'XSS/1", name: 'Bad Code' })
+    });
+    assert.equal(badCodeRes.status, 400, 'POST /api/tours must reject unsafe code characters');
+
+    const createTourRes = await fetch(`${baseUrl}/api/tours`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ code: rotTourCode, name: 'V77 PIN Rotation Tour', pin: '1111', guideName: 'V77 Rehber' })
+    });
+    assert.equal(createTourRes.status, 200);
+    const createdTourId = (await createTourRes.json()).tour.id;
+
+    const pilgrimWs = new WebSocket(wsUrl);
+    const familyWs = new WebSocket(wsUrl);
+    sockets.push(pilgrimWs, familyWs);
+    const pilgrimMsgs = [];
+    const familyMsgs = [];
+    pilgrimWs.on('message', (raw, bin) => { if (!bin) pilgrimMsgs.push(JSON.parse(raw.toString())); });
+    familyWs.on('message', (raw, bin) => { if (!bin) familyMsgs.push(JSON.parse(raw.toString())); });
+    await Promise.all([
+      new Promise((res, rej) => { pilgrimWs.once('open', res); pilgrimWs.once('error', rej); }),
+      new Promise((res, rej) => { familyWs.once('open', res); familyWs.once('error', rej); })
+    ]);
+
+    pilgrimWs.send(JSON.stringify({ type: 'join', role: 'pilgrim', tourCode: rotTourCode, roomId: 'genel', pin: '1111', name: 'V77 Hacı' }));
+    familyWs.send(JSON.stringify({ type: 'family-subscribe', tourCode: rotTourCode, pin: '1111' }));
+    await new Promise((r) => setTimeout(r, 100));
+    assert(pilgrimMsgs.some((m) => m.type === 'joined'), 'Pilgrim joined with initial PIN 1111');
+    assert(familyMsgs.some((m) => m.type === 'family-state'), 'Family subscribed with initial PIN 1111');
+
+    // Rotate PIN to 2222 -> both live sockets must immediately receive pin-error
+    const patchPinRes = await fetch(`${baseUrl}/api/tours/${encodeURIComponent(createdTourId)}`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ pin: '2222' })
+    });
+    assert.equal(patchPinRes.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assert(pilgrimMsgs.some((m) => m.type === 'pin-error'), 'PIN rotation must evict live pilgrim socket with pin-error');
+    assert(familyMsgs.some((m) => m.type === 'pin-error'), 'PIN rotation must evict live family socket with pin-error');
+
+    // Re-join on a fresh socket with new PIN 2222, then DELETE tour -> must evict with tour-unknown
+    const pilgrimWs2 = new WebSocket(wsUrl);
+    sockets.push(pilgrimWs2);
+    const pilgrimMsgs2 = [];
+    pilgrimWs2.on('message', (raw, bin) => { if (!bin) pilgrimMsgs2.push(JSON.parse(raw.toString())); });
+    await new Promise((res, rej) => { pilgrimWs2.once('open', res); pilgrimWs2.once('error', rej); });
+    pilgrimWs2.send(JSON.stringify({ type: 'join', role: 'pilgrim', tourCode: rotTourCode, roomId: 'genel', pin: '2222', name: 'V77 Hacı 2' }));
+    await new Promise((r) => setTimeout(r, 80));
+    assert(pilgrimMsgs2.some((m) => m.type === 'joined'), 'Pilgrim joined with rotated PIN 2222');
+    const delTourRes = await fetch(`${baseUrl}/api/tours/${encodeURIComponent(createdTourId)}`, {
+      method: 'DELETE',
+      headers: authHeaders
+    });
+    assert.equal(delTourRes.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assert(pilgrimMsgs2.some((m) => m.type === 'tour-unknown'), 'Deleting tour must evict live sockets with tour-unknown');
+
+    // 4. POST /api/sos unknown tour -> 404, unauth isTest ignored, auth isTest honored
+    const unknownSosRes = await fetch(`${baseUrl}/api/sos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tourCode: 'OLMAYAN-TUR-V77', pilgrimName: 'Test', lat: 21.42, lng: 39.82 })
+    });
+    assert.equal(unknownSosRes.status, 404, 'POST /api/sos must reject unknown tourCode with 404');
+
+    const unauthTestSos = await (await fetch(`${baseUrl}/api/sos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tourCode: 'RY-KASIM', isTest: true, pilgrimName: 'Unauth SOS', lat: 21.42, lng: 39.82 })
+    })).json();
+    if (unauthTestSos.alert?.id) createdSosIds.push(unauthTestSos.alert.id);
+    assert.equal(unauthTestSos.alert?.isTest, false, 'Unauthenticated SOS must not be able to spoof isTest:true');
+
+    const authTestSos = await (await fetch(`${baseUrl}/api/sos`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ tourCode: 'RY-KASIM', isTest: true, pilgrimName: 'Admin Test SOS', lat: 21.42, lng: 39.82 })
+    })).json();
+    if (authTestSos.alert?.id) createdSosIds.push(authTestSos.alert.id);
+    assert.equal(authTestSos.alert?.isTest, true, 'Authenticated admin test SOS must set alert.isTest === true');
+
+    // 5. Service Worker offline miss returns valid 503 Response (never null) & ignores cross-origin
+    const swCode = fs.readFileSync(path.join(PUBLIC_DIR, 'sw.js'), 'utf8');
+    assert(swCode.includes('/vendor/leaflet/leaflet.js') && swCode.includes('/vendor/mqtt/mqtt.min.js'), 'sw.js must cache local vendor bundles');
+    let swFetch = null;
+    vm.runInNewContext(swCode, {
+      self: {
+        location: { origin: 'https://ses.ridvanyilmazturizm.com' },
+        skipWaiting() {},
+        clients: { claim() {}, matchAll: async () => [] },
+        registration: {},
+        addEventListener: (t, fn) => { if (t === 'fetch') swFetch = fn; }
+      },
+      Response,
+      URL,
+      caches: {
+        open: async () => ({ addAll: async () => {}, put: async () => {} }),
+        keys: async () => [],
+        match: async () => null
+      },
+      fetch: async () => { throw new Error('offline'); }
+    });
+    let crossIntercepted = false;
+    swFetch({
+      request: { method: 'GET', url: 'https://nominatim.openstreetmap.org/reverse?format=jsonv2' },
+      respondWith: () => { crossIntercepted = true; }
+    });
+    assert.equal(crossIntercepted, false, 'sw.js must not intercept cross-origin requests');
+
+    let missPromise = null;
+    swFetch({
+      request: { method: 'GET', mode: 'cors', url: 'https://ses.ridvanyilmazturizm.com/uncached-asset.png' },
+      respondWith: (p) => { missPromise = p; }
+    });
+    const missResp = await missPromise;
+    assert(missResp && missResp.status === 503, 'sw.js offline cache miss must return 503 Response instead of null');
+
+    // 6. vercel-ws-shim.js split-brain write prevention & HTTP 401 relay auth-error fencing
+    const shimCode = fs.readFileSync(path.join(PUBLIC_DIR, 'vercel-ws-shim.js'), 'utf8');
+    const fetchLog = [];
+    let nextRelayStatus = 401;
+    const shimCtx = {
+      window: {
+        location: { origin: 'https://ridvanses.vercel.app', host: 'ridvanses.vercel.app', protocol: 'https:' },
+        WebSocket: function DummyWs() {},
+        mqtt: { connect: () => ({ on() {}, subscribe() {}, publish() {}, end() {}, connected: false }) },
+        fetch: async (input, init) => {
+          const u = String(input);
+          const bodyStr = init && typeof init.body === 'string' ? init.body : '';
+          fetchLog.push({ url: u, method: (init && init.method) || 'GET' });
+          if (u.includes('/api/ws-relay')) {
+            if (bodyStr.includes('"relay-open"')) {
+              return { ok: true, status: 200, json: async () => ({ clientId: 'rys56-v77test', relayKey: 'a'.repeat(48) }) };
+            }
+            return { ok: nextRelayStatus === 200, status: nextRelayStatus, json: async () => ({ error: 'auth-required', messages: [] }) };
+          }
+          if (u.startsWith('https://ses.ridvanyilmazturizm.com/api/announcements')) {
+            throw new Error('VDS temporarily unreachable');
+          }
+          if (u.startsWith('https://ses.ridvanyilmazturizm.com/api/bootstrap')) {
+            throw new Error('VDS temporarily unreachable');
+          }
+          return { ok: true, status: 200, json: async () => ({ fallbackReadOk: true }) };
+        }
+      },
+      document: { head: { appendChild() {} }, createElement: () => ({}) },
+      localStorage: { getItem: () => 'expired_tok' },
+      sessionStorage: { getItem: () => 'cid-v77', setItem() {} },
+      AbortController,
+      Headers,
+      Request,
+      URL,
+      URLSearchParams,
+      ArrayBuffer,
+      setTimeout: (fn, ms) => { if (!ms || ms <= 50) fn(); return 1; },
+      clearTimeout() {},
+      setInterval: () => 1,
+      clearInterval() {},
+      console
+    };
+    shimCtx.window.window = shimCtx.window;
+    shimCtx.window.localStorage = shimCtx.localStorage;
+    shimCtx.window.sessionStorage = shimCtx.sessionStorage;
+    shimCtx.window.AbortController = AbortController;
+    shimCtx.window.Headers = Headers;
+    shimCtx.window.URL = URL;
+    shimCtx.fetch = (...args) => shimCtx.window.fetch(...args);
+    vm.runInNewContext(shimCode, shimCtx);
+
+    let postThrew = false;
+    try {
+      await shimCtx.window.fetch('/api/announcements', { method: 'POST', body: '{}' });
+    } catch {
+      postThrew = true;
+    }
+    assert.equal(postThrew, true, 'Failed POST on vercel.app must throw instead of split-brain fallback to local /api/*');
+    assert(!fetchLog.some((c) => c.url === '/api/announcements'), 'POST /api/announcements must never hit local Vercel /tmp store');
+
+    const getFallbackRes = await (await shimCtx.window.fetch('/api/bootstrap')).json();
+    assert.equal(getFallbackRes.fallbackReadOk, true, 'Read-only GET /api/bootstrap may still fall back when VDS is unreachable');
+
+    const relayWs = new shimCtx.window.WebSocket('wss://ridvanses.vercel.app/ws');
+    const relayEvents = [];
+    relayWs.onmessage = (ev) => { relayEvents.push(JSON.parse(ev.data)); };
+    relayWs.send(JSON.stringify({ type: 'admin-subscribe', token: 'expired_tok' }));
+    await new Promise((r) => setTimeout(r, 20));
+    assert(relayEvents.some((m) => m.type === 'auth-error' && m.status === 401), 'HTTP 401 on /api/ws-relay must deliver auth-error to onmessage');
+    assert.equal(relayWs._relayFenced, true, 'HTTP 401 on /api/ws-relay must fence polling loop');
+
+    // 7. 6-language dynamic keys in dinle.html & zero unsafe inline escaping patterns
+    const dinleHtml = fs.readFileSync(path.join(PUBLIC_DIR, 'dinle.html'), 'utf8');
+    const i18nMatch = /const\s+I18N\s*=\s*\{[\s\S]*?\n\s*\};/.exec(dinleHtml);
+    const i18nBox = {};
+    vm.createContext(i18nBox);
+    vm.runInContext(i18nMatch[0] + '\nglobalThis.DICT = I18N;', i18nBox);
+    for (const lang of ['tr', 'ar', 'en', 'fr', 'id', 'ur']) {
+      for (const key of ['netStrong', 'netReconnecting', 'guideSpeakingHtml', 'guideWaiting', 'tapToUnmute', 'sosFetchingGps', 'sosSentTitle']) {
+        assert(typeof i18nBox.DICT[lang]?.[key] === 'string' && i18nBox.DICT[lang][key].length > 0, `Missing v77 I18N.${lang}.${key}`);
+      }
+    }
+  } finally {
+    for (const s of sockets) {
+      try { s.close(); } catch {}
+    }
+    for (const id of createdSosIds) {
+      await fetch(`${baseUrl}/api/sos/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders }).catch(() => {});
+    }
+    await fetch(`${baseUrl}/api/tours/${encodeURIComponent(rotTourCode)}`, { method: 'DELETE', headers: authHeaders }).catch(() => {});
+    await fetch(`${baseUrl}/api/logout`, { method: 'POST', headers: authHeaders }).catch(() => {});
+  }
+
+  recordResult('ADIM-5.V77', 'CSP/Permissions-Policy, yerel Leaflet/MQTT paketleri, QR origin kilidi, canlı PIN rotasyonu tahliyesi, SOS isTest ayrımı, SW 503/same-origin, Vercel split-brain yazma engeli, 401 röle freni ve 6 dil dinamik anahtarları doğrulandı', true);
+}
+
 async function main() {
   const runtimePath = path.join(ROOT_DIR, 'data', 'runtime.json');
   const runtimeSnapshot = fs.existsSync(runtimePath) ? fs.readFileSync(runtimePath, 'utf8') : null;
@@ -5740,6 +6012,7 @@ async function main() {
     await runStep5V73PushChecks();
     await runStep5V74AuditUnitChecks();
     await runStep5V76AuditChecks();
+    await runStep5V77AuditChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);

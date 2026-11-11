@@ -6,8 +6,8 @@
   <title>Dijital Umre Hatıra Kitabı &amp; Ziyaret Beratı — Rıdvan Yılmaz Turizm</title>
   <meta name="description" content="Rıdvan Yılmaz Turizm Umre ve Siyer yolculuğunuzun baskıya hazır A4 manevi hatıra kitapçığı ve imzalı Umre Ziyaret Beratı." />
   <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
-  <link rel="stylesheet" href="/css/style.css?v=20" />
-  <script src="/vercel-ws-shim.js?v=76"></script>
+  <link rel="stylesheet" href="/css/style.css?v=21" />
+  <script src="/vercel-ws-shim.js?v=77"></script>
   <style>
     body {
       background: #e9e2d5;
@@ -148,6 +148,9 @@
       .sig-grid {
         grid-template-columns: 1fr;
       }
+      .cover-stats-grid {
+        grid-template-columns: 1fr !important;
+      }
     }
 
     @media print {
@@ -201,7 +204,7 @@
         <select
           id="bookTourSelect"
           aria-label="Kafile Seçimi"
-          style="padding:8px 12px;border-radius:9px;border:1px solid rgba(224,190,119,0.55);background:rgba(255,255,255,0.12);color:#fff;font-weight:700;font-size:15px;min-width:155px;"
+          style="padding:8px 12px;border-radius:9px;border:1px solid rgba(224,190,119,0.55);background:rgba(255,255,255,0.12);color:#fff;font-weight:700;font-size:15px;min-width:0;max-width:100%;flex:1 1 160px;"
         >
           <option value="RY-KASIM" style="color:#06231b;">RY-KASIM — Kasım Umresi</option>
         </select>
@@ -229,7 +232,9 @@
     <div id="bookPinErrorMsg" style="display:none;margin-top:8px;font-size:0.8rem;font-weight:700;color:var(--color-danger);"></div>
   </div>
 
-  <div class="book-stage">
+  <div id="bookUnknownBox" style="display:none;max-width:520px;margin:18px auto 0;padding:18px 20px;border-radius:16px;background:#fef2f2;border:1.5px solid #fecaca;color:#b91c1c;font-weight:700;box-shadow:var(--shadow-soft);"></div>
+
+  <div id="bookStageContainer" class="book-stage">
     <!-- SAYFA 1: LÜKS KAPAK SAYFASI -->
     <section class="book-page book-cover">
       <div class="ornate-inner-frame">
@@ -266,7 +271,7 @@
         </div>
 
         <div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;background:rgba(255,255,255,0.07);border:1px solid rgba(224,190,119,0.3);border-radius:12px;padding:14px;">
+          <div class="cover-stats-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;background:rgba(255,255,255,0.07);border:1px solid rgba(224,190,119,0.3);border-radius:12px;padding:14px;">
             <div>
               <div id="coverKm" style="font-size:1.25rem;font-weight:800;color:var(--color-gold-bright);">2.990 km</div>
               <div style="font-size:0.68rem;text-transform:uppercase;color:rgba(255,255,255,0.75);">Manevi Rota Mesafesi</div>
@@ -339,7 +344,7 @@
           Medine-i Münevvere’de ise Mescid-i Nebevî ve Ravza-i Mutahhara ziyaretlerini huşû ile tamamlayan
         </p>
 
-        <div style="margin:22px auto;padding:12px 24px;display:inline-block;border-bottom:2px solid var(--color-gold);min-width:300px;">
+        <div style="margin:22px auto;padding:12px 24px;display:inline-block;border-bottom:2px solid var(--color-gold);min-width:min(300px,100%);max-width:100%;">
           <span id="certPilgrimName" class="serif-accent" style="font-size:2rem;color:var(--color-emerald-deep);">
             Muhterem Umre Misafirimiz
           </span>
@@ -411,7 +416,14 @@
           }
         } catch (_) {}
       }
-      if (tourPinParam) setSavedBookPin(code, tourPinParam);
+      if (tourPinParam) {
+        setSavedBookPin(code, tourPinParam);
+        try {
+          const cleanUrl = new URL(window.location.href);
+          cleanUrl.searchParams.delete('pin');
+          window.history.replaceState({}, '', cleanUrl.toString());
+        } catch (_) {}
+      }
       const initialName = (
         params.get('name') ||
         (function () { try { return localStorage.getItem('ridvanses_pilgrim_name'); } catch { return ''; } })() ||
@@ -458,6 +470,7 @@
           syncBookCodeUi(tourSelect.value);
           const url = new URL(window.location.href);
           url.searchParams.set('code', code);
+          url.searchParams.delete('pin');
           window.history.replaceState({}, '', url.toString());
           loadBookData();
         });
@@ -485,23 +498,36 @@
       });
 
       document.getElementById('shareBookBtn').addEventListener('click', () => {
-        const url = window.location.href;
+        let shareUrl = window.location.href;
+        try {
+          const shareUrlObj = new URL(window.location.href);
+          shareUrlObj.searchParams.delete('pin');
+          shareUrl = shareUrlObj.toString();
+        } catch (_) {}
         const pName = nameInput.value.trim() || 'Umre Hatıra Kitapçığımız';
+        const pinNotice = getSavedBookPin(code) ? '\n🔒 Not: Kafile özel PIN korumalıdır; açılışta kafile PIN kodunu giriniz.' : '';
         const text =
           `📖 *Rıdvan Yılmaz Turizm — Dijital Umre Hatıra Kitabı & Ziyaret Beratı*\n\n` +
-          `${pName} için hazırlanan adım adım Kutsal Topraklar Siyer Günlüğü ve Hatıra Beratını görüntülemek için:\n${url}`;
+          `${pName} için hazırlanan adım adım Kutsal Topraklar Siyer Günlüğü ve Hatıra Beratını görüntülemek için:\n${shareUrl}${pinNotice}`;
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
       });
 
       const bookPinBtn = document.getElementById('bookPinSubmitBtn');
       const bookPinInp = document.getElementById('bookPinInput');
       if (bookPinBtn && bookPinInp) {
-        bookPinBtn.addEventListener('click', () => {
+        const submitBookPin = () => {
           const val = String(bookPinInp.value || '').trim();
           if (!val) return;
           tourPinParam = val;
           setSavedBookPin(code, val);
           loadBookData();
+        };
+        bookPinBtn.addEventListener('click', submitBookPin);
+        bookPinInp.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            submitBookPin();
+          }
         });
       }
 
@@ -513,14 +539,21 @@
           const data = await res.json();
           const pinGate = document.getElementById('bookPinGateBox');
           const pinErr = document.getElementById('bookPinErrorMsg');
+          const unknownBox = document.getElementById('bookUnknownBox');
+          const bookStage = document.getElementById('bookStageContainer');
           if (data && data.error === 'tour-unknown') {
             if (pinGate) pinGate.style.display = 'none';
-            document.getElementById('journalStepsContainer').innerHTML =
-              `<div style="padding:16px;border-radius:12px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-weight:700;">“${escapeHtml(code)}” koduna ait aktif bir kafile bulunamadı.</div>`;
+            if (bookStage) bookStage.style.display = 'none';
+            if (unknownBox) {
+              unknownBox.innerHTML = `“${escapeHtml(code)}” koduna ait aktif bir kafile bulunamadı. Lütfen üst menüden geçerli bir kafile seçiniz.`;
+              unknownBox.style.display = 'block';
+            }
             return;
           }
+          if (unknownBox) unknownBox.style.display = 'none';
           if (data && data.pinRequired) {
             if (pinGate) pinGate.style.display = 'block';
+            if (bookStage) bookStage.style.display = 'none';
             if (pinErr) {
               if (activePin) {
                 pinErr.textContent = 'Girilen PIN kodu hatalı. Lütfen tekrar deneyiniz.';
@@ -529,12 +562,11 @@
                 pinErr.style.display = 'none';
               }
             }
-            document.getElementById('journalStepsContainer').innerHTML =
-              '<div style="padding:16px;text-align:center;color:var(--color-muted);font-weight:600;">🔒 Ziyaret adımlarını görüntülemek için üstteki alana kafile PIN kodunu giriniz.</div>';
             return;
           }
           if (pinGate) pinGate.style.display = 'none';
           if (pinErr) pinErr.style.display = 'none';
+          if (bookStage) bookStage.style.display = 'flex';
           if (data && data.success) {
             const tour = data.tour || {};
             const steps = Array.isArray(data.steps) ? data.steps : [];
@@ -583,6 +615,10 @@
         } catch (e) {
           console.warn('Hatıra kitabı yüklenemedi:', e);
         }
+      }
+
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js?v=77').catch(() => {});
       }
 
       loadBookData();

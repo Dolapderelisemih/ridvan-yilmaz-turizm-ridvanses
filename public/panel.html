@@ -13,8 +13,8 @@
   <title>Acente & Kafile Yönetim Paneli | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/panel" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=20" />
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="/css/style.css?v=21" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -51,8 +51,8 @@
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=76"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/vercel-ws-shim.js?v=77"></script>
+  <script src="/vendor/leaflet/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .dashboard-layout {
@@ -350,7 +350,7 @@
           <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
               <h3 style="font-size:1.15rem; margin:0;">Son SOS Konum Bildirimleri</h3>
-              <button class="btn btn-outline btn-sm" style="border-color:#fca5a5; color:#b91c1c;" onclick="simulateSosAlert()">🧪 Test SOS Simülasyonu</button>
+              <button class="btn btn-outline btn-sm" id="overviewSimSosBtn" style="border-color:#fca5a5; color:#b91c1c;" onclick="simulateSosAlert()">🧪 Test SOS Simülasyonu</button>
             </div>
             <div id="overviewSosBox"></div>
           </div>
@@ -467,8 +467,8 @@
 
       <!-- TAB 2: KAFİLE & TUR YÖNETİMİ -->
       <div id="tab-tours" class="tab-pane">
-        <div class="grid-2">
-          <div class="card card-luxury">
+        <div class="grid-2" id="toursTabGrid">
+          <div class="card card-luxury" id="tourFormCard">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:14px;">
               <h3 id="tourFormTitle" style="margin:0;">Yeni Umre Kafilesi & Ses Odası Oluştur</h3>
               <button type="button" id="cancelEditTourBtn" class="btn btn-outline btn-sm" style="display:none;" onclick="resetTourFormMode()">Düzenlemeyi İptal Et</button>
@@ -547,8 +547,8 @@
 
       <!-- TAB 3: REHBER (HOCA) YÖNETİMİ -->
       <div id="tab-guides" class="tab-pane">
-        <div class="grid-2">
-          <div class="card card-luxury">
+        <div class="grid-2" id="guidesTabGrid">
+          <div class="card card-luxury" id="guideFormCard">
             <h3 style="margin-bottom:14px;">Yeni Rehber / İrşad Hocası Tanımla</h3>
             <form id="createGuideForm" style="display:flex; flex-direction:column; gap:12px;">
               <div>
@@ -624,7 +624,7 @@
               <h3 style="margin:0;">Canlı SOS & Kayıp Hacı GPS Koordinat Merkezi</h3>
               <p style="font-size:0.86rem; color:var(--color-muted); margin-top:4px;">Hacı ekranında SOS butonuna 3 saniye basılı tutulduğunda konum buraya ve rehber ekranına anında düşer.</p>
             </div>
-            <button class="btn btn-danger btn-sm" onclick="simulateSosAlert()">+ Örnek SOS Alarmı Tetikle</button>
+            <button class="btn btn-danger btn-sm" id="tabSosSimBtn" onclick="simulateSosAlert()">+ Örnek SOS Alarmı Tetikle</button>
           </div>
           <div id="fullSosList" style="display:flex; flex-direction:column; gap:12px;"></div>
         </div>
@@ -924,10 +924,15 @@
     function renderAll() {
       if (!appState) return;
       const scopedAgency = isScopedSubAgency();
-      ['overviewAddTourBtn', 'sideBtnRequests', 'sideAdminDivider', 'sideAdminGroupTitle', 'sideBtnRea'].forEach((id) => {
+      ['overviewAddTourBtn', 'sideBtnRequests', 'sideAdminDivider', 'sideAdminGroupTitle', 'sideBtnRea', 'guideFormCard', 'overviewSimSosBtn', 'tabSosSimBtn'].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.style.display = scopedAgency ? 'none' : '';
       });
+      const tourFormCardEl = document.getElementById('tourFormCard');
+      const isEditingTour = Boolean(document.getElementById('editingTourIdInput')?.value);
+      if (tourFormCardEl) {
+        tourFormCardEl.style.display = scopedAgency && !isEditingTour ? 'none' : '';
+      }
       document.getElementById('statToursCount').textContent = appState.tours.length;
       document.getElementById('statGuidesCount').textContent = appState.guides.length;
       if (appState.tours && appState.tours[0]) {
@@ -992,8 +997,8 @@
           </div>
           <div style="display:flex; align-items:center; gap:8px;">
             <span class="badge badge-gold" title="Bu odadaki tekil dinleyici / Kafile toplamı">${Number(r.roomListenerCount ?? r.totalListeners) || 0} Oda${Number(r.totalListeners) !== Number(r.roomListenerCount ?? r.totalListeners) ? ` / ${Number(r.totalListeners) || 0} Toplam` : ''} Hacı</span>
-            <a href="/dinle?code=${encodeURIComponent(r.tourCode)}" target="_blank" class="btn btn-outline btn-sm">Dinle</a>
-            <a href="/rehber?code=${encodeURIComponent(r.tourCode)}" target="_blank" class="btn btn-primary btn-sm">Stüdyo</a>
+            <a href="/dinle?code=${encodeURIComponent(r.tourCode)}&room=${encodeURIComponent(r.roomId || 'genel')}" target="_blank" class="btn btn-outline btn-sm">Dinle</a>
+            <a href="/rehber?code=${encodeURIComponent(r.tourCode)}&room=${encodeURIComponent(r.roomId || 'genel')}" target="_blank" class="btn btn-primary btn-sm">Stüdyo</a>
           </div>
         </div>
       `).join('');
@@ -1009,7 +1014,7 @@
           <td><span class="badge badge-emerald">${Number(t.registeredCount) || 0} / ${Number(t.capacity) || 0}</span></td>
           <td>
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
-              <button type="button" class="btn btn-primary btn-sm" onclick="openQrGeneratorForTour('${escapeHtml(t.code)}')">QR & WhatsApp</button>
+              <button type="button" class="btn btn-primary btn-sm" data-panel-action="open-qr" data-code="${escapeHtml(t.code)}">QR & WhatsApp</button>
               <a href="/rota?code=${encodeURIComponent(t.code)}" target="_blank" class="btn btn-gold btn-sm">📍 Rota</a>
               <a href="/ani-kitabi?code=${encodeURIComponent(t.code)}" target="_blank" class="btn btn-outline btn-sm">📖 Kitap</a>
               <a href="/yaka-karti?code=${encodeURIComponent(t.code)}" target="_blank" class="btn btn-outline btn-sm">Yaka Kartı</a>
@@ -1028,9 +1033,9 @@
             <div style="font-size:0.8rem; color:var(--color-muted); margin-top:2px;">Rehber: ${escapeHtml(t.guideName)} • Otel: ${escapeHtml(t.makkahHotel)}</div>
           </div>
           <div style="display:flex; gap:6px; flex-wrap:wrap;">
-            <button type="button" class="btn btn-primary btn-sm" onclick="startEditTour('${escapeHtml(t.id)}')">Düzenle</button>
-            <button type="button" class="btn btn-gold btn-sm" onclick="openQrGeneratorForTour('${escapeHtml(t.code)}')">QR & Davet</button>
-            ${scopedAgency ? '' : `<button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteTour('${escapeHtml(t.id)}')">Sil</button>`}
+            <button type="button" class="btn btn-primary btn-sm" data-panel-action="edit-tour" data-id="${escapeHtml(t.id)}">Düzenle</button>
+            <button type="button" class="btn btn-gold btn-sm" data-panel-action="open-qr" data-code="${escapeHtml(t.code)}">QR & Davet</button>
+            ${scopedAgency ? '' : `<button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" data-panel-action="delete-tour" data-id="${escapeHtml(t.id)}">Sil</button>`}
           </div>
         </div>
       `).join('');
@@ -1045,7 +1050,7 @@
             </div>
             <div style="font-size:0.82rem; color:var(--color-muted); margin-top:4px;">${escapeHtml(g.title)} • ${escapeHtml(g.phone)}</div>
           </div>
-          ${appState.guides.length > 1 ? `<button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteGuide('${escapeHtml(g.id)}', '${escapeHtml(String(g.name || '').replace(/'/g, "\\'"))}')">Sil</button>` : ''}
+          ${!scopedAgency && appState.guides.length > 1 ? `<button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" data-panel-action="delete-guide" data-id="${escapeHtml(g.id)}" data-name="${escapeHtml(g.name || '')}">Sil</button>` : ''}
         </div>
       `).join('');
 
@@ -1056,7 +1061,7 @@
             <span>Hedef: ${escapeHtml(a.tourCode)} • ${escapeHtml(a.sender)}</span>
             <div style="display:flex; align-items:center; gap:8px;">
               <span>${escapeHtml(a.createdAt)}</span>
-              <button type="button" class="btn btn-outline btn-sm" style="padding:2px 8px; font-size:0.7rem; color:var(--color-danger);" onclick="deleteAnnouncement('${escapeHtml(a.id)}')">Sil</button>
+              <button type="button" class="btn btn-outline btn-sm" style="padding:2px 8px; font-size:0.7rem; color:var(--color-danger);" data-panel-action="delete-ann" data-id="${escapeHtml(a.id)}">Sil</button>
             </div>
           </div>
           <div style="font-weight:800; color:var(--color-emerald-night); margin:4px 0;">${escapeHtml(a.title)}</div>
@@ -1091,8 +1096,8 @@
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
               <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">Yol Tarifi</a>
               <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Harita</a>
-              ${s.status === 'active' ? `<button class="btn btn-primary btn-sm" onclick="resolveSosAdmin('${safeId}')">Çözüldü İşaretle</button>` : ''}
-              <button class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteSosAdmin('${safeId}')">Sil</button>
+              ${s.status === 'active' ? `<button type="button" class="btn btn-primary btn-sm" data-panel-action="resolve-sos" data-id="${safeId}">Çözüldü İşaretle</button>` : ''}
+              <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" data-panel-action="delete-sos" data-id="${safeId}">Sil</button>
             </div>
           </div>
           ${s.status === 'active' ? `
@@ -1146,7 +1151,7 @@
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 ${r.phone ? `<a href="tel:${safePhone}" class="btn btn-outline btn-sm">📞 Ara</a>` : ''}
                 ${waUrl ? `<a href="${waUrl}" target="_blank" class="btn btn-primary btn-sm">💬 WhatsApp</a>` : ''}
-                <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteRequestAdmin('${safeId}')">Sil</button>
+                <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" data-panel-action="delete-request" data-id="${safeId}">Sil</button>
               </div>
             </div>
           `;
@@ -1374,6 +1379,8 @@
       document.getElementById('tourFormCapInput').value = tour.capacity ?? 45;
       document.getElementById('tourFormPinInput').value = tour.pin || '';
       document.getElementById('tourFormDescInput').value = tour.description || '';
+      const tourCard = document.getElementById('tourFormCard');
+      if (tourCard) tourCard.style.display = '';
       document.getElementById('tourFormTitle').textContent = `Kafileyi Düzenle (${tour.code})`;
       document.getElementById('tourFormSubmitBtn').textContent = 'Değişiklikleri Kaydet';
       document.getElementById('cancelEditTourBtn').style.display = 'inline-flex';
@@ -1392,6 +1399,8 @@
       document.getElementById('tourFormTitle').textContent = 'Yeni Umre Kafilesi & Ses Odası Oluştur';
       document.getElementById('tourFormSubmitBtn').textContent = 'Kafileyi ve Canlı Ses Odasını Oluştur';
       document.getElementById('cancelEditTourBtn').style.display = 'none';
+      const tourCard = document.getElementById('tourFormCard');
+      if (tourCard && isScopedSubAgency()) tourCard.style.display = 'none';
     }
 
     document.getElementById('createTourForm').addEventListener('submit', async (e) => {
@@ -1475,7 +1484,7 @@
     });
 
     async function simulateSosAlert() {
-      if (!confirm('DİKKAT: Bu işlem canlı test SOS kaydı oluşturur ve açık rehber/panel ekranlarında uyarı çalar. Test SOS oluşturulsun mu?')) {
+      if (!confirm('Panel ve rehber ekranı görünümünü doğrulamak için TEST SOS kaydı oluşturulsun mu? (Gerçek acil durum e-postası ve kilit ekranı SOS sireni tetiklenmez.)')) {
         return;
       }
       const defaultCode = (appState && appState.tours && appState.tours[0] && appState.tours[0].code) || 'RY-KASIM';
@@ -1484,6 +1493,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tourCode: defaultCode,
+          isTest: true,
           pilgrimName: '[TEST] Hacı Hasan Çelik (Sistem Kontrolü)',
           phone: '+90 533 888 77 66',
           lat: 21.4232,
@@ -1495,7 +1505,7 @@
     }
 
     async function resolveSosAdmin(id) {
-      await fetch(`/api/sos/${id}/resolve`, {
+      await fetch(`/api/sos/${encodeURIComponent(id)}/resolve`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolvedBy: 'Beytullah Bey (Acente Paneli)' })
@@ -1546,7 +1556,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=76');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=77');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -1611,8 +1621,30 @@
       await syncAdminSosPush(false);
     }
 
+    document.addEventListener('click', (ev) => {
+      const btn = ev.target && ev.target.closest ? ev.target.closest('[data-panel-action]') : null;
+      if (!btn) return;
+      const action = btn.getAttribute('data-panel-action');
+      const id = btn.getAttribute('data-id') || '';
+      const code = btn.getAttribute('data-code') || '';
+      const name = btn.getAttribute('data-name') || '';
+      if (action === 'open-qr') openQrGeneratorForTour(code);
+      else if (action === 'edit-tour') startEditTour(id);
+      else if (action === 'delete-tour') deleteTour(id);
+      else if (action === 'delete-guide') deleteGuide(id, name);
+      else if (action === 'delete-ann') deleteAnnouncement(id);
+      else if (action === 'resolve-sos') resolveSosAdmin(id);
+      else if (action === 'delete-sos') deleteSosAdmin(id);
+      else if (action === 'delete-request') deleteRequestAdmin(id);
+    });
+
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=76').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=77').catch(() => {});
+      navigator.serviceWorker.addEventListener('message', (ev) => {
+        if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED' && localStorage.getItem('rys_sos_push_receipt')) {
+          syncAdminSosPush(true);
+        }
+      });
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && localStorage.getItem('rys_sos_push_receipt')) {
         setTimeout(() => { syncAdminSosPush(true); }, 800);
       }

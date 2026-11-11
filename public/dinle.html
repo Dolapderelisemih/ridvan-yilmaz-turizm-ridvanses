@@ -14,10 +14,10 @@
   <title>Hacı Canlı Dinleme Ekranı | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=20" />
-  <script src="/vercel-ws-shim.js?v=76"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="/css/style.css?v=21" />
+  <script src="/vercel-ws-shim.js?v=77"></script>
+  <script src="/vendor/leaflet/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .app-shell {
@@ -512,7 +512,7 @@
 
       <!-- SEKME 2: MANEVİ ROTA & ADIMLAR (POLARSTEPS CANLI YOLCULUK HARİTASI) -->
       <div id="pilgrimTabRoute" class="pilgrim-tab-pane">
-        <div class="ps-stats-bar ps-stats-3col" style="grid-template-columns: repeat(3, 1fr); margin-bottom:14px;">
+        <div class="ps-stats-bar ps-stats-3col" style="margin-bottom:14px;">
           <div class="ps-stat-item">
             <div id="pStatDay" class="ps-stat-val" style="font-size:1.05rem;">3. Gün</div>
             <div class="ps-stat-lbl">Aktif Aşama</div>
@@ -755,11 +755,13 @@
     function shareFamilyLiveRoute() {
       const code = currentTour ? currentTour.code : 'RY-KASIM';
       const tourName = currentTour ? currentTour.name : 'Kasım Umresi Kafilesi';
+      const isPinProtected = Boolean(currentTour && (currentTour.pinProtected || currentTour.pinRequired));
       const shareUrl = `${window.location.origin}/rota?code=${encodeURIComponent(code)}`;
+      const accessLabel = isPinProtected ? 'kafile PIN kodumuzla' : 'uygulama indirmeden';
       const text =
         `🕋 *Rıdvan Yılmaz Turizm — Canlı Manevi Yolculuk Haritamız*\n\n` +
         `Kıymetli Ailem,\n` +
-        `*${tourName}* kafilemizin Mekke ve Medine'deki canlı rotasını, bulunduğumuz mübarek ziyaret duraklarını ve dualarımızı aşağıdaki bağlantıdan şifresiz takip edebilirsiniz:\n\n` +
+        `*${tourName}* kafilemizin Mekke ve Medine'deki canlı rotasını, bulunduğumuz mübarek ziyaret duraklarını ve dualarımızı aşağıdaki bağlantıdan ${accessLabel} takip edebilirsiniz:\n\n` +
         `📍 *Canlı Rotayı Aç:* ${shareUrl}`;
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
     }
@@ -818,7 +820,14 @@
         navPrayers: 'Dualar',
         navAnn: 'Duyuru',
         navSos: 'SOS',
-        navHomeBtn: 'Ana Sayfa'
+        navHomeBtn: 'Ana Sayfa',
+        netStrong: '📶 Bağlantı: Güçlü (HD)',
+        netReconnecting: '📶 Bağlantı güçlendiriliyor...',
+        guideSpeakingHtml: '🎙️ <strong style="color:#4ade80;">Hoca Şu An Konuşuyor</strong> (Canlı Akış)',
+        guideWaiting: '⏸️ Hoca Beklemede — Bağlantınız Aktif',
+        tapToUnmute: '🔊 Sesi Duyabilmek İçin Ekrana Dokunun',
+        sosFetchingGps: '<strong>Telefonunuzun Canlı GPS Konumu Alınıyor...</strong><br/>Ekranda konum izni penceresi çıkarsa lütfen <strong>"İzin Ver"</strong> seçeneğine dokunun.',
+        sosSentTitle: 'CANLI KONUMUNUZ REHBER HOCAMIZA İLETİLDİ!'
       },
       ar: {
         dir: 'rtl',
@@ -853,7 +862,14 @@
         navPrayers: 'الأدعية',
         navAnn: 'إعلانات',
         navSos: 'طوارئ',
-        navHomeBtn: 'الرئيسية'
+        navHomeBtn: 'الرئيسية',
+        netStrong: '📶 الاتصال: ممتاز (HD)',
+        netReconnecting: '📶 جارٍ تقوية الاتصال...',
+        guideSpeakingHtml: '🎙️ <strong style="color:#4ade80;">المرشد يتحدث الآن</strong> (بث مباشر)',
+        guideWaiting: '⏸️ المرشد في الانتظار — اتصالك نشط',
+        tapToUnmute: '🔊 اضغط على الشاشة لتشغيل الصوت',
+        sosFetchingGps: '<strong>جارٍ تحديد موقع GPS المباشر...</strong><br/>يرجى الضغط على <strong>"سماح"</strong> إذا ظهرت نافذة إذن الموقع.',
+        sosSentTitle: 'تم إرسال موقعك المباشر إلى المرشد والمركز!'
       },
       en: {
         dir: 'ltr',
@@ -888,7 +904,14 @@
         navPrayers: 'Prayers',
         navAnn: 'Alerts',
         navSos: 'SOS',
-        navHomeBtn: 'Home'
+        navHomeBtn: 'Home',
+        netStrong: '📶 Connection: Strong (HD)',
+        netReconnecting: '📶 Reconnecting stream...',
+        guideSpeakingHtml: '🎙️ <strong style="color:#4ade80;">Guide Speaking Now</strong> (Live)',
+        guideWaiting: '⏸️ Guide Standing By — Connected',
+        tapToUnmute: '🔊 Tap Screen to Hear Live Audio',
+        sosFetchingGps: '<strong>Acquiring Live GPS Location...</strong><br/>Please tap <strong>"Allow"</strong> if prompted for location access.',
+        sosSentTitle: 'YOUR LIVE LOCATION HAS BEEN SENT TO YOUR GUIDE!'
       },
       fr: {
         dir: 'ltr',
@@ -923,7 +946,14 @@
         navPrayers: 'Prières',
         navAnn: 'Infos',
         navSos: 'SOS',
-        navHomeBtn: 'Accueil'
+        navHomeBtn: 'Accueil',
+        netStrong: '📶 Connexion : Excellente (HD)',
+        netReconnecting: '📶 Reconnexion en cours...',
+        guideSpeakingHtml: '🎙️ <strong style="color:#4ade80;">Le Guide Parle</strong> (En Direct)',
+        guideWaiting: '⏸️ Guide en Attente — Connecté',
+        tapToUnmute: '🔊 Touchez l’Écran pour Activer le Son',
+        sosFetchingGps: '<strong>Obtention de votre position GPS...</strong><br/>Veuillez appuyer sur <strong>« Autoriser »</strong>.',
+        sosSentTitle: 'VOTRE POSITION EN DIRECT A ÉTÉ ENVOYÉE AU GUIDE !'
       },
       id: {
         dir: 'ltr',
@@ -958,7 +988,14 @@
         navPrayers: 'Doa',
         navAnn: 'Info',
         navSos: 'SOS',
-        navHomeBtn: 'Beranda'
+        navHomeBtn: 'Beranda',
+        netStrong: '📶 Koneksi: Kuat (HD)',
+        netReconnecting: '📶 Memperkuat koneksi...',
+        guideSpeakingHtml: '🎙️ <strong style="color:#4ade80;">Pembimbing Sedang Berbicara</strong> (Langsung)',
+        guideWaiting: '⏸️ Pembimbing Siaga — Terhubung',
+        tapToUnmute: '🔊 Ketuk Layar untuk Mendengar Suara',
+        sosFetchingGps: '<strong>Mengambil Lokasi GPS Langsung...</strong><br/>Silakan ketuk <strong>"Izinkan"</strong> jika diminta.',
+        sosSentTitle: 'LOKASI LANGSUNG ANDA TELAH DIKIRIM KE PEMBIMBING!'
       },
       ur: {
         dir: 'rtl',
@@ -993,7 +1030,14 @@
         navPrayers: 'دعائیں',
         navAnn: 'اعلانات',
         navSos: 'ایمرجنسی',
-        navHomeBtn: 'صفحہ اول'
+        navHomeBtn: 'صفحہ اول',
+        netStrong: '📶 کنکشن: مضبوط (HD)',
+        netReconnecting: '📶 کنکشن بحال ہو رہا ہے...',
+        guideSpeakingHtml: '🎙️ <strong style="color:#4ade80;">معلم اس وقت گفتگو فرما رہے ہیں</strong> (لائیو)',
+        guideWaiting: '⏸️ معلم انتظار میں — آپ کا کنکشن فعال ہے',
+        tapToUnmute: '🔊 آواز سننے کے لیے اسکرین کو چھوئیں',
+        sosFetchingGps: '<strong>آپ کا لائیو GPS مقام حاصل کیا جا رہا ہے...</strong><br/>اجازت مانگنے پر <strong>"Allow"</strong> دبائیں۔',
+        sosSentTitle: 'آپ کا لائیو مقام معلم کو بھیج دیا گیا ہے!'
       }
     };
 
@@ -1038,6 +1082,12 @@
           audioBtn.textContent = isAudioListening ? dict.audioMuteBtn : dict.audioPlayBtn;
         }
       }
+      if (typeof updatePilgrimConnectionUi === 'function' && window.__ryPilgrimConnState) {
+        updatePilgrimConnectionUi(window.__ryPilgrimConnState);
+      }
+      if (typeof updateGuideSpeakingIndicator === 'function' && typeof window.__ryGuideSpeakingNow === 'boolean') {
+        updateGuideSpeakingIndicator(window.__ryGuideSpeakingNow);
+      }
     }
 
     // Initialize spectrum bars
@@ -1059,10 +1109,31 @@
     let availableToursCache = [];
     let availableHotelsCache = [];
 
-    // Parse URL query params & restore saved pilgrim name/phone
+    // Parse URL query params & restore saved pilgrim name/phone/PIN
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('code')) {
       document.getElementById('tourCodeInput').value = urlParams.get('code').toUpperCase();
+    }
+    if (urlParams.get('pin')) {
+      const initCode = (urlParams.get('code') || document.getElementById('tourCodeInput').value || 'RY-KASIM').trim().toUpperCase();
+      const initPin = urlParams.get('pin').trim();
+      try {
+        if (initPin) sessionStorage.setItem('rys_tour_pin_' + initCode, initPin);
+      } catch {}
+      const pInp = document.getElementById('tourPinInput');
+      if (pInp && initPin) pInp.value = initPin;
+      try {
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete('pin');
+        window.history.replaceState({}, '', cleanUrl.toString());
+      } catch {}
+    } else {
+      try {
+        const initCode = (document.getElementById('tourCodeInput').value || 'RY-KASIM').trim().toUpperCase();
+        const savedTourPin = sessionStorage.getItem('rys_tour_pin_' + initCode);
+        const pInp = document.getElementById('tourPinInput');
+        if (pInp && savedTourPin && !pInp.value) pInp.value = savedTourPin;
+      } catch {}
     }
     try {
       const savedName = localStorage.getItem('ridvanses_pilgrim_name');
@@ -1100,6 +1171,11 @@
       const pinBox = document.getElementById('pinInputBox');
       if (pinBox && matchedTour) {
         pinBox.style.display = (matchedTour.pinProtected || matchedTour.pinRequired) ? 'block' : 'none';
+        try {
+          const savedPin = sessionStorage.getItem('rys_tour_pin_' + code);
+          const pInp = document.getElementById('tourPinInput');
+          if (pInp && savedPin && !pInp.value) pInp.value = savedPin;
+        } catch {}
       }
       if (matchedTour && Array.isArray(matchedTour.rooms) && matchedTour.rooms.length > 0) {
         const roomSel = document.getElementById('roomSelect');
@@ -1236,6 +1312,9 @@
         }
 
         currentTour = data.tour;
+        try {
+          if (pin) sessionStorage.setItem('rys_tour_pin_' + currentTour.code, pin);
+        } catch {}
         setWebPushTour(currentTour.code,pin);
         try { localStorage.setItem('ridvanses_push_tour_code', currentTour.code); } catch {}
         if (typeof window.__rysSyncPushUi === 'function') window.__rysSyncPushUi();
@@ -1417,6 +1496,26 @@
           return;
         }
 
+        if (msg.type === 'pin-error' || (msg.type === 'subscription-error' && msg.code === 'tour-unknown')) {
+          try {
+            if (msg.type === 'pin-error' && currentTour && currentTour.code) {
+              sessionStorage.removeItem('rys_tour_pin_' + currentTour.code);
+            }
+          } catch {}
+          leaveRoom();
+          const pinBox = document.getElementById('pinInputBox');
+          if (msg.type === 'pin-error' && pinBox) {
+            pinBox.style.display = 'block';
+            const pInp = document.getElementById('tourPinInput');
+            if (pInp) { pInp.value = ''; pInp.focus(); }
+          }
+          const errEl = document.getElementById('joinError');
+          if (errEl) {
+            errEl.textContent = msg.message || (msg.type === 'pin-error' ? 'Kafile PIN kodu güncellendi. Lütfen yeni PIN kodunu giriniz.' : 'Bu kafile sonlandırıldı.');
+            errEl.style.display = 'block';
+          }
+          return;
+        }
         if(msg.type==='audio-source'){updateRxAudioSource(msg.audioSourceId);return;}
         if (msg.type === 'joined' || msg.type === 'room-state') {
           let r = msg.room;
@@ -1569,13 +1668,14 @@
       window.__ryPilgrimConnState = state;
       const badge = document.getElementById('pilgrimNetQualityBadge');
       if (!badge) return;
+      const dict = I18N[currentLang] || I18N.tr;
       if (state === 'reconnecting') {
-        badge.textContent = '📶 Bağlantı güçlendiriliyor...';
+        badge.textContent = dict.netReconnecting || '📶 Bağlantı güçlendiriliyor...';
         badge.style.background = 'rgba(245, 158, 11, 0.25)';
         badge.style.color = '#fde68a';
         badge.style.borderColor = 'rgba(251, 191, 36, 0.5)';
       } else {
-        badge.textContent = '📶 Bağlantı: Güçlü (HD)';
+        badge.textContent = dict.netStrong || '📶 Bağlantı: Güçlü (HD)';
         badge.style.background = 'rgba(34, 197, 94, 0.2)';
         badge.style.color = '#86efac';
         badge.style.borderColor = 'rgba(74, 222, 128, 0.4)';
@@ -1583,12 +1683,14 @@
     }
 
     function updateGuideSpeakingIndicator(speaking, sentAtTs) {
+      window.__ryGuideSpeakingNow = Boolean(speaking);
       const strip = document.getElementById('guideVoiceStatusStrip');
       const txt = document.getElementById('guideVoiceStateText');
       const latTxt = document.getElementById('pilgrimPacketLatencyText');
       if (!txt || !strip) return;
+      const dict = I18N[currentLang] || I18N.tr;
       if (speaking) {
-        txt.innerHTML = '🎙️ <strong style="color:#4ade80;">Hoca Şu An Konuşuyor</strong> (Canlı Akış)';
+        txt.innerHTML = dict.guideSpeakingHtml || '🎙️ <strong style="color:#4ade80;">Hoca Şu An Konuşuyor</strong> (Canlı Akış)';
         strip.style.borderColor = 'rgba(74, 222, 128, 0.45)';
         strip.style.background = 'rgba(21, 128, 61, 0.22)';
         if (latTxt) {
@@ -1597,7 +1699,7 @@
           latTxt.textContent = `24 kHz HD • ~${rttMs}ms`;
         }
       } else {
-        txt.textContent = '⏸️ Hoca Beklemede — Bağlantınız Aktif';
+        txt.textContent = dict.guideWaiting || '⏸️ Hoca Beklemede — Bağlantınız Aktif';
         strip.style.borderColor = 'rgba(255, 255, 255, 0.14)';
         strip.style.background = 'rgba(0, 0, 0, 0.28)';
         if (latTxt) latTxt.textContent = '24 kHz HD • Hazır';
@@ -2046,7 +2148,7 @@
           }
         } else if (
           Date.now() - lastAudioEngineRebuildAt > 4500 &&
-          (trigger === 'user-gesture' || document.visibilityState === 'visible')
+          (trigger === 'user-gesture' || document.visibilityState === 'visible' || wasSystemAudioInterrupted)
         ) {
           rebuildPilgrimAudioEngine('clock-stalled-' + trigger);
           verifyPilgrimWebSocketAfterInterruption();
@@ -2071,7 +2173,7 @@
         return;
       }
       if (audioCtx && audioCtx.state !== 'running') {
-        btn.textContent = '🔊 Sesi Duyabilmek İçin Ekrana Dokunun';
+        btn.textContent = dict.tapToUnmute || '🔊 Sesi Duyabilmek İçin Ekrana Dokunun';
         btn.className = 'btn btn-gold';
       } else {
         btn.textContent = dict.audioMuteBtn || 'Sesi Kapat (Canlı Yayın Dinleniyor)';
@@ -2566,9 +2668,10 @@
       document.getElementById('sosHoldFill').style.width = '100%';
       playNotificationChime();
 
+      const sosDict = I18N[currentLang] || I18N.tr;
       const msgEl = document.getElementById('sosStatusMsg');
       msgEl.style.display = 'block';
-      msgEl.innerHTML = `<strong>Telefonunuzun Canlı GPS Konumu Alınıyor...</strong><br/>Ekranda konum izni penceresi çıkarsa lütfen <strong>"İzin Ver"</strong> seçeneğine dokunun.`;
+      msgEl.innerHTML = sosDict.sosFetchingGps || `<strong>Telefonunuzun Canlı GPS Konumu Alınıyor...</strong><br/>Ekranda konum izni penceresi çıkarsa lütfen <strong>"İzin Ver"</strong> seçeneğine dokunun.`;
 
       const deliverSosPayload = async (lat, lng, accuracy, note, permWarning = '') => {
         const tourCode = (currentTour && currentTour.code) || document.getElementById('tourCodeInput').value.trim().toUpperCase() || 'RY-KASIM';
@@ -2618,7 +2721,7 @@
 
         msgEl.innerHTML = `
           <div style="margin-bottom:8px;">
-            <strong>CANLI KONUMUNUZ REHBER HOCAMIZA İLETİLDİ!</strong>
+            <strong>${escapeHtml(sosDict.sosSentTitle || 'CANLI KONUMUNUZ REHBER HOCAMIZA İLETİLDİ!')}</strong>
           </div>
           ${permWarning ? `<div style="background:#fef3c7; color:#92400e; padding:8px 10px; border-radius:8px; font-size:0.78rem; margin-bottom:8px;">${permWarning}</div>` : ''}
           <div style="font-size:0.84rem; margin-bottom:6px;">
@@ -2716,7 +2819,8 @@
         container.innerHTML = '';
       }
       if (a.id) {
-        const existing = container.querySelector(`[data-ann-id="${a.id}"]`);
+        const safeId = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(String(a.id)) : String(a.id).replace(/["\\]/g, '\\$&');
+        const existing = container.querySelector(`[data-ann-id="${safeId}"]`);
         if (existing) existing.remove();
       }
       const div = document.createElement('div');
@@ -3025,9 +3129,10 @@
     }
     window.addEventListener('online',()=>{if(rysWebPushState().context)void syncWebPushSubscription();});
     navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(rysWebPushState().context)void syncWebPushSubscription();});
+    navigator.serviceWorker?.addEventListener('message',(ev)=>{if(ev.data?.type==='PUSH_SUBSCRIPTION_CHANGED'&&rysWebPushState().context)void syncWebPushSubscription();});
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=76').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=77').catch(() => {});
     }
 
     let subscribedBannerDismissed = false;
@@ -3058,7 +3163,7 @@
         return;
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=76').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=77').catch(() => {});
       }
       // iOS WebKit zorunluluğu: setWebPushTour senkron çalışır, Notification.requestPermission() doğrudan dokunuş içinde çağrılır.
       const state = rysWebPushState();
