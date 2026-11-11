@@ -81,12 +81,12 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
-  <link rel="manifest" href="/manifest.json?v=81" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=81" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=81" />
+  <link rel="manifest" href="/manifest.json?v=82" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=82" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=82" />
   <title>Rıdvan Yılmaz Turizm | RıdvanSes — Dijital Sesli Rehberlik & Kafile Sistemi</title>
-  <link rel="stylesheet" href="/css/style.css?v=81" />
-  <script src="/vercel-ws-shim.js?v=81"></script>
+  <link rel="stylesheet" href="/css/style.css?v=82" />
+  <script src="/vercel-ws-shim.js?v=82"></script>
   <style>
     .hero {
       padding: 64px 0 76px;
@@ -313,7 +313,7 @@
   <header class="navbar">
     <div class="container navbar-inner">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=81" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=82" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <span class="brand-title">Rıdvan Yılmaz Turizm</span>
           <span class="brand-sub"><span class="live-dot"></span> RıdvanSes Dijital Rehberlik Sistemi</span>
@@ -381,7 +381,7 @@
             <span style="font-size:0.76rem; color:var(--color-muted); font-weight:700;">Aktif Kafile:</span>
             <button type="button" class="code-pill" data-tour-code="RY-KASIM">
               <svg class="svg-icon svg-gold" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              RY-KASIM (13-14 Kasım Umresi • Ömer Ali Gültekin)
+              RY-KASIM (13 – 22 Kasım 2026 • Ömer Ali Gültekin)
             </button>
           </div>
         </div>
@@ -419,7 +419,7 @@
           <div style="min-width:0;">
             <div id="heroGuideRoleLabel" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--color-gold-bright); font-weight:800;">Kasım Umresi Kafile Rehberi</div>
             <h3 id="heroGuideName" style="font-size:1.3rem; color:#fff; margin:2px 0;">Ömer Ali Gültekin</h3>
-            <div id="heroGuideDateMeta" style="font-size:0.82rem; color:#cbd5e1;">13-14 Kasım 2026 • 8 Gün Mekke | 2 Gün Medine</div>
+            <div id="heroGuideDateMeta" style="font-size:0.82rem; color:#cbd5e1;">13 – 22 Kasım 2026 • 8 Gün Mekke | 2 Gün Medine</div>
           </div>
         </div>
 
@@ -470,7 +470,7 @@
         </p>
       </div>
 
-      <!-- ÖZEL VİTRİN: KASIM UMRESİ (13-14 KASIM 2026) -->
+      <!-- ÖZEL VİTRİN: KASIM UMRESİ (13 – 22 KASIM 2026) -->
       <div class="card-dark star-field-dark" style="margin-bottom:32px;">
         <div class="grid-2" style="align-items:center; gap:32px;">
           <div>
@@ -489,7 +489,7 @@
               Bir ömür unutulmayacak hatıralar biriktirmek, gönlümüzü Kâbe’nin huzuruyla buluşturmak ve Peygamber Efendimizin ﷺ izinde manevi bir yolculuğa çıkmak için hazırlanan özel Kasım Umresi programımız.
             </p>
             <div style="display:flex; gap:12px; flex-wrap:wrap; font-size:0.84rem; color:var(--color-gold-bright); font-weight:700;">
-              <span>13-14 Kasım 2026</span>
+              <span>13 – 22 Kasım 2026</span>
               <span>•</span>
               <span>10 Günlük Program</span>
               <span>•</span>
@@ -758,7 +758,7 @@
           <div>
             <label class="label">İlgilendiğiniz Umre Programı</label>
             <select name="company_name" class="select">
-              <option value="13-14 Kasım 2026 Kasım Umresi (Ömer Ali Gültekin)">13-14 Kasım 2026 Kasım Umresi — 10 Gün (RY-KASIM)</option>
+              <option value="13 – 22 Kasım 2026 Kasım Umresi (Ömer Ali Gültekin)">13 – 22 Kasım 2026 Kasım Umresi — 10 Gün (RY-KASIM)</option>
               <option value="Diğer Umre / Özel Kafile Programı">Diğer Umre / Özel Kafile Programı</option>
             </select>
           </div>
@@ -921,10 +921,23 @@
             const isHeroLive = Boolean(ryRoom && ryRoom.isLive);
             codeBadge.innerHTML = `${isHeroLive ? '<span class="live-dot"></span> CANLI YAYIN' : 'AKTİF KAFİLE'} • ${escapeHtml(heroCode)}`;
           }
+          const activeRoomParam = ryRoom && ryRoom.isLive && ryRoom.roomId && ryRoom.roomId !== 'genel'
+            ? `&room=${encodeURIComponent(ryRoom.roomId)}`
+            : '';
           const listenCta = document.getElementById('heroListenCtaBtn');
-          if (listenCta) listenCta.href = `/dinle?code=${encodeURIComponent(heroCode)}`;
+          if (listenCta) listenCta.href = `/dinle?code=${encodeURIComponent(heroCode)}${activeRoomParam}`;
           const rotaCta = document.getElementById('heroRotaCtaBtn');
           if (rotaCta) rotaCta.href = `/rota?code=${encodeURIComponent(heroCode)}`;
+          if (heroStaffBtn) heroStaffBtn.href = `/yaka-karti?code=${encodeURIComponent(heroCode)}`;
+          document.querySelectorAll('a[href^="/rota?code="], a[href^="/ani-kitabi?code="]').forEach((el) => {
+            if (el.closest('#toursGrid')) return;
+            const hrefVal = el.getAttribute('href') || '';
+            if (hrefVal.startsWith('/rota?code=')) {
+              el.setAttribute('href', `/rota?code=${encodeURIComponent(heroCode)}`);
+            } else if (hrefVal.startsWith('/ani-kitabi?code=')) {
+              el.setAttribute('href', `/ani-kitabi?code=${encodeURIComponent(heroCode)}`);
+            }
+          });
         }
         if (heroTour || ryRoom) {
           const gName = String((ryRoom && ryRoom.guideName) || (heroTour && heroTour.guideName) || 'Ömer Ali Gültekin').trim();
@@ -953,7 +966,7 @@
         if (ryRoom) {
           const maxTourListeners = heroRooms.reduce((mx, r) => Math.max(mx, Number(r.totalListeners) || 0), 0);
           document.getElementById('heroListenersCount').textContent = maxTourListeners;
-          document.getElementById('heroLiveTopic').textContent = ryRoom.currentTopic;
+          if (ryRoom.currentTopic) document.getElementById('heroLiveTopic').textContent = ryRoom.currentTopic;
         }
         if (data.tours && data.tours.length > 0) {
           const pillsBox = document.getElementById('homeQuickPills');
@@ -967,7 +980,7 @@
       }
     }
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=81').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=82').catch(() => {});
     }
     loadBootstrap();
 

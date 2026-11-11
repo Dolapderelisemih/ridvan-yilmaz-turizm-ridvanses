@@ -6,12 +6,12 @@
   <title>Canlı Manevi Rota & Aile Takip Ekranı — Rıdvan Yılmaz Turizm</title>
   <meta name="description" content="Rıdvan Yılmaz Turizm Umre kafilesinin kutsal topraklardaki canlı manevi yolculuk rotasını, ziyaret edilen Siyer duraklarını ve rehber konumunu canlı takip edin." />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=81" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=81" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=81" />
+  <link rel="manifest" href="/manifest.json?v=82" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=82" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=82" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=81" />
-  <script src="/vercel-ws-shim.js?v=81"></script>
+  <link rel="stylesheet" href="/css/style.css?v=82" />
+  <script src="/vercel-ws-shim.js?v=82"></script>
   <style>
     .rota-hero-strip {
       background:
@@ -91,7 +91,7 @@
   <header class="navbar">
     <div class="container navbar-inner">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=81" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=82" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <div class="brand-title">RıdvanSes Manevi Rota</div>
           <div class="brand-sub">Aile &amp; Yakın Canlı Kafile Takip Sistemi</div>
@@ -263,7 +263,7 @@
   <div id="rotaToast" class="toast-banner"></div>
 
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=81"></script>
+  <script src="/js/umrah-steps-map.js?v=82"></script>
   <script>
     (function () {
       const params = new URLSearchParams(window.location.search);
@@ -277,9 +277,12 @@
       let pollTimer = null;
       let wsReconnectTimer = null;
       let subscriptionBlocked = false;
+      let stepsFetchInFlight = false;
+      const memoryVerifiedPins = new Map();
 
       function getSavedTourPin(code) {
         const clean = String(code || '').toUpperCase().trim();
+        if (memoryVerifiedPins.has(clean)) return memoryVerifiedPins.get(clean) || '';
         try {
           if (typeof sessionStorage !== 'undefined') {
             const v = sessionStorage.getItem('rys_tour_pin_' + clean);
@@ -297,9 +300,12 @@
 
       function setSavedTourPin(code, pinVal) {
         const clean = String(code || '').toUpperCase().trim();
+        const trimmed = String(pinVal || '').trim();
+        if (trimmed) memoryVerifiedPins.set(clean, trimmed);
+        else memoryVerifiedPins.delete(clean);
         try {
           if (typeof sessionStorage !== 'undefined') {
-            if (pinVal) sessionStorage.setItem('rys_tour_pin_' + clean, String(pinVal).trim());
+            if (trimmed) sessionStorage.setItem('rys_tour_pin_' + clean, trimmed);
             else sessionStorage.removeItem('rys_tour_pin_' + clean);
           }
         } catch (_) {}
@@ -324,13 +330,23 @@
       const codeInput = document.getElementById('codeInput');
       codeInput.value = currentCode;
 
-      const routeMap = new window.UmrahStepsMap('familyRouteMap', {
-        defaultView: 'holy-lands',
-        scrollWheelZoom: false,
-        onStepSelect: (step) => {
-          highlightStepCard(step.id);
-        }
-      });
+      const routeMap = window.UmrahStepsMap
+        ? new window.UmrahStepsMap('familyRouteMap', {
+            defaultView: 'holy-lands',
+            scrollWheelZoom: false,
+            onStepSelect: (step) => {
+              highlightStepCard(step.id);
+            }
+          })
+        : {
+            setSteps() {},
+            focusStep() {},
+            updateGuideLocation() {},
+            fitHolyLands() {},
+            fitFullJourney() {},
+            focusMakkah() {},
+            focusMadinah() {}
+          };
 
       function showToast(msg) {
         const el = document.getElementById('rotaToast');
@@ -399,16 +415,18 @@
         if (Array.isArray(data.steps)) {
           currentSteps = data.steps;
           routeMap.setSteps(currentSteps, { autoFit: autoFitMap });
-          window.UmrahStepsMap.renderTimeline('familyTimeline', currentSteps, {
-            showPrayers: true,
-            onSelect: (step) => {
-              routeMap.focusStep(step.id, 14, true);
-              highlightStepCard(step.id);
-              if (window.innerWidth < 980) {
-                document.getElementById('familyRouteMap').scrollIntoView({ behavior: 'smooth', block: 'center' });
+          if (window.UmrahStepsMap && typeof window.UmrahStepsMap.renderTimeline === 'function') {
+            window.UmrahStepsMap.renderTimeline('familyTimeline', currentSteps, {
+              showPrayers: true,
+              onSelect: (step) => {
+                routeMap.focusStep(step.id, 14, true);
+                highlightStepCard(step.id);
+                if (window.innerWidth < 980) {
+                  document.getElementById('familyRouteMap').scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
               }
-            }
-          });
+            });
+          }
         }
 
         if (data.stats) {
@@ -494,13 +512,22 @@
         renderAnnouncements([]);
       }
 
-      async function fetchStepsRest(autoFit = false) {
+      async function fetchStepsRest(autoFit = false, preservePinErr = false) {
+        if (stepsFetchInFlight && !autoFit && !preservePinErr) return;
+        stepsFetchInFlight = true;
+        let timer = null;
         try {
           const pinVal = getActiveTourPin(currentCode);
           const headers = pinVal
             ? { 'X-Tour-Pin': encodeURIComponent(pinVal), 'X-Tour-Pin-Enc': 'uri' }
             : {};
-          const res = await fetch(`/api/trips/${encodeURIComponent(currentCode)}/steps`, { headers });
+          const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+          if (ctrl) timer = setTimeout(() => { try { ctrl.abort(); } catch (_) {} }, 8000);
+          const res = await fetch(`/api/trips/${encodeURIComponent(currentCode)}/steps`, {
+            headers,
+            cache: 'no-store',
+            ...(ctrl ? { signal: ctrl.signal } : {})
+          });
           const json = await res.json().catch(() => ({}));
           const pinGate = document.getElementById('rotaPinGateBox');
           const pinErr = document.getElementById('rotaPinErrorMsg');
@@ -538,7 +565,7 @@
                 setSavedTourPin(currentCode, '');
                 pinErr.textContent = 'Girilen PIN kodu hatalı. Lütfen tekrar deneyiniz.';
                 pinErr.style.display = 'block';
-              } else {
+              } else if (!preservePinErr) {
                 pinErr.style.display = 'none';
               }
             }
@@ -566,6 +593,9 @@
           }
         } catch (err) {
           console.warn('Rota verisi alınamadı:', err);
+        } finally {
+          if (timer) clearTimeout(timer);
+          stepsFetchInFlight = false;
         }
       }
 
@@ -616,9 +646,14 @@
                 if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
                 try { if (ws) { ws.onclose = null; ws.onerror = null; ws.close(); ws = null; } } catch (_) {}
                 const pinGate = document.getElementById('rotaPinGateBox');
+                const pinErr = document.getElementById('rotaPinErrorMsg');
                 if (pinGate) pinGate.style.display = 'block';
+                if (pinErr) {
+                  pinErr.textContent = msg.message || 'PIN kodu hatalı veya güncellendi. Lütfen tekrar giriniz.';
+                  pinErr.style.display = 'block';
+                }
                 document.getElementById('syncIndicator').textContent = '🔒 PIN Gerekli';
-                fetchStepsRest(false);
+                fetchStepsRest(false, true);
                 return;
               }
               if (msg.type === 'tour-unknown' || (msg.type === 'subscription-error' && msg.code === 'tour-unknown')) {
@@ -749,7 +784,7 @@
         });
       });
 
-      const triggerLoadCode = () => {
+      const triggerLoadCode = async () => {
         const val = String(codeInput.value || '').toUpperCase().trim();
         if (!val) return;
         currentCode = val;
@@ -759,8 +794,8 @@
         url.searchParams.set('code', currentCode);
         window.history.replaceState({}, '', url.toString());
         updateLinks(currentCode);
-        fetchStepsRest(true);
-        connectRealtime();
+        await fetchStepsRest(true);
+        if (!subscriptionBlocked) connectRealtime();
       };
       document.getElementById('loadCodeBtn').addEventListener('click', triggerLoadCode);
       codeInput.addEventListener('keydown', (e) => {
@@ -787,14 +822,14 @@
       const rotaPinBtn = document.getElementById('rotaPinSubmitBtn');
       const rotaPinInp = document.getElementById('rotaPinInput');
       if (rotaPinBtn && rotaPinInp) {
-        const submitRotaPin = () => {
+        const submitRotaPin = async () => {
           const entered = String(rotaPinInp.value || '').trim();
           if (!entered) return;
           subscriptionBlocked = false;
           pendingPinInput = entered;
           updateLinks(currentCode);
-          fetchStepsRest(true);
-          connectRealtime();
+          await fetchStepsRest(true);
+          if (!subscriptionBlocked) connectRealtime();
         };
         rotaPinBtn.addEventListener('click', submitRotaPin);
         rotaPinInp.addEventListener('keydown', (e) => {
@@ -806,12 +841,13 @@
       }
 
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=81').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=82').catch(() => {});
       }
 
       updateLinks(currentCode);
-      fetchStepsRest(true);
-      connectRealtime();
+      fetchStepsRest(true).then(() => {
+        if (!subscriptionBlocked) connectRealtime();
+      });
     })();
   </script>
 </body>

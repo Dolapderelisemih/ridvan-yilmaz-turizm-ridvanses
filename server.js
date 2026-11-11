@@ -55,7 +55,6 @@ const wss = new WebSocketServer({
 
 app.disable('x-powered-by');
 app.set('trust proxy', process.env.VERCEL ? 1 : 'loopback');
-app.use(express.json({ limit: '512kb' }));
 
 function isLoopbackAddress(addr) {
   const s = String(addr || '').trim();
@@ -92,31 +91,6 @@ function decodeTourPinHeader(req) {
   }
   return str;
 }
-app.use((err, req, res, next) => {
-  if (res.headersSent || req.aborted || res.destroyed || (err && err.type === 'request.aborted')) {
-    return;
-  }
-  if (
-    err &&
-    (err.type === 'entity.parse.failed' ||
-      err.type === 'encoding.unsupported' ||
-      err.type === 'charset.unsupported' ||
-      err.type === 'entity.too.large' ||
-      err.type === 'stream.not.readable' ||
-      err.type === 'stream.encoding.set' ||
-      err.status === 400 ||
-      err.status === 413 ||
-      err.status === 415)
-  ) {
-    const code = err.status >= 400 && err.status < 500 ? err.status : 400;
-    return res.status(code).json({
-      success: false,
-      error: 'invalid-request-body',
-      message: 'Geçersiz istek gövdesi veya kodlaması.'
-    });
-  }
-  return next(err);
-});
 
 function isTrustedCorsOrigin(origin) {
   if (!origin || typeof origin !== 'string') return false;
@@ -134,7 +108,7 @@ function isTrustedCorsOrigin(origin) {
   return false;
 }
 
-// Güvenlik Başlıkları (Security Headers) & Cross-Origin Destek
+// Güvenlik Başlıkları (Security Headers) & Cross-Origin Destek (express.json öncesinde çalışır)
 const RYS_CSP_HEADER = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' blob:",
@@ -179,11 +153,19 @@ app.use((req, res, next) => {
   ) {
     const secSite = String(req.headers['sec-fetch-site'] || '').toLowerCase();
     const hasCustomAuthHeader = Boolean(req.headers.authorization || req.headers['x-ry-auth'] || req.headers['x-rys-relay-key']);
+    let refererOrigin = '';
+    if (!origin && req.headers.referer) {
+      try {
+        refererOrigin = new URL(String(req.headers.referer)).origin;
+      } catch {
+        refererOrigin = 'invalid';
+      }
+    }
     if (
       !hasCustomAuthHeader &&
-      (secSite === 'cross-site' ||
-        (secSite === 'same-site' && !isTrustedCorsOrigin(origin)) ||
-        (origin && !isTrustedCorsOrigin(origin)))
+      (((secSite === 'cross-site' || secSite === 'same-site') && !isTrustedCorsOrigin(origin)) ||
+        (origin && !isTrustedCorsOrigin(origin)) ||
+        (!secSite && !origin && refererOrigin && !isTrustedCorsOrigin(refererOrigin)))
     ) {
       return res.status(403).json({
         success: false,
@@ -192,10 +174,10 @@ app.use((req, res, next) => {
       });
     }
     const rawCt = String(req.headers['content-type'] || '').toLowerCase().trim();
+    const hasBody = Boolean(req.headers['transfer-encoding'] || Number(req.headers['content-length'] || 0) > 0);
     if (
-      rawCt &&
-      !rawCt.startsWith('application/json') &&
-      !rawCt.startsWith('application/octet-stream')
+      (rawCt && !rawCt.startsWith('application/json') && !rawCt.startsWith('application/octet-stream')) ||
+      (!rawCt && hasBody)
     ) {
       return res.status(415).json({
         success: false,
@@ -211,6 +193,33 @@ app.use((req, res, next) => {
     return res.status(400).json({ success: false, error: 'invalid-url', message: 'Geçersiz istek adresi.' });
   }
   next();
+});
+
+app.use(express.json({ limit: '512kb' }));
+app.use((err, req, res, next) => {
+  if (res.headersSent || req.aborted || res.destroyed || (err && err.type === 'request.aborted')) {
+    return;
+  }
+  if (
+    err &&
+    (err.type === 'entity.parse.failed' ||
+      err.type === 'encoding.unsupported' ||
+      err.type === 'charset.unsupported' ||
+      err.type === 'entity.too.large' ||
+      err.type === 'stream.not.readable' ||
+      err.type === 'stream.encoding.set' ||
+      err.status === 400 ||
+      err.status === 413 ||
+      err.status === 415)
+  ) {
+    const code = err.status >= 400 && err.status < 500 ? err.status : 400;
+    return res.status(code).json({
+      success: false,
+      error: 'invalid-request-body',
+      message: 'Geçersiz istek gövdesi veya kodlaması.'
+    });
+  }
+  return next(err);
 });
 
 const DATA_FILE = path.join(__dirname, 'data', 'seed.json');
@@ -929,6 +938,34 @@ function rysSosPushPayload(alertItem){
   return JSON.stringify(data);
 }
 let rysSosPushInFlight=0;
+const rysSosPushQueue=[];
+function pumpRysSosPushQueue(){
+  while(rysSosPushInFlight<8&&rysSosPushQueue.length>0){
+    const job=rysSosPushQueue.shift();
+    if(!job||!job.sub||rysSosPushSubs.get(job.sub.endpoint)!==job.sub)continue;
+    rysSosPushInFlight++;
+    setImmediate(async()=>{
+      const {sub,payload}=job;
+      try{
+        for(let attempt=0;attempt<3;attempt++){
+          if(rysSosPushSubs.get(sub.endpoint)!==sub)break;
+          try{
+            const status=await rysPushSend(sub,payload);
+            if((status===404||status===410)&&rysSosPushSubs.get(sub.endpoint)===sub){
+              rysSosPushDrop(sub.endpoint);rysSosPushPersist();break;
+            }
+            if(status>=200&&status<300)break;
+            if(status!==429&&status<500)break;
+          }catch(e){}
+          if(attempt<2)await new Promise(r=>setTimeout(r,attempt===0?1000:3000));
+        }
+      }finally{
+        rysSosPushInFlight=Math.max(0,rysSosPushInFlight-1);
+        if(rysSosPushQueue.length>0)pumpRysSosPushQueue();
+      }
+    });
+  }
+}
 function queueRysPushSos(alertItem){
   if(!rysPushVapid||!alertItem?.id||!rysSosPushSubs.size)return;
   const now=Date.now();
@@ -939,33 +976,14 @@ function queueRysPushSos(alertItem){
   if(droppedExpired)rysSosPushPersist();
   const code=String(alertItem.tourCode||'RY-KASIM').toUpperCase().trim();
   const targets=Array.from(rysSosPushSubs.values()).filter(s=>s.tourCode==='ALL'||s.tourCode===code);
-  if(!targets.length||rysSosPushInFlight>=8)return;
+  if(!targets.length)return;
   let payload;
   try{payload=rysSosPushPayload(alertItem);}catch(e){return;}
-  setImmediate(async()=>{
-    let idx=0;
-    const workerCount=Math.min(4,targets.length,Math.max(1,8-rysSosPushInFlight));
-    rysSosPushInFlight+=workerCount;
-    const worker=async()=>{
-      while(idx<targets.length){
-        const s=targets[idx++];
-        for(let attempt=0;attempt<3;attempt++){
-          if(rysSosPushSubs.get(s.endpoint)!==s)break;
-          try{
-            const status=await rysPushSend(s,payload);
-            if((status===404||status===410)&&rysSosPushSubs.get(s.endpoint)===s){
-              rysSosPushDrop(s.endpoint);rysSosPushPersist();break;
-            }
-            if(status>=200&&status<300)break;
-            if(status!==429&&status<500)break;
-          }catch(e){}
-          if(attempt<2)await new Promise(r=>setTimeout(r,attempt===0?1000:3000));
-        }
-      }
-    };
-    try{await Promise.all(Array.from({length:workerCount},()=>worker()));}
-    finally{rysSosPushInFlight=Math.max(0,rysSosPushInFlight-workerCount);}
-  });
+  for(const sub of targets){
+    if(rysSosPushQueue.length>=256)rysSosPushQueue.shift();
+    rysSosPushQueue.push({sub,payload});
+  }
+  pumpRysSosPushQueue();
 }
 let activeSmtpConnections=0;
 const sosEmailCooldownByTour=new Map();
@@ -1016,7 +1034,7 @@ function sendEmergencySosEmail(alertItem){
         `Telefon     : ${safePhone}`,
         `Saat        : ${safeCreated}`,
         `Not / Bölge : ${safeNote}`,
-        `GPS         : ${Number(alertItem.lat)||21.4225}, ${Number(alertItem.lng)||39.8262}${alertItem.accuracy ? ` (±${Math.round(Number(alertItem.accuracy)||0)}m)` : ''}`,
+        `GPS         : ${hasValidCoords ? `${Number(alertItem.lat)}, ${Number(alertItem.lng)}${alertItem.accuracy ? ` (±${Math.round(Number(alertItem.accuracy)||0)}m)` : ''}` : 'Konum Alınamadı'}`,
         `Google Maps : ${mapsUrl}`,
         `Rehber Ekran: https://ses.ridvanyilmazturizm.com/rehber?code=${encodeURIComponent(safeTour)}`
       ].map(line=>line.startsWith('.')?'.'+line:line).join('\r\n');
@@ -1066,7 +1084,7 @@ function findRysTour(tourCode){
 }
 function isConfiguredRysRoom(room){
   const tour=findRysTour(room.tourCode);
-  return !!tour&&(room.roomId==='genel'||(tour.rooms||[]).some(r=>String(r.id||'').trim()===room.roomId));
+  return !!tour&&(room.roomId==='genel'||room.roomId==='siyer'||(tour.rooms||[]).some(r=>String(r.id||'').trim()===room.roomId));
 }
 function dropRysRoom(room){
   if(room._broadcastTimer){clearTimeout(room._broadcastTimer);room._broadcastTimer=null;}
@@ -1337,9 +1355,21 @@ const SELAMET_PASSWORD_ENV = String(process.env.SELAMET_PASSWORD || '').trim();
 const ADMIN_PASSWORD_SHA256 = '5493a522fbec2df9e753e4befd4fca615a2d43f5a4c09350e7fe578b5cce316f';
 const SELAMET_PASSWORD_SHA256 = '0b7eea0794148d756d8b8cbe7d97ac6153c2abe52fe3d20938f9c751b2b73b5a';
 const AUTH_COOKIE_NAME = 'ry_auth';
-const AUTH_TOKEN_VALUE = String(
-  process.env.AUTH_TOKEN_SECRET || crypto.randomBytes(32).toString('hex')
-).trim();
+const AUTH_TOKEN_VALUE = (() => {
+  const envSecret = String(process.env.AUTH_TOKEN_SECRET || '').trim();
+  if (envSecret) return envSecret;
+  if (db && typeof db.authSecret === 'string' && db.authSecret.trim().length >= 32) {
+    return db.authSecret.trim();
+  }
+  const generated = crypto.randomBytes(32).toString('hex');
+  if (db && typeof db === 'object') {
+    db.authSecret = generated;
+    if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
+      try { saveState(db); } catch (e) {}
+    }
+  }
+  return generated;
+})();
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 gün
 const MAX_ACTIVE_AUTH_SESSIONS = 4096;
 const MAX_REVOKED_AUTH_TOKENS = 16384;
@@ -1582,6 +1612,12 @@ const logoutRateLimiter = createRateLimiter({
   windowMs: 60000,
   max: 120,
   message: 'Çok fazla çıkış isteği gönderildi. Lütfen kısa süre sonra tekrar deneyiniz.'
+});
+const forgotPasswordRateLimiter = createRateLimiter({
+  scope: 'login',
+  windowMs: 60000,
+  max: 10,
+  message: 'Çok fazla şifre yenileme isteği gönderildi. Lütfen 1 dakika bekleyiniz.'
 });
 
 function verifyPassword(candidate, envPass, fallbackSha256) {
@@ -2228,6 +2264,20 @@ function processClientJsonMessageV49(ctx, msg) {
     const role = msg.role === 'guide' ? 'guide' : 'pilgrim';
     const matchedTour=findRysTour(tourCode);
     if(!matchedTour){ws.send(JSON.stringify({type:'subscription-error',code:'tour-unknown'}));return;}
+    if (
+      roomId !== 'genel' &&
+      roomId !== 'siyer' &&
+      Array.isArray(matchedTour.removedRoomIds) &&
+      matchedTour.removedRoomIds.includes(roomId.toLowerCase())
+    ) {
+      ws.send(JSON.stringify({
+        type: 'subscription-error',
+        code: 'room-removed',
+        fallbackRoomId: 'genel',
+        message: 'Bu özel oda acente tarafından kapatıldı. Lütfen Genel Yayın odasına geçiniz.'
+      }));
+      return;
+    }
     const requiredJoinPin = typeof getRequiredTourPin === 'function'
       ? getRequiredTourPin(matchedTour)
       : (matchedTour && (matchedTour.pinProtected || matchedTour.pin) ? String(matchedTour.pin || '').trim() : '');
@@ -2298,7 +2348,15 @@ function processClientJsonMessageV49(ctx, msg) {
         if (existingId === clientId || existingClient.ws === ws) continue;
         // deviceId is client metadata; a listener must never evict a guide by copying it.
         const sameDevice = Boolean(role === existingClient.role && deviceId && existingClient.deviceId && existingClient.deviceId === deviceId);
-        const sameGuide = Boolean(role === 'guide' && existingClient.role === 'guide' && r.roomId === roomId && (existingClient.name === clientObj.name || msg.takeover === true));
+        const passiveDifferentDeviceProbe = Boolean(
+          msg.takeover === false && deviceId && existingClient.deviceId && existingClient.deviceId !== deviceId
+        );
+        const sameGuide = Boolean(
+          role === 'guide' &&
+            existingClient.role === 'guide' &&
+            r.roomId === roomId &&
+            (msg.takeover === true || (existingClient.name === clientObj.name && !passiveDifferentDeviceProbe))
+        );
         if (sameDevice || sameGuide) {
           if(existingClient.ws?.isHttpRelay){
             const oldRelay=httpRelaySessions.get(existingId);
@@ -2392,6 +2450,9 @@ function processClientJsonMessageV49(ctx, msg) {
         if (r.isLive) {
           if (!wasLive || !r.startedAt) r.startedAt = Date.now();
           r.activePublisherClientId = clientId;
+          if (sender.name && (r === currentRoom || !Array.from(r.clients.values()).some((c) => c.role === 'guide'))) {
+            r.guideName = sender.name;
+          }
         } else if (!r.activePublisherClientId || r.activePublisherClientId === clientId) {
           r.activePublisherClientId = null;
         }
@@ -2400,6 +2461,7 @@ function processClientJsonMessageV49(ctx, msg) {
           isLive: r.isLive,
           broadcastMode: r.broadcastMode,
           currentTopic: r.currentTopic,
+          guideName: r.guideName || null,
           guidePeerId: r.guidePeerId || null,
         audioSourceId:r.audioSourceId||null,
         audioStateSeq:r.audioStateSeq||null,audioStateEnded:!!r.audioStateEnded,audioMediaEpoch:r.audioMediaEpoch||null
@@ -2409,7 +2471,8 @@ function processClientJsonMessageV49(ctx, msg) {
         type: 'stream-state',
         isLive: currentRoom.isLive,
         broadcastMode: currentRoom.broadcastMode,
-        currentTopic: currentRoom.currentTopic
+        currentTopic: currentRoom.currentTopic,
+        guideName: currentRoom.guideName || null
       });
       broadcastToAdmins({
         type: 'admin-rooms-update',
@@ -2910,7 +2973,13 @@ function validateRysHandoff(ctx,request){
   const principal=rysPrincipal(token),authed=!!principal;
   if(request.type==='admin-subscribe'&&!rysCanAdmin(principal))return 'scope-required';
   if(request.type==='join'&&request.role==='guide'&&!rysCanGuide(principal,request.tourCode))return 'scope-required';
-  if(request.type!=='admin-subscribe'&&!findRysTour(request.tourCode))return 'tour-unknown';
+  const handoffTour=request.type!=='admin-subscribe'?findRysTour(request.tourCode):null;
+  if(request.type!=='admin-subscribe'&&!handoffTour)return 'tour-unknown';
+  if(request.type==='join'){
+    const handoffRoomId=String(request.roomId||'genel').trim().toLowerCase();
+    if(handoffRoomId!=='genel'&&handoffRoomId!=='siyer'&&Array.isArray(handoffTour?.removedRoomIds)&&handoffTour.removedRoomIds.includes(handoffRoomId))
+      return 'room-removed';
+  }
   if(authed)ctx.rysAuthToken=String(token).trim();
   ctx.isAuthenticated=authed;ctx.ws.isAuthenticated=authed;
   if((request.type==='admin-subscribe'||request.type==='join'&&request.role==='guide')&&!authed)
@@ -3078,7 +3147,14 @@ function syncRysRelayContext(session,context){
     ['join',String(context.tourCode||'RY-KASIM').toUpperCase().trim(),String(context.roomId||'genel').trim(),
       context.role==='guide'?'guide':'pilgrim',context.role==='guide'?context.audioSourceId||member?.audioSourceId||null:null];
   if(JSON.stringify(previous)!==JSON.stringify(desired)){
+    const preservedTerminalErrors=Array.isArray(session.outbox)
+      ?session.outbox.filter(raw=>{
+          try{const p=typeof raw==='string'?JSON.parse(raw):raw;return p&&(p.type==='subscription-error'||p.type==='tour-unknown');}
+          catch(e){return false;}
+        })
+      :[];
     if(Array.isArray(session.outbox))session.outbox.length=0;
+    for(const kept of preservedTerminalErrors)session.outbox.push(kept);
     session.mqttPublications=[];session.mqttVerified?.clear();session.presenceSnapshotAt=0;
   }
   if(context.type==='join'){
@@ -3303,9 +3379,9 @@ app.post('/api/logout', logoutRateLimiter, (req, res) => {
   return res.json({ success: true });
 });
 
-app.post('/api/forgot-password', (req, res) => {
+app.post('/api/forgot-password', forgotPasswordRateLimiter, (req, res) => {
   const { email } = req.body || {};
-  const cleanEmail = String(email || '').trim();
+  const cleanEmail = String(email || '').trim().slice(0, 160);
   return res.json({
     success: true,
     message: `${cleanEmail || 'Yetkili hesabınız'} için şifre yenileme talebiniz kaydedildi. Güvenlik nedeniyle yetkili şifre sıfırlama işlemleri Rıdvan Yılmaz Turizm Merkez Ofisi (+90 538 399 96 66) tarafından gerçekleştirilmektedir.`
@@ -3316,7 +3392,7 @@ app.post('/api/demo-request', demoRequestRateLimiter, (req, res) => {
   const { name, company_name, phone, email, message } = req.body || {};
   if (!db.requests) db.requests = [];
   const item = {
-    id: `req-${Date.now()}`,
+    id: `req-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
     name: String(name || 'İsimsiz Başvuru').trim().slice(0, 120),
     company_name: String(company_name || 'Belirtilmedi').trim().slice(0, 160),
     phone: String(phone || '').trim().slice(0, 40),
@@ -3336,8 +3412,8 @@ app.post('/api/demo-request', demoRequestRateLimiter, (req, res) => {
 });
 
 app.delete('/api/requests/:id', requireAuth, (req, res) => {
-  const authedUser = getAuthenticatedUser(req);
-  if (authedUser && authedUser.assignedTour) {
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  if (!rysCanAdmin(principal)) {
     return res.status(403).json({ success: false, message: 'Bu işlem yalnızca ana acente yöneticisi tarafından yapılabilir.' });
   }
   if (!db.requests) db.requests = [];
@@ -3357,9 +3433,10 @@ app.get('/api/bootstrap', (req, res) => {
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
   res.setHeader('Vary', 'Origin, Cookie, Authorization');
   ensureJourneySteps();
-  const authedUser = getAuthenticatedUser(req);
-  const isAuthed = Boolean(authedUser);
-  const assignedCode = authedUser && authedUser.assignedTour ? String(authedUser.assignedTour).toUpperCase() : null;
+  const bootstrapPrincipal = rysPrincipal(extractAuthTokenFromReq(req));
+  const authedUser = bootstrapPrincipal ? getAuthenticatedUser(req) : null;
+  const isAuthed = Boolean(bootstrapPrincipal && authedUser);
+  const assignedCode = bootstrapPrincipal && bootstrapPrincipal.assignedTour ? String(bootstrapPrincipal.assignedTour).toUpperCase() : null;
 
   const rawTours = assignedCode
     ? (db.tours || []).filter((t) => String(t.code || '').toUpperCase() === assignedCode)
@@ -3594,8 +3671,8 @@ function sanitizeCustomRoomsList(rawRooms, guideName) {
 }
 
 app.post('/api/tours', requireAuth, (req, res) => {
-  const authedUser = getAuthenticatedUser(req);
-  if (authedUser && authedUser.assignedTour) {
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  if (!rysCanAdmin(principal)) {
     return res.status(403).json({ success: false, message: 'Alt acente hesabı yeni kafile oluşturamaz.' });
   }
   if (db.tours.length >= 200) {
@@ -3618,7 +3695,7 @@ app.post('/api/tours', requireAuth, (req, res) => {
   const cleanPin = String(body.pin || '').trim().slice(0, 32);
   const cleanGuideName = String(body.guideName || 'Rıdvan Yılmaz Hoca').trim().slice(0, 120) || 'Rıdvan Yılmaz Hoca';
   const newTour = {
-    id: `tour-${Date.now()}`,
+    id: `tour-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
     code,
     name: String(body.name || 'Yeni Siyer Umresi Kafilesi').trim().slice(0, 140) || 'Yeni Siyer Umresi Kafilesi',
     dateText: String(body.dateText || '2026 - 2027 Sezonu').trim().slice(0, 80),
@@ -3644,7 +3721,7 @@ app.post('/api/tours', requireAuth, (req, res) => {
   db.tours.unshift(newTour);
   if (newTour.guideName && db.guides.length < 300 && !db.guides.some((g) => g.name.toLowerCase() === newTour.guideName.toLowerCase())) {
     db.guides.push({
-      id: `guide-${Date.now()}`,
+      id: `guide-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
       name: newTour.guideName,
       title: 'Kafile İrşad Rehberi',
       phone: '+90 538 399 96 66',
@@ -3677,8 +3754,8 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
   if (!tour) {
     return res.status(404).json({ success: false, message: 'Düzenlenecek kafile bulunamadı.' });
   }
-  const authedUser = getAuthenticatedUser(req);
-  if (authedUser && authedUser.assignedTour && String(tour.code || '').toUpperCase() !== String(authedUser.assignedTour).toUpperCase()) {
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  if (!rysCanGuide(principal, tour.code)) {
     return res.status(403).json({ success: false, message: 'Yalnızca kendi acentenize atanmış kafileyi düzenleyebilirsiniz.' });
   }
   const body = req.body || {};
@@ -3689,12 +3766,12 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
   if (typeof body.guideName === 'string' && body.guideName.trim()) {
     tour.guideName = body.guideName.trim().slice(0, 120);
     if (
-      !(authedUser && authedUser.assignedTour) &&
+      rysCanAdmin(principal) &&
       db.guides.length < 300 &&
       !db.guides.some((g) => g.name.toLowerCase() === tour.guideName.toLowerCase())
     ) {
       db.guides.push({
-        id: `guide-${Date.now()}`,
+        id: `guide-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
         name: tour.guideName,
         title: 'Kafile İrşad Rehberi',
         phone: '+90 538 399 96 66',
@@ -3730,14 +3807,28 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
     );
     tour.rooms = sanitizeCustomRoomsList(body.customRooms !== undefined ? body.customRooms : body.rooms, tour.guideName);
     const nextAllowedRoomIds = new Set(['genel', 'siyer', ...tour.rooms.map((rm) => rm && rm.id).filter(Boolean)]);
+    const removedSet = new Set(
+      (Array.isArray(tour.removedRoomIds) ? tour.removedRoomIds : [])
+        .map((x) => String(x || '').trim().toLowerCase())
+        .filter((x) => x && !nextAllowedRoomIds.has(x))
+    );
+    for (const prevId of prevConfiguredRoomIds) {
+      const lowerPrev = String(prevId || '').trim().toLowerCase();
+      if (lowerPrev && lowerPrev !== 'genel' && lowerPrev !== 'siyer' && !nextAllowedRoomIds.has(lowerPrev)) {
+        removedSet.add(lowerPrev);
+      }
+    }
     const roomRemovedPayload = JSON.stringify({
       type: 'subscription-error',
       code: 'room-removed',
       fallbackRoomId: 'genel',
       message: 'Bu özel oda acente tarafından kapatıldı. Lütfen Genel Yayın odasına geçiniz.'
     });
+    let droppedCustomRoom = false;
     for (const r of getTourRooms(tour.code)) {
       if (!nextAllowedRoomIds.has(r.roomId) && (prevConfiguredRoomIds.has(r.roomId) || (r.roomId !== 'genel' && r.roomId !== 'siyer'))) {
+        removedSet.add(String(r.roomId || '').trim().toLowerCase());
+        droppedCustomRoom = true;
         for (const [cid, client] of Array.from(r.clients.entries())) {
           try {
             if (client.ws && client.ws.readyState === WebSocket.OPEN) {
@@ -3760,8 +3851,12 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
         dropRysRoom(r);
       }
     }
+    tour.removedRoomIds = Array.from(removedSet).slice(-64);
     for (const rm of tour.rooms) {
       if (rm && rm.id) getOrCreateRoom(tour.code, rm.id);
+    }
+    if (droppedCustomRoom) {
+      evaluateTourGuidePresence(tour.code);
     }
   }
   let pinTightened = false;
@@ -3792,8 +3887,8 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
 });
 
 app.delete('/api/tours/:id', requireAuth, (req, res) => {
-  const authedUser = getAuthenticatedUser(req);
-  if (authedUser && authedUser.assignedTour) {
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  if (!rysCanAdmin(principal)) {
     return res.status(403).json({ success: false, message: 'Alt acente hesabı kafile silemez.' });
   }
   const targetId = String(req.params.id || '').trim();
@@ -3954,7 +4049,7 @@ app.post('/api/trips/:code/steps', requireAuth, (req, res) => {
 
   const nowStr = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
   const newStep = {
-    id: `step-${Date.now()}`,
+    id: `step-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
     order: insertIndex + 1,
     dayLabel: String(body.dayLabel || `Canlı Durak • ${nowStr}`).trim().slice(0, 120),
     title: String(body.title || 'Yeni Siyer & Ziyaret Durağı').trim().slice(0, 180) || 'Yeni Siyer & Ziyaret Durağı',
@@ -4473,6 +4568,7 @@ app.get('/api/qr', async (req, res) => {
         .replace(/[^a-z0-9_-]/g, '')
         .slice(0, 64) || 'genel';
     const pilgrimName = String(req.query.name || '').trim().slice(0, 80);
+    const targetMode = String(req.query.target || '').trim().toLowerCase();
     const baseUrl = resolveTrustedPublicBaseUrl(req);
     let joinUrl = `${baseUrl}/dinle?code=${encodeURIComponent(code)}&room=${encodeURIComponent(room)}`;
     if (pilgrimName) {
@@ -4480,8 +4576,14 @@ app.get('/api/qr', async (req, res) => {
     }
     const familyTrackUrl = `${baseUrl}/rota?code=${encodeURIComponent(code)}`;
     const keepsakeBookUrl = `${baseUrl}/ani-kitabi?code=${encodeURIComponent(code)}`;
+    const qrTargetUrl =
+      targetMode === 'ani-kitabi'
+        ? keepsakeBookUrl
+        : targetMode === 'rota'
+          ? familyTrackUrl
+          : joinUrl;
 
-    const dataUrl = await QRCode.toDataURL(joinUrl, {
+    const dataUrl = await QRCode.toDataURL(qrTargetUrl, {
       width: 360,
       margin: 1,
       color: {
@@ -4511,7 +4613,8 @@ app.get('/api/qr', async (req, res) => {
       code,
       room,
       tour: rysCanGuide(qrPrincipal, tour.code || code) ? tour : sanitizeTourForPublic(tour),
-      joinUrl,
+      joinUrl: qrTargetUrl,
+      listenUrl: joinUrl,
       familyTrackUrl,
       keepsakeBookUrl,
       dataUrl,

@@ -258,13 +258,18 @@
       });
 
       topoLayer.addTo(this.map);
+      this._baseLayers = {
+        classic: topoLayer,
+        sat: satHybridLayer,
+        street: osmStreetLayer
+      };
 
       const md = getMapDict(this.options.lang);
       const layerMap = {};
       layerMap[md.layerClassic] = topoLayer;
       layerMap[md.layerSat] = satHybridLayer;
       layerMap[md.layerStreet] = osmStreetLayer;
-      L.control
+      this.layersControl = L.control
         .layers(
           layerMap,
           null,
@@ -470,6 +475,20 @@
       this.options.lang = lang;
       await this._readyPromise;
       if (!this.map) return;
+      const L = global.L;
+      if (L && this._baseLayers) {
+        if (this.layersControl) {
+          try { this.layersControl.remove(); } catch (e) {}
+        }
+        const md = getMapDict(this.options.lang);
+        const layerMap = {};
+        layerMap[md.layerClassic] = this._baseLayers.classic;
+        layerMap[md.layerSat] = this._baseLayers.sat;
+        layerMap[md.layerStreet] = this._baseLayers.street;
+        this.layersControl = L.control
+          .layers(layerMap, null, { position: 'topright', collapsed: true })
+          .addTo(this.map);
+      }
       if (this.steps.length) this._drawSteps(false);
       if (this.guideLocation) this._drawGuidePin();
     }

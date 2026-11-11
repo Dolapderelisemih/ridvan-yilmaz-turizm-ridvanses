@@ -330,7 +330,7 @@
       const clientId=this._relayClientId,relayKey=this._relayKey;
       if(clientId&&relayKey){
         // Best-effort close is safe even after commit: it names only the old HTTP ID.
-        try{fetch('/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},
+        try{fetch('/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json','X-Rys-Relay-Key':relayKey},
           body:JSON.stringify({type:'relay-close',version:56,clientId,relayKey}),keepalive:true}).catch(()=>{});}catch(e){}
       }
       this._relayClientId=null;this._relayKey=null;this._relayFenced=false;this._relayRequestSeq=0;this._relayGuideStateAckEpoch=null;
@@ -801,15 +801,12 @@
               updatedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
             };
           }
-          const locPayload = {
+          this._publishMqtt({
             _msgId: parsed._msgId,
             type: 'guide-location',
             guideLocation: this._guideLocation
-          };
-          this._publishMqtt(locPayload);
+          });
           this._broadcastP2PRoomState();
-        } else if (parsed.type === 'quick-announcement') {
-          // Gerçek duyuru kimliği (ann-<ts>-<hex>) ve imzalı MQTT yayını /api/ws-relay yanıtından döner; sahte çift kayıt oluşturulmaz.
         } else if (parsed.type === 'guide-stream-state') {
           if (typeof parsed.isLive !== 'undefined') this._isLive = Boolean(parsed.isLive);
           this._broadcastMode = parsed.broadcastMode || (this._isLive ? 'mic' : 'idle');
@@ -844,12 +841,6 @@
             };
             if (parsed.topic) this._currentTopic = parsed.topic;
           }
-          this._publishMqtt({
-            _msgId: parsed._msgId,
-            type: 'tawaf-stage',
-            activeTawafStage: this._activeTawafStage,
-            currentTopic: this._currentTopic
-          });
           this._broadcastP2PRoomState();
         }
       }
@@ -961,8 +952,10 @@
         }
         const submittedGuideEpoch=latest&&fresh[0]?.type==='guide-stream-state'?fresh[0].audioMediaEpoch:null;
         const requestSeq=this._relayRequestSeq=(this._relayRequestSeq||0)+1;
+        const relayHeaders={'Content-Type':'application/json'};
+        if(this._relayKey)relayHeaders['X-Rys-Relay-Key']=this._relayKey;
         const res=await fetch('/api/ws-relay',{method:'POST',signal:ac.signal,
-          headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:this._relayClientId,
+          headers:relayHeaders,body:JSON.stringify({clientId:this._relayClientId,
             relayKey:this._relayKey,requestSeq,token,subscriptionContext:context,messages:fresh,
             mqttFrames:(this._mqttInbox||[]).splice(0,8)})});
         const payload=await res.json();if(!current())return;

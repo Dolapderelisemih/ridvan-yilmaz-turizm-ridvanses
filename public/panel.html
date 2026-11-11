@@ -8,14 +8,14 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=81" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=81" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=81" />
+  <link rel="manifest" href="/manifest.json?v=82" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=82" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=82" />
   <title>Acente & Kafile Yönetim Paneli | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/panel" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=81" />
+  <link rel="stylesheet" href="/css/style.css?v=82" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -65,14 +65,16 @@
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       localStorage.removeItem('rys_sos_push_receipt');
+      localStorage.removeItem('rys_sos_push_rev');
+      localStorage.removeItem('rys_admin_device_id');
       const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
       document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax' + secureFlag;
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=81"></script>
+  <script src="/vercel-ws-shim.js?v=82"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=81"></script>
+  <script src="/js/umrah-steps-map.js?v=82"></script>
   <style>
     .dashboard-layout {
       display: grid;
@@ -231,7 +233,7 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:100%;">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=81" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=82" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="margin:0; font-size:1.12rem; line-height:1.2;">Rıdvan Yılmaz Turizm — Acente Yönetim Paneli</h1>
           <span class="brand-sub"><span class="live-dot"></span> Osmangazi / Bursa Merkez Operasyon & Kafile Kontrolü</span>
@@ -1327,6 +1329,8 @@
             const safeComp = escapeHtml(r.company_name || 'Kasım Umresi');
             const safeTime = escapeHtml(r.createdAt || '');
             const safePhone = escapeHtml(r.phone || '—');
+            const rawEmail = String(r.email || '').trim();
+            const safeEmail = rawEmail ? escapeHtml(rawEmail) : '';
             const safeMsg = escapeHtml(r.message || '');
             const safeId = escapeHtml(r.id || '');
             return `
@@ -1338,11 +1342,12 @@
                   <span style="font-size:0.75rem; color:var(--color-muted); font-weight:600;">${safeTime}</span>
                 </div>
                 <div style="font-size:0.84rem; color:var(--color-ink); margin-top:4px;">
-                  <strong>Tel:</strong> ${safePhone} ${safeMsg ? `• <strong>Not:</strong> ${safeMsg}` : ''}
+                  <strong>Tel:</strong> ${safePhone} ${safeEmail ? `• <strong>E-Posta:</strong> <a href="mailto:${safeEmail}" style="color:var(--color-emerald-deep); text-decoration:underline;">${safeEmail}</a> ` : ''}${safeMsg ? `• <strong>Not:</strong> ${safeMsg}` : ''}
                 </div>
               </div>
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 ${r.phone ? `<a href="tel:${safePhone}" class="btn btn-outline btn-sm">📞 Ara</a>` : ''}
+                ${safeEmail ? `<a href="mailto:${safeEmail}" class="btn btn-outline btn-sm">✉️ E-Posta</a>` : ''}
                 ${waUrl ? `<a href="${waUrl}" target="_blank" class="btn btn-primary btn-sm">💬 WhatsApp</a>` : ''}
                 <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" data-panel-action="delete-request" data-id="${safeId}">Sil</button>
               </div>
@@ -1555,7 +1560,12 @@
 
     (async function initAdminPanel() {
       await fetchAdminData();
-      if (!appState) return;
+      if (!appState) {
+        if (!window.__adminRedirectingAuth) {
+          setTimeout(initAdminPanel, 4000);
+        }
+        return;
+      }
       if (isScopedSubAgency()) {
         window.__adminWsScopedNoGlobal = true;
         if (!window.__adminScopedPollTimer) {
@@ -1717,12 +1727,14 @@
 
     async function runPanelApiMutation(url, options, fallbackMsg) {
       try {
+        const method = String((options && options.method) || 'GET').toUpperCase();
         const res = await fetch(url, options);
         if (res.status === 401) {
           handleAdminAuthExpired();
           return false;
         }
-        if (!res.ok && res.status !== 404) {
+        const isIdempotentDeleteMiss = method === 'DELETE' && res.status === 404;
+        if (!res.ok && !isIdempotentDeleteMiss) {
           const err = await res.json().catch(() => ({}));
           alert(err.message || err.error || fallbackMsg);
           return false;
@@ -1888,6 +1900,8 @@
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('rys_sos_push_receipt');
+        localStorage.removeItem('rys_sos_push_rev');
+        localStorage.removeItem('rys_admin_device_id');
         const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
         document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax' + secureFlag;
       } catch {}
@@ -1913,7 +1927,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=81');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=82');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -2011,7 +2025,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=81').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=82').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED') {
           if (ev.data.rotated?.sos?.subscriptionToken) {

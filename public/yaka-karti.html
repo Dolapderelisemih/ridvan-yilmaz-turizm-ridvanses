@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#06231b" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=81" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=81" />
-  <link rel="manifest" href="/manifest.json?v=81" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=82" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=82" />
+  <link rel="manifest" href="/manifest.json?v=82" />
   <title>Baskıya Hazır Hacı Yaka Kartı & QR Kod | Rıdvan Yılmaz Turizm</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/yaka-karti" />
-  <link rel="stylesheet" href="/css/style.css?v=81" />
+  <link rel="stylesheet" href="/css/style.css?v=82" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -23,7 +23,7 @@
       }
     })();
   </script>
-  <script src="/vercel-ws-shim.js?v=81"></script>
+  <script src="/vercel-ws-shim.js?v=82"></script>
   <style>
     .print-toolbar {
       background: linear-gradient(155deg, #06231B 0%, #093529 100%);
@@ -40,6 +40,11 @@
       max-width: 920px;
       margin: 28px auto;
       padding: 0 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .badges-page {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 24px;
@@ -140,12 +145,27 @@
         margin: 0 !important;
         padding: 0 !important;
         max-width: 100% !important;
+        display: block !important;
+        gap: 0 !important;
+      }
+      .badges-page {
+        display: grid !important;
         grid-template-columns: repeat(2, 1fr) !important;
-        gap: 8px !important;
+        grid-template-rows: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8mm !important;
+        height: 277mm !important;
+        break-after: page;
+        page-break-after: always;
+      }
+      .badges-page:last-child {
+        break-after: auto;
+        page-break-after: auto;
       }
       .neck-badge {
         border-radius: 12px !important;
         line-height: 1.2 !important;
+        min-height: 0 !important;
+        max-height: 100% !important;
       }
       .badge-top {
         padding: 6px 10px 5px !important;
@@ -235,7 +255,7 @@
       box-shadow: var(--shadow-soft);
     }
     @media screen and (max-width: 720px) {
-      .badges-sheet {
+      .badges-page {
         grid-template-columns: 1fr;
       }
     }
@@ -251,7 +271,7 @@
     </div>
     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
       <select id="tourCodePicker" class="select" style="width:auto; padding:8px 12px; font-size:0.85rem;" onchange="onBadgeTourChange()">
-        <option value="RY-KASIM">RY-KASIM (13-14 Kasım Umresi • Ömer Ali Gültekin)</option>
+        <option value="RY-KASIM">RY-KASIM (13 – 22 Kasım 2026 Umresi • Ömer Ali Gültekin)</option>
       </select>
       <select id="badgeRoomPicker" class="select" style="width:auto; padding:8px 12px; font-size:0.85rem;" onchange="updateBadges()">
         <option value="genel">Genel Rehberlik Odası</option>
@@ -411,6 +431,9 @@
           localStorage.removeItem('ry_auth_token');
           localStorage.removeItem('token');
           localStorage.removeItem('user');
+          localStorage.removeItem('rys_sos_push_receipt');
+          localStorage.removeItem('rys_sos_push_rev');
+          localStorage.removeItem('rys_admin_device_id');
           const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
           document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax' + secureFlag;
           window.location.replace('/login?next=' + encodeURIComponent(window.location.pathname + window.location.search));
@@ -475,7 +498,7 @@
       const matchedTour = toursData.find((t) => t.code === code);
       const tour = matchedTour || {
         code,
-        name: '13-14 Kasım Umresi',
+        name: '13 – 22 Kasım 2026 Umresi',
         guideName: 'Ömer Ali Gültekin',
         makkahHotel: 'Mekke Otel Kudi Tower',
         madinahHotel: '2 Gün Medine Konaklama (Merkezi Bölge)'
@@ -518,7 +541,7 @@
         ? 'https://ses.ridvanyilmazturizm.com'
         : '';
       const container = document.getElementById('badgesContainer');
-      container.innerHTML = samplePilgrims.map((entry) => {
+      const renderCardHtml = (entry) => {
         const pName = entry.label;
         const qrName = entry.qrName;
         const qrSrc = qrName
@@ -541,7 +564,7 @@
             <span class="badge badge-gold badge-code-pill" style="font-size:0.78rem;">KAFİLE KODU: ${escapeHtml(tour.code)}${badgeRoom !== 'genel' ? ` • ODA: ${escapeHtml(badgeRoom.toUpperCase())}` : ''}</span>
 
             <div class="qr-box">
-              <img src="${qrSrc}" onerror="handleBadgeQrFallback(this)" alt="QR Code ${escapeHtml(tour.code)} - ${escapeHtml(pName)}" />
+              <img src="${escapeHtml(qrSrc)}" onerror="handleBadgeQrFallback(this)" alt="QR Code ${escapeHtml(tour.code)} - ${escapeHtml(pName)}" />
             </div>
 
             <div class="badge-qr-desc" style="font-size:0.76rem; color:var(--color-muted); max-width:265px; margin:0 auto 10px; line-height:1.4;">
@@ -561,7 +584,13 @@
           </div>
         </div>
       `;
-      }).join('');
+      };
+      const pagesHtml = [];
+      for (let i = 0; i < samplePilgrims.length; i += 4) {
+        const chunk = samplePilgrims.slice(i, i + 4);
+        pagesHtml.push(`<div class="badges-page">${chunk.map(renderCardHtml).join('')}</div>`);
+      }
+      container.innerHTML = pagesHtml.join('');
     }
 
     init();

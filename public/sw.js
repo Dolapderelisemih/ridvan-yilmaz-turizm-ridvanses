@@ -1,7 +1,7 @@
 // PATCH: sw-v53
 // PATCH: sw-v53
 // PATCH: sw-v53
-const CACHE_NAME = 'ridvanses-pwa-v81';
+const CACHE_NAME = 'ridvanses-pwa-v82';
 const PUSH_META_CACHE = 'ridvanses-push-meta-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -9,12 +9,12 @@ const ASSETS_TO_CACHE = [
   '/rota',
   '/ani-kitabi',
   '/kullanim-rehberi',
-  '/css/style.css?v=81',
-  '/vercel-ws-shim.js?v=81',
+  '/css/style.css?v=82',
+  '/vercel-ws-shim.js?v=82',
   '/vendor/leaflet/leaflet.js',
   '/vendor/leaflet/leaflet.css',
   '/vendor/mqtt/mqtt.min.js',
-  '/js/umrah-steps-map.js?v=81',
+  '/js/umrah-steps-map.js?v=82',
   '/pcm-capture-worklet.js?v=72-audio',
   '/pcm-player-worklet.js?v=72-audio',
   '/manifest.json',
@@ -172,6 +172,7 @@ async function rysLoadPushMeta(kind) {
 }
 
 self.addEventListener('message',event=>{
+  if(event.origin&&event.origin!==self.location.origin)return;
   if(event.data?.type==='SHOW_NOTIFICATION'){event.waitUntil(showRysNotification(event.data));return;}
   if(event.data?.type==='SYNC_PUSH_META'){event.waitUntil(rysSavePushMeta(event.data.kind||event.data.meta?.kind,event.data.meta));}
 });
@@ -186,15 +187,15 @@ self.addEventListener('push',event=>{
 self.addEventListener('notificationclick',event=>{
   event.notification.close();
   const target=rysNotificationUrl(event.notification.data?.url);
+  const targetUrlObj=new URL(target);
+  const targetPath=targetUrlObj.pathname;
+  const newCode=(targetUrlObj.searchParams.get('code')||'').toUpperCase().trim();
   event.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(async clients=>{
     const exact=clients.find(c=>c.url===target);
     if(exact){
-      try{exact.postMessage?.({type:'RYS_NOTIFICATION_CLICK',url:target});}catch(e){}
+      try{exact.postMessage?.({type:'RYS_NOTIFICATION_CLICK',url:target,code:newCode});}catch(e){}
       try{return await exact.focus();}catch(e){}
     }
-    const targetUrlObj=new URL(target);
-    const targetPath=targetUrlObj.pathname;
-    const newCode=(targetUrlObj.searchParams.get('code')||'').toUpperCase().trim();
     const active=clients.find(c=>{try{const u=new URL(c.url);return u.origin===self.location.origin&&u.pathname===targetPath;}catch(e){return false;}});
     if(active){
       let oldCode='';

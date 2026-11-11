@@ -8,17 +8,17 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
-  <link rel="manifest" href="/manifest.json?v=81" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=81" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=81" />
+  <link rel="manifest" href="/manifest.json?v=82" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=82" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=82" />
   <title>Hacı Canlı Dinleme Ekranı | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=81" />
-  <script src="/vercel-ws-shim.js?v=81"></script>
+  <link rel="stylesheet" href="/css/style.css?v=82" />
+  <script src="/vercel-ws-shim.js?v=82"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=81"></script>
+  <script src="/js/umrah-steps-map.js?v=82"></script>
   <style>
     .arabic-text {
       direction: rtl;
@@ -264,7 +264,7 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:540px;">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=81" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=82" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="font-size:1rem; margin:0;">Rıdvan Yılmaz Turizm</h1>
           <span class="brand-sub"><span class="live-dot"></span> <span id="i18n_brandSub">RıdvanSes Hacı Canlı Odası</span></span>
@@ -297,7 +297,7 @@
     <!-- TELEFONA UYGULAMA OLARAK İNDİR (PWA BANNER) -->
     <div class="pwa-install-banner" id="pwaInstallBanner">
       <div style="display:flex; align-items:center; gap:12px; flex:1 1 210px; min-width:0;">
-        <img src="/icons/icon-192.png?v=81" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
+        <img src="/icons/icon-192.png?v=82" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
         <div style="min-width:0;">
           <div id="i18n_pwaBannerTitle" style="font-weight:800; font-size:0.88rem; color:var(--color-gold-bright);">RıdvanSes'i Ana Ekrana Ekleyin</div>
           <div id="i18n_pwaBannerSub" style="font-size:0.75rem; color:#e2e8f0; line-height:1.35;">Mağaza şifresi gerekmeden tek dokunuşla telefonunuza kurun.</div>
@@ -366,7 +366,7 @@
           </div>
           <div>
             <label class="label" id="i18n_phoneLabel">Telefon Numaranız (SOS İçin)</label>
-            <input type="tel" id="pilgrimPhoneInput" class="input" placeholder="+90 5XX XXX XX XX" />
+            <input type="tel" id="pilgrimPhoneInput" class="input" dir="ltr" placeholder="+90 5XX XXX XX XX" />
           </div>
         </div>
 
@@ -705,6 +705,22 @@
   <script>
     let pilgrimUmrahMap = null;
     let pilgrimJourneySteps = [];
+    let wakeLockSentinel = null;
+    let wakeLockDesired = true;
+    let wasGuideLocationActive = false;
+    let lastKnownGuideLocation = null;
+    let ws = null;
+    let audioCtx = null;
+    let gainNode = null;
+    let isAudioListening = false;
+    let volumeMultiplier = 1.2;
+    let currentTour = null;
+    let intentionalLeave = false;
+    let availableToursCache = [];
+    let availableHotelsCache = [];
+    let availableAgencyPhone = '+905383999666';
+    window.__ryPilgrimConnState = 'idle';
+    window.__ryGuideSpeakingNow = false;
 
     function ensurePilgrimMap() {
       if (!pilgrimUmrahMap && window.UmrahStepsMap) {
@@ -771,12 +787,17 @@
       const tourName = currentTour ? currentTour.name : 'Kasım Umresi Kafilesi';
       const isPinProtected = Boolean(currentTour && (currentTour.pinProtected || currentTour.pinRequired));
       const shareUrl = `${window.location.origin}/rota?code=${encodeURIComponent(code)}`;
-      const accessLabel = isPinProtected ? 'kafile PIN kodumuzla' : 'uygulama indirmeden';
+      const ex = typeof getExtraUiDict === 'function' ? getExtraUiDict() : null;
+      const accessLabel = isPinProtected
+        ? (ex && ex.familySharePin) || 'kafile PIN kodumuzla'
+        : (ex && ex.familyShareOpen) || 'uygulama indirmeden';
+      const header = (ex && ex.familyShareHeader) || '🕋 *Rıdvan Yılmaz Turizm — Canlı Manevi Yolculuk Haritamız*';
+      const bodyTpl = (ex && ex.familyShareBody) || 'Kıymetli Ailem,\n*{tour}* kafilemizin Mekke ve Medine\'deki canlı rotasını, bulunduğumuz mübarek ziyaret duraklarını ve dualarımızı aşağıdaki bağlantıdan {access} takip edebilirsiniz:';
+      const ctaLbl = (ex && ex.familyShareCta) || '📍 *Canlı Rotayı Aç:*';
       const text =
-        `🕋 *Rıdvan Yılmaz Turizm — Canlı Manevi Yolculuk Haritamız*\n\n` +
-        `Kıymetli Ailem,\n` +
-        `*${tourName}* kafilemizin Mekke ve Medine'deki canlı rotasını, bulunduğumuz mübarek ziyaret duraklarını ve dualarımızı aşağıdaki bağlantıdan ${accessLabel} takip edebilirsiniz:\n\n` +
-        `📍 *Canlı Rotayı Aç:* ${shareUrl}`;
+        `${header}\n\n` +
+        `${bodyTpl.replace('{tour}', tourName).replace('{access}', accessLabel)}\n\n` +
+        `${ctaLbl} ${shareUrl}`;
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
     }
 
@@ -1649,7 +1670,22 @@
         waPilgrimLbl: '*Hacı:*',
         waTourLbl: '*Kafile:*',
         waAddrLbl: '*Adres:*',
-        waMapLbl: '*Canlı Harita Konumu:*'
+        waMapLbl: '*Canlı Harita Konumu:*',
+        familyShareHeader: '🕋 *Rıdvan Yılmaz Turizm — Canlı Manevi Yolculuk Haritamız*',
+        familyShareBody: 'Kıymetli Ailem,\n*{tour}* kafilemizin Mekke ve Medine\'deki canlı rotasını, bulunduğumuz mübarek ziyaret duraklarını ve dualarımızı aşağıdaki bağlantıdan {access} takip edebilirsiniz:',
+        familySharePin: 'kafile PIN kodumuzla',
+        familyShareOpen: 'uygulama indirmeden',
+        familyShareCta: '📍 *Canlı Rotayı Aç:*',
+        newStepToastPrefix: 'Yeni Manevi Durak:',
+        latencyReady: '24 kHz HD • Hazır',
+        serverConnErr: 'Sunucu bağlantısı kurulamadı.',
+        pinUpdatedErr: 'Kafile PIN kodu güncellendi. Lütfen yeni PIN kodunu giriniz.',
+        tourEndedErr: 'Bu kafile sonlandırıldı.',
+        pushTestTitle: 'RıdvanSes Bildirim Testi',
+        pushTestBodyTpl: '{code} kafilesi arka plan bildirimleriniz bu telefonda aktiftir.',
+        pushTestToastTpl: '✅ <strong>{code}</strong> kafilesi için arka plan bildirim aboneliğiniz aktif! Test bildirimi gönderildi.',
+        iosOldTitle: 'Arka Plan Bildirimi Desteklenmiyor',
+        iosOldSub: 'iPhone kapalı ekran bildirimleri için iOS 16.4 veya üzeri sürüm gereklidir.'
       },
       ar: {
         iosTitle: 'تثبيت آيفون (سفاري) في 4 خطوات:',
@@ -1673,7 +1709,22 @@
         waPilgrimLbl: '*الحاج/المعتمر:*',
         waTourLbl: '*القافلة:*',
         waAddrLbl: '*العنوان:*',
-        waMapLbl: '*الموقع المباشر على الخريطة:*'
+        waMapLbl: '*الموقع المباشر على الخريطة:*',
+        familyShareHeader: '🕋 *رضوان يلماز للسياحة — خريطة رحلتنا الإيمانية المباشرة*',
+        familyShareBody: 'عائلتي الكريمة،\nيمكنكم متابعة المسار المباشر ومحطات الزيارة المباركة والأدعية لقافلتنا *{tour}* في مكة والمدينة {access} عبر الرابط التالي:',
+        familySharePin: 'باستخدام رمز PIN الخاص بالقافلة',
+        familyShareOpen: 'دون الحاجة لتحميل تطبيق',
+        familyShareCta: '📍 *فتح المسار المباشر:*',
+        newStepToastPrefix: 'محطة روحانية جديدة:',
+        latencyReady: '24 kHz HD • جاهز',
+        serverConnErr: 'تعذّر الاتصال بالخادم.',
+        pinUpdatedErr: 'تم تحديث رمز PIN للقافلة. يرجى إدخال الرمز الجديد.',
+        tourEndedErr: 'تم إنهاء هذه القافلة.',
+        pushTestTitle: 'اختبار إشعارات رضوان سس',
+        pushTestBodyTpl: 'إشعارات الخلفية لقافلة {code} مفعّلة على هذا الهاتف.',
+        pushTestToastTpl: '✅ اشتراك إشعارات الخلفية لقافلة <strong>{code}</strong> نشط! تم إرسال إشعار تجريبي.',
+        iosOldTitle: 'إشعارات الخلفية غير مدعومة',
+        iosOldSub: 'تتطلب إشعارات شاشة القفل على آيفون نظام iOS 16.4 أو أحدث.'
       },
       en: {
         iosTitle: 'iPhone (Safari) Setup in 4 Steps:',
@@ -1697,7 +1748,22 @@
         waPilgrimLbl: '*Pilgrim:*',
         waTourLbl: '*Group:*',
         waAddrLbl: '*Address:*',
-        waMapLbl: '*Live Map Link:*'
+        waMapLbl: '*Live Map Link:*',
+        familyShareHeader: '🕋 *Rıdvan Yılmaz Tourism — Live Spiritual Journey Map*',
+        familyShareBody: 'Dear Family,\nFollow our *{tour}* group’s live route, blessed stops and prayers in Makkah & Madinah {access} via the link below:',
+        familySharePin: 'with our group PIN code',
+        familyShareOpen: 'without installing any app',
+        familyShareCta: '📍 *Open Live Route:*',
+        newStepToastPrefix: 'New Spiritual Stop:',
+        latencyReady: '24 kHz HD • Ready',
+        serverConnErr: 'Could not connect to the server.',
+        pinUpdatedErr: 'Group PIN code has been updated. Please enter the new PIN.',
+        tourEndedErr: 'This group stream has ended.',
+        pushTestTitle: 'RıdvanSes Notification Test',
+        pushTestBodyTpl: 'Background notifications for group {code} are active on this phone.',
+        pushTestToastTpl: '✅ Background notifications are active for <strong>{code}</strong>! Test notification sent.',
+        iosOldTitle: 'Background Push Not Supported',
+        iosOldSub: 'iOS 16.4 or newer is required for lock-screen push notifications on iPhone.'
       },
       fr: {
         iosTitle: 'Installation iPhone (Safari) en 4 étapes :',
@@ -1721,7 +1787,22 @@
         waPilgrimLbl: '*Pèlerin :*',
         waTourLbl: '*Groupe :*',
         waAddrLbl: '*Adresse :*',
-        waMapLbl: '*Position en direct :*'
+        waMapLbl: '*Position en direct :*',
+        familyShareHeader: '🕋 *Rıdvan Yılmaz Tourisme — Carte du Parcours Spirituel en Direct*',
+        familyShareBody: 'Chère famille,\nSuivez l’itinéraire en direct, les étapes bénies et les invocations de notre groupe *{tour}* à La Mecque et Médine {access} :',
+        familySharePin: 'avec le code PIN du groupe',
+        familyShareOpen: 'sans installer d’application',
+        familyShareCta: '📍 *Ouvrir l’itinéraire :*',
+        newStepToastPrefix: 'Nouvelle étape spirituelle :',
+        latencyReady: '24 kHz HD • Prêt',
+        serverConnErr: 'Impossible de se connecter au serveur.',
+        pinUpdatedErr: 'Le code PIN du groupe a été modifié. Veuillez saisir le nouveau code.',
+        tourEndedErr: 'Ce groupe est terminé.',
+        pushTestTitle: 'Test de notification RıdvanSes',
+        pushTestBodyTpl: 'Les notifications en arrière-plan pour {code} sont actives sur ce téléphone.',
+        pushTestToastTpl: '✅ Notifications en arrière-plan actives pour <strong>{code}</strong> ! Notification test envoyée.',
+        iosOldTitle: 'Notifications non prises en charge',
+        iosOldSub: 'iOS 16.4 ou supérieur est requis pour les notifications sur écran verrouillé.'
       },
       id: {
         iosTitle: 'Instalasi iPhone (Safari) 4 Langkah:',
@@ -1745,7 +1826,22 @@
         waPilgrimLbl: '*Jamaah:*',
         waTourLbl: '*Rombongan:*',
         waAddrLbl: '*Alamat:*',
-        waMapLbl: '*Peta Langsung:*'
+        waMapLbl: '*Peta Langsung:*',
+        familyShareHeader: '🕋 *Rıdvan Yılmaz Turizm — Peta Perjalanan Spiritual Langsung*',
+        familyShareBody: 'Keluarga Tercinta,\nIkuti rute langsung, titik ziarah dan doa rombongan *{tour}* di Makkah & Madinah {access} melalui tautan berikut:',
+        familySharePin: 'dengan kode PIN rombongan kami',
+        familyShareOpen: 'tanpa mengunduh aplikasi',
+        familyShareCta: '📍 *Buka Rute Langsung:*',
+        newStepToastPrefix: 'Titik Ziarah Baru:',
+        latencyReady: '24 kHz HD • Siap',
+        serverConnErr: 'Tidak dapat terhubung ke server.',
+        pinUpdatedErr: 'Kode PIN rombongan diperbarui. Silakan masukkan PIN baru.',
+        tourEndedErr: 'Rombongan ini telah berakhir.',
+        pushTestTitle: 'Uji Notifikasi RıdvanSes',
+        pushTestBodyTpl: 'Notifikasi latar belakang untuk rombongan {code} aktif di ponsel ini.',
+        pushTestToastTpl: '✅ Langganan notifikasi untuk <strong>{code}</strong> aktif! Notifikasi uji dikirim.',
+        iosOldTitle: 'Notifikasi Latar Tidak Didukung',
+        iosOldSub: 'Diperlukan iOS 16.4 atau lebih baru untuk notifikasi layar kunci di iPhone.'
       },
       ur: {
         iosTitle: 'آئی فون (سفاری) 4 مراحل میں انسٹالیشن:',
@@ -1769,7 +1865,22 @@
         waPilgrimLbl: '*حاجی/معتمر:*',
         waTourLbl: '*قافلہ:*',
         waAddrLbl: '*پتہ:*',
-        waMapLbl: '*لائیو نقشہ لنک:*'
+        waMapLbl: '*لائیو نقشہ لنک:*',
+        familyShareHeader: '🕋 *رضوان یلماز ٹورزم — لائیو روحانی سفر کا نقشہ*',
+        familyShareBody: 'محترم اہلِ خانہ،\nہمارے قافلے *{tour}* کا مکہ و مدینہ میں لائیو راستہ، مبارک زیارات اور دعائیں {access} نیچے دیے گئے لنک سے دیکھیں:',
+        familySharePin: 'قافلہ PIN کوڈ کے ساتھ',
+        familyShareOpen: 'بغیر ایپ انسٹال کیے',
+        familyShareCta: '📍 *لائیو راستہ کھولیں:*',
+        newStepToastPrefix: 'نیا روحانی مقام:',
+        latencyReady: '24 kHz HD • تیار',
+        serverConnErr: 'سرور سے رابطہ نہ ہو سکا۔',
+        pinUpdatedErr: 'قافلہ PIN کوڈ تبدیل ہو گیا ہے۔ نیا PIN کوڈ درج کریں۔',
+        tourEndedErr: 'یہ قافلہ ختم ہو چکا ہے۔',
+        pushTestTitle: 'رضوان سس اطلاعات ٹیسٹ',
+        pushTestBodyTpl: 'قافلہ {code} کی پس منظر اطلاعات اس فون پر فعال ہیں۔',
+        pushTestToastTpl: '✅ قافلہ <strong>{code}</strong> کے لیے اطلاعات فعال ہیں! ٹیسٹ اطلاع بھیج دی گئی۔',
+        iosOldTitle: 'پس منظر اطلاعات دستیاب نہیں',
+        iosOldSub: 'آئی فون لاک اسکرین اطلاعات کے لیے iOS 16.4 یا جدید ورژن درکار ہے۔'
       }
     };
 
@@ -1812,17 +1923,6 @@
       b.style.height = '8px';
       specContainer.appendChild(b);
     }
-
-    let ws = null;
-    let audioCtx = null;
-    let gainNode = null;
-    let isAudioListening = false;
-    let volumeMultiplier = 1.2;
-    let currentTour = null;
-    let intentionalLeave = false;
-    let availableToursCache = [];
-    let availableHotelsCache = [];
-    let availableAgencyPhone = '+905383999666';
 
     function getEmergencySupportPhone(tour = currentTour) {
       const raw = (tour && (tour.guidePhone || tour.supportPhone || tour.agencyPhone)) || availableAgencyPhone || '+905383999666';
@@ -1963,57 +2063,63 @@
     syncJoinCodeUi();
 
     // Aktif turları ve odaları sunucudan dinamik yükle
-    fetch('/api/bootstrap')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data && data.agency && data.agency.phone) {
-          availableAgencyPhone = String(data.agency.phone);
-          syncSupportPhoneLinks(currentTour);
-        }
-        if (data && Array.isArray(data.hotels)) {
-          availableHotelsCache = data.hotels;
-        }
-        if (data && data.tours && data.tours.length > 0) {
-          availableToursCache = data.tours;
-          const container = document.getElementById('tourPillsContainer');
-          if (container) {
-            container.innerHTML = data.tours.map((t) => {
-              const safeCode = escapeHtml(t.code || '');
-              const safeLabel = escapeHtml(t.dateText || t.name || '');
-              return `
+    (function loadInitialPilgrimBootstrap() {
+      const bootCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const bootTimer = bootCtrl ? setTimeout(() => { try { bootCtrl.abort(); } catch {} }, 10000) : null;
+      fetch('/api/bootstrap', bootCtrl ? { signal: bootCtrl.signal } : undefined)
+        .then((r) => r.json().catch(() => ({})))
+        .then((data) => {
+          if (data && data.agency && data.agency.phone) {
+            availableAgencyPhone = String(data.agency.phone);
+            syncSupportPhoneLinks(currentTour);
+          }
+          if (data && Array.isArray(data.hotels)) {
+            availableHotelsCache = data.hotels;
+          }
+          if (data && data.tours && data.tours.length > 0) {
+            availableToursCache = data.tours;
+            const container = document.getElementById('tourPillsContainer');
+            if (container) {
+              container.innerHTML = data.tours.map((t) => {
+                const safeCode = escapeHtml(t.code || '');
+                const safeLabel = escapeHtml(t.dateText || t.name || '');
+                return `
               <button type="button" class="code-pill" style="padding:5px 12px; font-size:0.75rem; border-radius:99px; border:1px solid var(--color-gold); background:var(--color-gold-soft); font-weight:700; cursor:pointer;" onclick="selectTourCodePill('${safeCode}')">${safeCode} (${safeLabel})</button>
             `;
-            }).join('');
-          }
-          if (!currentTour) {
-            if (!urlParams.get('code')) {
-              let preferredCode = '';
-              try { preferredCode = (localStorage.getItem('ridvanses_saved_tour_code') || '').trim().toUpperCase(); } catch {}
-              const matchedSaved = preferredCode && data.tours.find((t) => String(t.code || '').toUpperCase() === preferredCode);
-              document.getElementById('tourCodeInput').value = matchedSaved ? matchedSaved.code : data.tours[0].code;
+              }).join('');
             }
-            syncJoinCodeUi();
-            const wantedRoom = (urlParams.get('room') || (function () { try { return localStorage.getItem('ridvanses_saved_room') || ''; } catch { return ''; } })()).trim().toLowerCase();
-            if (wantedRoom) {
-              const roomSel = document.getElementById('roomSelect');
-              if (roomSel && Array.from(roomSel.options).some((o) => o.value === wantedRoom)) {
-                roomSel.value = wantedRoom;
+            if (!currentTour) {
+              if (!urlParams.get('code')) {
+                let preferredCode = '';
+                try { preferredCode = (localStorage.getItem('ridvanses_saved_tour_code') || '').trim().toUpperCase(); } catch {}
+                const matchedSaved = preferredCode && data.tours.find((t) => String(t.code || '').toUpperCase() === preferredCode);
+                document.getElementById('tourCodeInput').value = matchedSaved ? matchedSaved.code : data.tours[0].code;
+              }
+              syncJoinCodeUi();
+              const wantedRoom = (urlParams.get('room') || (function () { try { return localStorage.getItem('ridvanses_saved_room') || ''; } catch { return ''; } })()).trim().toLowerCase();
+              if (wantedRoom) {
+                const roomSel = document.getElementById('roomSelect');
+                if (roomSel && Array.from(roomSel.options).some((o) => o.value === wantedRoom)) {
+                  roomSel.value = wantedRoom;
+                }
+              }
+              if (urlParams.get('code') && urlParams.get('name')) {
+                const targetTour = data.tours.find((t) => String(t.code || '').toUpperCase() === urlParams.get('code').trim().toUpperCase());
+                if (!targetTour || !targetTour.pinProtected) {
+                  setTimeout(() => {
+                    autoJoinFromQrParams();
+                  }, 120);
+                }
               }
             }
-            // Yaka kartı QR kodundan (?code=RY-KASIM&name=...) gelindiyse ve PIN koruması yoksa otomatik odaya bağlan
-            if (urlParams.get('code') && urlParams.get('name')) {
-              const targetTour = data.tours.find((t) => String(t.code || '').toUpperCase() === urlParams.get('code').trim().toUpperCase());
-              if (!targetTour || !targetTour.pinProtected) {
-                setTimeout(() => {
-                  autoJoinFromQrParams();
-                }, 120);
-              }
-            }
           }
-        }
-      })
-      .catch((e) => console.log('Bootstrap dynamic load err:', e))
-      .finally(() => { if (typeof window.__rysAutoRestorePush === 'function') window.__rysAutoRestorePush(); });
+        })
+        .catch((e) => console.log('Bootstrap dynamic load err:', e))
+        .finally(() => {
+          if (bootTimer) clearTimeout(bootTimer);
+          if (typeof window.__rysAutoRestorePush === 'function') window.__rysAutoRestorePush();
+        });
+    })();
 
     function updatePilgrimHotelNavigationUi(tour) {
       if (!tour) return;
@@ -2075,13 +2181,17 @@
       const errEl = document.getElementById('joinError');
       errEl.style.display = 'none';
 
+      let joinTimer = null;
       try {
+        const joinCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        if (joinCtrl) joinTimer = setTimeout(() => { try { joinCtrl.abort(); } catch {} }, 10000);
         const res = await fetch('/api/join-tour', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code, pin })
+          body: JSON.stringify({ code, pin }),
+          ...(joinCtrl ? { signal: joinCtrl.signal } : {})
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) {
           stopBackgroundKeepAliveAudio();
           if (res.status === 403) {
@@ -2137,6 +2247,7 @@
         document.getElementById('activeTourBadge').textContent = `${currentTour.code} • ${roomId.toUpperCase()}`;
         document.getElementById('liveTourTitle').textContent = currentTour.name.replace(/^🕋\s*/, '');
         document.getElementById('liveGuideName').textContent = currentTour.guideName;
+        if (typeof updateMediaSessionMetadata === 'function') updateMediaSessionMetadata();
 
         const bookLink = document.getElementById('pilgrimBookLink');
         if (bookLink) {
@@ -2154,9 +2265,10 @@
         connectWebSocket(currentTour.code, roomId, name, phone);
       } catch (err) {
         stopBackgroundKeepAliveAudio();
-        errEl.textContent = 'Sunucu bağlantısı kurulamadı.';
+        errEl.textContent = (typeof getExtraUiDict === 'function' && getExtraUiDict().serverConnErr) || 'Sunucu bağlantısı kurulamadı.';
         errEl.style.display = 'block';
       } finally {
+        if (joinTimer) clearTimeout(joinTimer);
         isJoiningTour = false;
         if (submitBtn) submitBtn.disabled = false;
       }
@@ -2291,7 +2403,24 @@
 
         if (msg.type === 'subscription-error' && msg.code === 'room-removed') {
           const roomSel = document.getElementById('roomSelect');
-          if (roomSel) roomSel.value = 'genel';
+          if (roomSel) {
+            Array.from(roomSel.options).forEach((opt) => {
+              const val = String(opt.value || '').trim().toLowerCase();
+              if (val === String(roomId || '').trim().toLowerCase() && val !== 'genel' && val !== 'siyer') {
+                opt.remove();
+              }
+            });
+            roomSel.value = 'genel';
+          }
+          if (currentTour && Array.isArray(currentTour.rooms)) {
+            currentTour.rooms = currentTour.rooms.filter((rm) => String(rm && rm.id || '').trim().toLowerCase() !== String(roomId || '').trim().toLowerCase());
+          }
+          if (Array.isArray(availableToursCache) && currentTour) {
+            const cachedT = availableToursCache.find((t) => String(t.code || '').toUpperCase() === String(currentTour.code || '').toUpperCase());
+            if (cachedT && Array.isArray(cachedT.rooms)) {
+              cachedT.rooms = cachedT.rooms.filter((rm) => String(rm && rm.id || '').trim().toLowerCase() !== String(roomId || '').trim().toLowerCase());
+            }
+          }
           try { localStorage.setItem('ridvanses_saved_room', 'genel'); } catch {}
           if (currentTour) {
             const badgeEl = document.getElementById('activeTourBadge');
@@ -2324,7 +2453,8 @@
           }
           const errEl = document.getElementById('joinError');
           if (errEl) {
-            errEl.textContent = msg.message || (msg.type === 'pin-error' ? 'Kafile PIN kodu güncellendi. Lütfen yeni PIN kodunu giriniz.' : 'Bu kafile sonlandırıldı.');
+            const exErr = typeof getExtraUiDict === 'function' ? getExtraUiDict() : {};
+            errEl.textContent = msg.message || (msg.type === 'pin-error' ? (exErr.pinUpdatedErr || 'Kafile PIN kodu güncellendi. Lütfen yeni PIN kodunu giriniz.') : (exErr.tourEndedErr || 'Bu kafile sonlandırıldı.'));
             errEl.style.display = 'block';
           }
           return;
@@ -2344,6 +2474,7 @@
             document.getElementById('liveGuideName').textContent = r.guideName;
             document.getElementById('liveListenerCount').textContent = r.totalListeners;
             document.getElementById('liveTopicText').textContent = r.currentTopic;
+            if (isAudioListening && typeof updateMediaSessionMetadata === 'function') updateMediaSessionMetadata();
             if (r.guidePeerId) {
               window.__ryActiveListenerChannelId = r.guidePeerId;
             }
@@ -2377,9 +2508,13 @@
             (previousMode!==null||String(rxStreamMode||'').startsWith('demo'))){
             lastReceivedAudioSeq=0;stopAllActiveSources();
           }
+          if (msg.guideName) {
+            document.getElementById('liveGuideName').textContent = msg.guideName;
+          }
           if (msg.currentTopic) {
             document.getElementById('liveTopicText').textContent = msg.currentTopic;
           }
+          if (isAudioListening && typeof updateMediaSessionMetadata === 'function') updateMediaSessionMetadata();
           if (msg.guidePeerId && msg.guidePeerId !== window.__ryActiveListenerChannelId) {
             window.__ryActiveListenerChannelId = msg.guidePeerId;
             lastReceivedAudioSeq = 0;
@@ -2393,9 +2528,13 @@
         }
 
         if (msg.type === 'tawaf-stage') {
+          if (msg.guideName) {
+            document.getElementById('liveGuideName').textContent = msg.guideName;
+          }
           if (msg.currentTopic) {
             document.getElementById('liveTopicText').textContent = msg.currentTopic;
           }
+          if (isAudioListening && typeof updateMediaSessionMetadata === 'function') updateMediaSessionMetadata();
           renderLiveTawafStage(msg.activeTawafStage || null);
           if (msg.activeTawafStage && msg.activeTawafStage.badge) {
             showAppToast(`🕋 <strong>${escapeHtml(msg.activeTawafStage.badge)}:</strong> ${escapeHtml(msg.activeTawafStage.title)}`, 4500);
@@ -2413,7 +2552,8 @@
             if (rDot) rDot.style.display = 'block';
           }
           if (msg.stats && msg.stats.activeStepTitle) {
-            showAppToast(`🕋 Yeni Manevi Durak: <strong>${escapeHtml(msg.stats.activeStepTitle)}</strong>`, 4500);
+            const stepPrefix = (typeof getExtraUiDict === 'function' && getExtraUiDict().newStepToastPrefix) || 'Yeni Manevi Durak:';
+            showAppToast(`🕋 ${escapeHtml(stepPrefix)} <strong>${escapeHtml(msg.stats.activeStepTitle)}</strong>`, 4500);
           }
         }
 
@@ -2550,7 +2690,7 @@
         txt.textContent = dict.guideWaiting || '⏸️ Hoca Beklemede — Bağlantınız Aktif';
         strip.style.borderColor = 'rgba(255, 255, 255, 0.14)';
         strip.style.background = 'rgba(0, 0, 0, 0.28)';
-        if (latTxt) latTxt.textContent = '24 kHz HD • Hazır';
+        if (latTxt) latTxt.textContent = (typeof getExtraUiDict === 'function' && getExtraUiDict().latencyReady) || '24 kHz HD • Hazır';
       }
     }
 
@@ -2575,9 +2715,6 @@
       if (rEl) rEl.textContent = stage.reading || '';
       if (mEl) mEl.textContent = stage.meaning ? `${dict.meaningLabel || 'Anlamı'}: ${stage.meaning}` : '';
     }
-
-    let wasGuideLocationActive = false;
-    let lastKnownGuideLocation = null;
 
     function computeDistanceMeters(lat1, lon1, lat2, lon2) {
       const R = 6371000;
@@ -3372,11 +3509,14 @@
           return;
         }
         if (pendingRxFrames.length >= 13) pendingRxFrames.shift();
+        const prevRxSeq = typeof lastReceivedAudioSeq !== 'undefined' ? lastReceivedAudioSeq : null;
+        const shouldResyncPhrase = Boolean(phraseStart || (prevRxSeq === 0 && seq > 1));
+        if (typeof lastReceivedAudioSeq !== 'undefined' && seq > 0) lastReceivedAudioSeq = seq;
         pendingRxFrames.push({
           type: 'push',
           samples: a,
           seq,
-          phraseStart: Boolean(phraseStart),
+          phraseStart: shouldResyncPhrase,
           isSilent: Boolean(isSilent),
           arrival: performance.now()
         });
@@ -3538,7 +3678,7 @@
         const pos = await new Promise((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, {
             enableHighAccuracy: true,
-            timeout: 15000,
+            timeout: 4500,
             maximumAge: 10000
           });
         });
@@ -3556,7 +3696,7 @@
         const pos2 = await new Promise((resolve, reject) => {
           navigator.geolocation.getCurrentPosition(resolve, reject, {
             enableHighAccuracy: false,
-            timeout: 10000,
+            timeout: 2500,
             maximumAge: 60000
           });
         });
@@ -3602,6 +3742,7 @@
           let ok = false;
           let permanentDrop = false;
           let timer = null;
+          let retryTimer = null;
           const itemTourCode = String(item.tourCode).trim().toUpperCase();
           let sessionPin = '';
           try { sessionPin = (sessionStorage.getItem('rys_tour_pin_' + itemTourCode) || '').trim(); } catch {}
@@ -3611,20 +3752,28 @@
           try {
             const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
             if (ac) timer = setTimeout(() => { try { ac.abort(); } catch {} }, 6000);
+            const sosHdrs = { 'Content-Type': 'application/json' };
+            if (sessionPin) {
+              sosHdrs['X-Tour-Pin'] = encodeURIComponent(sessionPin);
+              sosHdrs['X-Tour-Pin-Enc'] = 'uri';
+            }
             let res = await fetch('/api/sos', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: sosHdrs,
               body: JSON.stringify(payloadToSend),
               ...(ac ? { signal: ac.signal } : {})
             });
+            if (timer) { clearTimeout(timer); timer = null; }
             if (res && res.status === 403 && payloadToSend.pin) {
               const fallbackPayload = { ...payloadToSend };
               delete fallbackPayload.pin;
+              const retryAc = typeof AbortController !== 'undefined' ? new AbortController() : null;
+              if (retryAc) retryTimer = setTimeout(() => { try { retryAc.abort(); } catch {} }, 6000);
               res = await fetch('/api/sos', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(fallbackPayload),
-                ...(ac ? { signal: ac.signal } : {})
+                ...(retryAc ? { signal: retryAc.signal } : {})
               });
             }
             ok = Boolean(res && res.ok);
@@ -3635,6 +3784,7 @@
             ok = false;
           } finally {
             if (timer) clearTimeout(timer);
+            if (retryTimer) clearTimeout(retryTimer);
           }
           handledIds.add(String(item.id));
           if (ok) {
@@ -3746,6 +3896,7 @@
 
         let httpOk = false;
         let sosTimer = null;
+        let sosRetryTimer = null;
         try {
           const sosCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
           if (sosCtrl) {
@@ -3753,17 +3904,40 @@
               try { sosCtrl.abort(); } catch {}
             }, 6000);
           }
-          const sosRes = await fetch('/api/sos', {
+          const sosHdrs = { 'Content-Type': 'application/json' };
+          if (pin) {
+            sosHdrs['X-Tour-Pin'] = encodeURIComponent(pin);
+            sosHdrs['X-Tour-Pin-Enc'] = 'uri';
+          }
+          let sosRes = await fetch('/api/sos', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: sosHdrs,
             body: JSON.stringify(httpPayload),
             ...(sosCtrl ? { signal: sosCtrl.signal } : {})
           });
+          if (sosTimer) { clearTimeout(sosTimer); sosTimer = null; }
+          if (sosRes && sosRes.status === 403 && httpPayload.pin) {
+            const pinlessPayload = { ...httpPayload };
+            delete pinlessPayload.pin;
+            const retryCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            if (retryCtrl) {
+              sosRetryTimer = setTimeout(() => {
+                try { retryCtrl.abort(); } catch {}
+              }, 6000);
+            }
+            sosRes = await fetch('/api/sos', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(pinlessPayload),
+              ...(retryCtrl ? { signal: retryCtrl.signal } : {})
+            });
+          }
           httpOk = Boolean(sosRes && sosRes.ok);
         } catch {
           httpOk = false;
         } finally {
           if (sosTimer) clearTimeout(sosTimer);
+          if (sosRetryTimer) clearTimeout(sosRetryTimer);
         }
 
         const delivered = httpOk || confirmedWsSosIds.has(sosId);
@@ -4207,7 +4381,7 @@
             if(!await awaitWebPushWorker(registration,current))continue;
             const keyResponse=await webPushFetch('/api/push/vapid-public-key',{cache:'no-store'});
             if(!keyResponse.ok)throw Error('Bildirim sunucusu hazır değil');
-            const keyData=await keyResponse.json(),key=urlBase64ToUint8Array(keyData.publicKey);
+            const keyData=await keyResponse.json().catch(()=>({})),key=urlBase64ToUint8Array(keyData.publicKey);
             if(key.length!==65||key[0]!==4)throw Error('Bildirim anahtarı geçersiz');
             if(!current())continue;
             let subscription=await registration.pushManager.getSubscription();
@@ -4229,11 +4403,11 @@
               lang:currentLang,deviceId:pilgrimDeviceId,revision:nextWebPushRevision(),
               ...(hasOwnerCap?{subscriptionToken:receipt.subscriptionToken}:{})};
             let response=await webPushFetch('/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-            let saved=await response.json();
+            let saved=await response.json().catch(()=>({}));
             if(response.status===409&&saved.error==='stale-subscription'&&current()){
               body={...body,revision:nextWebPushRevision(saved.revision)};
               response=await webPushFetch('/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-              saved=await response.json();
+              saved=await response.json().catch(()=>({}));
             }
             if(!response.ok||!saved.success)throw Error('Bildirim aboneliği kaydedilemedi');
             try{localStorage.setItem('rys_push_receipt',JSON.stringify({endpoint:json.endpoint,subscriptionToken:saved.subscriptionToken,tourCode:context.tourCode}));}catch(e){}
@@ -4309,7 +4483,10 @@
         if(rysWebPushState().context)void syncWebPushSubscription();
       }
       if(ev.data?.type==='RYS_NOTIFICATION_CLICK'){
-        const clickedCode=String(ev.data.code||'').trim().toUpperCase();
+        let clickedCode=String(ev.data.code||'').trim().toUpperCase();
+        if(!clickedCode&&ev.data.url){
+          try{clickedCode=String(new URL(ev.data.url,window.location.origin).searchParams.get('code')||'').trim().toUpperCase();}catch{}
+        }
         if(document.getElementById('liveView')?.style.display!=='none'&&typeof switchPilgrimTab==='function'){
           const annBtn=document.querySelector('#pilgrimBottomNav .p-nav-btn[onclick*="pilgrimTabAnnouncements"]');
           switchPilgrimTab('pilgrimTabAnnouncements',annBtn);
@@ -4318,10 +4495,13 @@
             let activePin=(document.getElementById('tourPinInput')?.value||'').trim();
             if(!activePin){try{activePin=(sessionStorage.getItem('rys_tour_pin_'+activeCode)||'').trim();}catch{}}
             const hdrs=activePin?{'X-Tour-Pin':encodeURIComponent(activePin),'X-Tour-Pin-Enc':'uri'}:{};
-            fetch('/api/trips/'+encodeURIComponent(activeCode)+'/steps',{headers:hdrs,cache:'no-store'})
-              .then(r=>r.ok?r.json():null)
+            const notifCtrl=typeof AbortController!=='undefined'?new AbortController():null;
+            const notifTimer=notifCtrl?setTimeout(()=>{try{notifCtrl.abort();}catch{}},8000):null;
+            fetch('/api/trips/'+encodeURIComponent(activeCode)+'/steps',{headers:hdrs,cache:'no-store',...(notifCtrl?{signal:notifCtrl.signal}:{})})
+              .then(r=>r.ok?r.json().catch(()=>null):null)
               .then(d=>{if(d&&Array.isArray(d.announcements))renderAnnouncements(d.announcements);})
-              .catch(()=>{});
+              .catch(()=>{})
+              .finally(()=>{if(notifTimer)clearTimeout(notifTimer);});
           }
         }else if(clickedCode){
           const inp=document.getElementById('tourCodeInput');
@@ -4331,7 +4511,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=81').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=82').catch(() => {});
     }
 
     let subscribedBannerDismissed = false;
@@ -4362,7 +4542,7 @@
         return;
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=81').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=82').catch(() => {});
       }
       // iOS WebKit zorunluluğu: setWebPushTour senkron çalışır, Notification.requestPermission() doğrudan dokunuş içinde çağrılır.
       const state = rysWebPushState();
@@ -4396,12 +4576,17 @@
       }
       subscribedBannerDismissed = false;
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && state.status === 'subscribed') {
+        const exPush = typeof getExtraUiDict === 'function' ? getExtraUiDict() : {};
+        const codeText = state.tourCode || rawCode;
         sendServiceWorkerNotification(
-          'RıdvanSes Bildirim Testi',
-          `${state.tourCode || rawCode} kafilesi arka plan bildirimleriniz bu telefonda aktiftir.`,
+          exPush.pushTestTitle || 'RıdvanSes Bildirim Testi',
+          (exPush.pushTestBodyTpl || '{code} kafilesi arka plan bildirimleriniz bu telefonda aktiftir.').replace('{code}', codeText),
           'ridvanses-push-test-' + Date.now()
         );
-        showAppToast(`✅ <strong>${escapeHtml(state.tourCode || rawCode)}</strong> kafilesi için arka plan bildirim aboneliğiniz aktif! Test bildirimi gönderildi.`, 4500);
+        showAppToast(
+          (exPush.pushTestToastTpl || '✅ <strong>{code}</strong> kafilesi için arka plan bildirim aboneliğiniz aktif! Test bildirimi gönderildi.').replace('{code}', escapeHtml(codeText)),
+          4500
+        );
         closePushOnboardingModal();
         window.__rysSyncPushUi?.();
         return;
@@ -4468,10 +4653,11 @@
       } else if (standalone && !supported) {
         if (navPushBtn) navPushBtn.style.display = 'none';
         if (pushBanner) {
+          const exOld = typeof getExtraUiDict === 'function' ? getExtraUiDict() : {};
           pushBanner.style.display = 'flex';
           if (bannerIcon) bannerIcon.textContent = 'ℹ️';
-          if (bannerTitle) bannerTitle.textContent = 'Arka Plan Bildirimi Desteklenmiyor';
-          if (bannerSub) bannerSub.textContent = 'iPhone kapalı ekran bildirimleri için iOS 16.4 veya üzeri sürüm gereklidir.';
+          if (bannerTitle) bannerTitle.textContent = exOld.iosOldTitle || 'Arka Plan Bildirimi Desteklenmiyor';
+          if (bannerSub) bannerSub.textContent = exOld.iosOldSub || 'iPhone kapalı ekran bildirimleri için iOS 16.4 veya üzeri sürüm gereklidir.';
           if (bannerBtn) bannerBtn.style.display = 'none';
           if (bannerDismiss) bannerDismiss.style.display = 'inline-flex';
         }
@@ -4558,10 +4744,6 @@
     };
 
     window.__rysSyncPushUi();
-
-
-    let wakeLockSentinel = null;
-    let wakeLockDesired = true;
 
     // PATCH: wakelock-v51
     let rysWakePending=null;
@@ -4797,8 +4979,8 @@
         artist: `${artist} (${currentTour ? currentTour.code : 'RY-KASIM'})`,
         album,
         artwork: [
-          { src: '/icons/icon-192.png?v=81', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png?v=81', sizes: '512x512', type: 'image/png' }
+          { src: '/icons/icon-192.png?v=82', sizes: '192x192', type: 'image/png' },
+          { src: '/icons/icon-512.png?v=82', sizes: '512x512', type: 'image/png' }
         ]
       });
 

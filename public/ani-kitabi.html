@@ -2,15 +2,15 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Dijital Umre Hatıra Kitabı &amp; Ziyaret Beratı — Rıdvan Yılmaz Turizm</title>
   <meta name="description" content="Rıdvan Yılmaz Turizm Umre ve Siyer yolculuğunuzun baskıya hazır A4 manevi hatıra kitapçığı ve imzalı Umre Ziyaret Beratı." />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=81" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=81" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=81" />
-  <link rel="stylesheet" href="/css/style.css?v=81" />
-  <script src="/vercel-ws-shim.js?v=81"></script>
+  <link rel="manifest" href="/manifest.json?v=82" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=82" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=82" />
+  <link rel="stylesheet" href="/css/style.css?v=82" />
+  <script src="/vercel-ws-shim.js?v=82"></script>
   <style>
     body {
       background: #e9e2d5;
@@ -178,11 +178,16 @@
       .book-page {
         box-shadow: none !important;
         border-radius: 8px !important;
+        overflow: visible !important;
         page-break-after: always;
         break-after: page;
         margin-bottom: 0 !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+      }
+      .journal-step-row {
+        break-inside: avoid;
+        page-break-inside: avoid;
       }
       .book-page:last-child {
         page-break-after: auto;
@@ -251,7 +256,7 @@
         </div>
 
         <div>
-          <img src="/icons/app-logo.png?v=81" alt="Rıdvan Yılmaz Turizm" style="height:68px;background:#fff;padding:6px 12px;border-radius:12px;margin:0 auto 20px;box-shadow:0 8px 24px rgba(0,0,0,0.28);" onerror="this.style.display='none'" />
+          <img src="/icons/app-logo.png?v=82" alt="Rıdvan Yılmaz Turizm" style="height:68px;background:#fff;padding:6px 12px;border-radius:12px;margin:0 auto 20px;box-shadow:0 8px 24px rgba(0,0,0,0.28);" onerror="this.style.display='none'" />
           <div style="font-size:0.82rem;font-weight:800;color:var(--color-gold-bright);text-transform:uppercase;letter-spacing:0.14em;margin-bottom:8px;">
             MANEVİ YOLCULUK HATIRA KİTAPÇIĞI
           </div>
@@ -405,9 +410,12 @@
       let tourPinParam = (params.get('pin') || '').trim();
       let currentBookTour = null;
       let isBookPinProtected = false;
+      let loadBookSeq = 0;
+      const memoryVerifiedPins = new Map();
       function getSavedBookPin(c) {
         const clean = String(c || '').toUpperCase().trim();
         if (clean === code && tourPinParam) return tourPinParam;
+        if (memoryVerifiedPins.has(clean)) return memoryVerifiedPins.get(clean) || '';
         try {
           if (typeof sessionStorage !== 'undefined') {
             const v = sessionStorage.getItem('rys_tour_pin_' + clean);
@@ -418,9 +426,12 @@
       }
       function setSavedBookPin(c, p) {
         const clean = String(c || '').toUpperCase().trim();
+        const trimmed = String(p || '').trim();
+        if (trimmed) memoryVerifiedPins.set(clean, trimmed);
+        else memoryVerifiedPins.delete(clean);
         try {
           if (typeof sessionStorage !== 'undefined') {
-            if (p) sessionStorage.setItem('rys_tour_pin_' + clean, String(p).trim());
+            if (trimmed) sessionStorage.setItem('rys_tour_pin_' + clean, trimmed);
             else sessionStorage.removeItem('rys_tour_pin_' + clean);
           }
         } catch (_) {}
@@ -545,21 +556,33 @@
       }
 
       async function loadBookData() {
+        const reqSeq = ++loadBookSeq;
         const pinGate = document.getElementById('bookPinGateBox');
         const pinErr = document.getElementById('bookPinErrorMsg');
         const unknownBox = document.getElementById('bookUnknownBox');
         const bookStage = document.getElementById('bookStageContainer');
         const printBtn = document.getElementById('printBookBtn');
+        const qrImg = document.getElementById('certQrImg');
+        if (qrImg) {
+          qrImg.style.display = 'none';
+          qrImg.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+        }
+        if (printBtn) printBtn.disabled = true;
+        let stepTimer = null;
         try {
           const activePin = getSavedBookPin(code);
           const stepUrl = `/api/trips/${encodeURIComponent(code)}/steps`;
-          const res = await fetch(
-            stepUrl,
-            activePin
+          const stepCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+          if (stepCtrl) stepTimer = setTimeout(() => { try { stepCtrl.abort(); } catch (_) {} }, 8000);
+          const res = await fetch(stepUrl, {
+            cache: 'no-store',
+            ...(activePin
               ? { headers: { 'X-Tour-Pin': encodeURIComponent(activePin), 'X-Tour-Pin-Enc': 'uri' } }
-              : undefined
-          );
-          const data = await res.json();
+              : {}),
+            ...(stepCtrl ? { signal: stepCtrl.signal } : {})
+          });
+          const data = await res.json().catch(() => ({}));
+          if (reqSeq !== loadBookSeq) return;
           if (res.status === 429 || (data && data.error === 'rate-limited')) {
             if (bookStage) bookStage.style.display = 'none';
             if (printBtn) printBtn.disabled = true;
@@ -604,7 +627,6 @@
           if (pinGate) pinGate.style.display = 'none';
           if (pinErr) pinErr.style.display = 'none';
           if (bookStage) bookStage.style.display = 'flex';
-          if (printBtn) printBtn.disabled = false;
           if (data && data.success) {
             if (activePin) {
               setSavedBookPin(code, activePin);
@@ -632,7 +654,7 @@
             container.innerHTML = steps
               .map(
                 (s, idx) => `
-                <div class="journal-step-row">
+                <div class="journal-step-row journal-step">
                   <div class="journal-num">${escapeHtml(s.order || idx + 1)}</div>
                   <div>
                     <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
@@ -649,16 +671,25 @@
               .join('');
           }
 
+          let qrTimer = null;
           try {
-            const qrRes = await fetch(`/api/qr?code=${encodeURIComponent(code)}`);
-            const qrJson = await qrRes.json();
-            if (qrJson && qrJson.dataUrl) {
-              const img = document.getElementById('certQrImg');
-              img.src = qrJson.dataUrl;
-              img.style.display = 'block';
+            const qrCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            if (qrCtrl) qrTimer = setTimeout(() => { try { qrCtrl.abort(); } catch (_) {} }, 6000);
+            const qrRes = await fetch(`/api/qr?code=${encodeURIComponent(code)}&target=ani-kitabi`, {
+              cache: 'no-store',
+              ...(qrCtrl ? { signal: qrCtrl.signal } : {})
+            });
+            const qrJson = await qrRes.json().catch(() => ({}));
+            if (reqSeq === loadBookSeq && qrJson && qrJson.dataUrl && qrImg) {
+              qrImg.src = qrJson.dataUrl;
+              qrImg.style.display = 'block';
             }
-          } catch (_) {}
+          } catch (_) {} finally {
+            if (qrTimer) clearTimeout(qrTimer);
+          }
+          if (reqSeq === loadBookSeq && printBtn) printBtn.disabled = false;
         } catch (e) {
+          if (reqSeq !== loadBookSeq) return;
           console.warn('Hatıra kitabı yüklenemedi:', e);
           if (bookStage) bookStage.style.display = 'none';
           if (printBtn) printBtn.disabled = true;
@@ -666,11 +697,13 @@
             unknownBox.textContent = 'İnternet bağlantısı kurulamadı veya hatıra kitabı verisi yüklenemedi. Lütfen bağlantınızı kontrol edip sayfayı yenileyiniz.';
             unknownBox.style.display = 'block';
           }
+        } finally {
+          if (stepTimer) clearTimeout(stepTimer);
         }
       }
 
       if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=81').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=82').catch(() => {});
       }
 
       loadBookData();
