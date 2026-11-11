@@ -8,13 +8,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=82" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=82" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=82" />
+  <link rel="manifest" href="/manifest.json?v=83" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=83" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=83" />
   <title>Rehber (Hoca) Canlı Yayın Stüdyosu | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/rehber" />
-  <link rel="stylesheet" href="/css/style.css?v=82" />
+  <link rel="stylesheet" href="/css/style.css?v=83" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -63,8 +63,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=82"></script>
-  <script src="/js/umrah-steps-map.js?v=82"></script>
+  <script src="/vercel-ws-shim.js?v=83"></script>
+  <script src="/js/umrah-steps-map.js?v=83"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -234,7 +234,7 @@
   <header class="navbar">
     <div class="container navbar-inner">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=82" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=83" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="margin:0; font-size:1.12rem; line-height:1.2;">Rıdvan Yılmaz Turizm</h1>
           <span class="brand-sub"><span class="live-dot"></span> Rehber (Hoca) Canlı Yayın Stüdyosu</span>
@@ -353,8 +353,20 @@
               <p style="font-size:.8rem;">Uzun okumada ses kapısı kapanmaz; çevredeki konuşmalar da duyulabilir.</p>
               <label><input id="guideComfortFade" type="checkbox" checked onchange="setGuideComfortFade(this.checked)" />
                 Cümle sonrasında dip sesi yumuşat</label>
+              <label style="display:block; margin-top:4px;"><input id="guideAutoLeveler" type="checkbox" checked onchange="setGuideAutoLeveler(this.checked)" />
+                Akıllı konuşma seviyeleyici (uzak/kısık sesi otomatik dengeler)</label>
               <p id="guideProfileStatus" role="status" style="font-size:.8rem;">Dengeli ses profili</p>
             </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; font-size:0.75rem; color:#CBD5E1; margin-top:8px; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.08);">
+              <label for="guideMicDeviceSelect" style="font-weight:700; color:#E2C785;">🎤 Mikrofon Cihazı:</label>
+              <div style="display:flex; align-items:center; gap:6px; flex:1; min-width:210px;">
+                <select id="guideMicDeviceSelect" class="studio-select" style="flex:1; padding:6px 10px; font-size:0.75rem;" onchange="onGuideMicDeviceChange(this.value)">
+                  <option value="" style="color:#000;">📱 Otomatik (Telefon / Kablolu Yaka Mikrofonu Önerilir)</option>
+                </select>
+                <button type="button" class="code-pill" style="background:rgba(255,255,255,0.1); color:#E2C785; border-color:rgba(197,160,89,0.35); font-size:0.68rem; padding:5px 8px; cursor:pointer;" onclick="refreshGuideMicDeviceList(true)" title="Bağlı mikrofonları yenile">🔄</button>
+              </div>
+            </div>
+            <div id="guideBtHfpWarning" style="display:none; margin-top:6px; padding:7px 10px; border-radius:8px; background:rgba(245,158,11,0.16); border:1px solid rgba(245,158,11,0.45); color:#FDE68A; font-size:0.74rem; line-height:1.4;"></div>
             <div style="display:flex; align-items:center; gap:10px; font-size:0.78rem; color:#CBD5E1; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08);">
               <span>🎙️ Mikrofon Hassasiyeti:</span>
               <input type="range" id="guideMicGainSlider" min="60" max="180" value="100" style="flex:1; accent-color:#dfbe78;" oninput="updateGuideMicGain(this.value)" />
@@ -1624,20 +1636,90 @@
 
     // Real Microphone Audio Streaming (24 kHz Saf Stüdyo Kristal HD + Boğukluk Giderici EQ + Cümle Korumalı Ses Kilidi)
     // PATCH: guide-profile-v53
-    let guideContinuousSpeech=false;
-    let guideComfortFade=true;
+    var guideContinuousSpeech=false;
+    var guideComfortFade=true;
+    var guideAutoLeveler=true;
+    var selectedGuideMicDeviceId='';
+    var guideConsecutiveSilentFrames=0;
     function syncGuideAudioProfile(resetLock=false){
-      const speech=document.getElementById('guideContinuousSpeech'),comfort=document.getElementById('guideComfortFade');
+      const speech=document.getElementById('guideContinuousSpeech'),comfort=document.getElementById('guideComfortFade'),lvl=document.getElementById('guideAutoLeveler');
       const status=document.getElementById('guideProfileStatus');
-      if(speech)speech.checked=guideContinuousSpeech;if(comfort)comfort.checked=guideComfortFade;
+      const autoLvl=typeof guideAutoLeveler==='boolean'?guideAutoLeveler:true;
+      if(speech)speech.checked=guideContinuousSpeech;if(comfort)comfort.checked=guideComfortFade;if(lvl)lvl.checked=autoLvl;
       if(status)status.textContent=guideContinuousSpeech?'Uzun okuma açık; çevre sesi de geçebilir.':
         (guideComfortFade?'Dengeli profil; cümle sonrası dip ses yumuşar.':'Dengeli profil; ortam tabanı korunur.');
       try{scriptProcessor?.port?.postMessage({type:'set-profile',reject:guideSideVoiceRejectLevel,
-        continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade,resetLock:!!resetLock});}
+        continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade,leveler:autoLvl,resetLock:!!resetLock});}
       catch(e){console.warn('Profil sonraki mikrofon kurulumunda uygulanacak',e);}
     }
     function setGuideContinuousSpeech(enabled){guideContinuousSpeech=!!enabled;syncGuideAudioProfile();}
     function setGuideComfortFade(enabled){guideComfortFade=!!enabled;syncGuideAudioProfile();}
+    function setGuideAutoLeveler(enabled){guideAutoLeveler=!!enabled;syncGuideAudioProfile();}
+
+    async function refreshGuideMicDeviceList(showToast = false) {
+      try {
+        if (!navigator?.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== 'function') return;
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const mics = (devices || []).filter((d) => d && d.kind === 'audioinput');
+        const sel = document.getElementById('guideMicDeviceSelect');
+        if (!sel) return;
+        const currentVal = selectedGuideMicDeviceId || sel.value || '';
+        const opts = ['<option value="" style="color:#000;">📱 Otomatik (Telefon / Kablolu Yaka Mikrofonu Önerilir)</option>'];
+        mics.forEach((m, idx) => {
+          const id = String(m.deviceId || '');
+          if (!id || id === 'default' || id === 'communications') return;
+          const rawLbl = String(m.label || `Mikrofon ${idx + 1}`).trim();
+          const isBt = /airpods|bluetooth|hands-free|headset|buds|hfp|sco|wireless/i.test(rawLbl) && !/usb|receiver|dji|rode|hollyland|boya/i.test(rawLbl);
+          const prefix = isBt ? '🎧 [BT Dar-Bant Riski] ' : '🎙️ ';
+          opts.push(`<option value="${escapeHtml(id)}" style="color:#000;"${id === currentVal ? ' selected' : ''}>${prefix}${escapeHtml(rawLbl)}</option>`);
+        });
+        sel.innerHTML = opts.join('');
+        if (currentVal && Array.from(sel.options || []).some((o) => o.value === currentVal)) {
+          sel.value = currentVal;
+        }
+        if (showToast && typeof updateGuideBtMicWarning === 'function' && micStream) {
+          updateGuideBtMicWarning(micStream);
+        }
+      } catch {}
+    }
+
+    function updateGuideBtMicWarning(stream) {
+      try {
+        const warnEl = document.getElementById('guideBtHfpWarning');
+        const srcEl = document.getElementById('micSourceLabel');
+        if (!warnEl) return;
+        const track = stream?.getAudioTracks?.()?.[0];
+        if (!track) {
+          warnEl.style.display = 'none';
+          return;
+        }
+        const label = String(track.label || '');
+        const settings = typeof track.getSettings === 'function' ? track.getSettings() || {} : {};
+        const sr = Number(settings.sampleRate) || 0;
+        const looksBtHfp =
+          (sr > 0 && sr <= 16000) ||
+          (/airpods|bluetooth|hands-free|buds|hfp|sco/i.test(label) && !/usb|dji|rode|hollyland|boya/i.test(label));
+        if (looksBtHfp) {
+          warnEl.style.display = 'block';
+          warnEl.innerHTML = `⚠️ <strong>Bluetooth Kulaklık Mikrofonu Algılandı (${escapeHtml(label || 'BT HFP')}${sr ? ` • ${sr} Hz` : ''}):</strong> Standart Bluetooth kulaklıklar sesi telefon kalitesine (8–16 kHz) düşürebilir. En berrak <strong>24 kHz Stüdyo HD</strong> ses için yukarıdaki listeden <strong>Telefonun Kendi Mikrofonunu</strong> veya <strong>USB-C/Lightning Yaka Mikrofonunu</strong> seçmeniz önerilir.`;
+          if (srcEl && isMicBroadcasting) {
+            srcEl.textContent = `Yayın Kaynağı: ${label || 'Bluetooth Mikrofon'}${sr ? ` (${sr} Hz → 24 kHz)` : ''}`;
+          }
+        } else {
+          warnEl.style.display = 'none';
+          if (srcEl && isMicBroadcasting) {
+            srcEl.textContent = `Yayın Kaynağı: 24 kHz Stüdyo Kristal HD${label ? ` • ${label}` : ''}`;
+          }
+        }
+      } catch {}
+    }
+
+    function onGuideMicDeviceChange(deviceId) {
+      selectedGuideMicDeviceId = String(deviceId || '').trim();
+      if (isMicBroadcasting) {
+        healGuideMicrophoneIfNeeded(true);
+      }
+    }
 
     let zeroGainNode = null;
     let guideMicGainNode = null;
@@ -1767,7 +1849,7 @@
       writeStr(36, 'data');
       view.setUint32(40, numSamples * 2, true);
       for (let i = 0; i < numSamples; i++) {
-        view.setInt16(44 + i * 2, 0, true);
+        view.setInt16(44 + i * 2, (i & 1) ? 1 : -1, true);
       }
       const bytes = new Uint8Array(buffer);
       let binary = '';
@@ -1787,8 +1869,8 @@
           artist: `${guideName} (${tourCode})`,
           album: 'Rıdvan Yılmaz Turizm — Rehber Stüdyosu',
           artwork: [
-            { src: '/icons/icon-192.png?v=82', sizes: '192x192', type: 'image/png' },
-            { src: '/icons/icon-512.png?v=82', sizes: '512x512', type: 'image/png' }
+            { src: '/icons/icon-192.png?v=83', sizes: '192x192', type: 'image/png' },
+            { src: '/icons/icon-512.png?v=83', sizes: '512x512', type: 'image/png' }
           ]
         });
         navigator.mediaSession.playbackState = (isMicBroadcasting || isDemoBroadcasting) ? 'playing' : 'paused';
@@ -2064,13 +2146,26 @@
         connectGuideWs();
       }
 
+      const isDtxEligibleSilence = Boolean(isGuideMicMuted || m.comfortSilent === true);
+      if (isDtxEligibleSilence) {
+        globalThis.guideConsecutiveSilentFrames = (typeof globalThis.guideConsecutiveSilentFrames === 'number' ? globalThis.guideConsecutiveSilentFrames : 0) + 1;
+        // Send the first 3 zero frames (60 ms) for smooth comfort-fade tail, then pause RF/uplink until speech resumes
+        // (with a tiny 1-packet keepalive every 50 frames = 1.0s so active speaker indicators stay warm).
+        if (globalThis.guideConsecutiveSilentFrames > 3 && (globalThis.guideConsecutiveSilentFrames % 50) !== 0) {
+          guideWasIdlePaused = true;
+          return;
+        }
+      } else {
+        globalThis.guideConsecutiveSilentFrames = 0;
+      }
+
       guideAudioSeq = (guideAudioSeq + 1) & 0x7fffffff;
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         guideWasIdlePaused = true;
         return;
       }
       if (ws.bufferedAmount > 19200) return;
-      const phraseStart = guideWasIdlePaused;
+      const phraseStart = Boolean(guideWasIdlePaused && !isDtxEligibleSilence);
       try {
         if (ws.isRelay || ws._isRelay) {
           ws.send(JSON.stringify({
@@ -2086,7 +2181,8 @@
         } else {
           ws.send(encodeBinaryAudioPacket(a, guideAudioSeq, Date.now(), phraseStart));
         }
-        guideWasIdlePaused = false;
+        if (!isDtxEligibleSilence) guideWasIdlePaused = false;
+        else if (globalThis.guideConsecutiveSilentFrames > 3) guideWasIdlePaused = true;
       } catch (e) {
         guideWasIdlePaused = true;
       }
@@ -2123,10 +2219,15 @@
         ctx=audioCtx;
         if(ctx.state==='suspended'||ctx.state==='interrupted')await ctx.resume();
         check();
-        // AEC is a request; it does not guarantee beamforming or remote-speaker cancellation.
-        try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,
-          noiseSuppression:false,autoGainControl:false,channelCount:1,sampleRate:48000}});}
-        catch(error){check();stream=await navigator.mediaDevices.getUserMedia({audio:true});}
+        // Guide studio has zero speaker playback during live broadcast; disabling OS echoCancellation prevents mobile HFP/VoIP telephony DSP degradation.
+        const prefDevId=typeof selectedGuideMicDeviceId==='string'&&selectedGuideMicDeviceId?selectedGuideMicDeviceId:'';
+        const micAudioConstraints={echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1,sampleRate:48000,
+          ...(prefDevId?{deviceId:{exact:prefDevId}}:{})};
+        try{stream=await navigator.mediaDevices.getUserMedia({audio:micAudioConstraints});}
+        catch(error){check();
+          try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}});}
+          catch(e2){check();stream=await navigator.mediaDevices.getUserMedia({audio:true});}
+        }
         check();
         const preset=typeof getGuideAcousticPreset==='function'?getGuideAcousticPreset():{highPassHz:85,mudCutDb:-2.5,presenceDb:2.8,lowPassHz:9500,gainBoost:1.0};
         const source=own(ctx.createMediaStreamSource(stream));
@@ -2140,7 +2241,8 @@
         const onFrame=message=>{if(current())handleGuideMicFloatChunk(message);};
         const url='/pcm-capture-worklet.js?v=72-audio';
         const options=()=>({muted:isGuideMicMuted,reject:guideSideVoiceRejectLevel,
-          continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade});
+          continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade,
+          leveler:typeof guideAutoLeveler!=='undefined'?guideAutoLeveler:true});
         if(ctx.audioWorklet&&typeof AudioWorkletNode!=='undefined'){
           try{
             if(!ctx.__rysWorkletReady){await ctx.audioWorklet.addModule(url);ctx.__rysWorkletReady=true;}
@@ -2173,7 +2275,10 @@
           track.onunmute=()=>{if(current())guideTrackMutedAt=0;};
           track.onended=()=>{if(current()&&isMicBroadcasting)setTimeout(()=>{if(current())healGuideMicrophoneIfNeeded();},300);};
         }
-        guideWasIdlePaused=true;lastGuideMicChunkAt=Date.now();committed=true;syncGuideAudioProfile();
+        guideWasIdlePaused=true;if(typeof guideConsecutiveSilentFrames!=='undefined')guideConsecutiveSilentFrames=0;
+        lastGuideMicChunkAt=Date.now();committed=true;syncGuideAudioProfile();
+        if(typeof refreshGuideMicDeviceList==='function')refreshGuideMicDeviceList(false);
+        if(typeof updateGuideBtMicWarning==='function')updateGuideBtMicWarning(stream);
         return generation;
       }finally{
         if(!committed)job.cancel();
@@ -2550,6 +2655,8 @@
       if(testButton){testButton.disabled=false;testButton.textContent='🎧 Sesimi Test Et (4 Sn Kaydet & Dinle)';}
       const voiceStatusBox=document.getElementById('voiceTestStatusBox');
       if(voiceStatusBox){voiceStatusBox.style.display='none';}
+      const btWarnBox=document.getElementById('guideBtHfpWarning');
+      if(btWarnBox){btWarnBox.style.display='none';}
       toggleGuideMicMute(false);stopBroadcastClock();disableGuideKeepAlive();
       try{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'guide-stream-state',isLive:false,
         broadcastMode:'idle',topic:document.getElementById('topicInput')?.value||''}));}catch(e){}
@@ -3126,7 +3233,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=82');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=83');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -3239,7 +3346,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=82').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=83').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED') {
           if (ev.data.rotated?.sos?.subscriptionToken) {

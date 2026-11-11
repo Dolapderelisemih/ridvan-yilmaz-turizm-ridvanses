@@ -58,6 +58,9 @@ class RysNearExpander {
   constructor(o = {}) {
     this.reject = Number.isFinite(o.reject)?Math.max(.15,Math.min(.85,o.reject)):.5;
     this.continuousSpeech=!!o.continuousSpeech;
+    this.leveler=!!o.leveler;
+    this.lvlEnv=0;
+    this.agcGain=1;
     this.hpX = 0;
     this.hpY = 0;
     this.lp = new Float64Array(3);
@@ -80,6 +83,7 @@ class RysNearExpander {
 
   setProfile(o = {}) {
     if(o.continuousSpeech!==undefined)this.continuousSpeech=!!o.continuousSpeech;
+    if(o.leveler!==undefined)this.leveler=!!o.leveler;
     if (Number.isFinite(o.reject)) {
       this.reject = Math.max(0.15, Math.min(0.85, o.reject));
     }
@@ -157,7 +161,15 @@ class RysNearExpander {
     const d = this.look[this.li];
     this.look[this.li] = x;
     this.li = (this.li + 1) % 240;
-    let y = d * this.g * 0.8;
+    if (this.leveler && this.ready && (this.hold > 0 || this.continuousSpeech)) {
+      this.lvlEnv += (d * d - this.lvlEnv) * 0.0021;
+      const rms = Math.sqrt(this.lvlEnv + 1e-12);
+      const wantAgc = rms > 0.004 ? Math.min(2.0, Math.max(0.75, Math.pow(0.11 / rms, 0.45))) : 1;
+      this.agcGain += (wantAgc - this.agcGain) * (wantAgc < this.agcGain ? 0.0028 : 0.00018);
+    } else {
+      this.agcGain += (1 - this.agcGain) * 0.0005;
+    }
+    let y = d * this.g * (this.leveler ? this.agcGain * 0.92 : 0.8);
     if (Math.abs(y) > 0.85) {
       y = Math.sign(y) * (0.85 + 0.13 * Math.tanh((Math.abs(y) - 0.85) / 0.13));
     }

@@ -8,17 +8,17 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
-  <link rel="manifest" href="/manifest.json?v=82" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=82" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=82" />
+  <link rel="manifest" href="/manifest.json?v=83" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=83" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=83" />
   <title>Hacı Canlı Dinleme Ekranı | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=82" />
-  <script src="/vercel-ws-shim.js?v=82"></script>
+  <link rel="stylesheet" href="/css/style.css?v=83" />
+  <script src="/vercel-ws-shim.js?v=83"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=82"></script>
+  <script src="/js/umrah-steps-map.js?v=83"></script>
   <style>
     .arabic-text {
       direction: rtl;
@@ -264,7 +264,7 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:540px;">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=82" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=83" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="font-size:1rem; margin:0;">Rıdvan Yılmaz Turizm</h1>
           <span class="brand-sub"><span class="live-dot"></span> <span id="i18n_brandSub">RıdvanSes Hacı Canlı Odası</span></span>
@@ -297,7 +297,7 @@
     <!-- TELEFONA UYGULAMA OLARAK İNDİR (PWA BANNER) -->
     <div class="pwa-install-banner" id="pwaInstallBanner">
       <div style="display:flex; align-items:center; gap:12px; flex:1 1 210px; min-width:0;">
-        <img src="/icons/icon-192.png?v=82" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
+        <img src="/icons/icon-192.png?v=83" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
         <div style="min-width:0;">
           <div id="i18n_pwaBannerTitle" style="font-weight:800; font-size:0.88rem; color:var(--color-gold-bright);">RıdvanSes'i Ana Ekrana Ekleyin</div>
           <div id="i18n_pwaBannerSub" style="font-size:0.75rem; color:#e2e8f0; line-height:1.35;">Mağaza şifresi gerekmeden tek dokunuşla telefonunuza kurun.</div>
@@ -3193,12 +3193,12 @@
         rxHighPass.frequency.value = 65;
         rxHighPass.Q.value = -3.0103;
 
-        // 1-B. Kulaklık & Hoparlör Konuşma Netleştirici (3000 Hz +1.5 dB Presence — Doğal telefon çağrısı netliği)
+        // 1-B. Kulaklık & Hoparlör Konuşma Netleştirici (3000 Hz +1.0 dB Presence — Üst-orta frekans yorgunluğu olmadan berrak konuşma)
         const rxClarity = audioCtx.createBiquadFilter();
         rxClarity.type = 'peaking';
         rxClarity.frequency.value = 3000;
         rxClarity.Q.value = 0.85;
-        rxClarity.gain.value = 1.5;
+        rxClarity.gain.value = 1.0;
 
         // 2. Kullanıcı Ses Güçlendirici (%0 - %200 Doğrusal Kazanç)
         gainNode = audioCtx.createGain();
@@ -3208,8 +3208,8 @@
         let rxPeakLimiter = null;
         if (typeof audioCtx.createDynamicsCompressor === 'function') {
           rxPeakLimiter = audioCtx.createDynamicsCompressor();
-          rxPeakLimiter.threshold.value = -3.0;
-          rxPeakLimiter.knee.value = 5;
+          rxPeakLimiter.threshold.value = -1.5;
+          rxPeakLimiter.knee.value = 3;
           rxPeakLimiter.ratio.value = 16;
           rxPeakLimiter.attack.value = 0.0005;
           rxPeakLimiter.release.value = 0.085;
@@ -4511,7 +4511,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=82').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=83').catch(() => {});
     }
 
     let subscribedBannerDismissed = false;
@@ -4542,7 +4542,7 @@
         return;
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=82').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=83').catch(() => {});
       }
       // iOS WebKit zorunluluğu: setWebPushTour senkron çalışır, Notification.requestPermission() doğrudan dokunuş içinde çağrılır.
       const state = rysWebPushState();
@@ -4979,8 +4979,8 @@
         artist: `${artist} (${currentTour ? currentTour.code : 'RY-KASIM'})`,
         album,
         artwork: [
-          { src: '/icons/icon-192.png?v=82', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png?v=82', sizes: '512x512', type: 'image/png' }
+          { src: '/icons/icon-192.png?v=83', sizes: '192x192', type: 'image/png' },
+          { src: '/icons/icon-512.png?v=83', sizes: '512x512', type: 'image/png' }
         ]
       });
 

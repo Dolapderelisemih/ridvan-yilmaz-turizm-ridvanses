@@ -1,7 +1,7 @@
 // PATCH: sw-v53
 // PATCH: sw-v53
 // PATCH: sw-v53
-const CACHE_NAME = 'ridvanses-pwa-v82';
+const CACHE_NAME = 'ridvanses-pwa-v83';
 const PUSH_META_CACHE = 'ridvanses-push-meta-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -9,12 +9,12 @@ const ASSETS_TO_CACHE = [
   '/rota',
   '/ani-kitabi',
   '/kullanim-rehberi',
-  '/css/style.css?v=82',
-  '/vercel-ws-shim.js?v=82',
+  '/css/style.css?v=83',
+  '/vercel-ws-shim.js?v=83',
   '/vendor/leaflet/leaflet.js',
   '/vendor/leaflet/leaflet.css',
   '/vendor/mqtt/mqtt.min.js',
-  '/js/umrah-steps-map.js?v=82',
+  '/js/umrah-steps-map.js?v=83',
   '/pcm-capture-worklet.js?v=72-audio',
   '/pcm-player-worklet.js?v=72-audio',
   '/manifest.json',
@@ -80,6 +80,32 @@ self.addEventListener('fetch', (event) => {
   }
 
   const canonicalPage = canonicalHtmlCachePath(lowerPath);
+  const isFastAudioOrVendorAsset =
+    lowerPath === '/pcm-player-worklet.js' ||
+    lowerPath === '/pcm-capture-worklet.js' ||
+    lowerPath.startsWith('/vendor/');
+
+  if (isFastAudioOrVendorAsset) {
+    event.respondWith(
+      (async () => {
+        const cached = (await caches.match(event.request)) || (await caches.match(url.pathname, { ignoreSearch: true }));
+        const netUpdate = fetch(event.request)
+          .then((res) => {
+            if (res && res.ok && res.status === 200 && res.type === 'basic') {
+              const copy = res.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
+            }
+            return res;
+          })
+          .catch(() => null);
+        if (cached) return cached;
+        const fresh = await netUpdate;
+        if (fresh) return fresh;
+        return new Response('', { status: 503, statusText: 'Offline' });
+      })()
+    );
+    return;
+  }
 
   event.respondWith(
     fetch(event.request)

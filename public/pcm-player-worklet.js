@@ -76,20 +76,37 @@ class RysPitchPlc {
       }
     }
     this.length = best > 0.65 ? lagBest : 0;
+    this.unvoicedLen = 0;
     this.pos = 0;
-    for (let i = 0; i < this.length; i++) {
-      this.p[i] = this.at(this.length - i);
+    if (this.length) {
+      for (let i = 0; i < this.length; i++) {
+        this.p[i] = this.at(this.length - i);
+      }
+    } else if (this.used >= 240) {
+      this.unvoicedLen = 240;
+      for (let i = 0; i < 240; i++) {
+        const w = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / 239);
+        this.p[i] = this.at(240 - i) * w * 0.42;
+      }
     }
   }
 
   fill(out) {
     if (!this.lost) this.begin();
-    const correction = this.last - (this.length ? this.p[0] : 0);
+    const baseSample = this.length ? this.p[0] : 0;
+    const correction = this.last - baseSample;
     for (let i = 0; i < out.length; i++) {
       const age = this.lost + i;
       const g = age < 1440 ? 0.5 + 0.5 * Math.cos((Math.PI * age) / 1440) : 0;
       const b = age < 120 ? 0.5 + 0.5 * Math.cos((Math.PI * age) / 119) : 0;
-      out[i] = ((this.length ? this.p[this.pos++ % this.length] : 0) + correction * b) * g;
+      let exc = 0;
+      if (this.length) {
+        exc = this.p[this.pos++ % this.length];
+      } else if (this.unvoicedLen && age < 960) {
+        const ug = 0.5 + 0.5 * Math.cos((Math.PI * age) / 960);
+        exc = this.p[this.pos++ % this.unvoicedLen] * ug;
+      }
+      out[i] = (exc + correction * b) * g;
     }
     this.lost += out.length;
   }
@@ -180,6 +197,11 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     if(d<0&&!this.playing&&d>=-12){this.expected=m.seq;d=0;}
     if(d<0){this.stats.late++;return;}
     if(this.q.has(m.seq)){this.stats.duplicate++;return;}
+    // Deliberate DTX silence gap followed by phraseStart: advance expected cleanly without counting a resync fault.
+    if(m.phraseStart&&d>0&&d<=3000&&this.q.size===0&&(!this.playing||this.missing>0)){
+      this.expected=m.seq;d=0;this.missing=0;this.lastArrival=null;this.lastSeq=null;
+      this.pendingQueueBlend=this.playing&&this.haveHistory;
+    }
     // Large discontinuities or an isolated far-future packet still require a new buffer anchor.
     if(d>128||(d>32&&this.q.size<24)){
       this.stats.resync++;this._reset();this.expected=m.seq;

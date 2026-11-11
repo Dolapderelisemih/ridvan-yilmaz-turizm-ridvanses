@@ -333,8 +333,8 @@ function saveState(state) {
       if (Array.isArray(state.requests) && state.requests.length > 200) {
         state.requests = state.requests.slice(0, 200);
       }
-      if (Array.isArray(state.revokedAuthTokens) && state.revokedAuthTokens.length > 2048) {
-        state.revokedAuthTokens = state.revokedAuthTokens.slice(-2048);
+      if (Array.isArray(state.revokedAuthTokens) && state.revokedAuthTokens.length > 16384) {
+        state.revokedAuthTokens = state.revokedAuthTokens.slice(-16384);
       }
     }
     pendingSaveStateRef = state;
@@ -659,8 +659,9 @@ function rysSosPushSubscribe(body,principal){
   const rawAuthTok=typeof body._rawAuthToken==='string'?body._rawAuthToken.trim():'';
   const authTokenHash=rawAuthTok?crypto.createHash('sha256').update(rawAuthTok).digest('hex'):previous?.authTokenHash||null;
   const sessExp=rawAuthTok&&typeof activeAuthSessions!=='undefined'?activeAuthSessions.get(rawAuthTok)?.expiresAt:null;
+  const targetView=body?.targetView==='panel'?'panel':'rehber';
   let s={endpoint:target.url.href,keys:{p256dh:p.toString('base64url'),auth:auth.toString('base64url')},
-    tourCode:code,role:rysCanAdmin(principal)?'admin':'guide',deviceId:body.deviceId.trim(),
+    tourCode:code,role:rysCanAdmin(principal)?'admin':'guide',targetView,deviceId:body.deviceId.trim(),
     revision:body.revision,subscriptionToken:previous?.subscriptionToken||crypto.randomBytes(32).toString('base64url'),
     authTokenHash,expiresAt:sessExp||(Date.now()+SESSION_TTL_MS),
     vapidKey:rysPushVapid.publicKey,isSos:true,updatedAt:Date.now()};
@@ -917,7 +918,7 @@ app.post('/api/push/unsubscribe-sos',createRateLimiter({max:240,windowMs:60000})
   try{return res.json(rysSosPushUnsubscribe(req.body));}
   catch(e){return res.status(e.status||400).json({success:false,error:e.message});}
 });
-function rysSosPushPayload(alertItem){
+function rysSosPushPayload(alertItem,targetUrlOverride=null){
   const code=String(alertItem.tourCode||'RY-KASIM').toUpperCase().trim();
   const hasCoords=alertItem.lat!=null&&alertItem.lng!=null&&Number.isFinite(Number(alertItem.lat))&&Number.isFinite(Number(alertItem.lng));
   const mapsUrl=hasCoords?`https://www.google.com/maps?q=${Number(alertItem.lat)},${Number(alertItem.lng)}`:null;
@@ -933,7 +934,7 @@ function rysSosPushPayload(alertItem){
     body:rysPushText(lines,1800),
     tag:'ridvanses-sos-'+rysPushText(alertItem.id,96),
     tourCode:code,
-    data:{url:`/rehber?code=${encodeURIComponent(code)}`,...(mapsUrl?{mapsUrl}:{})}
+    data:{url:targetUrlOverride||`/rehber?code=${encodeURIComponent(code)}`,...(mapsUrl?{mapsUrl}:{})}
   };
   return JSON.stringify(data);
 }
@@ -977,11 +978,15 @@ function queueRysPushSos(alertItem){
   const code=String(alertItem.tourCode||'RY-KASIM').toUpperCase().trim();
   const targets=Array.from(rysSosPushSubs.values()).filter(s=>s.tourCode==='ALL'||s.tourCode===code);
   if(!targets.length)return;
-  let payload;
-  try{payload=rysSosPushPayload(alertItem);}catch(e){return;}
+  let guidePayload,panelPayload;
+  try{
+    guidePayload=rysSosPushPayload(alertItem,`/rehber?code=${encodeURIComponent(code)}`);
+    panelPayload=rysSosPushPayload(alertItem,`/panel?code=${encodeURIComponent(code)}#sos`);
+  }catch(e){return;}
   for(const sub of targets){
     if(rysSosPushQueue.length>=256)rysSosPushQueue.shift();
-    rysSosPushQueue.push({sub,payload});
+    const usePanelUrl=sub.targetView==='panel';
+    rysSosPushQueue.push({sub,payload:usePanelUrl?panelPayload:guidePayload});
   }
   pumpRysSosPushQueue();
 }
@@ -2863,10 +2868,11 @@ function getOrCreateRelaySession(clientId) {
             const parsed = typeof data === 'string' ? JSON.parse(data) : data;
             const now = Date.now();
             // Store internal envelopes; never trust remote sentAt for queue TTL.
-            sess.outbox = sess.outbox.filter((e) => e.message.type !== 'audio-chunk' || now - e.at <= 200);
+            // 600 ms / 28-frame HTTP relay buffer accommodates Saudi roaming 4G RTTs (150-300 ms) without dropping speech.
+            sess.outbox = sess.outbox.filter((e) => e.message.type !== 'audio-chunk' || now - e.at <= 600);
             if (parsed.type === 'audio-chunk') {
               const audio = sess.outbox.filter((e) => e.message.type === 'audio-chunk');
-              if (audio.length >= 10) {
+              if (audio.length >= 28) {
                 const oldest = sess.outbox.findIndex((e) => e.message.type === 'audio-chunk');
                 sess.outbox.splice(oldest, 1);
               }
@@ -2890,7 +2896,7 @@ function drainRysRelaySession(sess) {
   const now = Date.now();
   return sess.outbox
     .splice(0)
-    .filter((e) => e.message.type !== 'audio-chunk' || now - e.at <= 200)
+    .filter((e) => e.message.type !== 'audio-chunk' || now - e.at <= 600)
     .map((e) => e.message);
 }
 
@@ -4520,7 +4526,9 @@ function resolveTrustedPublicBaseUrl(req) {
   return inferred || 'https://ses.ridvanyilmazturizm.com';
 }
 
-app.get('/api/qr-img', async (req, res) => {
+const qrRateLimiter = createRateLimiter({ max: 600, windowMs: 60000, message: 'Çok fazla QR isteği gönderildi.' });
+
+app.get('/api/qr-img', qrRateLimiter, async (req, res) => {
   try {
     const code = String(req.query.code || 'RY-KASIM').toUpperCase().trim();
     if (!findRysTour(code)) {
@@ -4554,7 +4562,7 @@ app.get('/api/qr-img', async (req, res) => {
   }
 });
 
-app.get('/api/qr', async (req, res) => {
+app.get('/api/qr', qrRateLimiter, async (req, res) => {
   try {
     const code = String(req.query.code || 'RY-KASIM').toUpperCase().trim();
     const tour = findRysTour(code);
