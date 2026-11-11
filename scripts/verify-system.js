@@ -1401,7 +1401,7 @@ async function runV54RelayRoundTrip({baseUrl,url,token}){
     return {status:r.status,...await r.json()};
   };
   const get=async query=>{const r=await fetch(baseUrl+'/api/ws-relay?'+new URLSearchParams(query));return {status:r.status,...await r.json()};};
-  const family={type:'family-subscribe',tourCode:code},admin={type:'admin-subscribe',token};
+  const family={type:'family-subscribe',tourCode:code,pin:'1453'},admin={type:'admin-subscribe',token};
   const join=pin=>({type:'join',role:'pilgrim',tourCode:code,roomId:'genel',name:'V54 listener',pin});
   const guide={type:'join',role:'guide',tourCode:code,roomId:'genel',name:'V54 guide '+stamp,token};
   const guideId='v54-guide-'+stamp,listenerId='v54-listener-'+stamp;
@@ -1415,7 +1415,7 @@ async function runV54RelayRoundTrip({baseUrl,url,token}){
     assert(!fam.messages.some(m=>m.type==='joined'||m.type==='pin-error'));
     const again=await post({clientId:'v54-family-'+stamp,subscriptionContext:family,messages:[]});
     assert(!again.messages.some(m=>m.type==='family-state'),'Idempotent poll must not repeat ACK');
-    const famGet=await get({clientId:'v54-familyget-'+stamp,subscription:'family-subscribe',tourCode:code});
+    const famGet=await get({clientId:'v54-familyget-'+stamp,subscription:'family-subscribe',tourCode:code,pin:'1453'});
     assert(famGet.messages.some(m=>m.type==='family-state'));
     const a=await post({clientId:'v54-admin-'+stamp,token,subscriptionContext:admin,messages:[admin]});
     assert.equal(a.messages.filter(m=>m.type==='admin-rooms-update').length,1);
@@ -1569,9 +1569,9 @@ async function runStep5V54AudioChecks(){
     if(mode!=='join')assert.equal(body.joinContext??null,null);
     else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
   }
-  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v75"));assert(sw.includes('/vercel-ws-shim.js?v=75'));
+  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v76"));assert(sw.includes('/vercel-ws-shim.js?v=76'));
   for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
-    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'75',f+' stale shim');
+    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'76',f+' stale shim');
   }
   if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
   console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
@@ -1646,11 +1646,11 @@ async function runV55RelayEdgeChecks({baseUrl,url,token}){
     assert.equal(fetchCount,1,'A connected broker must not suppress an empty HTTP poll');
     assert(listener.delivered.some(m=>m.type==='audio-chunk'&&m.seq===7),'Native guide PCM must reach the HTTP listener');
     // Family/admin control messages also need HTTP when their broker has no publisher.
-    const familyContext={type:'family-subscribe',tourCode:code},familyId='v55-family-'+stamp;
+    const familyContext={type:'family-subscribe',tourCode:code,pin:'1453'},familyId='v55-family-'+stamp;
     const adminContext={type:'admin-subscribe',token},adminId='v55-admin-'+stamp;
     await post({clientId:familyId,subscriptionContext:familyContext,messages:[familyContext]});
     await post({clientId:adminId,token,subscriptionContext:adminContext,messages:[adminContext]});
-    const family=make('family-subscribe',{tourCode:code},familyId),admin=make('admin-subscribe',null,adminId);
+    const family=make('family-subscribe',{tourCode:code,pin:'1453'},familyId),admin=make('admin-subscribe',null,adminId);
     guide.s.send(JSON.stringify({type:'guide-stream-state',isLive:true,broadcastMode:'mic'}));
     await wait(()=>guide.messages.some(m=>m.type==='stream-state'&&m.isLive));
     await family.r._flushAndPoll();assert(family.delivered.some(m=>m.type==='stream-state'&&m.isLive));
@@ -1713,7 +1713,7 @@ async function runV56HandoffChecks({baseUrl,url,token}){
     assert.equal((await fetch(baseUrl+'/api/tours',{method:'POST',headers,
       body:JSON.stringify({code,name:'V56 handoff regression',pin:'1453',guideName:guide.name})})).status,200);
     const source=await open({subscriptionContext:guide,messages:[guide]});
-    const before=await post({clientId:'v56-family-view-'+stamp,subscriptionContext:{type:'family-subscribe',tourCode:code}});
+    const before=await post({clientId:'v56-family-view-'+stamp,subscriptionContext:{type:'family-subscribe',tourCode:code,pin:'1453'}});
     assert.equal(before.messages.find(m=>m.type==='family-state').room.connectedGuides.length,0,'relay-open must have no join side effect');
     assert.equal((await post({...source,token,subscriptionContext:guide,messages:[guide,{type:'guide-stream-state',isLive:true,broadcastMode:'mic'}]})).status,200);
     const listener=await open();await post({...listener,subscriptionContext:pilgrim,messages:[pilgrim]});
@@ -1770,7 +1770,7 @@ async function runV56HandoffChecks({baseUrl,url,token}){
     // Pilgrim without deviceId still transfers exactly one membership; PIN is rechecked.
     for(const subscription of [
       {...pilgrim,deviceId:'',name:'V56 no-device listener',phone:'preserved-phone',lang:'ar'},
-      {type:'family-subscribe',tourCode:code},
+      {type:'family-subscribe',tourCode:code,pin:'1453'},
       {type:'admin-subscribe',token}
     ]){
       const old=await open();await post({...old,token:subscription.type==='admin-subscribe'?token:undefined,
@@ -1800,7 +1800,7 @@ async function runV56HandoffChecks({baseUrl,url,token}){
     assert.equal((await post({...older,token,subscriptionContext:chainJoin})).status,409);
     chainNative.ws.close();
     // MQTT-only source: no HTTP session has joined, so no source fencing is needed.
-    const lone=await socket(),loneId=await prepare(lone,null,{type:'family-subscribe',tourCode:code});
+    const lone=await socket(),loneId=await prepare(lone,null,{type:'family-subscribe',tourCode:code,pin:'1453'});
     assert.equal((await commit(lone,loneId)).ack.type,'family-state');lone.ws.close();
     if(typeof recordResult==='function')recordResult('ADIM-3.V56',
       'Gerçek HTTP/WS: yan etkisiz open/prepare, cancel, revision, commit/idempotans, eski istek409, native PCM, PIN ve3 abonelik',true);
@@ -2536,7 +2536,7 @@ async function runStep5V60AudioChecks(){
     p.rxFir.r.fill(1);p.playing=true;p.expected=0;p.missing=15;
     p.process([],[[new Float32Array(128)]]);assert(!p.playing);assert(p.rxFir.r.every(x=>x===0));
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v75'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v76'));
   for(const asset of ['pcm-player-worklet.js?v=72-audio','pcm-capture-worklet.js?v=72-audio'])assert(sw.includes(asset));
   assert(guide.includes('pcm-capture-worklet.js?v=72-audio'));assert(read('public/dinle.html').includes('pcm-player-worklet.js?v=72-audio'));
   console.log('V60 UNIT METRICS '+JSON.stringify({lifecycleChecks:checks,alias}));
@@ -2746,7 +2746,7 @@ async function runStep5V61AudioChecks(){
     assert(published.filter(m=>['room-state','stream-state'].includes(m.type)).every(m=>(m.audioSourceId||m.room?.audioSourceId)==='stable-page'));
     checks.push('MQTT-room-and-stream-source-parity');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v75'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));
   assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V61 UNIT METRICS '+JSON.stringify({checks,reset,capture24kFrames:frames.length}));
   recordResult('ADIM-5.V61','Socket/Blob/retry/source ownership; 5-rate reset/starvation de-click; 24k capture; source schema/digest/MQTT; cache61',true);
@@ -2985,7 +2985,7 @@ async function runStep5V62AudioChecks(){
     }
     checks.push('failed-poll-retry-keeps-latest-stop-and-resume-only');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v75'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V62 UNIT METRICS '+JSON.stringify({checks,coalescerPostStopAudio:0,receiverPostStopFrames:0}));
   recordResult('ADIM-5.V62','Stop/mode/source barriers across coalescer, relay, receiver, demo lifecycle and server; idle reconnect; cache62',true);
   console.log('V62 UNIT PASS');
@@ -3170,7 +3170,7 @@ async function runStep5V63AudioChecks(){
     const epoch=h.g.rxAudioDeliveryEpoch;s.onmessage({data:JSON.stringify({type:'room-state',room:{...state(1,true),audioStateKnown:true}})});
     assert(h.player.q.has(1001));assert.equal(h.g.rxAudioDeliveryEpoch,epoch);checks.push('unknown-to-known-live-snapshot-preserves-current-pcm');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v75'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V63 UNIT METRICS '+JSON.stringify({checks,snapshotRecovered:true,staleStateResets:0,renewalFirstPcmPreserved:true}));
   recordResult('ADIM-5.V63','Ordered state/snapshot recovery; terminal disconnect; source reset; inheritance; MQTT parity; renewal state-before-PCM; cache63',true);
   console.log('V63 UNIT PASS');
@@ -3357,7 +3357,7 @@ async function runStep5V64AudioChecks(){
     deliver(state(12,12,true,'mic'));assert.equal(stopped,1);assert.equal(h.g.activeGuideDemoSources.size,0);
     checks.push('demo-topic-keeps-current-note-and-mode-change-stops-it');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v75'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V64 UNIT METRICS '+JSON.stringify({checks,postResumeOldFrames:0,capturedOldBatchFrames:0,currentPendingPreserved:true,topicTimelinePreserved:true}));
   recordResult('ADIM-5.V64','Media epoch across PCM/synth/coalescer/server/receiver; topic continuity; Blob fencing; stop-resume during relay-open; pending-media preservation; cache64',true);console.log('V64 UNIT PASS');
 }
@@ -3521,7 +3521,7 @@ async function runStep5V65AudioChecks(){
     const good=member('rys56-good','c'.repeat(48));g.serveRysRelay(good,{auth:true,method:'POST',body:{requestSeq:1}},response(),'good',{type:'join',role:'guide'});assert.equal(good.lastSeen,35001);
     checks.push('auth-failure-retires-verified-privileged-capability-public-ID-cannot-disconnect-legacy-no-failed-lease-renewal');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v75'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V65 UNIT METRICS '+JSON.stringify({checks,unprimedFrames:0,retryFirstPcmPreserved:true,fullQueueStopDelivered:true,failedAuthLeaseExtensions:0}));
   recordResult('ADIM-5.V65','Controller readiness; retry control-first and latched full-queue stop; submitted-epoch ACK; auth-failure cleanup and lease/public-ID safety; cache65',true);console.log('V65 UNIT PASS');
 }
@@ -3592,7 +3592,7 @@ async function runV65ReadinessChecks({baseUrl,url,token}){
     const nativeBarrier=async()=>{const ts=Date.now()+Math.random();native.send(JSON.stringify({type:'ping',ts}));await until(()=>events.some(m=>m.type==='pong'&&m.echoTs===ts),'native pong');await barrier();};
     native.send(binary(54));await nativeBarrier();await poll();assert(h.player.q.has(54));
     // A failed guide elevation must not retire an existing public family subscription.
-    const family=await open(),familyContext={type:'family-subscribe',tourCode:code};await post({...family,requestSeq:1,subscriptionContext:familyContext});
+    const family=await open(),familyContext={type:'family-subscribe',tourCode:code,pin:'6065'};await post({...family,requestSeq:1,subscriptionContext:familyContext});
     const familyDenied=await fetch(baseUrl+'/api/ws-relay',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...family,requestSeq:2,token:'invalid',subscriptionContext:{...context,token:'invalid'}})});
     assert.equal(familyDenied.status,401);await familyDenied.arrayBuffer();const next=p._lastGuideState.audioStateSeq+1;
     native.send(JSON.stringify({...state(true,'family still bound'),audioStateSeq:next,audioMediaEpoch:p._lastGuideState.audioMediaEpoch}));await nativeBarrier();
@@ -3695,7 +3695,7 @@ async function runStep5V66AudioChecks(){
     h.s.close();assert(h.clients.every(c=>c.ended===1));assert.equal(h.received.length,0);
     checks.push('100-replacements-bounded-active-clients-invalidate-before-synchronous-end');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v75'));assert(sw.includes('vercel-ws-shim.js?v=75'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('vercel-ws-shim.js?v=76'));
   assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V66 UNIT METRICS '+JSON.stringify({checks,clientsAfterDelayedClose:0,staleDelivered:0,activeClientsMax:2,replacements:100}));
   recordResult('ADIM-5.V66','MQTT loader/client/suback/timer ownership across route, close and native takeover; bounded replacement; cache66',true);console.log('V66 UNIT PASS');
@@ -3817,7 +3817,7 @@ async function runStep5V67AudioChecks(){
     sockets.clear();const idle=member('idle-expired','json-expired');g.heartbeat();assert.equal(idle.ws.terminated,1);assert.equal(idle.currentRoom,null);
     checks.push('real-binary-and-JSON-ingress-reject-expired-credentials-idle-heartbeat-cleans-membership');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v75'));assert(sw.includes('vercel-ws-shim.js?v=75'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('vercel-ws-shim.js?v=76'));
   assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V67 UNIT METRICS '+JSON.stringify({checks,expiredGuidePresent:false,expiryGraceMs:0,revokedGuideTerminated:1,revokedAdminTerminated:1,healthyTerminated:0,publicFamilyTerminated:0,cancelledPrepare:true}));
   recordResult('ADIM-5.V67','Native live credential expiry/revoke, token rotation, pending handoff cleanup, public-family isolation and HTTP/static compatibility; cache67',true);console.log('V67 UNIT PASS');
@@ -3977,7 +3977,7 @@ async function runStep5V68AudioChecks(){
     assert.equal(h.room('siyer').audioSourceId,'page');assert.equal(h.room('siyer').audioMediaEpoch,10);assert.equal(h.room('siyer').isLive,true);
     checks.push('dedicated-guide-downgrade-restores-General-source-state-epoch-inheritance');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v75'));assert(sw.includes('vercel-ws-shim.js?v=75'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('vercel-ws-shim.js?v=76'));
   assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V68 UNIT METRICS '+JSON.stringify({checks,collisionCases,crossRoleGuideEvictions:0,downgradeOwner:null,sameRoleReconnect:true,terminalStop:true,coveredByGenel:true}));
   recordResult('ADIM-5.V68','Role-isolated device dedup; native/HTTP/legacy collisions; same-role reconnect; same-socket downgrade/owner release/terminal stop and General inheritance; cache68',true);console.log('V68 UNIT PASS');
@@ -4158,7 +4158,7 @@ async function runStep5V69AudioChecks(){
     assert.equal(h.room().activePublisherClientId,null);assert(h.room('target').clients.has('current'));
     checks.push('cross-tour-prior-guide-removal-does-not-suppress-target-tour-reconciliation');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v75'));assert(sw.includes('vercel-ws-shim.js?v=75'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v76'));assert(sw.includes('vercel-ws-shim.js?v=76'));
   assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
   console.log('V69 UNIT METRICS '+JSON.stringify({checks,vacatedOwners:0,reconciliationsPerAffectedTour:1,sameRoomTerminalControls:0,generalControllerReady:true,crossTourSync:true}));
   recordResult('ADIM-5.V69','Cross-room guide replacement owner cleanup; terminal/General reconciliation after membership install; same-room continuity; existing-context and duplicate-room coverage; cache69',true);console.log('V69 UNIT PASS');
@@ -4702,7 +4702,7 @@ async function runV71IsolationChecks({baseUrl,url,token}){
     const owner=await connect();await send(owner,{...guideJoin,name:'V71 current owner',audioSourceId:'v71-current'},'joined');
     const afterJoin=guide.messages.length;await send(owner,state(30,'no old family'),'stream-state');await wait(80);
     assert(!guide.messages.slice(afterJoin).some(m=>m.type==='stream-state'&&m.currentTopic==='no old family'));
-    const family=await connect();await send(family,{type:'family-subscribe',tourCode:code},'family-state');
+    const family=await connect();await send(family,{type:'family-subscribe',tourCode:code,pin:'7771'},'family-state');
     await send(family,{type:'join',role:'guide',tourCode:code,token:'bad'},'auth-error');
     await send(family,{type:'family-subscribe',tourCode:prefix+'rejected'},'subscription-error');
     await send(owner,{...state(31,'family preserved'),audioMediaEpoch:30},'stream-state');
@@ -5051,9 +5051,9 @@ async function runStep5V73PushChecks(){
   ui.sendServiceWorkerNotification('Dua','Toplanma','ridvanses-ann-same-id');
   assert.equal(messages.at(-1).tag,'ridvanses-ann-same-id');
   assert(messages.at(-1).data.url.includes('code=T'));
-  assert(read('public/sw.js').includes("ridvanses-pwa-v75"));
+  assert(read('public/sw.js').includes("ridvanses-pwa-v76"));
   for(const f of ['index','dinle','rehber','panel','login','rota','ani-kitabi','yaka-karti'])
-    assert(read('public/'+f+'.html').includes('/vercel-ws-shim.js?v=75'),f);
+    assert(read('public/'+f+'.html').includes('/vercel-ws-shim.js?v=76'),f);
   assert(read('public/sw.js').includes('pcm-player-worklet.js?v=72-audio'));
   console.log('V73 UNIT METRICS '+JSON.stringify({rfc8291KnownAnswer:true,keyFormats:3,persistedIdentity:true,leadingZeroScalar:true,dnsRebindingDenied:true,staleDnsFenced:true,
     capacityPerTour:512,capacityGlobal:4096,pendingAnnouncements:8,fanoutBatch:64,maxConcurrent,
@@ -5510,7 +5510,7 @@ async function runStep5V74AuditUnitChecks(){
   const indexHtml=fs.readFileSync(path.join(PUBLIC_DIR,'index.html'),'utf8');
   assert(!indexHtml.includes("location.replace('/dinle"),'index.html must not force-redirect standalone PWA away from home page');
   const dinleHtml=fs.readFileSync(path.join(PUBLIC_DIR,'dinle.html'),'utf8');
-  assert(!dinleHtml.includes('/sw.js?v=73')&&!dinleHtml.includes('/sw.js?v=74'),'dinle.html must register latest sw.js?v=75');
+  assert(!dinleHtml.includes('/sw.js?v=73')&&!dinleHtml.includes('/sw.js?v=74')&&!dinleHtml.includes('/sw.js?v=75'),'dinle.html must register latest sw.js?v=76');
   assert(!dinleHtml.includes('<a href="/rehber">'),'dinle.html navbar must not expose /rehber link to pilgrims');
   const i18nMatch=/const\s+I18N\s*=\s*\{[\s\S]*?\n\s*\};/.exec(dinleHtml);
   assert(i18nMatch,'I18N dictionary found in dinle.html');
@@ -5522,6 +5522,191 @@ async function runStep5V74AuditUnitChecks(){
   }
 
   recordResult('ADIM-5.V74','ani-kitabi runtime render & XSS escape; sw.js sos-alert options & /rehber+/panel click routing; 6-language I18N parity & v74 SW cleanup',true);
+}
+
+async function runStep5V76AuditChecks() {
+  const assert = require('node:assert/strict');
+  const { WebSocket } = require('ws');
+  const baseUrl = `http://127.0.0.1:${TEST_PORT}`;
+  const wsUrl = `ws://127.0.0.1:${TEST_PORT}/ws`;
+  const stamp = Date.now().toString(36).toUpperCase();
+  const pinTourCode = `RY-V76-${stamp}`;
+
+  // Login as admin and Selamet
+  const adminLoginRes = await fetch(`${baseUrl}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: process.env.ADMIN_USERNAME || 'ridvanyilmazturizm@gmail.com',
+      password: process.env.ADMIN_PASSWORD || Buffer.from('ZG9sYXBkZXJlbGkxNg==', 'base64').toString('utf8')
+    })
+  });
+  assert.equal(adminLoginRes.status, 200);
+  const adminTok = (await adminLoginRes.json()).token;
+
+  const selametLoginRes = await fetch(`${baseUrl}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: 'selamet',
+      password: process.env.SELAMET_PASSWORD || 'selamet2026'
+    })
+  });
+  assert.equal(selametLoginRes.status, 200);
+  const selametTok = (await selametLoginRes.json()).token;
+
+  const sockets = [];
+  try {
+    // 1. Create PIN-protected tour for family-subscribe WS/Relay/Handoff PIN guard
+    const createRes = await fetch(`${baseUrl}/api/tours`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminTok}` },
+      body: JSON.stringify({ code: pinTourCode, name: 'V76 PIN Guard Tour', pin: '2026', guideName: 'V76 Rehber' })
+    });
+    assert.equal(createRes.status, 200);
+
+    // 1a. WS family-subscribe without PIN -> pin-error; with PIN -> family-state
+    const ws = new WebSocket(wsUrl);
+    sockets.push(ws);
+    const wsMsgs = [];
+    ws.on('message', (raw, bin) => {
+      if (!bin) wsMsgs.push(JSON.parse(raw.toString()));
+    });
+    await new Promise((res, rej) => { ws.once('open', res); ws.once('error', rej); });
+    ws.send(JSON.stringify({ type: 'family-subscribe', tourCode: pinTourCode }));
+    await new Promise((r) => setTimeout(r, 80));
+    assert(wsMsgs.some((m) => m.type === 'pin-error'), 'WS family-subscribe without PIN must return pin-error');
+    assert(!wsMsgs.some((m) => m.type === 'family-state'), 'WS family-subscribe without PIN must not leak family-state');
+
+    // 1b. Native handoff-prepare without PIN -> handoff-error pin-required
+    ws.send(JSON.stringify({ type: 'handoff-prepare', subscription: { type: 'family-subscribe', tourCode: pinTourCode } }));
+    await new Promise((r) => setTimeout(r, 80));
+    assert(wsMsgs.some((m) => m.type === 'handoff-error' && m.code === 'pin-required'), 'handoff-prepare must enforce PIN on family-subscribe');
+
+    // 1c. WS family-subscribe with valid PIN -> family-state
+    ws.send(JSON.stringify({ type: 'family-subscribe', tourCode: pinTourCode, pin: '2026' }));
+    await new Promise((r) => setTimeout(r, 80));
+    assert(wsMsgs.some((m) => m.type === 'family-state' && m.tourCode === pinTourCode), 'WS family-subscribe with valid PIN must return family-state');
+
+    // 1d. HTTP Relay family-subscribe without PIN -> pin-error; with PIN -> family-state
+    const relayNoPin = await (await fetch(`${baseUrl}/api/ws-relay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId: `v76-fam-nopin-${stamp}`,
+        subscriptionContext: { type: 'family-subscribe', tourCode: pinTourCode },
+        messages: [{ type: 'family-subscribe', tourCode: pinTourCode }]
+      })
+    })).json();
+    assert(relayNoPin.messages.some((m) => m.type === 'pin-error'));
+    assert(!relayNoPin.messages.some((m) => m.type === 'family-state'));
+
+    const relayOkPin = await (await fetch(`${baseUrl}/api/ws-relay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId: `v76-fam-okpin-${stamp}`,
+        subscriptionContext: { type: 'family-subscribe', tourCode: pinTourCode, pin: '2026' },
+        messages: [{ type: 'family-subscribe', tourCode: pinTourCode, pin: '2026' }]
+      })
+    })).json();
+    assert(relayOkPin.messages.some((m) => m.type === 'family-state'));
+
+    // 2. Trailing-slash & case-normalized protected HTML route guard
+    for (const p of ['/panel/', '/PANEL', '/rehber/', '/REHBER/', '/yaka-karti/']) {
+      const r = await fetch(`${baseUrl}${p}`, { redirect: 'manual' });
+      assert.equal(r.status, 302, `Protected route ${p} must redirect unauthenticated requests with 302`);
+      assert((r.headers.get('location') || '').startsWith('/login'), `Redirect location for ${p} must point to /login`);
+    }
+
+    // 3. CORS origin allowlist: reject arbitrary *.vercel.app, allow ridvanses.vercel.app + Vary: Origin
+    const evilCors = await fetch(`${baseUrl}/api/bootstrap`, { headers: { Origin: 'https://evil-attacker.vercel.app' } });
+    assert.equal(evilCors.headers.get('access-control-allow-origin'), null, 'Evil vercel.app origin must not receive ACAO');
+    const legitCors = await fetch(`${baseUrl}/api/bootstrap`, { headers: { Origin: 'https://ridvanses.vercel.app' } });
+    assert.equal(legitCors.headers.get('access-control-allow-origin'), 'https://ridvanses.vercel.app');
+    assert((legitCors.headers.get('vary') || '').toLowerCase().includes('origin'));
+
+    // 4. Scoped Selamet agency restrictions (/api/rea-report -> 403, /api/qr other tour -> no pin, /api/bootstrap -> scoped guides + authenticated:true)
+    const selametRea = await fetch(`${baseUrl}/api/rea-report`, { headers: { Authorization: `Bearer ${selametTok}` } });
+    assert.equal(selametRea.status, 403, 'Selamet sub-agency must receive 403 on /api/rea-report');
+
+    const selametQrOther = await (await fetch(`${baseUrl}/api/qr?code=${encodeURIComponent(pinTourCode)}`, {
+      headers: { Authorization: `Bearer ${selametTok}` }
+    })).json();
+    assert.equal(typeof selametQrOther.tour?.pin, 'undefined', 'Selamet must not see PIN of non-assigned tour via /api/qr');
+
+    const selametBoot = await (await fetch(`${baseUrl}/api/bootstrap`, {
+      headers: { Authorization: `Bearer ${selametTok}` }
+    })).json();
+    assert.equal(selametBoot.authenticated, true);
+    assert((selametBoot.guides || []).every((g) => String(g.assignedTour || '').toUpperCase() === 'RY-KASIM'), 'Selamet guides must be scoped to RY-KASIM');
+
+    // 5. Malformed JSON body -> clean 400 JSON invalid-request-body
+    const badJsonRes = await fetch(`${baseUrl}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"brokenJson":'
+    });
+    assert.equal(badJsonRes.status, 400);
+    const badJsonBody = await badJsonRes.json();
+    assert.equal(badJsonBody.error, 'invalid-request-body');
+
+    // 6. Service Worker offline ignoreSearch fallback + CSS classes + ryLogout revocation order
+    const swCode = fs.readFileSync(path.join(PUBLIC_DIR, 'sw.js'), 'utf8');
+    let swFetchHandler = null;
+    const swCalls = [];
+    const swCtx = {
+      self: {
+        skipWaiting() {},
+        clients: { claim() {}, matchAll: async () => [] },
+        registration: {},
+        addEventListener: (t, fn) => { if (t === 'fetch') swFetchHandler = fn; }
+      },
+      caches: {
+        open: async () => ({ addAll: async () => {}, put: async () => {} }),
+        keys: async () => [],
+        match: async (key, opts) => {
+          swCalls.push({ key: typeof key === 'string' ? key : key.url, opts });
+          if (key === '/dinle' && opts && opts.ignoreSearch) return { status: 200, ok: true, tag: 'offline-dinle-shell' };
+          return null;
+        }
+      },
+      fetch: async () => { throw new Error('offline'); },
+      URL
+    };
+    vm.runInNewContext(swCode, swCtx);
+    let offlineResp = null;
+    swFetchHandler({
+      request: { method: 'GET', mode: 'navigate', url: 'https://ses.ridvanyilmazturizm.com/dinle?source=pwa&code=RY-KASIM' },
+      respondWith: (p) => { offlineResp = p; }
+    });
+    const resolvedOffline = await offlineResp;
+    assert.equal(resolvedOffline?.tag, 'offline-dinle-shell', 'sw.js must serve cached /dinle shell when /dinle?source=pwa is opened offline');
+
+    const styleCss = fs.readFileSync(path.join(PUBLIC_DIR, 'css', 'style.css'), 'utf8');
+    for (const cls of ['.btn-secondary', '.svg-icon-sm', '.code-pill', '.pulse-dot']) {
+      assert(styleCss.includes(cls), `Missing ${cls} in style.css`);
+    }
+
+    for (const page of ['rehber.html', 'panel.html']) {
+      const html = fs.readFileSync(path.join(PUBLIC_DIR, page), 'utf8');
+      const logoutIdx = html.indexOf("fetch('/api/logout'");
+      const removeIdx = html.indexOf("localStorage.removeItem('ry_auth_token')", logoutIdx > 0 ? logoutIdx - 400 : 0);
+      assert(logoutIdx > 0 && removeIdx > logoutIdx, `${page} ryLogout() must call /api/logout BEFORE removing ry_auth_token`);
+    }
+  } finally {
+    for (const s of sockets) {
+      try { s.close(); } catch {}
+    }
+    await fetch(`${baseUrl}/api/tours/${encodeURIComponent(pinTourCode)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${adminTok}` }
+    }).catch(() => {});
+    await fetch(`${baseUrl}/api/logout`, { method: 'POST', headers: { Authorization: `Bearer ${selametTok}` } }).catch(() => {});
+    await fetch(`${baseUrl}/api/logout`, { method: 'POST', headers: { Authorization: `Bearer ${adminTok}` } }).catch(() => {});
+  }
+
+  recordResult('ADIM-5.V76', 'WS/Relay/Handoff family PIN koruması, /panel/ normalize guard, sıkı CORS, Selamet 403/QR/Guide izolasyonu, SW ignoreSearch çevrimdışı kabuk, bozuk JSON 400 ve ryLogout sırası doğrulandı', true);
 }
 
 async function main() {
@@ -5554,6 +5739,7 @@ async function main() {
     await runStep5V72QualityChecks();
     await runStep5V73PushChecks();
     await runStep5V74AuditUnitChecks();
+    await runStep5V76AuditChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);

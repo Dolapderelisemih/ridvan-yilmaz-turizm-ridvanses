@@ -336,7 +336,7 @@
       const join=this._joinContext,generation=this._transportGeneration||0;
       const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join');
       const request=mode==='admin-subscribe'?{type:mode,token:(localStorage.getItem('ry_auth_token')||'').trim()}:
-        mode==='family-subscribe'?(join?{type:mode,tourCode:join.tourCode}:null):join?{...join}:null;
+        mode==='family-subscribe'?(join?{type:mode,tourCode:join.tourCode,...(join.pin!==undefined?{pin:join.pin}:{})}:null):join?{...join}:null;
       if(!request)return;
       let probe;try{probe=new NativeWebSocket(this.url);probe.binaryType='arraybuffer';}catch(e){return;}
       this._failbackProbe=probe;let finished=false,commitSent=false,handoffId=null;
@@ -714,7 +714,8 @@
             role: 'pilgrim',
             tourCode: parsed.tourCode || 'RY-KASIM',
             roomId: 'genel',
-            name: 'Aile Takipçisi'
+            name: 'Aile Takipçisi',
+            ...(parsed.pin !== undefined ? { pin: parsed.pin } : {})
           };
           if (this._isRelay) this._initMqttBus(this._joinContext, false);
         } else if (parsed.type === 'admin-subscribe') {
@@ -790,21 +791,7 @@
           this._publishMqtt(locPayload);
           this._broadcastP2PRoomState();
         } else if (parsed.type === 'quick-announcement') {
-          const annPayload = {
-            _msgId: parsed._msgId,
-            type: 'new-announcement',
-            announcement: {
-              id: 'ann-' + Date.now(),
-              tourCode: this._joinContext.tourCode,
-              title: parsed.title || 'Rehber Duyurusu',
-              message: parsed.message || '',
-              sender: this._joinContext.name || 'Rehber Hoca',
-              createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-              urgent: true
-            }
-          };
-          this._publishMqtt(annPayload);
-          this._deliverIncomingMessage(annPayload);
+          // Gerçek duyuru kimliği (ann-<ts>-<hex>) ve imzalı MQTT yayını /api/ws-relay yanıtından döner; sahte çift kayıt oluşturulmaz.
         } else if (parsed.type === 'guide-stream-state') {
           if (typeof parsed.isLive !== 'undefined') this._isLive = Boolean(parsed.isLive);
           this._broadcastMode = parsed.broadcastMode || (this._isLive ? 'mic' : 'idle');
@@ -968,7 +955,7 @@
         const token=(localStorage.getItem('ry_auth_token')||'').trim();
         const mode=this._subscriptionType||(this._isAdmin?'admin-subscribe':'join');
         const context=mode==='admin-subscribe'?{type:mode,token}:
-          mode==='family-subscribe'?{type:mode,tourCode:this._joinContext?.tourCode||'RY-KASIM'}:
+          mode==='family-subscribe'?{type:mode,tourCode:this._joinContext?.tourCode||'RY-KASIM',...(this._joinContext?.pin!==undefined?{pin:this._joinContext.pin}:{})}:
           this._joinContext;
         const fresh=batch.filter(m=>{
           if(m.type!=='audio-chunk')return true;

@@ -13,7 +13,7 @@
   <title>Rehber (Hoca) Canlı Yayın Stüdyosu | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/rehber" />
-  <link rel="stylesheet" href="/css/style.css?v=19" />
+  <link rel="stylesheet" href="/css/style.css?v=20" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -26,16 +26,31 @@
       }
     })();
     async function ryLogout() {
+      const savedTok = (localStorage.getItem('ry_auth_token') || '').trim();
+      try {
+        const sosReceipt = JSON.parse(localStorage.getItem('rys_sos_push_receipt') || 'null');
+        if (sosReceipt && sosReceipt.endpoint && sosReceipt.subscriptionToken) {
+          await fetch('/api/push/unsubscribe-sos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(sosReceipt)
+          }).catch(() => {});
+        }
+      } catch {}
+      await fetch('/api/logout', {
+        method: 'POST',
+        headers: savedTok ? { Authorization: 'Bearer ' + savedTok } : {}
+      }).catch(() => {});
       localStorage.removeItem('ry_auth_token');
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      localStorage.removeItem('rys_sos_push_receipt');
       const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
       document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax' + secureFlag;
-      await fetch('/api/logout', { method: 'POST' }).catch(() => {});
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=75"></script>
+  <script src="/vercel-ws-shim.js?v=76"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .console-wrap {
@@ -382,11 +397,11 @@
 
           <div style="margin-bottom:12px;">
             <label class="label" for="guideLocNoteInput">Toplanma / Bulunduğunuz Nokta Notu</label>
-            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-              <button type="button" class="code-pill" onclick="setGuideLocNote('Kâbe — Kral Abdülaziz Kapısı Önü')">Kral Abdülaziz Kapısı</button>
-              <button type="button" class="code-pill" onclick="setGuideLocNote('Mescid-i Nebevî 21 Nolu Kapı Önü')">Mescid-i Nebevî 21. Kapı</button>
-              <button type="button" class="code-pill" onclick="setGuideLocNote('Otel Lobisi Toplanma Noktası')">Otel Lobisi</button>
-              <button type="button" class="code-pill" onclick="setGuideLocNote('Kafile Ziyaret Otobüsü Yanı')">Ziyaret Otobüsü Yanı</button>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+              <button type="button" class="code-pill" onclick="setGuideLocNote('Kâbe — Kral Abdülaziz Kapısı Önü')">🕋 Kral Abdülaziz Kapısı</button>
+              <button type="button" class="code-pill" onclick="setGuideLocNote('Mescid-i Nebevî 21 Nolu Kapı Önü')">🕌 Mescid-i Nebevî 21. Kapı</button>
+              <button type="button" class="code-pill" onclick="setGuideLocNote('Otel Lobisi Toplanma Noktası')">🏨 Otel Lobisi</button>
+              <button type="button" class="code-pill" onclick="setGuideLocNote('Kafile Ziyaret Otobüsü Yanı')">🚌 Ziyaret Otobüsü Yanı</button>
             </div>
             <input type="text" id="guideLocNoteInput" class="input" value="Kafile Rehber Hocamızın Canlı Konumu" placeholder="Örn: Kâbe Kral Abdülaziz Kapısı Önü..." oninput="onGuideLocNoteEdit()" />
           </div>
@@ -423,10 +438,15 @@
               Kafileye Anlık Push Duyuru Gönder
             </h3>
           </div>
-          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
-            <button type="button" class="code-pill" onclick="fillQuickAnn('Otel Lobisinde Toplanma', 'Kıymetli misafirlerimiz, 15 dakika sonra Mekke Otel Kudi Tower lobisinde Kâbe-i Muazzama geçişi için toplanıyoruz.')">Lobi Toplanma</button>
-            <button type="button" class="code-pill" onclick="fillQuickAnn('Tavaf & Makam-ı İbrahim Namazı', '7. şavtımız tamamlanmak üzere. Tavaf namazımız için Makam-ı İbrahim gerisine geçiyoruz, lütfen kulaklıktan takipte kalınız.')">Tavaf Namazı</button>
-            <button type="button" class="code-pill" onclick="fillQuickAnn('Sevr & Arafat Otobüs Hareketi', 'Mekke ziyaret otobüslerimiz 10 dakika içinde otel önünden hareket edecektir.')">Ziyaret Otobüsü</button>
+          <div style="margin-bottom:12px;">
+            <div style="font-size:0.74rem; font-weight:700; color:var(--color-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:7px;">
+              Hazır Duyuru Şablonları (Tek Dokunuşla Doldur)
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button type="button" class="code-pill" onclick="fillQuickAnn('Otel Lobisinde Toplanma', 'Kıymetli misafirlerimiz, 15 dakika sonra Mekke Otel Kudi Tower lobisinde Kâbe-i Muazzama geçişi için toplanıyoruz.')">🏨 Lobi Toplanma</button>
+              <button type="button" class="code-pill" onclick="fillQuickAnn('Tavaf & Makam-ı İbrahim Namazı', '7. şavtımız tamamlanmak üzere. Tavaf namazımız için Makam-ı İbrahim gerisine geçiyoruz, lütfen kulaklıktan takipte kalınız.')">🕋 Tavaf Namazı</button>
+              <button type="button" class="code-pill" onclick="fillQuickAnn('Sevr & Arafat Otobüs Hareketi', 'Mekke ziyaret otobüslerimiz 10 dakika içinde otel önünden hareket edecektir.')">🚌 Ziyaret Otobüsü</button>
+            </div>
           </div>
           <div style="display:flex; flex-direction:column; gap:10px;">
             <input type="text" id="annTitleInput" class="input" placeholder="Duyuru Başlığı" />
@@ -2528,7 +2548,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=75');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=76');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -2602,7 +2622,7 @@
     }
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=75').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=76').catch(() => {});
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && localStorage.getItem('rys_sos_push_receipt')) {
         setTimeout(() => { syncGuideSosPushSubscription(true); }, 800);
       }

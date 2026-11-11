@@ -53,6 +53,34 @@ const wss = new WebSocketServer({
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use((err, req, res, next) => {
+  if (
+    err &&
+    (err.type === 'entity.parse.failed' ||
+      err.type === 'encoding.unsupported' ||
+      err.type === 'entity.too.large' ||
+      err.status === 400 ||
+      err.status === 413 ||
+      err.status === 415)
+  ) {
+    const code = err.status >= 400 && err.status < 500 ? err.status : 400;
+    return res.status(code).json({
+      success: false,
+      error: 'invalid-request-body',
+      message: 'Geçersiz istek gövdesi veya kodlaması.'
+    });
+  }
+  return next(err);
+});
+
+function isTrustedCorsOrigin(origin) {
+  if (!origin || typeof origin !== 'string') return false;
+  if (origin === 'https://ridvanyilmazturizm.com' || origin === 'https://ses.ridvanyilmazturizm.com') return true;
+  if (/^https:\/\/[a-z0-9-]+\.ridvanyilmazturizm\.com$/i.test(origin)) return true;
+  if (/^https:\/\/ridvanses(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(origin)) return true;
+  if (/^http:\/\/(?:localhost|127\.0\.0\.1):\d+$/i.test(origin)) return true;
+  return false;
+}
 
 // Güvenlik Başlıkları (Security Headers) & Cross-Origin Destek
 app.use((req, res, next) => {
@@ -60,17 +88,12 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Vary', 'Origin');
   if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
   const origin = req.headers.origin || '';
-  if (
-    origin &&
-    (origin.endsWith('.ridvanyilmazturizm.com') ||
-      origin === 'https://ridvanyilmazturizm.com' ||
-      origin.endsWith('.vercel.app') ||
-      origin.startsWith('http://localhost:'))
-  ) {
+  if (isTrustedCorsOrigin(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-RY-Auth, X-Rys-Relay-Key');
@@ -738,20 +761,26 @@ function sendEmergencySosEmail(alertItem){
   setImmediate(()=>{
     try{
       const tls=require('node:tls');
+      const cleanSmtpField=(val,maxLen=240)=>String(val??'').replace(/[\r\n\0]+/g,' ').trim().slice(0,maxLen);
+      const safeTour=cleanSmtpField(alertItem.tourCode,40);
+      const safePilgrim=cleanSmtpField(alertItem.pilgrimName,120);
+      const safePhone=cleanSmtpField(alertItem.phone||'-',40);
+      const safeCreated=cleanSmtpField(alertItem.createdAt,40);
+      const safeNote=cleanSmtpField(alertItem.locationNote||'-',400);
       const mapsUrl=`https://www.google.com/maps?q=${Number(alertItem.lat)||21.4225},${Number(alertItem.lng)||39.8262}`;
-      const subj=`=?UTF-8?B?${Buffer.from(`🚨 ACİL SOS ALARMI: ${alertItem.pilgrimName} (${alertItem.tourCode})`).toString('base64')}?=`;
+      const subj=`=?UTF-8?B?${Buffer.from(`🚨 ACİL SOS ALARMI: ${safePilgrim} (${safeTour})`).toString('base64')}?=`;
       const bodyText=[
         'RıdvanSes Canlı Saha Acil Durum (SOS) Bildirimi',
         '------------------------------------------------',
-        `Kafile Kodu : ${alertItem.tourCode}`,
-        `Hacı Adı    : ${alertItem.pilgrimName}`,
-        `Telefon     : ${alertItem.phone || '-'}`,
-        `Saat        : ${alertItem.createdAt}`,
-        `Not / Bölge : ${alertItem.locationNote || '-'}`,
-        `GPS         : ${alertItem.lat}, ${alertItem.lng}${alertItem.accuracy ? ` (±${Math.round(alertItem.accuracy)}m)` : ''}`,
+        `Kafile Kodu : ${safeTour}`,
+        `Hacı Adı    : ${safePilgrim}`,
+        `Telefon     : ${safePhone}`,
+        `Saat        : ${safeCreated}`,
+        `Not / Bölge : ${safeNote}`,
+        `GPS         : ${Number(alertItem.lat)||21.4225}, ${Number(alertItem.lng)||39.8262}${alertItem.accuracy ? ` (±${Math.round(Number(alertItem.accuracy)||0)}m)` : ''}`,
         `Google Maps : ${mapsUrl}`,
-        `Rehber Ekran: https://ses.ridvanyilmazturizm.com/rehber?code=${encodeURIComponent(alertItem.tourCode)}`
-      ].join('\r\n');
+        `Rehber Ekran: https://ses.ridvanyilmazturizm.com/rehber?code=${encodeURIComponent(safeTour)}`
+      ].map(line=>line.startsWith('.')?'.'+line:line).join('\r\n');
       const steps=[
         `EHLO ses.ridvanyilmazturizm.com`,
         `AUTH LOGIN`,
@@ -1047,11 +1076,30 @@ const AUTH_TOKEN_VALUE = String(
   process.env.AUTH_TOKEN_SECRET || crypto.randomBytes(32).toString('hex')
 ).trim();
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 gün
+const MAX_ACTIVE_AUTH_SESSIONS = 4096;
+const MAX_REVOKED_AUTH_TOKENS = 2048;
 const activeAuthSessions = new Map(); // token -> { user, createdAt, expiresAt }
-const revokedAuthTokens = new Set(Array.isArray(db.revokedAuthTokens) ? db.revokedAuthTokens.slice(-512) : []);
+const revokedAuthTokens = new Set(Array.isArray(db.revokedAuthTokens) ? db.revokedAuthTokens.slice(-MAX_REVOKED_AUTH_TOKENS) : []);
+
+function pruneAuthState(now = Date.now()) {
+  for (const [tok, sess] of activeAuthSessions) {
+    if (!sess || now > sess.expiresAt) activeAuthSessions.delete(tok);
+  }
+  while (activeAuthSessions.size > MAX_ACTIVE_AUTH_SESSIONS) {
+    const oldestKey = activeAuthSessions.keys().next().value;
+    if (!oldestKey) break;
+    activeAuthSessions.delete(oldestKey);
+  }
+  while (revokedAuthTokens.size > MAX_REVOKED_AUTH_TOKENS) {
+    const oldestRevoked = revokedAuthTokens.values().next().value;
+    if (!oldestRevoked) break;
+    revokedAuthTokens.delete(oldestRevoked);
+  }
+}
 
 function createAuthSession(user) {
   const now = Date.now();
+  if (typeof pruneAuthState === 'function') pruneAuthState(now);
   const expiresAt = now + SESSION_TTL_MS;
   const payloadB64 = Buffer.from(
     JSON.stringify({
@@ -1081,8 +1129,10 @@ function revokeAuthToken(token) {
   activeAuthSessions.delete(clean);
   if (clean !== AUTH_TOKEN_VALUE && typeof revokedAuthTokens !== 'undefined' && revokedAuthTokens) {
     revokedAuthTokens.add(clean);
+    if (typeof pruneAuthState === 'function') pruneAuthState();
     if (typeof db !== 'undefined' && db && typeof saveState === 'function') {
-      db.revokedAuthTokens = Array.from(revokedAuthTokens).slice(-512);
+      const cap = typeof MAX_REVOKED_AUTH_TOKENS === 'number' ? MAX_REVOKED_AUTH_TOKENS : 2048;
+      db.revokedAuthTokens = Array.from(revokedAuthTokens).slice(-cap);
       saveState(db);
     }
   }
@@ -1197,6 +1247,8 @@ function isValidAuthToken(token) {
             const parsed = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
             if (parsed && parsed.u && Number.isFinite(parsed.exp) && Date.now() <= parsed.exp) {
               if (typeof activeAuthSessions !== 'undefined' && activeAuthSessions) {
+                const maxSess = typeof MAX_ACTIVE_AUTH_SESSIONS === 'number' ? MAX_ACTIVE_AUTH_SESSIONS : 4096;
+                if (activeAuthSessions.size >= maxSess && typeof pruneAuthState === 'function') pruneAuthState();
                 activeAuthSessions.set(clean, {
                   user: parsed.u,
                   createdAt: Number(parsed.iat) || Date.now(),
@@ -1657,6 +1709,20 @@ function processClientJsonMessageV49(ctx, msg) {
 
   if (msg.type === 'family-subscribe') {
     const tourCode = String(msg.tourCode || 'RY-KASIM').toUpperCase().trim();
+    const matchedTour = findRysTour(tourCode);
+    if (!matchedTour) {
+      ws.send(JSON.stringify({ type: 'subscription-error', code: 'tour-unknown' }));
+      return;
+    }
+    if (
+      !rysCanGuide(principal, tourCode) &&
+      matchedTour.pinProtected &&
+      matchedTour.pin &&
+      String(matchedTour.pin).trim() !== String(msg.pin || '').trim()
+    ) {
+      ws.send(JSON.stringify({ type: 'pin-error', message: 'Bu kafile rotası PIN korumalıdır. Lütfen geçerli PIN kodunu giriniz.' }));
+      return;
+    }
     const room = getOrCreateRoom(tourCode, 'genel');
     if(!room){ws.send(JSON.stringify({type:'subscription-error',code:'room-unavailable'}));return;}
     if(room.tourCode!==tourCode||room.roomId!=='genel'){
@@ -2135,7 +2201,7 @@ wss.on('connection', (ws, req) => {
 
 // 30-Second Ping/Pong Heartbeat to prune zombie/dropped connections from mobile networks
 const heartbeatTimer = setInterval(() => {
-  cleanupStaleRelaySessions();pruneRysRooms();
+  cleanupStaleRelaySessions();pruneRysRooms();if(typeof pruneAuthState==='function')pruneAuthState();
   wss.clients.forEach((ws) => {
     if(ws.rysAuthContext&&!refreshRysNativeAuth(ws.rysAuthContext))return;
     if (ws.isAlive === false) {
@@ -2273,7 +2339,7 @@ function validateRysHandoff(ctx,request){
   ctx.isAuthenticated=authed;ctx.ws.isAuthenticated=authed;
   if((request.type==='admin-subscribe'||request.type==='join'&&request.role==='guide')&&!authed)
     return 'auth-required';
-  if(request.type==='join'&&request.role!=='guide'&&!rysCanGuide(principal,request.tourCode)){
+  if((request.type==='family-subscribe'||request.type==='join'&&request.role!=='guide')&&!rysCanGuide(principal,request.tourCode)){
     const code=String(request.tourCode||'RY-KASIM').toUpperCase().trim();
     const tour=(db.tours||[]).find(t=>String(t.code||'').toUpperCase()===code);
     if(tour?.pinProtected&&tour.pin&&String(tour.pin).trim()!==String(request.pin||'').trim())
@@ -2539,7 +2605,7 @@ app.get('/api/ws-relay',(req,res)=>{
   // Legacy GET is retained. Existing joined sessions need not repeat their PIN.
   const q=req.query,mode=q.subscription||'join';
   const context=mode==='admin-subscribe'?{type:mode,token:q.token}:
-    mode==='family-subscribe'?{type:mode,tourCode:q.tourCode||'RY-KASIM'}:
+    mode==='family-subscribe'?{type:mode,tourCode:q.tourCode||'RY-KASIM',...(q.pin!==undefined?{pin:q.pin}:{})}:
     mode!=='join'?{type:mode}:
     q.tourCode?{type:'join',tourCode:q.tourCode,roomId:q.roomId||'genel',role:q.role||'pilgrim',
       name:q.name||'',pin:q.pin||'',token:q.token,
@@ -2621,7 +2687,8 @@ app.post('/api/login', loginRateLimiter, (req, res) => {
 app.post('/api/logout', (req, res) => {
   const tok = extractAuthTokenFromReq(req);
   if (tok) revokeAuthToken(tok);
-  res.setHeader('Set-Cookie', `${AUTH_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax`);
+  const secureCookie = req.secure || req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `${AUTH_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax${secureCookie}`);
   return res.json({ success: true });
 });
 
@@ -2688,9 +2755,11 @@ app.get('/api/bootstrap', (req, res) => {
     ? rawTours
     : rawTours.map((t) => sanitizeTourForPublic(t));
 
-  const guidesPayload = isAuthed
-    ? db.guides
-    : (db.guides || []).map((g) => sanitizeGuideForPublic(g));
+  const guidesPayload = !isAuthed
+    ? (db.guides || []).map((g) => sanitizeGuideForPublic(g))
+    : assignedCode
+      ? (db.guides || []).filter((g) => String(g.assignedTour || '').toUpperCase().trim() === assignedCode)
+      : db.guides || [];
 
   const sosPayload = !isAuthed
     ? []
@@ -2734,6 +2803,8 @@ app.get('/api/bootstrap', (req, res) => {
   }
 
   res.json({
+    authenticated: isAuthed,
+    user: authedUser || null,
     agency: db.agency,
     tours: toursPayload,
     guides: guidesPayload,
@@ -3338,6 +3409,13 @@ app.delete('/api/sos/:id', requireAuth, (req, res) => {
 const REA_SUMMARY_FILE = path.join(__dirname, 'data', 'rea-summary.json');
 const MAX_REA_INLINE_BYTES = 5 * 1024 * 1024; // 5 MB safety limit
 app.get('/api/rea-report', requireAuth, async (req, res) => {
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  if (!rysCanAdmin(principal)) {
+    return res.status(403).json({
+      available: false,
+      error: 'Bu teknik mimari raporu yalnızca ana acente yöneticisine açıktır.'
+    });
+  }
   try {
     if (fs.existsSync(REA_SUMMARY_FILE)) {
       const summaryRaw = await fs.promises.readFile(REA_SUMMARY_FILE, 'utf8');
@@ -3474,11 +3552,12 @@ app.get('/api/qr', async (req, res) => {
       `🏨 *Mekke Otel:* ${tour.makkahHotel}\n` +
       `🚨 *Acil İletişim:* +90 538 399 96 66`;
 
+    const qrPrincipal = rysPrincipal(extractAuthTokenFromReq(req));
     return res.json({
       success: true,
       code,
       room,
-      tour: isRequestAuthenticated(req) ? tour : sanitizeTourForPublic(tour),
+      tour: rysCanGuide(qrPrincipal, tour.code || code) ? tour : sanitizeTourForPublic(tour),
       joinUrl,
       familyTrackUrl,
       keepsakeBookUrl,
@@ -3504,7 +3583,8 @@ const protectedRoutes = new Set([
 ]);
 
 app.use((req, res, next) => {
-  if (protectedRoutes.has(req.path) && !isRequestAuthenticated(req)) {
+  const normalizedPath = String(req.path || '/').toLowerCase().replace(/\/+$/, '') || '/';
+  if (protectedRoutes.has(normalizedPath) && !isRequestAuthenticated(req)) {
     return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
   }
   return next();
@@ -3563,9 +3643,11 @@ Object.entries(routeMap).forEach(([routePath, fileName]) => {
 
 if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 3000;
-  server.listen(PORT, () => {
+  const BIND_HOST = String(process.env.BIND_HOST || '0.0.0.0').trim() || '0.0.0.0';
+  server.listen(PORT, BIND_HOST, () => {
     console.log(`====================================================================`);
     console.log(`  Rıdvan Yılmaz Turizm — RıdvanSes Canlı Rehber & Kafile Sistemi`);
+    console.log(`  Dinleme Arayüzü     : ${BIND_HOST}:${PORT}`);
     console.log(`  Ana Portal          : http://localhost:${PORT}/`);
     console.log(`  Hacı Dinleme Ekranı : http://localhost:${PORT}/dinle`);
     console.log(`  Aile Canlı Rota     : http://localhost:${PORT}/rota?code=RY-KASIM`);

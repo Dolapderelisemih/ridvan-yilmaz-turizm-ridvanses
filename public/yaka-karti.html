@@ -7,7 +7,7 @@
   <title>Baskıya Hazır Hacı Yaka Kartı & QR Kod | Rıdvan Yılmaz Turizm</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/yaka-karti" />
-  <link rel="stylesheet" href="/css/style.css?v=19" />
+  <link rel="stylesheet" href="/css/style.css?v=20" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -20,7 +20,7 @@
       }
     })();
   </script>
-  <script src="/vercel-ws-shim.js?v=75"></script>
+  <script src="/vercel-ws-shim.js?v=76"></script>
   <style>
     .print-toolbar {
       background: linear-gradient(155deg, #06231B 0%, #093529 100%);
@@ -193,6 +193,7 @@
     }
 
     let toursData = [];
+    let agencyPhone = '+90 538 399 96 66';
     function escapeHtml(str) {
       return String(str ?? '')
         .replace(/&/g, '&amp;')
@@ -206,6 +207,17 @@
       try {
         const res = await fetch('/api/bootstrap');
         const data = await res.json();
+        if (data && data.authenticated === false) {
+          localStorage.removeItem('ry_auth_token');
+          localStorage.removeItem('token');
+          const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+          document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax' + secureFlag;
+          window.location.replace('/login?next=' + encodeURIComponent(window.location.pathname + window.location.search));
+          return;
+        }
+        if (data && data.agency && data.agency.phone) {
+          agencyPhone = data.agency.phone;
+        }
         toursData = data.tours || [];
         if (toursData.length > 0) {
           const sel = document.getElementById('tourCodePicker');
@@ -272,6 +284,9 @@
       const countLbl = document.getElementById('badgeCountLabel');
       if (countLbl) countLbl.textContent = samplePilgrims.length;
 
+      const qrImgOrigin = window.location.host && window.location.host.includes('vercel.app')
+        ? 'https://ses.ridvanyilmazturizm.com'
+        : '';
       const container = document.getElementById('badgesContainer');
       container.innerHTML = samplePilgrims.map((pName) => `
         <div class="neck-badge">
@@ -290,7 +305,7 @@
             <span class="badge badge-gold" style="font-size:0.8rem;">KAFİLE KODU: ${escapeHtml(tour.code)}</span>
 
             <div class="qr-box">
-              <img src="/api/qr-img?code=${encodeURIComponent(tour.code)}&name=${encodeURIComponent(pName)}" onerror="this.onerror=null;this.src='${escapeHtml(qrJson.dataUrl || '')}'" alt="QR Code ${escapeHtml(tour.code)} - ${escapeHtml(pName)}" />
+              <img src="${qrImgOrigin}/api/qr-img?code=${encodeURIComponent(tour.code)}&name=${encodeURIComponent(pName)}" onerror="this.onerror=null;this.src='${escapeHtml(qrJson.dataUrl || '')}'" alt="QR Code ${escapeHtml(tour.code)} - ${escapeHtml(pName)}" />
             </div>
 
             <div style="font-size:0.79rem; color:var(--color-muted); max-width:265px; margin:0 auto 14px; line-height:1.45;">
@@ -306,7 +321,7 @@
           </div>
 
           <div class="badge-footer">
-            ACİL / KAYIP İLETİŞİM (WHATSAPP): +90 538 399 96 66
+            ACİL / KAYIP İLETİŞİM (WHATSAPP): ${escapeHtml(agencyPhone)}
           </div>
         </div>
       `).join('');

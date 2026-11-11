@@ -6,8 +6,8 @@
   <title>Dijital Umre Hatıra Kitabı &amp; Ziyaret Beratı — Rıdvan Yılmaz Turizm</title>
   <meta name="description" content="Rıdvan Yılmaz Turizm Umre ve Siyer yolculuğunuzun baskıya hazır A4 manevi hatıra kitapçığı ve imzalı Umre Ziyaret Beratı." />
   <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
-  <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=75"></script>
+  <link rel="stylesheet" href="/css/style.css?v=20" />
+  <script src="/vercel-ws-shim.js?v=76"></script>
   <style>
     body {
       background: #e9e2d5;
@@ -187,11 +187,14 @@
   <!-- Kişiselleştirme ve A4 PDF Yazdırma Çubuğu -->
   <div class="book-toolbar">
     <div class="container book-toolbar-inner">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <a id="backToRouteBtn" href="/rota?code=RY-KASIM" class="btn btn-outline btn-sm" style="background:rgba(255,255,255,0.1);color:#fff;border-color:rgba(255,255,255,0.25);">
-          ← Canlı Rotaya Dön
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <a id="backToDinleBtn" href="/dinle?code=RY-KASIM" class="btn btn-gold btn-sm">
+          🎧 Sesli Odaya Dön
         </a>
-        <span style="font-weight:800;font-size:0.9rem;color:var(--color-gold-bright);">📖 Polarsteps Travel Book • Umre Hatıra Kitabı</span>
+        <a id="backToRouteBtn" href="/rota?code=RY-KASIM" class="btn btn-outline btn-sm" style="background:rgba(255,255,255,0.1);color:#fff;border-color:rgba(255,255,255,0.25);">
+          ← Canlı Rota
+        </a>
+        <span style="font-weight:800;font-size:0.9rem;color:var(--color-gold-bright);">📖 Umre Hatıra Kitabı</span>
       </div>
 
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1 1 280px;justify-content:flex-end;">
@@ -212,6 +215,18 @@
         <button id="printBookBtn" type="button" class="btn btn-gold btn-sm">🖨️ A4 PDF İndir / Yazdır</button>
       </div>
     </div>
+  </div>
+
+  <div id="bookPinGateBox" style="display:none;max-width:520px;margin:18px auto 0;padding:18px 20px;border-radius:16px;background:var(--color-gold-soft);border:1.5px solid var(--color-gold);box-shadow:var(--shadow-soft);">
+    <div style="font-weight:800;color:var(--color-emerald-night);font-size:0.98rem;margin-bottom:6px;">🔒 PIN Korumalı Kafile Hatıra Kitabı</div>
+    <p style="font-size:0.84rem;color:var(--color-ink-soft);margin-bottom:10px;">
+      Bu kafilenin ziyaret günlüğünü ve hatıra beratını görüntülemek için kafile PIN kodunu giriniz.
+    </p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <input id="bookPinInput" type="password" inputmode="numeric" class="input" placeholder="Kafile PIN Kodu" style="max-width:190px;font-weight:700;" />
+      <button id="bookPinSubmitBtn" type="button" class="btn btn-primary btn-sm">PIN Doğrula</button>
+    </div>
+    <div id="bookPinErrorMsg" style="display:none;margin-top:8px;font-size:0.8rem;font-weight:700;color:var(--color-danger);"></div>
   </div>
 
   <div class="book-stage">
@@ -377,7 +392,26 @@
     (function () {
       const params = new URLSearchParams(window.location.search);
       let code = (params.get('code') || 'RY-KASIM').toUpperCase().trim();
-      const tourPinParam = (params.get('pin') || '').trim();
+      let tourPinParam = (params.get('pin') || '').trim();
+      function getSavedBookPin(c) {
+        const clean = String(c || '').toUpperCase().trim();
+        try {
+          if (typeof sessionStorage !== 'undefined') {
+            const v = sessionStorage.getItem('rys_tour_pin_' + clean);
+            if (v) return v;
+          }
+        } catch (_) {}
+        return tourPinParam;
+      }
+      function setSavedBookPin(c, p) {
+        const clean = String(c || '').toUpperCase().trim();
+        try {
+          if (typeof sessionStorage !== 'undefined') {
+            if (p) sessionStorage.setItem('rys_tour_pin_' + clean, String(p).trim());
+          }
+        } catch (_) {}
+      }
+      if (tourPinParam) setSavedBookPin(code, tourPinParam);
       const initialName = (
         params.get('name') ||
         (function () { try { return localStorage.getItem('ridvanses_pilgrim_name'); } catch { return ''; } })() ||
@@ -391,6 +425,8 @@
       function syncBookCodeUi(nextCode) {
         code = String(nextCode || 'RY-KASIM').toUpperCase().trim();
         document.getElementById('backToRouteBtn').href = `/rota?code=${encodeURIComponent(code)}`;
+        const dinleBtn = document.getElementById('backToDinleBtn');
+        if (dinleBtn) dinleBtn.href = `/dinle?code=${encodeURIComponent(code)}`;
         document.getElementById('page2CodeBadge').textContent = code;
         if (tourSelect && Array.from(tourSelect.options).some((o) => o.value === code)) {
           tourSelect.value = code;
@@ -457,11 +493,48 @@
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
       });
 
+      const bookPinBtn = document.getElementById('bookPinSubmitBtn');
+      const bookPinInp = document.getElementById('bookPinInput');
+      if (bookPinBtn && bookPinInp) {
+        bookPinBtn.addEventListener('click', () => {
+          const val = String(bookPinInp.value || '').trim();
+          if (!val) return;
+          tourPinParam = val;
+          setSavedBookPin(code, val);
+          loadBookData();
+        });
+      }
+
       async function loadBookData() {
         try {
-          const stepUrl = `/api/trips/${encodeURIComponent(code)}/steps${tourPinParam ? `?pin=${encodeURIComponent(tourPinParam)}` : ''}`;
+          const activePin = getSavedBookPin(code);
+          const stepUrl = `/api/trips/${encodeURIComponent(code)}/steps${activePin ? `?pin=${encodeURIComponent(activePin)}` : ''}`;
           const res = await fetch(stepUrl);
           const data = await res.json();
+          const pinGate = document.getElementById('bookPinGateBox');
+          const pinErr = document.getElementById('bookPinErrorMsg');
+          if (data && data.error === 'tour-unknown') {
+            if (pinGate) pinGate.style.display = 'none';
+            document.getElementById('journalStepsContainer').innerHTML =
+              `<div style="padding:16px;border-radius:12px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-weight:700;">“${escapeHtml(code)}” koduna ait aktif bir kafile bulunamadı.</div>`;
+            return;
+          }
+          if (data && data.pinRequired) {
+            if (pinGate) pinGate.style.display = 'block';
+            if (pinErr) {
+              if (activePin) {
+                pinErr.textContent = 'Girilen PIN kodu hatalı. Lütfen tekrar deneyiniz.';
+                pinErr.style.display = 'block';
+              } else {
+                pinErr.style.display = 'none';
+              }
+            }
+            document.getElementById('journalStepsContainer').innerHTML =
+              '<div style="padding:16px;text-align:center;color:var(--color-muted);font-weight:600;">🔒 Ziyaret adımlarını görüntülemek için üstteki alana kafile PIN kodunu giriniz.</div>';
+            return;
+          }
+          if (pinGate) pinGate.style.display = 'none';
+          if (pinErr) pinErr.style.display = 'none';
           if (data && data.success) {
             const tour = data.tour || {};
             const steps = Array.isArray(data.steps) ? data.steps : [];

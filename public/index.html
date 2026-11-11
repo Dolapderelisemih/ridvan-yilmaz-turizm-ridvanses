@@ -85,8 +85,8 @@
   <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
   <title>Rıdvan Yılmaz Turizm | RıdvanSes — Dijital Sesli Rehberlik & Kafile Sistemi</title>
-  <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=75"></script>
+  <link rel="stylesheet" href="/css/style.css?v=20" />
+  <script src="/vercel-ws-shim.js?v=76"></script>
   <style>
     .hero {
       padding: 64px 0 76px;
@@ -512,7 +512,7 @@
               <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <a href="/rota?code=RY-KASIM" class="btn btn-outline btn-sm" style="flex:1 1 120px; background:rgba(255,255,255,0.12); color:var(--color-gold-bright); border-color:rgba(224,190,119,0.45);">📍 Aile Canlı Rota</a>
                 <a href="/ani-kitabi?code=RY-KASIM" class="btn btn-outline btn-sm" style="flex:1 1 120px; background:rgba(255,255,255,0.12); color:#fff; border-color:rgba(255,255,255,0.24);">📖 Hatıra Kitabı</a>
-                <a href="/yaka-karti?code=RY-KASIM" class="btn btn-outline btn-sm" style="flex:1 1 120px; background:rgba(255,255,255,0.08); color:#fff; border-color:rgba(255,255,255,0.2);">Yaka Kartı QR</a>
+                <a href="/yaka-karti?code=RY-KASIM" id="heroStaffBadgeBtn" class="btn btn-outline btn-sm" style="display:none; flex:1 1 120px; background:rgba(255,255,255,0.08); color:#fff; border-color:rgba(255,255,255,0.2);">Yaka Kartı QR</a>
               </div>
             </div>
           </div>
@@ -847,6 +847,9 @@
         const res = await fetch('/api/bootstrap');
         const data = await res.json();
 
+        const isStaffAuthed = Boolean(data && data.authenticated);
+        const heroStaffBtn = document.getElementById('heroStaffBadgeBtn');
+        if (heroStaffBtn) heroStaffBtn.style.display = isStaffAuthed ? '' : 'none';
         const toursGrid = document.getElementById('toursGrid');
         toursGrid.innerHTML = data.tours.map((t) => `
           <div class="card-luxury tour-card">
@@ -870,7 +873,7 @@
             </div>
             <div style="display:flex; gap:8px;">
               <a href="/dinle?code=${encodeURIComponent(t.code)}" class="btn btn-primary btn-sm" style="flex:1;">Canlı Odaya Katıl</a>
-              <a href="/rehber?code=${encodeURIComponent(t.code)}" class="btn btn-outline btn-sm">Rehber</a>
+              <a href="/rota?code=${encodeURIComponent(t.code)}" class="btn btn-outline btn-sm">📍 Rota</a>${isStaffAuthed ? ` <a href="/rehber?code=${encodeURIComponent(t.code)}" class="btn btn-outline btn-sm">Rehber</a>` : ''}
             </div>
           </div>
         `).join('');
@@ -907,7 +910,7 @@
       }
     }
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=75').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=76').catch(() => {});
     }
     loadBootstrap();
 

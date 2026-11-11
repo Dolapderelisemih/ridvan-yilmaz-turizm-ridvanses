@@ -14,7 +14,7 @@
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/panel" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=19" />
+  <link rel="stylesheet" href="/css/style.css?v=20" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -27,16 +27,31 @@
       }
     })();
     async function ryLogout() {
+      const savedTok = (localStorage.getItem('ry_auth_token') || '').trim();
+      try {
+        const sosReceipt = JSON.parse(localStorage.getItem('rys_sos_push_receipt') || 'null');
+        if (sosReceipt && sosReceipt.endpoint && sosReceipt.subscriptionToken) {
+          await fetch('/api/push/unsubscribe-sos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(sosReceipt)
+          }).catch(() => {});
+        }
+      } catch {}
+      await fetch('/api/logout', {
+        method: 'POST',
+        headers: savedTok ? { Authorization: 'Bearer ' + savedTok } : {}
+      }).catch(() => {});
       localStorage.removeItem('ry_auth_token');
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      localStorage.removeItem('rys_sos_push_receipt');
       const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
       document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax' + secureFlag;
-      await fetch('/api/logout', { method: 'POST' }).catch(() => {});
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=75"></script>
+  <script src="/vercel-ws-shim.js?v=76"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
@@ -263,13 +278,13 @@
         <svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
         Mekke & Medine Otelleri
       </button>
-      <button class="side-btn" onclick="openTab('tab-requests', this)">
+      <button class="side-btn" id="sideBtnRequests" onclick="openTab('tab-requests', this)">
         <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         Ön Kayıt & Bilgi Talepleri
       </button>
-      <hr style="border-color:rgba(255,255,255,0.1); margin:16px 0;" />
-      <div class="side-group-title">Sistem & Mühendislik</div>
-      <button class="side-btn" onclick="openTab('tab-rea', this)">
+      <hr id="sideAdminDivider" style="border-color:rgba(255,255,255,0.1); margin:16px 0;" />
+      <div class="side-group-title" id="sideAdminGroupTitle">Sistem & Mühendislik</div>
+      <button class="side-btn" id="sideBtnRea" onclick="openTab('tab-rea', this)">
         <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
         Sistem Mimari Raporu
       </button>
@@ -346,7 +361,7 @@
             <h3 style="font-size:1.18rem; margin:0;">Rıdvan Yılmaz Turizm Aktif Kafile Özeti</h3>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
               <button class="btn btn-gold btn-sm" id="overviewQuickQrBtn" onclick="openQrGeneratorForTour((appState && appState.tours && appState.tours[0] && appState.tours[0].code) || 'RY-KASIM')">Yaka Kartı QR & WhatsApp Üretici</button>
-              <button class="btn btn-primary btn-sm" onclick="openTab('tab-tours', document.getElementById('sideBtnTours'))">+ Yeni Kafile Ekle</button>
+              <button class="btn btn-primary btn-sm" id="overviewAddTourBtn" onclick="openTab('tab-tours', document.getElementById('sideBtnTours'))">+ Yeni Kafile Ekle</button>
             </div>
           </div>
           <div class="table-wrap">
@@ -727,7 +742,7 @@
               <span class="badge badge-emerald">morluto/rea • JavaScript Application Graph</span>
               <h3 style="margin-top:6px;">RıdvanSes Kurumsal Mimari & REA Analiz Raporu</h3>
             </div>
-            <a href="/api/rea-report" id="rawReaReportLink" target="_blank" class="btn btn-outline btn-sm" onclick="this.href='/api/rea-report?token='+encodeURIComponent(localStorage.getItem('ry_auth_token')||'')">Ham JSON Raporu Gör</a>
+            <button type="button" id="rawReaReportLink" class="btn btn-outline btn-sm" onclick="openRawReaReport()">Ham JSON Raporu Gör</button>
           </div>
           <div id="reaReportBox">Yükleniyor...</div>
         </div>
@@ -881,18 +896,38 @@
       }
     }
 
+    function isScopedSubAgency() {
+      if (appState && appState.user && appState.user.assignedTour) return true;
+      try {
+        const u = JSON.parse(localStorage.getItem('user') || 'null');
+        return Boolean(u && u.assignedTour);
+      } catch {
+        return false;
+      }
+    }
+
     async function fetchAdminData() {
       const res = await fetch('/api/bootstrap');
       if (res.status === 401) {
         handleAdminAuthExpired();
         return;
       }
-      appState = await res.json();
+      const nextState = await res.json();
+      if (nextState && nextState.authenticated === false) {
+        handleAdminAuthExpired();
+        return;
+      }
+      appState = nextState;
       renderAll();
     }
 
     function renderAll() {
       if (!appState) return;
+      const scopedAgency = isScopedSubAgency();
+      ['overviewAddTourBtn', 'sideBtnRequests', 'sideAdminDivider', 'sideAdminGroupTitle', 'sideBtnRea'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = scopedAgency ? 'none' : '';
+      });
       document.getElementById('statToursCount').textContent = appState.tours.length;
       document.getElementById('statGuidesCount').textContent = appState.guides.length;
       if (appState.tours && appState.tours[0]) {
@@ -929,12 +964,19 @@
       // Populate Announcement tour dropdown
       const annSel = document.getElementById('adminAnnTourSelect');
       if (annSel) {
-        const prevAnn = annSel.value || 'ALL';
+        const defaultAnnVal = scopedAgency
+          ? (appState.tours[0] && appState.tours[0].code) || 'RY-KASIM'
+          : 'ALL';
+        const prevAnn = annSel.value || defaultAnnVal;
         annSel.innerHTML = `
-          <option value="ALL">Tüm Aktif Kafileler (Genel Duyuru)</option>
+          ${scopedAgency ? '' : '<option value="ALL">Tüm Aktif Kafileler (Genel Duyuru)</option>'}
           ${appState.tours.map((t) => `<option value="${escapeHtml(t.code)}">${escapeHtml(t.code)} — ${escapeHtml(t.name)}</option>`).join('')}
         `;
-        if (prevAnn === 'ALL' || appState.tours.some((t) => t.code === prevAnn)) annSel.value = prevAnn;
+        if ((!scopedAgency && prevAnn === 'ALL') || appState.tours.some((t) => t.code === prevAnn)) {
+          annSel.value = prevAnn;
+        } else if (annSel.options.length > 0) {
+          annSel.value = annSel.options[0].value;
+        }
       }
 
       // Live Rooms
@@ -988,7 +1030,7 @@
           <div style="display:flex; gap:6px; flex-wrap:wrap;">
             <button type="button" class="btn btn-primary btn-sm" onclick="startEditTour('${escapeHtml(t.id)}')">Düzenle</button>
             <button type="button" class="btn btn-gold btn-sm" onclick="openQrGeneratorForTour('${escapeHtml(t.code)}')">QR & Davet</button>
-            <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteTour('${escapeHtml(t.id)}')">Sil</button>
+            ${scopedAgency ? '' : `<button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" onclick="deleteTour('${escapeHtml(t.id)}')">Sil</button>`}
           </div>
         </div>
       `).join('');
@@ -1119,10 +1161,27 @@
 
     fetchAdminData();
 
-    // Load REA Report
-    async function loadReaReport() {
+    async function openRawReaReport() {
       try {
         const res = await fetch('/api/rea-report');
+        if (!res.ok) {
+          alert('Bu teknik mimari raporu yalnızca ana acente yöneticisine açıktır.');
+          return;
+        }
+        const rawJson = await res.json();
+        const blob = new Blob([JSON.stringify(rawJson, null, 2)], { type: 'application/json;charset=utf-8' });
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank', 'noopener');
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      } catch (e) {}
+    }
+
+    // Load REA Report
+    async function loadReaReport() {
+      if (isScopedSubAgency()) return;
+      try {
+        const res = await fetch('/api/rea-report');
+        if (!res.ok) return;
         const r = await res.json();
         if (!r.available) return;
         const ps = r.polarsteps || null;
@@ -1201,8 +1260,13 @@
           if (msg.type === 'auth-error') {
             let savedUser = null;
             try { savedUser = JSON.parse(localStorage.getItem('user') || 'null'); } catch {}
-            if (savedUser && savedUser.assignedTour) {
+            if ((savedUser && savedUser.assignedTour) || isScopedSubAgency()) {
               window.__adminWsScopedNoGlobal = true;
+              if (!window.__adminScopedPollTimer) {
+                window.__adminScopedPollTimer = setInterval(() => {
+                  if (document.visibilityState !== 'hidden') fetchAdminData();
+                }, 10000);
+              }
               try { adminWs.close(); } catch {}
               return;
             }
@@ -1379,11 +1443,16 @@
     document.getElementById('createGuideForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const payload = Object.fromEntries(new FormData(e.target).entries());
-      await fetch('/api/guides', {
+      const res = await fetch('/api/guides', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || err.error || 'Rehber kaydı eklenemedi (yetki sınırı).');
+        return;
+      }
       e.target.reset();
       fetchAdminData();
     });
@@ -1391,11 +1460,16 @@
     document.getElementById('adminAnnForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const payload = Object.fromEntries(new FormData(e.target).entries());
-      await fetch('/api/announcements', {
+      const res = await fetch('/api/announcements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Seçilen kafileye duyuru gönderme yetkiniz bulunmuyor.');
+        return;
+      }
       e.target.reset();
       fetchAdminData();
     });
@@ -1472,7 +1546,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=75');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=76');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -1538,7 +1612,7 @@
     }
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=75').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=76').catch(() => {});
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && localStorage.getItem('rys_sos_push_receipt')) {
         setTimeout(() => { syncAdminSosPush(true); }, 800);
       }

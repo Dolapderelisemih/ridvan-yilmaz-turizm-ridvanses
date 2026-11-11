@@ -1,14 +1,14 @@
 // PATCH: sw-v53
 // PATCH: sw-v53
 // PATCH: sw-v53
-const CACHE_NAME = 'ridvanses-pwa-v75';
+const CACHE_NAME = 'ridvanses-pwa-v76';
 const ASSETS_TO_CACHE = [
   '/',
   '/dinle',
   '/rota',
   '/ani-kitabi',
   '/css/style.css',
-  '/vercel-ws-shim.js?v=75',
+  '/vercel-ws-shim.js?v=76',
   '/js/umrah-steps-map.js',
   '/pcm-capture-worklet.js?v=72-audio',
   '/pcm-player-worklet.js?v=72-audio',
@@ -68,7 +68,19 @@ self.addEventListener('fetch', (event) => {
         }
         return res;
       })
-      .catch(() => caches.match(event.request))
+      .catch(async () => {
+        const exact = await caches.match(event.request);
+        if (exact) return exact;
+        const ownOrigin = self.location && self.location.origin ? self.location.origin : url.origin;
+        if (url.origin === ownOrigin) {
+          const cleanHit = await caches.match(url.pathname, { ignoreSearch: true });
+          if (cleanHit) return cleanHit;
+          if (event.request.mode === 'navigate') {
+            return (await caches.match('/dinle', { ignoreSearch: true })) || caches.match('/');
+          }
+        }
+        return null;
+      })
   );
 });
 

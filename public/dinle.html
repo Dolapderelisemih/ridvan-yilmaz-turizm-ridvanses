@@ -15,8 +15,8 @@
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=75"></script>
+  <link rel="stylesheet" href="/css/style.css?v=20" />
+  <script src="/vercel-ws-shim.js?v=76"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
@@ -544,7 +544,7 @@
           <button type="button" class="btn btn-primary btn-sm" style="padding:11px 10px;" onclick="shareFamilyLiveRoute()">
             📲 Ailemle Paylaş
           </button>
-          <a id="pilgrimBookLink" href="/ani-kitabi?code=RY-KASIM" target="_blank" class="btn btn-gold btn-sm" style="padding:11px 10px; text-align:center;">
+          <a id="pilgrimBookLink" href="/ani-kitabi?code=RY-KASIM" class="btn btn-gold btn-sm" style="padding:11px 10px; text-align:center;">
             📖 Hatıra Kitabım
           </a>
         </div>
@@ -3027,7 +3027,7 @@
     navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(rysWebPushState().context)void syncWebPushSubscription();});
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=75').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=76').catch(() => {});
     }
 
     let subscribedBannerDismissed = false;
@@ -3058,7 +3058,7 @@
         return;
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=75').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=76').catch(() => {});
       }
       // iOS WebKit zorunluluğu: setWebPushTour senkron çalışır, Notification.requestPermission() doğrudan dokunuş içinde çağrılır.
       const state = rysWebPushState();

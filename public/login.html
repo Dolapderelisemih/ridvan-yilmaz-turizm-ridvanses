@@ -9,8 +9,8 @@
   <title>Yetkili Girişi (Rehber & Acente) | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/login" />
-  <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=75"></script>
+  <link rel="stylesheet" href="/css/style.css?v=20" />
+  <script src="/vercel-ws-shim.js?v=76"></script>
   <style>
     .login-shell {
       max-width: 460px;
@@ -120,7 +120,7 @@
   <script>
     const params = new URLSearchParams(window.location.search);
     let nextUrl = params.get('next') || '/panel';
-    if (!nextUrl.startsWith('/') || nextUrl.startsWith('//')) nextUrl = '/panel';
+    if (!/^\/(?!\/|\\)/.test(nextUrl)) nextUrl = '/panel';
 
     const titleEl = document.getElementById('loginTargetTitle');
     const badgeEl = document.getElementById('loginTargetBadge');

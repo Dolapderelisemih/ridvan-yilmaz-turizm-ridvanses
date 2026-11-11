@@ -8,8 +8,8 @@
   <meta name="theme-color" content="#06231b" />
   <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=75"></script>
+  <link rel="stylesheet" href="/css/style.css?v=20" />
+  <script src="/vercel-ws-shim.js?v=76"></script>
   <style>
     .rota-hero-strip {
       background:
@@ -227,6 +227,18 @@
             Herhangi bir durağa dokunarak harita kamerasını o mübarek noktaya odaklayabilir ve hocamızın Siyer notlarını okuyabilirsiniz.
           </p>
 
+          <div id="rotaPinGateBox" style="display:none; padding:18px; margin-bottom:16px; border-radius:14px; background:var(--color-gold-soft); border:1.5px solid var(--color-gold);">
+            <div style="font-weight:800; color:var(--color-emerald-night); font-size:0.95rem; margin-bottom:6px;">🔒 PIN Korumalı Özel Kafile Rotası</div>
+            <p style="font-size:0.83rem; color:var(--color-ink-soft); margin-bottom:10px;">
+              Bu kafilenin canlı konumunu, ziyaret duraklarını ve duyurularını görüntülemek için acentenizin paylaştığı kafile PIN kodunu giriniz.
+            </p>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <input id="rotaPinInput" type="password" inputmode="numeric" class="input" placeholder="Kafile PIN Kodu" style="max-width:190px; font-weight:700;" />
+              <button id="rotaPinSubmitBtn" type="button" class="btn btn-primary btn-sm">PIN Doğrula ve Rotayı Aç</button>
+            </div>
+            <div id="rotaPinErrorMsg" style="display:none; margin-top:8px; font-size:0.8rem; font-weight:700; color:var(--color-danger);"></div>
+          </div>
+
           <div id="familyTimeline" class="ps-timeline">
             <div style="padding:20px;text-align:center;color:var(--color-muted);">Manevi yolculuk adımları yükleniyor...</div>
           </div>
@@ -253,12 +265,35 @@
     (function () {
       const params = new URLSearchParams(window.location.search);
       let currentCode = (params.get('code') || 'RY-KASIM').toUpperCase().trim();
+      const initialUrlPin = (params.get('pin') || '').trim();
       let currentSteps = [];
       let currentTour = null;
       let currentActiveStepTitle = 'Mescid-i Haram & Kâbe-i Muazzama';
       let ws = null;
       let pollTimer = null;
       let wsReconnectTimer = null;
+
+      function getSavedTourPin(code) {
+        const clean = String(code || '').toUpperCase().trim();
+        try {
+          if (typeof sessionStorage !== 'undefined') {
+            const v = sessionStorage.getItem('rys_tour_pin_' + clean);
+            if (v) return v;
+          }
+        } catch (_) {}
+        return clean === currentCode ? initialUrlPin : '';
+      }
+
+      function setSavedTourPin(code, pinVal) {
+        const clean = String(code || '').toUpperCase().trim();
+        try {
+          if (typeof sessionStorage !== 'undefined') {
+            if (pinVal) sessionStorage.setItem('rys_tour_pin_' + clean, String(pinVal).trim());
+            else sessionStorage.removeItem('rys_tour_pin_' + clean);
+          }
+        } catch (_) {}
+      }
+      if (initialUrlPin) setSavedTourPin(currentCode, initialUrlPin);
 
       function escapeHtml(str) {
         return String(str ?? '')
@@ -298,10 +333,12 @@
 
       function updateLinks(code) {
         const enc = encodeURIComponent(code);
+        const savedPin = getSavedTourPin(code);
+        const pinSuffix = savedPin ? `&pin=${encodeURIComponent(savedPin)}` : '';
         document.getElementById('topListenBtn').href = `/dinle?code=${enc}`;
         document.getElementById('bannerListenBtn').href = `/dinle?code=${enc}`;
-        document.getElementById('topBookBtn').href = `/ani-kitabi?code=${enc}`;
-        document.getElementById('bannerBookBtn').href = `/ani-kitabi?code=${enc}`;
+        document.getElementById('topBookBtn').href = `/ani-kitabi?code=${enc}${pinSuffix}`;
+        document.getElementById('bannerBookBtn').href = `/ani-kitabi?code=${enc}${pinSuffix}`;
       }
 
       function renderAnnouncements(list) {
@@ -414,9 +451,37 @@
 
       async function fetchStepsRest(autoFit = false) {
         try {
-          const res = await fetch(`/api/trips/${encodeURIComponent(currentCode)}/steps`);
+          const pinVal = getSavedTourPin(currentCode);
+          const qs = pinVal ? `?pin=${encodeURIComponent(pinVal)}` : '';
+          const res = await fetch(`/api/trips/${encodeURIComponent(currentCode)}/steps${qs}`);
           const json = await res.json();
+          const pinGate = document.getElementById('rotaPinGateBox');
+          const pinErr = document.getElementById('rotaPinErrorMsg');
+          if (json && json.error === 'tour-unknown') {
+            if (pinGate) pinGate.style.display = 'none';
+            document.getElementById('familyTimeline').innerHTML =
+              `<div style="padding:18px;border-radius:12px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-weight:700;font-size:0.88rem;">“${escapeHtml(currentCode)}” koduna ait aktif bir kafile bulunamadı. Lütfen kafile kodunu kontrol ediniz.</div>`;
+            return;
+          }
+          if (json && json.pinRequired) {
+            if (pinGate) pinGate.style.display = 'block';
+            if (pinErr) {
+              if (pinVal) {
+                pinErr.textContent = 'Girilen PIN kodu hatalı. Lütfen tekrar deneyiniz.';
+                pinErr.style.display = 'block';
+              } else {
+                pinErr.style.display = 'none';
+              }
+            }
+            if (json.tour) applyJourneyPayload({ tour: json.tour, steps: [], stats: json.stats, announcements: [] }, false);
+            document.getElementById('familyTimeline').innerHTML =
+              '<div style="padding:16px;text-align:center;color:var(--color-muted);font-size:0.86rem;">🔒 Rota adımlarını görmek için yukarıdaki kutuya kafile PIN kodunu giriniz.</div>';
+            return;
+          }
+          if (pinGate) pinGate.style.display = 'none';
+          if (pinErr) pinErr.style.display = 'none';
           if (json && json.success) {
+            updateLinks(currentCode);
             applyJourneyPayload(json, autoFit);
           }
         } catch (err) {
@@ -450,12 +515,23 @@
               pollTimer = null;
             }
             document.getElementById('syncIndicator').textContent = '● Canlı Bağlantı';
-            ws.send(JSON.stringify({ type: 'family-subscribe', tourCode: currentCode }));
+            const pinVal = getSavedTourPin(currentCode);
+            ws.send(JSON.stringify({ type: 'family-subscribe', tourCode: currentCode, ...(pinVal ? { pin: pinVal } : {}) }));
           };
           ws.onmessage = (ev) => {
             if (typeof ev.data !== 'string') return;
             try {
               const msg = JSON.parse(ev.data);
+              if (msg.type === 'pin-error') {
+                const pinGate = document.getElementById('rotaPinGateBox');
+                if (pinGate) pinGate.style.display = 'block';
+                document.getElementById('syncIndicator').textContent = '🔒 PIN Gerekli';
+                return;
+              }
+              if (msg.type === 'subscription-error' && msg.code === 'tour-unknown') {
+                document.getElementById('syncIndicator').textContent = 'Kafile Bulunamadı';
+                return;
+              }
               if (msg.type === 'family-state') {
                 applyJourneyPayload(msg, false);
               } else if (msg.type === 'steps-updated') {
@@ -579,6 +655,30 @@
           `📍 *Canlı Haritayı Aç:* ${shareUrl}`;
         window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
       });
+
+      const rotaPinBtn = document.getElementById('rotaPinSubmitBtn');
+      const rotaPinInp = document.getElementById('rotaPinInput');
+      if (rotaPinBtn && rotaPinInp) {
+        const submitRotaPin = () => {
+          const entered = String(rotaPinInp.value || '').trim();
+          if (!entered) return;
+          setSavedTourPin(currentCode, entered);
+          updateLinks(currentCode);
+          fetchStepsRest(true);
+          connectRealtime();
+        };
+        rotaPinBtn.addEventListener('click', submitRotaPin);
+        rotaPinInp.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            submitRotaPin();
+          }
+        });
+      }
+
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js?v=76').catch(() => {});
+      }
 
       updateLinks(currentCode);
       fetchStepsRest(true);

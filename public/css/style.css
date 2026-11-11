@@ -297,6 +297,68 @@ a {
   transform: translateY(-1px);
 }
 
+.btn-secondary {
+  background: var(--color-emerald-soft);
+  border-color: rgba(11, 70, 54, 0.22);
+  color: var(--color-emerald-night);
+  font-weight: 700;
+}
+
+.btn-secondary:hover {
+  background: #d7eae3;
+  border-color: var(--color-emerald-deep);
+  transform: translateY(-1px);
+}
+
+.svg-icon-sm {
+  width: 0.96em;
+  height: 0.96em;
+}
+
+.code-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #FCF8EE 0%, var(--color-gold-soft) 100%);
+  border: 1px solid rgba(197, 160, 89, 0.55);
+  color: var(--color-emerald-night);
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(11, 70, 54, 0.05);
+  transition: all 0.18s ease;
+}
+
+.code-pill:hover {
+  background: var(--color-emerald-deep);
+  border-color: var(--color-emerald-deep);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(11, 70, 54, 0.18);
+  transform: translateY(-1px);
+}
+
+.code-pill:active {
+  transform: translateY(0);
+}
+
+.tawaf-stage-btn:hover {
+  border-color: var(--color-gold) !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
+}
+
+.pulse-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: psRadarPulse 1.8s infinite ease-out;
+}
+
 .btn-danger {
   background: linear-gradient(135deg, #ef4444, #b91c1c);
   color: #fff;
