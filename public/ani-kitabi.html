@@ -7,7 +7,7 @@
   <meta name="description" content="Rıdvan Yılmaz Turizm Umre ve Siyer yolculuğunuzun baskıya hazır A4 manevi hatıra kitapçığı ve imzalı Umre Ziyaret Beratı." />
   <link rel="icon" type="image/svg+xml" href="/icons/icon-512.svg" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=73"></script>
+  <script src="/vercel-ws-shim.js?v=74"></script>
   <style>
     body {
       background: #e9e2d5;
@@ -365,10 +365,24 @@
   </div>
 
   <script>
+    function escapeHtml(str) {
+      return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     (function () {
       const params = new URLSearchParams(window.location.search);
       let code = (params.get('code') || 'RY-KASIM').toUpperCase().trim();
-      const initialName = (params.get('name') || localStorage.getItem('ridvanses_pilgrim_name') || '').trim();
+      const tourPinParam = (params.get('pin') || '').trim();
+      const initialName = (
+        params.get('name') ||
+        (function () { try { return localStorage.getItem('ridvanses_pilgrim_name'); } catch { return ''; } })() ||
+        ''
+      ).trim();
 
       const nameInput = document.getElementById('pilgrimNameInput');
       const tourSelect = document.getElementById('bookTourSelect');
@@ -445,7 +459,8 @@
 
       async function loadBookData() {
         try {
-          const res = await fetch(`/api/trips/${encodeURIComponent(code)}/steps`);
+          const stepUrl = `/api/trips/${encodeURIComponent(code)}/steps${tourPinParam ? `?pin=${encodeURIComponent(tourPinParam)}` : ''}`;
+          const res = await fetch(stepUrl);
           const data = await res.json();
           if (data && data.success) {
             const tour = data.tour || {};

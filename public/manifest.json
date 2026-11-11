@@ -1,7 +1,7 @@
 {
   "name": "Rıdvan Yılmaz Turizm — RıdvanSes Canlı Rehber",
   "short_name": "RıdvanSes",
-  "description": "Rıdvan Yılmaz Turizm Siyer Umresi Canlı Sesli Rehberlik, Manevi Rota Takibi, Söz İsteme ve Acil Konum (SOS) Uygulaması",
+  "description": "Rıdvan Yılmaz Turizm Siyer Umresi Canlı Sesli Rehberlik, Manevi Rota Takibi, Kapalı Ekran Bildirim ve Acil Konum (SOS) Uygulaması",
   "start_url": "/dinle?source=pwa",
   "scope": "/",
   "display": "standalone",
@@ -25,28 +25,22 @@
   ],
   "shortcuts": [
     {
-      "name": "Kasım Umresi Canlı Yayına Katıl",
-      "short_name": "RY-KASIM Dinle",
-      "description": "Kasım Umresi Canlı Sesli Rehberlik Odası",
-      "url": "/dinle?code=RY-KASIM"
+      "name": "Canlı Sesli Yayına Katıl",
+      "short_name": "Yayını Dinle",
+      "description": "Kafile Canlı Sesli Rehberlik ve Tavaf Odası",
+      "url": "/dinle?source=pwa"
     },
     {
       "name": "Canlı Manevi Rota & Aile Takibi",
       "short_name": "Canlı Rota",
       "description": "Kutsal Topraklar Adım Adım Siyer ve Canlı Rota Haritası",
-      "url": "/rota?code=RY-KASIM"
+      "url": "/rota"
     },
     {
-      "name": "Rehber (Hoca) Yayın Konsolu",
-      "short_name": "Hoca Yayını",
-      "description": "Rehber Canlı Mikrofon ve Kafile Kontrol Ekranı",
-      "url": "/rehber"
-    },
-    {
-      "name": "Acente Yönetim Paneli",
-      "short_name": "Yönetim Paneli",
-      "description": "Kafile, QR Kod, Manevi Rota ve SOS Yönetim Merkezi",
-      "url": "/panel"
+      "name": "Dijital Umre Hatıra Kitabı",
+      "short_name": "Hatıra Kitabı",
+      "description": "Umre Siyer Günlüğü ve Ziyaret Beratı",
+      "url": "/ani-kitabi"
     }
   ]
 }

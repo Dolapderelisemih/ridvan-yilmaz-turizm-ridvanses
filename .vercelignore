@@ -8,6 +8,8 @@ rea-umrahvoice-analysis.json
 *.tif
 scripts/
 documents/
+data/runtime.json
+data/runtime.json.tmp
 data/outreach-log.json
 data/umre-acenteleri.json
 data/bounced-emails.json

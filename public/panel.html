@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
+  <link rel="manifest" href="/manifest.json?v=19" />
   <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
   <title>Acente & Kafile Yönetim Paneli | Rıdvan Yılmaz Turizm — RıdvanSes</title>
@@ -17,19 +22,21 @@
       if (!hasCookie && !savedToken) {
         window.location.replace('/login?next=' + encodeURIComponent(window.location.pathname + window.location.search));
       } else if (!hasCookie && savedToken) {
-        document.cookie = 'ry_auth=' + encodeURIComponent(savedToken) + '; path=/; max-age=2592000; SameSite=Lax';
+        const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = 'ry_auth=' + encodeURIComponent(savedToken) + '; path=/; max-age=2592000; SameSite=Lax' + secureFlag;
       }
     })();
     async function ryLogout() {
       localStorage.removeItem('ry_auth_token');
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax';
+      const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax' + secureFlag;
       await fetch('/api/logout', { method: 'POST' }).catch(() => {});
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=73"></script>
+  <script src="/vercel-ws-shim.js?v=74"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
@@ -197,15 +204,18 @@
         </div>
       </a>
       <div class="nav-actions">
+        <button type="button" id="adminSosPushBtn" class="btn btn-danger btn-sm" onclick="enableAdminSosPush()" title="Uygulama kapalıyken tüm SOS alarmlarını kilit ekranında alın">
+          🚨 SOS Bildirim Aç
+        </button>
         <a href="/Ridvan_Yilmaz_Turizm_RidvanSes_Kullanim_Rehberi.pdf" target="_blank" class="btn btn-outline btn-sm hide-on-mobile">
           <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           Kullanım Rehberi
         </a>
-        <a href="/dinle?code=RY-KASIM" target="_blank" class="btn btn-outline btn-sm hide-on-mobile">
+        <a id="navPanelDinleLink" href="/dinle?code=RY-KASIM" target="_blank" class="btn btn-outline btn-sm hide-on-mobile">
           <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
           Hacı Ekranı
         </a>
-        <a href="/rehber?code=RY-KASIM" target="_blank" class="btn btn-gold btn-sm">
+        <a id="navPanelRehberLink" href="/rehber?code=RY-KASIM" target="_blank" class="btn btn-gold btn-sm">
           <svg class="svg-icon svg-icon-sm" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
           Stüdyo
         </a>
@@ -233,7 +243,7 @@
         <svg viewBox="0 0 24 24"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
         Manevi Rota & Adımlar
       </button>
-      <button class="side-btn" onclick="openTab('tab-tours', this)">
+      <button class="side-btn" id="sideBtnTours" onclick="openTab('tab-tours', this)">
         <svg viewBox="0 0 24 24"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/></svg>
         Kafile & Tur Yönetimi
       </button>
@@ -277,7 +287,7 @@
             </span>
           </div>
           <div class="stat-val" id="statToursCount">1</div>
-          <div style="font-size:0.78rem; color:var(--color-live); font-weight:700;">Kasım 2026 Umre Sezonu</div>
+          <div id="statSeasonLabel" style="font-size:0.78rem; color:var(--color-live); font-weight:700;">Kasım 2026 Umre Sezonu</div>
         </div>
         <div class="stat-card">
           <div class="stat-head">
@@ -325,7 +335,7 @@
           <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
               <h3 style="font-size:1.15rem; margin:0;">Son SOS Konum Bildirimleri</h3>
-              <button class="btn btn-danger btn-sm" onclick="simulateSosAlert()">+ Test SOS Alarmı Oluştur</button>
+              <button class="btn btn-outline btn-sm" style="border-color:#fca5a5; color:#b91c1c;" onclick="simulateSosAlert()">🧪 Test SOS Simülasyonu</button>
             </div>
             <div id="overviewSosBox"></div>
           </div>
@@ -335,8 +345,8 @@
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
             <h3 style="font-size:1.18rem; margin:0;">Rıdvan Yılmaz Turizm Aktif Kafile Özeti</h3>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <button class="btn btn-gold btn-sm" onclick="openQrGeneratorForTour('RY-KASIM')">Yaka Kartı QR & WhatsApp Üretici</button>
-              <button class="btn btn-primary btn-sm" onclick="openTab('tab-tours', document.querySelectorAll('.side-btn')[2])">+ Yeni Kafile Ekle</button>
+              <button class="btn btn-gold btn-sm" id="overviewQuickQrBtn" onclick="openQrGeneratorForTour((appState && appState.tours && appState.tours[0] && appState.tours[0].code) || 'RY-KASIM')">Yaka Kartı QR & WhatsApp Üretici</button>
+              <button class="btn btn-primary btn-sm" onclick="openTab('tab-tours', document.getElementById('sideBtnTours'))">+ Yeni Kafile Ekle</button>
             </div>
           </div>
           <div class="table-wrap">
@@ -873,6 +883,10 @@
 
     async function fetchAdminData() {
       const res = await fetch('/api/bootstrap');
+      if (res.status === 401) {
+        handleAdminAuthExpired();
+        return;
+      }
       appState = await res.json();
       renderAll();
     }
@@ -881,6 +895,15 @@
       if (!appState) return;
       document.getElementById('statToursCount').textContent = appState.tours.length;
       document.getElementById('statGuidesCount').textContent = appState.guides.length;
+      if (appState.tours && appState.tours[0]) {
+        const primaryCode = encodeURIComponent(appState.tours[0].code || 'RY-KASIM');
+        const navDinle = document.getElementById('navPanelDinleLink');
+        const navRehber = document.getElementById('navPanelRehberLink');
+        const seasonEl = document.getElementById('statSeasonLabel');
+        if (navDinle) navDinle.href = `/dinle?code=${primaryCode}`;
+        if (navRehber) navRehber.href = `/rehber?code=${primaryCode}`;
+        if (seasonEl && appState.tours[0].dateText) seasonEl.textContent = appState.tours[0].dateText;
+      }
       const totalListeners = (appState.liveRooms || [])
         .filter((r) => r.roomId === 'genel')
         .reduce((acc, r) => acc + (r.totalListeners || 0), 0);
@@ -926,7 +949,7 @@
             <div style="font-size:0.8rem; color:var(--color-muted); margin-top:2px;">${escapeHtml(r.currentTopic)}</div>
           </div>
           <div style="display:flex; align-items:center; gap:8px;">
-            <span class="badge badge-gold">${Number(r.totalListeners) || 0} Hacı</span>
+            <span class="badge badge-gold" title="Bu odadaki tekil dinleyici / Kafile toplamı">${Number(r.roomListenerCount ?? r.totalListeners) || 0} Oda${Number(r.totalListeners) !== Number(r.roomListenerCount ?? r.totalListeners) ? ` / ${Number(r.totalListeners) || 0} Toplam` : ''} Hacı</span>
             <a href="/dinle?code=${encodeURIComponent(r.tourCode)}" target="_blank" class="btn btn-outline btn-sm">Dinle</a>
             <a href="/rehber?code=${encodeURIComponent(r.tourCode)}" target="_blank" class="btn btn-primary btn-sm">Stüdyo</a>
           </div>
@@ -1175,6 +1198,19 @@
       adminWs.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data);
+          if (msg.type === 'auth-error') {
+            let savedUser = null;
+            try { savedUser = JSON.parse(localStorage.getItem('user') || 'null'); } catch {}
+            if (savedUser && savedUser.assignedTour) {
+              window.__adminWsScopedNoGlobal = true;
+              try { adminWs.close(); } catch {}
+              return;
+            }
+            fetch('/api/rea-report').then((r) => {
+              if (r.status === 401) handleAdminAuthExpired();
+            }).catch(() => {});
+            return;
+          }
           if (msg.type === 'admin-rooms-update' && appState) {
             appState.liveRooms = msg.rooms;
             renderAll();
@@ -1220,6 +1256,7 @@
         } catch (e) {}
       };
       adminWs.onclose = () => {
+        if (window.__adminWsScopedNoGlobal) return;
         if (adminWsReconnectTimer) clearTimeout(adminWsReconnectTimer);
         adminWsReconnectTimer = setTimeout(connectAdminWs, 2500);
       };
@@ -1364,16 +1401,20 @@
     });
 
     async function simulateSosAlert() {
+      if (!confirm('DİKKAT: Bu işlem canlı test SOS kaydı oluşturur ve açık rehber/panel ekranlarında uyarı çalar. Test SOS oluşturulsun mu?')) {
+        return;
+      }
+      const defaultCode = (appState && appState.tours && appState.tours[0] && appState.tours[0].code) || 'RY-KASIM';
       await fetch('/api/sos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tourCode: 'RY-KASIM',
-          pilgrimName: 'Hacı Hasan Çelik (Bursa Kafilesi)',
+          tourCode: defaultCode,
+          pilgrimName: '[TEST] Hacı Hasan Çelik (Sistem Kontrolü)',
           phone: '+90 533 888 77 66',
           lat: 21.4232,
           lng: 39.8268,
-          locationNote: 'Mescid-i Haram — Safa Tepesi Çıkışı (Canlı GPS)'
+          locationNote: 'Mescid-i Haram — Safa Tepesi Çıkışı (Test GPS)'
         })
       });
       fetchAdminData();
@@ -1398,6 +1439,109 @@
       if (!confirm('Bu ön kayıt başvurusunu silmek istediğinize emin misiniz?')) return;
       await fetch(`/api/requests/${encodeURIComponent(id)}`, { method: 'DELETE' });
       fetchAdminData();
+    }
+
+    function handleAdminAuthExpired() {
+      if (window.__adminRedirectingAuth) return;
+      window.__adminRedirectingAuth = true;
+      try {
+        localStorage.removeItem('ry_auth_token');
+        localStorage.removeItem('token');
+        const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax' + secureFlag;
+      } catch {}
+      alert('Yetkili oturum süreniz sona erdi. Güvenliğiniz için giriş ekranına yönlendiriliyorsunuz.');
+      window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search);
+    }
+
+    function adminB64ToUint8(value) {
+      const text = atob((value + '='.repeat((4 - (value.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+      return Uint8Array.from(text, (ch) => ch.charCodeAt(0));
+    }
+
+    async function syncAdminSosPush(silent = false) {
+      const btn = document.getElementById('adminSosPushBtn');
+      if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+        if (!silent) alert('Bu tarayıcı kapalı ekran bildirimlerini desteklemiyor.');
+        return false;
+      }
+      const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+      if (isIos && !isStandalone) {
+        if (!silent) alert('iPhone üzerinde kapalı ekran SOS bildirimleri için Safari Paylaş > "Ana Ekrana Ekle" yapıp Ana Ekrandan açınız.');
+        return false;
+      }
+      try {
+        const reg = await navigator.serviceWorker.register('/sw.js?v=74');
+        await navigator.serviceWorker.ready;
+        const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
+        if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
+        const keyData = await keyRes.json();
+        const appKey = adminB64ToUint8(keyData.publicKey);
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+        }
+        const json = sub.toJSON();
+        let receipt = null;
+        try { receipt = JSON.parse(localStorage.getItem('rys_sos_push_receipt') || 'null'); } catch {}
+        const prevRev = Number(localStorage.getItem('rys_sos_push_rev') || 0);
+        const revision = Math.max(Date.now() * 1024, prevRev + 1);
+        localStorage.setItem('rys_sos_push_rev', String(revision));
+        let deviceId = localStorage.getItem('rys_admin_device_id');
+        if (!deviceId) {
+          deviceId = 'adm-' + Math.random().toString(36).slice(2, 12);
+          localStorage.setItem('rys_admin_device_id', deviceId);
+        }
+        const res = await fetch('/api/push/subscribe-sos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            endpoint: json.endpoint,
+            keys: json.keys,
+            tourCode: 'ALL',
+            deviceId,
+            revision,
+            ...(receipt && receipt.endpoint === json.endpoint ? { subscriptionToken: receipt.subscriptionToken } : {})
+          })
+        });
+        if (res.status === 401) {
+          handleAdminAuthExpired();
+          return false;
+        }
+        const saved = await res.json();
+        if (!res.ok || !saved.success) throw new Error(saved.error || 'SOS bildirimi kaydedilemedi');
+        localStorage.setItem('rys_sos_push_receipt', JSON.stringify({ endpoint: json.endpoint, subscriptionToken: saved.subscriptionToken, tourCode: saved.tourCode }));
+        if (btn) {
+          btn.className = 'btn btn-outline btn-sm';
+          btn.textContent = '✅ SOS Bildirimi Aktif';
+        }
+        return true;
+      } catch (e) {
+        if (!silent) alert('SOS bildirimi etkinleştirilemedi: ' + (e.message || e));
+        return false;
+      }
+    }
+
+    async function enableAdminSosPush() {
+      if (!('Notification' in window)) {
+        alert('Bu cihaz tarayıcı bildirimlerini desteklemiyor.');
+        return;
+      }
+      let perm = Notification.permission;
+      if (perm !== 'granted') perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        alert('Kapalı ekranda SOS alarmı alabilmek için bildirim izni gereklidir.');
+        return;
+      }
+      await syncAdminSosPush(false);
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js?v=74').catch(() => {});
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && localStorage.getItem('rys_sos_push_receipt')) {
+        setTimeout(() => { syncAdminSosPush(true); }, 800);
+      }
     }
   </script>
 </body>

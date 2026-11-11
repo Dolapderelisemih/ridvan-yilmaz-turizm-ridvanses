@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
+  <link rel="manifest" href="/manifest.json?v=19" />
   <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
   <title>Rehber (Hoca) Canlı Yayın Stüdyosu | Rıdvan Yılmaz Turizm — RıdvanSes</title>
@@ -16,19 +21,21 @@
       if (!hasCookie && !savedToken) {
         window.location.replace('/login?next=' + encodeURIComponent(window.location.pathname + window.location.search));
       } else if (!hasCookie && savedToken) {
-        document.cookie = 'ry_auth=' + encodeURIComponent(savedToken) + '; path=/; max-age=2592000; SameSite=Lax';
+        const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = 'ry_auth=' + encodeURIComponent(savedToken) + '; path=/; max-age=2592000; SameSite=Lax' + secureFlag;
       }
     })();
     async function ryLogout() {
       localStorage.removeItem('ry_auth_token');
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax';
+      const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax' + secureFlag;
       await fetch('/api/logout', { method: 'POST' }).catch(() => {});
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=73"></script>
+  <script src="/vercel-ws-shim.js?v=74"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
     .console-wrap {
@@ -206,6 +213,9 @@
         </div>
       </a>
       <div class="nav-actions">
+        <button type="button" id="guideSosPushBtn" class="btn btn-danger btn-sm" onclick="enableGuideSosPush()" title="Uygulama kapalıyken kayıp hacı SOS bildirimlerini kilit ekranında alın">
+          🚨 SOS Bildirim Aç
+        </button>
         <a id="navGuideRotaBtn" href="/rota?code=RY-KASIM" target="_blank" class="btn btn-gold btn-sm">
           📍 Canlı Rota
         </a>
@@ -226,6 +236,7 @@
   </header>
 
   <main class="console-wrap">
+    <div id="guideAuthErrorBanner" style="display:none; margin-bottom:16px; padding:14px 18px; border-radius:14px; background:#fef2f2; border:2px solid #dc2626; color:#991b1b; font-weight:800; font-size:0.92rem;"></div>
     <!-- Canlı SOS Acil Durum Alarm Kutusu -->
     <div id="sosAlertContainer" class="sos-banner"></div>
 
@@ -781,6 +792,7 @@
         }
 
         if(msg.type==='session-replaced'){fenceGuideSession();return;}
+        if(msg.type==='auth-error'){fenceGuideSession();if(typeof handleGuideAuthExpired==='function')handleGuideAuthExpired(msg.message);return;}
         if (msg.type === 'joined' || msg.type === 'room-state') {
           renderRoomState(msg.room);
           if (msg.steps) renderGuideStepsList(msg.steps);
@@ -2469,6 +2481,130 @@
         const fb = await fetchFallbackIpPosition();
         if (fb.city) lastGeocodedAddress = fb.city;
         publishGuideCoordinates(fb.lat, fb.lng, fb.accuracy);
+      }
+    }
+
+    function handleGuideAuthExpired(customMessage) {
+      const banner = document.getElementById('guideAuthErrorBanner');
+      if (banner) {
+        banner.textContent =
+          '⛔ ' +
+          (customMessage ||
+            'Oturum süreniz doldu veya bu kafile için yayın yetkiniz bulunmuyor. Canlı yayın durduruldu; giriş ekranına yönlendiriliyorsunuz...');
+        banner.style.display = 'block';
+      }
+      const badge = document.getElementById('broadcastStatusBadge');
+      const statusTxt = document.getElementById('broadcastStatusText');
+      if (badge) badge.style.cssText = 'background:rgba(220,38,38,0.28); color:#FCA5A5; border:1px solid rgba(248,113,113,0.6);';
+      if (statusTxt) statusTxt.textContent = 'OTURUM DOĞRULAMA GEREKLİ';
+      try {
+        localStorage.removeItem('ry_auth_token');
+        localStorage.removeItem('token');
+        const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax' + secureFlag;
+      } catch {}
+      setTimeout(() => {
+        window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search);
+      }, 1800);
+    }
+
+    function guideB64ToUint8(value) {
+      const text = atob((value + '='.repeat((4 - (value.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+      return Uint8Array.from(text, (ch) => ch.charCodeAt(0));
+    }
+
+    async function syncGuideSosPushSubscription(silent = false) {
+      const btn = document.getElementById('guideSosPushBtn');
+      if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+        if (!silent) alert('Bu tarayıcı kapalı ekran bildirimlerini desteklemiyor.');
+        return false;
+      }
+      const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+      if (isIos && !isStandalone) {
+        if (!silent) {
+          alert('iPhone üzerinde kapalı ekran SOS bildirimleri için Safari Paylaş menüsünden "Ana Ekrana Ekle" yapıp uygulamayı Ana Ekrandan açınız.');
+        }
+        return false;
+      }
+      try {
+        const reg = await navigator.serviceWorker.register('/sw.js?v=74');
+        await navigator.serviceWorker.ready;
+        const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
+        if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
+        const keyData = await keyRes.json();
+        const appKey = guideB64ToUint8(keyData.publicKey);
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+        }
+        const json = sub.toJSON();
+        let receipt = null;
+        try { receipt = JSON.parse(localStorage.getItem('rys_sos_push_receipt') || 'null'); } catch {}
+        const prevRev = Number(localStorage.getItem('rys_sos_push_rev') || 0);
+        const revision = Math.max(Date.now() * 1024, prevRev + 1);
+        localStorage.setItem('rys_sos_push_rev', String(revision));
+        const tourCode = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').trim().toUpperCase();
+        const res = await fetch('/api/push/subscribe-sos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            endpoint: json.endpoint,
+            keys: json.keys,
+            tourCode,
+            deviceId: guideDeviceId,
+            revision,
+            ...(receipt && receipt.endpoint === json.endpoint ? { subscriptionToken: receipt.subscriptionToken } : {})
+          })
+        });
+        if (res.status === 401) {
+          handleGuideAuthExpired();
+          return false;
+        }
+        const saved = await res.json();
+        if (!res.ok || !saved.success) throw new Error(saved.error || 'SOS bildirimi kaydedilemedi');
+        localStorage.setItem('rys_sos_push_receipt', JSON.stringify({ endpoint: json.endpoint, subscriptionToken: saved.subscriptionToken, tourCode: saved.tourCode }));
+        if (btn) {
+          btn.className = 'btn btn-outline btn-sm';
+          btn.textContent = `✅ SOS Bildirimi Aktif (${saved.tourCode})`;
+        }
+        return true;
+      } catch (e) {
+        if (!silent) alert('SOS bildirimi etkinleştirilemedi: ' + (e.message || e));
+        return false;
+      }
+    }
+
+    async function enableGuideSosPush() {
+      if (!('Notification' in window)) {
+        alert('Bu cihaz tarayıcı bildirimlerini desteklemiyor.');
+        return;
+      }
+      let perm = Notification.permission;
+      if (perm !== 'granted') {
+        perm = await Notification.requestPermission();
+      }
+      if (perm !== 'granted') {
+        alert('Kapalı ekranda SOS alarmı alabilmek için bildirim iznine onay vermeniz gerekmektedir.');
+        return;
+      }
+      const ok = await syncGuideSosPushSubscription(false);
+      if (ok && navigator.serviceWorker && navigator.serviceWorker.controller) {
+        const tourCode = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').trim().toUpperCase();
+        navigator.serviceWorker.controller.postMessage({
+          type: 'SHOW_NOTIFICATION',
+          title: '🚨 Rehber SOS Bildirimleri Aktif',
+          body: `${tourCode} kafilesindeki kayıp hacı (SOS) çağrıları uygulama kapalıyken kilit ekranınıza düşecektir.`,
+          tag: 'ridvanses-sos-ready',
+          data: { url: `/rehber?code=${encodeURIComponent(tourCode)}` }
+        });
+      }
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js?v=74').catch(() => {});
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && localStorage.getItem('rys_sos_push_receipt')) {
+        setTimeout(() => { syncGuideSosPushSubscription(true); }, 800);
       }
     }
   </script>

@@ -8,7 +8,19 @@
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/yaka-karti" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=73"></script>
+  <script>
+    (function() {
+      const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
+      const hasCookie = document.cookie.split(';').some((c) => c.trim().startsWith('ry_auth='));
+      if (!hasCookie && !savedToken) {
+        window.location.replace('/login?next=' + encodeURIComponent(window.location.pathname + window.location.search));
+      } else if (!hasCookie && savedToken) {
+        const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = 'ry_auth=' + encodeURIComponent(savedToken) + '; path=/; max-age=2592000; SameSite=Lax' + secureFlag;
+      }
+    })();
+  </script>
+  <script src="/vercel-ws-shim.js?v=74"></script>
   <style>
     .print-toolbar {
       background: linear-gradient(155deg, #06231B 0%, #093529 100%);

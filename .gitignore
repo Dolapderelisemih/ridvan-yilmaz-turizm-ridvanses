@@ -8,3 +8,9 @@ rea-umrahvoice-analysis.json
 *.key
 *.pem
 *private key*
+*.tif
+data/runtime.json
+data/runtime.json.tmp
+data/outreach-log.json
+data/umre-acenteleri.json
+data/bounced-emails.json

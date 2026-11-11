@@ -193,6 +193,9 @@ function saveState(state) {
       if (Array.isArray(state.requests) && state.requests.length > 200) {
         state.requests = state.requests.slice(0, 200);
       }
+      if (Array.isArray(state.revokedAuthTokens) && state.revokedAuthTokens.length > 512) {
+        state.revokedAuthTokens = state.revokedAuthTokens.slice(-512);
+      }
     }
     pendingSaveStateRef = state;
     if (isWritingRuntimeFile) {
@@ -311,6 +314,7 @@ function computeJourneyStats(steps) {
 
 // v73 Web Push: no npm dependencies. Persistent state belongs to the VDS, not /tmp.
 const rysPushSubs = new Map();
+const rysSosPushSubs = new Map();
 const rysPushQueue = [];
 const rysPushPending = [];
 const rysPushRequests = new Map(); // At most four active network requests
@@ -433,8 +437,77 @@ function rysPushInit(){
         }catch(e){}
       }
       rysPushPrune();
+      for(const row of (Array.isArray(db.sosPushSubscriptions)?db.sosPushSubscriptions:[]).slice(-512)){
+        try{
+          rysPushEndpoint(row.endpoint);rysPushPoint(row.keys?.p256dh);rysPushB64(row.keys?.auth,16);
+          if((row.tourCode!=='ALL'&&!findRysTour(row.tourCode))||row.vapidKey!==rysPushVapid.publicKey||
+            !Number.isSafeInteger(row.revision)||row.revision<1)continue;
+          rysPushB64(row.subscriptionToken,32);rysSosPushSubs.set(row.endpoint,{...row,isSos:true});
+        }catch(e){}
+      }
+      rysSosPushPrune();
     }
   }catch(e){rysPushInitError=e.message;console.error('[WebPush] Initialization unavailable:',e.message);}
+}
+function rysSosPushPersist(){
+  db.sosPushSubscriptions=Array.from(rysSosPushSubs.values());saveState(db);
+}
+function rysSosPushDrop(endpoint){
+  const old=rysSosPushSubs.get(endpoint);rysSosPushSubs.delete(endpoint);
+  if(old)rysPushCancel(endpoint,old);
+}
+function rysSosPushPrune(){
+  const counts=new Map();
+  for(const [endpoint,s] of Array.from(rysSosPushSubs.entries()).reverse()){
+    const n=(counts.get(s.tourCode)||0)+1;counts.set(s.tourCode,n);
+    if(n>64)rysSosPushDrop(endpoint);
+  }
+  while(rysSosPushSubs.size>512)rysSosPushDrop(rysSosPushSubs.keys().next().value);
+}
+function rysSosPushSubscribe(body,principal){
+  if(!principal)throw rysPushFail(401,'auth-required');
+  let code=typeof body?.tourCode==='string'?body.tourCode.toUpperCase().trim():'ALL';
+  if(!code||code.length>96)throw rysPushFail(400,'invalid-tour');
+  if(code==='ALL'){
+    if(!rysCanAdmin(principal)){
+      if(principal.assignedTour)code=principal.assignedTour;
+      else throw rysPushFail(403,'sos-scope-denied');
+    }
+  }else{
+    if(!rysCanGuide(principal,code))throw rysPushFail(403,'sos-scope-denied');
+    if(!findRysTour(code))throw rysPushFail(404,'tour-unknown');
+  }
+  const target=rysPushEndpoint(body.endpoint);
+  const p=rysPushPoint(body.keys?.p256dh),auth=rysPushB64(body.keys?.auth,16);
+  if(typeof body.deviceId!=='string'||!body.deviceId.trim()||body.deviceId.length>128||
+    !Number.isSafeInteger(body.revision)||body.revision<1)throw rysPushFail(400,'invalid-subscription');
+  const previous=rysSosPushSubs.get(target.url.href);
+  if(previous){
+    const sameSecret=previous.keys.auth===auth.toString('base64url')&&previous.keys.p256dh===p.toString('base64url');
+    const capability=typeof body.subscriptionToken==='string'&&body.subscriptionToken===previous.subscriptionToken;
+    if(!sameSecret&&!capability)throw rysPushFail(403,'subscription-owner-required');
+    if(body.revision<previous.revision||body.revision===previous.revision&&code!==previous.tourCode)
+      throw Object.assign(rysPushFail(409,'stale-subscription'),{revision:previous.revision});
+  }
+  let s={endpoint:target.url.href,keys:{p256dh:p.toString('base64url'),auth:auth.toString('base64url')},
+    tourCode:code,role:rysCanAdmin(principal)?'admin':'guide',deviceId:body.deviceId.trim(),
+    revision:body.revision,subscriptionToken:previous?.subscriptionToken||crypto.randomBytes(32).toString('base64url'),
+    vapidKey:rysPushVapid.publicKey,isSos:true,updatedAt:Date.now()};
+  if(previous&&previous.tourCode===s.tourCode&&previous.keys.auth===s.keys.auth&&previous.keys.p256dh===s.keys.p256dh){
+    Object.assign(previous,s);s=previous;
+  }
+  if(previous&&previous!==s)rysPushCancel(s.endpoint,previous);
+  rysSosPushSubs.delete(s.endpoint);rysSosPushSubs.set(s.endpoint,s);rysSosPushPrune();rysSosPushPersist();
+  return {success:true,subscriptionToken:s.subscriptionToken,revision:s.revision,tourCode:s.tourCode};
+}
+function rysSosPushUnsubscribe(body){
+  const target=rysPushEndpoint(body?.endpoint),s=rysSosPushSubs.get(target.url.href);
+  if(!s)return {success:true};
+  const supplied=typeof body.subscriptionToken==='string'?body.subscriptionToken:'';
+  if(supplied.length!==43)throw rysPushFail(403,'subscription-owner-required');
+  const a=Buffer.from(supplied),b=Buffer.from(s.subscriptionToken);
+  if(a.length!==b.length||!crypto.timingSafeEqual(a,b))throw rysPushFail(403,'subscription-owner-required');
+  rysSosPushDrop(s.endpoint);rysSosPushPersist();return {success:true};
 }
 function rysPushSubscribe(body){
   const code=typeof body?.tourCode==='string'?body.tourCode.toUpperCase().trim():'';
@@ -507,7 +580,8 @@ async function rysPushSend(subscription,payload){
     if(!addresses.length||addresses.some(a=>!rysPushPublicIp(a.address)))throw Error('push private DNS denied');
     pinned=addresses.find(a=>a.family===4)||addresses[0];
   }
-  if(rysPushSubs.get(subscription.endpoint)!==subscription)throw Error('push subscription superseded');
+  const activeSubMap=subscription.isSos&&typeof rysSosPushSubs!=='undefined'?rysSosPushSubs:rysPushSubs;
+  if(activeSubMap.get(subscription.endpoint)!==subscription)throw Error('push subscription superseded');
   const body=rysPushEncrypt(subscription,payload),authorization=rysPushAuthorization(u.href);
   return new Promise((resolve,reject)=>{
     const transport=target.test?require('node:http'):require('node:https');
@@ -595,6 +669,117 @@ for(const [route,handler] of [['subscribe',rysPushSubscribe],['unsubscribe',rysP
     if(!rysPushVapid)return res.status(503).json({success:false,error:'push-unavailable'});
     try{return res.json(handler(req.body));}
     catch(e){return res.status(e.status||400).json({success:false,error:e.message,...(e.revision?{revision:e.revision}:{})});}
+  });
+}
+app.post('/api/push/subscribe-sos',createRateLimiter({max:240,windowMs:60000}),(req,res)=>{
+  res.setHeader('Cache-Control','no-store');
+  if(!rysPushVapid)return res.status(503).json({success:false,error:'push-unavailable'});
+  try{
+    const principal=rysPrincipal(extractAuthTokenFromReq(req)||req.body?.authToken);
+    return res.json(rysSosPushSubscribe(req.body,principal));
+  }catch(e){return res.status(e.status||400).json({success:false,error:e.message,...(e.revision?{revision:e.revision}:{})});}
+});
+app.post('/api/push/unsubscribe-sos',createRateLimiter({max:240,windowMs:60000}),(req,res)=>{
+  res.setHeader('Cache-Control','no-store');
+  if(!rysPushVapid)return res.status(503).json({success:false,error:'push-unavailable'});
+  try{return res.json(rysSosPushUnsubscribe(req.body));}
+  catch(e){return res.status(e.status||400).json({success:false,error:e.message});}
+});
+function rysSosPushPayload(alertItem){
+  const code=String(alertItem.tourCode||'RY-KASIM').toUpperCase().trim();
+  const lat=Number(alertItem.lat)||21.4225,lng=Number(alertItem.lng)||39.8262;
+  const mapsUrl=`https://www.google.com/maps?q=${lat},${lng}`;
+  const lines=[
+    `${alertItem.pilgrimName||'Hacı Misafir'} (${code}) acil konum / kayıp çağrısı gönderdi!`,
+    alertItem.locationNote?`Konum: ${alertItem.locationNote}`:'',
+    alertItem.phone?`Tel: ${alertItem.phone}`:''
+  ].filter(Boolean).join(' • ');
+  const data={
+    type:'sos-alert',
+    id:rysPushText(alertItem.id,96),
+    title:rysPushText(`🚨 ACİL SOS: ${alertItem.pilgrimName||'Kayıp Hacı'} (${code})`,160),
+    body:rysPushText(lines,1800),
+    tag:'ridvanses-sos-'+rysPushText(alertItem.id,96),
+    tourCode:code,
+    data:{url:`/rehber?code=${encodeURIComponent(code)}`,mapsUrl}
+  };
+  return JSON.stringify(data);
+}
+function queueRysPushSos(alertItem){
+  if(!rysPushVapid||!alertItem?.id||!rysSosPushSubs.size)return;
+  const code=String(alertItem.tourCode||'RY-KASIM').toUpperCase().trim();
+  const targets=Array.from(rysSosPushSubs.values()).filter(s=>s.tourCode==='ALL'||s.tourCode===code);
+  if(!targets.length)return;
+  let payload;
+  try{payload=rysSosPushPayload(alertItem);}catch(e){return;}
+  setImmediate(async()=>{
+    let idx=0;
+    const worker=async()=>{
+      while(idx<targets.length){
+        const s=targets[idx++];
+        if(rysSosPushSubs.get(s.endpoint)!==s)continue;
+        try{
+          const status=await rysPushSend(s,payload);
+          if((status===404||status===410)&&rysSosPushSubs.get(s.endpoint)===s){
+            rysSosPushDrop(s.endpoint);rysSosPushPersist();
+          }
+        }catch(e){}
+      }
+    };
+    await Promise.all(Array.from({length:Math.min(4,targets.length)},()=>worker()));
+  });
+}
+function sendEmergencySosEmail(alertItem){
+  if(process.env.NODE_ENV==='test')return;
+  const smtpPass=String(process.env.GMAIL_APP_PASSWORD||'').replace(/\s+/g,'').trim();
+  const smtpUser=String(process.env.ADMIN_USERNAME||'').trim();
+  if(!smtpPass||!smtpUser||!smtpUser.includes('@'))return;
+  if(/^\[TEST\]/i.test(String(alertItem.pilgrimName||'')))return;
+  setImmediate(()=>{
+    try{
+      const tls=require('node:tls');
+      const mapsUrl=`https://www.google.com/maps?q=${Number(alertItem.lat)||21.4225},${Number(alertItem.lng)||39.8262}`;
+      const subj=`=?UTF-8?B?${Buffer.from(`🚨 ACİL SOS ALARMI: ${alertItem.pilgrimName} (${alertItem.tourCode})`).toString('base64')}?=`;
+      const bodyText=[
+        'RıdvanSes Canlı Saha Acil Durum (SOS) Bildirimi',
+        '------------------------------------------------',
+        `Kafile Kodu : ${alertItem.tourCode}`,
+        `Hacı Adı    : ${alertItem.pilgrimName}`,
+        `Telefon     : ${alertItem.phone || '-'}`,
+        `Saat        : ${alertItem.createdAt}`,
+        `Not / Bölge : ${alertItem.locationNote || '-'}`,
+        `GPS         : ${alertItem.lat}, ${alertItem.lng}${alertItem.accuracy ? ` (±${Math.round(alertItem.accuracy)}m)` : ''}`,
+        `Google Maps : ${mapsUrl}`,
+        `Rehber Ekran: https://ses.ridvanyilmazturizm.com/rehber?code=${encodeURIComponent(alertItem.tourCode)}`
+      ].join('\r\n');
+      const steps=[
+        `EHLO ses.ridvanyilmazturizm.com`,
+        `AUTH LOGIN`,
+        Buffer.from(smtpUser).toString('base64'),
+        Buffer.from(smtpPass).toString('base64'),
+        `MAIL FROM:<${smtpUser}>`,
+        `RCPT TO:<${smtpUser}>`,
+        `DATA`,
+        `From: "RidvanSes Acil SOS" <${smtpUser}>\r\nTo: <${smtpUser}>\r\nSubject: ${subj}\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${bodyText}\r\n.`,
+        `QUIT`
+      ];
+      let stepIdx=-1,buf='';
+      const sock=tls.connect({host:'smtp.gmail.com',port:465,servername:'smtp.gmail.com',timeout:6000});
+      const timer=setTimeout(()=>{try{sock.destroy();}catch(e){}},7000);
+      sock.on('data',chunk=>{
+        buf+=chunk.toString('utf8');
+        const lines=buf.split(/\r?\n/);buf=lines.pop()||'';
+        for(const line of lines){
+          if(!/^\d{3} /.test(line))continue;
+          const code=Number(line.slice(0,3));
+          if(code>=400){clearTimeout(timer);try{sock.destroy();}catch(e){}return;}
+          stepIdx++;
+          if(stepIdx<steps.length)sock.write(steps[stepIdx]+'\r\n');
+        }
+      });
+      sock.on('error',()=>clearTimeout(timer));
+      sock.on('close',()=>clearTimeout(timer));
+    }catch(e){}
   });
 }
 
@@ -703,9 +888,18 @@ function getTargetBroadcastRooms(sourceRoom) {
 function serializeRoom(room, includePilgrimDetails = true) {
   if(!room)return null;
   let pilgrimCount = 0;
+  let roomPilgrimCount = 0;
   const pilgrims = [];
   const guides = [];
   const seenIds = new Set();
+  const roomSeenIds = new Set();
+
+  for (const c of room.clients.values()) {
+    if (c.role === 'pilgrim' && !roomSeenIds.has(c.id)) {
+      roomSeenIds.add(c.id);
+      roomPilgrimCount++;
+    }
+  }
 
   // Aynı kafiledeki (ör. RY-KASIM:genel ve RY-KASIM:siyer) tüm bağlı hacıları tek listede birleştir
   // ki Siyer odasını seçen hacı da rehberin ekranında görünsün ve toplam dinleyici sayısı tutarlı olsun.
@@ -760,6 +954,7 @@ function serializeRoom(room, includePilgrimDetails = true) {
     guideLocation: room.guideLocation || null,
     connectedPilgrims: pilgrims,
     connectedGuides: guides,
+    roomListenerCount: roomPilgrimCount,
     totalListeners: pilgrimCount,
     realListenerCount: pilgrimCount
   };
@@ -853,15 +1048,29 @@ const AUTH_TOKEN_VALUE = String(
 ).trim();
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 gün
 const activeAuthSessions = new Map(); // token -> { user, createdAt, expiresAt }
-const revokedAuthTokens = new Set();
+const revokedAuthTokens = new Set(Array.isArray(db.revokedAuthTokens) ? db.revokedAuthTokens.slice(-512) : []);
 
 function createAuthSession(user) {
-  const sessionToken = `rys_${crypto.randomBytes(24).toString('hex')}`;
   const now = Date.now();
+  const expiresAt = now + SESSION_TTL_MS;
+  const payloadB64 = Buffer.from(
+    JSON.stringify({
+      u: user,
+      iat: now,
+      exp: expiresAt,
+      jti: crypto.randomBytes(12).toString('hex')
+    }),
+    'utf8'
+  ).toString('base64url');
+  const sigB64 = crypto
+    .createHmac('sha256', AUTH_TOKEN_VALUE)
+    .update('rys-sess-v74:' + payloadB64)
+    .digest('base64url');
+  const sessionToken = `rys_${payloadB64}.${sigB64}`;
   activeAuthSessions.set(sessionToken, {
     user,
     createdAt: now,
-    expiresAt: now + SESSION_TTL_MS
+    expiresAt
   });
   return sessionToken;
 }
@@ -870,11 +1079,17 @@ function revokeAuthToken(token) {
   const clean = String(token || '').trim();
   if (!clean) return;
   activeAuthSessions.delete(clean);
-  if (clean !== AUTH_TOKEN_VALUE) {
+  if (clean !== AUTH_TOKEN_VALUE && typeof revokedAuthTokens !== 'undefined' && revokedAuthTokens) {
     revokedAuthTokens.add(clean);
+    if (typeof db !== 'undefined' && db && typeof saveState === 'function') {
+      db.revokedAuthTokens = Array.from(revokedAuthTokens).slice(-512);
+      saveState(db);
+    }
   }
   // Revoke existing native publishers/admins as well as later HTTP requests.
-  for(const ws of wss.clients)if(ws.rysAuthContext)refreshRysNativeAuth(ws.rysAuthContext);
+  if (typeof wss !== 'undefined' && wss && wss.clients) {
+    for(const ws of wss.clients)if(ws.rysAuthContext)refreshRysNativeAuth(ws.rysAuthContext);
+  }
 }
 
 // IP Tabanlı Hafif Hız Sınırlayıcı (Sliding Window Rate Limiter)
@@ -945,15 +1160,57 @@ function verifyPassword(candidate, envPass, fallbackSha256) {
 
 function isValidAuthToken(token) {
   const clean = String(token || '').trim();
-  if (!clean || revokedAuthTokens.has(clean)) return false;
-  if (clean === AUTH_TOKEN_VALUE) return true;
-  const sess = activeAuthSessions.get(clean);
-  if (!sess) return false;
-  if (Date.now() > sess.expiresAt) {
-    activeAuthSessions.delete(clean);
-    return false;
+  if (!clean) return false;
+  if (typeof revokedAuthTokens !== 'undefined' && revokedAuthTokens && revokedAuthTokens.has(clean)) return false;
+  if (typeof AUTH_TOKEN_VALUE === 'string' && AUTH_TOKEN_VALUE && clean === AUTH_TOKEN_VALUE) return true;
+  const sess = typeof activeAuthSessions !== 'undefined' && activeAuthSessions ? activeAuthSessions.get(clean) : null;
+  if (sess) {
+    if (Date.now() > sess.expiresAt) {
+      activeAuthSessions.delete(clean);
+      return false;
+    }
+    return true;
   }
-  return true;
+  if (
+    clean.startsWith('rys_') &&
+    clean.includes('.') &&
+    typeof crypto !== 'undefined' &&
+    typeof Buffer !== 'undefined' &&
+    typeof AUTH_TOKEN_VALUE === 'string' &&
+    AUTH_TOKEN_VALUE.length > 0
+  ) {
+    const body = clean.slice(4);
+    const dotIdx = body.indexOf('.');
+    if (dotIdx > 0 && body.indexOf('.', dotIdx + 1) === -1) {
+      const payloadB64 = body.slice(0, dotIdx);
+      const sigB64 = body.slice(dotIdx + 1);
+      if (sigB64.length === 43 && /^[A-Za-z0-9_-]+$/.test(payloadB64) && /^[A-Za-z0-9_-]+$/.test(sigB64)) {
+        const expectedSig = crypto
+          .createHmac('sha256', AUTH_TOKEN_VALUE)
+          .update('rys-sess-v74:' + payloadB64)
+          .digest('base64url');
+        if (
+          expectedSig.length === sigB64.length &&
+          crypto.timingSafeEqual(Buffer.from(sigB64), Buffer.from(expectedSig))
+        ) {
+          try {
+            const parsed = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+            if (parsed && parsed.u && Number.isFinite(parsed.exp) && Date.now() <= parsed.exp) {
+              if (typeof activeAuthSessions !== 'undefined' && activeAuthSessions) {
+                activeAuthSessions.set(clean, {
+                  user: parsed.u,
+                  createdAt: Number(parsed.iat) || Date.now(),
+                  expiresAt: parsed.exp
+                });
+              }
+              return true;
+            }
+          } catch (e) {}
+        }
+      }
+    }
+  }
+  return false;
 }
 
 
@@ -2382,14 +2639,15 @@ app.post('/api/demo-request', demoRequestRateLimiter, (req, res) => {
   if (!db.requests) db.requests = [];
   const item = {
     id: `req-${Date.now()}`,
-    name: name || 'İsimsiz Başvuru',
-    company_name: company_name || 'Belirtilmedi',
-    phone: phone || '',
-    email: email || '',
-    message: message || '',
+    name: String(name || 'İsimsiz Başvuru').trim().slice(0, 120),
+    company_name: String(company_name || 'Belirtilmedi').trim().slice(0, 160),
+    phone: String(phone || '').trim().slice(0, 40),
+    email: String(email || '').trim().slice(0, 160),
+    message: String(message || '').trim().slice(0, 2000),
     createdAt: new Date().toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' })
   };
   db.requests.unshift(item);
+  if (db.requests.length > 200) db.requests.length = 200;
   saveState(db);
   broadcastToAdmins({ type: 'new-request', request: item, requests: db.requests });
   return res.json({
@@ -2442,20 +2700,49 @@ app.get('/api/bootstrap', (req, res) => {
 
   const requestsPayload = !isAuthed || assignedCode ? [] : db.requests || [];
 
+  const pinProtectedCodes = new Set(
+    (db.tours || [])
+      .filter((t) => Boolean(t && (t.pinProtected || t.pin) && String(t.pin || '').trim()))
+      .map((t) => String(t.code || '').toUpperCase().trim())
+  );
+
   const liveRoomsList = Array.from(liveRooms.values())
     .filter((r) => !assignedCode || String(r.tourCode || '').toUpperCase() === assignedCode)
-    .map((r) => serializeRoom(r, isAuthed));
+    .map((r) => {
+      const serialized = serializeRoom(r, isAuthed);
+      if (!isAuthed && serialized && pinProtectedCodes.has(String(r.tourCode || '').toUpperCase().trim())) {
+        serialized.guideLocation = null;
+      }
+      return serialized;
+    });
+
+  const announcementsPayload = !isAuthed
+    ? (db.announcements || []).filter((a) => !pinProtectedCodes.has(String(a.tourCode || '').toUpperCase().trim()))
+    : assignedCode
+      ? (db.announcements || []).filter((a) => {
+          const tc = String(a.tourCode || '').toUpperCase().trim();
+          return tc === assignedCode || tc === 'ALL';
+        })
+      : db.announcements || [];
+
+  const journeyStepsPayload = {};
+  for (const [k, v] of Object.entries(db.journeySteps || {})) {
+    const upperK = String(k || '').toUpperCase().trim();
+    if (assignedCode && upperK !== assignedCode) continue;
+    if (!isAuthed && pinProtectedCodes.has(upperK)) continue;
+    journeyStepsPayload[k] = v;
+  }
 
   res.json({
     agency: db.agency,
     tours: toursPayload,
     guides: guidesPayload,
     hotels: db.hotels,
-    announcements: db.announcements,
+    announcements: announcementsPayload,
     sosAlerts: sosPayload,
     requests: requestsPayload,
     siyerPoints: db.siyerPoints,
-    journeySteps: db.journeySteps,
+    journeySteps: journeyStepsPayload,
     liveRooms: liveRoomsList
   });
 });
@@ -2640,6 +2927,8 @@ app.delete('/api/tours/:id', requireAuth, (req, res) => {
     }
     for(const [endpoint,subscription] of rysPushSubs)if(subscription.tourCode===deletedCode)rysPushDrop(endpoint);
     db.pushSubscriptions=Array.from(rysPushSubs.values());
+    for(const [endpoint,subscription] of rysSosPushSubs)if(subscription.tourCode===deletedCode)rysSosPushDrop(endpoint);
+    db.sosPushSubscriptions=Array.from(rysSosPushSubs.values());
     for (const [key, room] of liveRooms.entries()) {
       if (room.tourCode === deletedCode) {
         dropRysRoom(room);
@@ -2678,8 +2967,12 @@ app.get('/api/trips/:code/steps', (req, res) => {
     makkahHotel: 'Mekke Otel Kudi Tower',
     madinahHotel: '2 Gün Medine Konaklama (Merkezi Bölge)'
   };
-  const tour = isRequestAuthenticated(req) ? rawTour : sanitizeTourForPublic(rawTour);
-  const steps = getTourSteps(code);
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  const isAuthedForTour = rysCanGuide(principal, code);
+  const requiresPin = Boolean(rawTour && (rawTour.pinProtected || rawTour.pin) && String(rawTour.pin || '').trim());
+  const pinSatisfied = !requiresPin || isAuthedForTour || String(req.query?.pin || '').trim() === String(rawTour.pin).trim();
+  const tour = isAuthedForTour ? rawTour : sanitizeTourForPublic(rawTour);
+  const steps = pinSatisfied ? getTourSteps(code) : [];
   const stats = computeJourneyStats(steps);
   const allocatedRoom=getOrCreateRoom(code,'genel');
   if(!allocatedRoom){
@@ -2687,9 +2980,15 @@ app.get('/api/trips/:code/steps', (req, res) => {
     return res.json({success:false,error:'tour-unknown',tour:null,steps:[],stats:computeJourneyStats([]),room:null,announcements:[]});
   }
   const room=serializeRoom(allocatedRoom,false);
-  const announcements = db.announcements.filter((a) => a.tourCode === code || a.tourCode === 'ALL');
+  if (!pinSatisfied && room) {
+    room.guideLocation = null;
+  }
+  const announcements = pinSatisfied
+    ? db.announcements.filter((a) => a.tourCode === code || a.tourCode === 'ALL')
+    : [];
   return res.json({
     success: true,
+    pinRequired: !pinSatisfied,
     tour,
     steps,
     stats,
@@ -2701,6 +3000,10 @@ app.get('/api/trips/:code/steps', (req, res) => {
 
 app.post('/api/trips/:code/steps', requireAuth, (req, res) => {
   const code = String(req.params.code || 'RY-KASIM').toUpperCase().trim();
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  if (!rysCanGuide(principal, code)) {
+    return res.status(403).json({ success: false, message: 'Bu kafilenin rotası üzerinde işlem yetkiniz yok.' });
+  }
   const body = req.body || {};
   const steps = getTourSteps(code);
 
@@ -2768,6 +3071,10 @@ app.post('/api/trips/:code/steps', requireAuth, (req, res) => {
 
 app.patch('/api/trips/:code/steps/:stepId', requireAuth, (req, res) => {
   const code = String(req.params.code || 'RY-KASIM').toUpperCase().trim();
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  if (!rysCanGuide(principal, code)) {
+    return res.status(403).json({ success: false, message: 'Bu kafilenin rotası üzerinde işlem yetkiniz yok.' });
+  }
   const stepId = req.params.stepId;
   const body = req.body || {};
   const steps = getTourSteps(code);
@@ -2816,6 +3123,10 @@ app.patch('/api/trips/:code/steps/:stepId', requireAuth, (req, res) => {
 
 app.delete('/api/trips/:code/steps/:stepId', requireAuth, (req, res) => {
   const code = String(req.params.code || 'RY-KASIM').toUpperCase().trim();
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  if (!rysCanGuide(principal, code)) {
+    return res.status(403).json({ success: false, message: 'Bu kafilenin rotası üzerinde işlem yetkiniz yok.' });
+  }
   const stepId = req.params.stepId;
   const steps = getTourSteps(code);
   const nextSteps = steps.filter((s) => s.id !== stepId);
@@ -2835,15 +3146,20 @@ app.delete('/api/trips/:code/steps/:stepId', requireAuth, (req, res) => {
 // 5. Guides CRUD
 app.post('/api/guides', requireAuth, (req, res) => {
   const body = req.body || {};
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  const assignedTour = String(body.assignedTour || principal?.assignedTour || 'RY-KASIM').toUpperCase().trim();
+  if (!rysCanGuide(principal, assignedTour)) {
+    return res.status(403).json({ success: false, message: 'Başka bir kafileye rehber ekleme yetkiniz yok.' });
+  }
   const guide = {
     id: `guide-${Date.now()}`,
-    name: body.name || 'Yeni Rehber Hoca',
-    title: body.title || 'Kafile İrşad Rehberi',
-    phone: body.phone || '+90 538 399 96 66',
-    email: body.email || `rehber${Date.now()}@ridvanyilmazturizm.com`,
-    specialty: body.specialty || 'Siyer ve Umre Rehberliği',
+    name: String(body.name || 'Yeni Rehber Hoca').trim().slice(0, 120),
+    title: String(body.title || 'Kafile İrşad Rehberi').trim().slice(0, 140),
+    phone: String(body.phone || '+90 538 399 96 66').trim().slice(0, 40),
+    email: String(body.email || `rehber${Date.now()}@ridvanyilmazturizm.com`).trim().slice(0, 160),
+    specialty: String(body.specialty || 'Siyer ve Umre Rehberliği').trim().slice(0, 200),
     status: 'online',
-    assignedTour: body.assignedTour || 'RY-KASIM'
+    assignedTour
   };
   db.guides.push(guide);
   saveState(db);
@@ -2852,11 +3168,15 @@ app.post('/api/guides', requireAuth, (req, res) => {
 
 app.delete('/api/guides/:id', requireAuth, (req, res) => {
   const targetId = req.params.id;
-  const prevLen = db.guides.length;
-  db.guides = db.guides.filter((g) => g.id !== targetId);
-  if (db.guides.length === prevLen) {
+  const targetGuide = db.guides.find((g) => g.id === targetId);
+  if (!targetGuide) {
     return res.status(404).json({ success: false, message: 'Silinecek rehber bulunamadı.' });
   }
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  if (!rysCanGuide(principal, targetGuide.assignedTour || 'RY-KASIM')) {
+    return res.status(403).json({ success: false, message: 'Bu rehber kaydını silme yetkiniz yok.' });
+  }
+  db.guides = db.guides.filter((g) => g.id !== targetId);
   saveState(db);
   return res.json({ success: true });
 });
@@ -2879,6 +3199,7 @@ app.post('/api/announcements', requireAuth, (req, res) => {
     urgent: Boolean(body.urgent)
   };
   db.announcements.unshift(ann);
+  if (db.announcements.length > 100) db.announcements.length = 100;
   saveState(db);
   queueRysPushAnnouncement(ann,ann.tourCode==='ALL');
 
@@ -2903,6 +3224,10 @@ app.delete('/api/announcements/:id', requireAuth, (req, res) => {
   if (!deletedAnn) {
     return res.status(404).json({ success: false, message: 'Silinecek duyuru bulunamadı.' });
   }
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  if (deletedAnn.tourCode === 'ALL' ? !rysCanAdmin(principal) : !rysCanGuide(principal, deletedAnn.tourCode)) {
+    return res.status(403).json({ success: false, message: 'Bu duyuru kaydını silme yetkiniz yok.' });
+  }
   db.announcements = db.announcements.filter((a) => a.id !== targetId);
   saveState(db);
   for (const room of liveRooms.values()) {
@@ -2916,15 +3241,18 @@ app.delete('/api/announcements/:id', requireAuth, (req, res) => {
     broadcastToFamilyTrackers(deletedAnn.tourCode, { type: 'announcement-deleted', id: targetId });
   }
   broadcastToAdmins({ type: 'announcement-deleted', id: targetId, announcements: db.announcements });
-  return res.json({ success: true, id: targetId, announcements: db.announcements });
+  const visibleAnnouncements = principal?.assignedTour
+    ? db.announcements.filter((a) => a.tourCode === principal.assignedTour || a.tourCode === 'ALL')
+    : db.announcements;
+  return res.json({ success: true, id: targetId, announcements: visibleAnnouncements });
 });
 
 // 7. SOS Emergency API
 function recordAndBroadcastSosAlert(raw) {
   const nowMs = Date.now();
-  const requestedId = raw.id ? String(raw.id).trim() : '';
-  const tourCode = String(raw.tourCode || 'RY-KASIM').toUpperCase().trim();
-  const pilgrimName = String(raw.pilgrimName || 'Hacı Misafir').trim();
+  const requestedId = raw.id ? String(raw.id).trim().slice(0, 96) : '';
+  const tourCode = String(raw.tourCode || 'RY-KASIM').toUpperCase().trim().slice(0, 96);
+  const pilgrimName = String(raw.pilgrimName || 'Hacı Misafir').trim().slice(0, 120);
 
   const existing = db.sosAlerts.find(
     (s) =>
@@ -2943,21 +3271,24 @@ function recordAndBroadcastSosAlert(raw) {
     id: requestedId || `sos-${nowMs}`,
     tourCode,
     pilgrimName,
-    phone: raw.phone || '+90 538 000 00 00',
+    phone: String(raw.phone || '+90 538 000 00 00').trim().slice(0, 40),
     lat: Number(raw.lat) || 21.4225,
     lng: Number(raw.lng) || 39.8262,
     accuracy: raw.accuracy ? Number(raw.accuracy) : null,
-    locationNote: raw.locationNote || 'Mescid-i Haram / Kâbe-i Muazzama Çevresi',
+    locationNote: String(raw.locationNote || 'Mescid-i Haram / Kâbe-i Muazzama Çevresi').trim().slice(0, 300),
     createdAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
     createdAtMs: nowMs,
     status: 'active',
     resolvedBy: null
   };
   db.sosAlerts.unshift(alertItem);
+  if (db.sosAlerts.length > 100) db.sosAlerts.length = 100;
   saveState(db);
 
   broadcastToGuidesInTour(alertItem.tourCode, { type: 'sos-alert', alert: alertItem });
   broadcastToAdmins({ type: 'sos-alert', alert: alertItem, sosAlerts: db.sosAlerts });
+  queueRysPushSos(alertItem);
+  sendEmergencySosEmail(alertItem);
   return alertItem;
 }
 
@@ -2970,8 +3301,12 @@ app.post('/api/sos', sosRateLimiter, (req, res) => {
 app.patch('/api/sos/:id/resolve', requireAuth, (req, res) => {
   const alertItem = db.sosAlerts.find((s) => s.id === req.params.id);
   if (!alertItem) return res.status(404).json({ success: false });
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  if (!rysCanGuide(principal, alertItem.tourCode)) {
+    return res.status(403).json({ success: false, message: 'Bu SOS kaydı üzerinde yetkiniz yok.' });
+  }
   alertItem.status = 'resolved';
-  alertItem.resolvedBy = (req.body && req.body.resolvedBy) || 'Rıdvan Yılmaz Hoca';
+  alertItem.resolvedBy = String((req.body && req.body.resolvedBy) || 'Rıdvan Yılmaz Hoca').trim().slice(0, 120);
   saveState(db);
 
   broadcastToGuidesInTour(alertItem.tourCode, { type: 'sos-resolved', alert: alertItem });
@@ -2985,11 +3320,18 @@ app.delete('/api/sos/:id', requireAuth, (req, res) => {
   if (!targetAlert) {
     return res.status(404).json({ success: false, message: 'Silinecek SOS kaydı bulunamadı.' });
   }
+  const principal = rysPrincipal(extractAuthTokenFromReq(req));
+  if (!rysCanGuide(principal, targetAlert.tourCode)) {
+    return res.status(403).json({ success: false, message: 'Bu SOS kaydını silme yetkiniz yok.' });
+  }
   db.sosAlerts = db.sosAlerts.filter((s) => s.id !== targetId);
   saveState(db);
   broadcastToGuidesInTour(targetAlert.tourCode, { type: 'sos-resolved', alert: targetAlert });
   broadcastToAdmins({ type: 'sos-resolved', alert: targetAlert, sosAlerts: db.sosAlerts });
-  return res.json({ success: true, sosAlerts: db.sosAlerts });
+  const visibleSosAlerts = principal?.assignedTour
+    ? db.sosAlerts.filter((s) => s.tourCode === principal.assignedTour)
+    : db.sosAlerts;
+  return res.json({ success: true, sosAlerts: visibleSosAlerts });
 });
 
 // 8. REA Analysis Report Endpoint
@@ -3156,7 +3498,9 @@ const protectedRoutes = new Set([
   '/rehber.html',
   '/panel',
   '/acente-kafile-yonetim-sistemi',
-  '/panel.html'
+  '/panel.html',
+  '/yaka-karti',
+  '/yaka-karti.html'
 ]);
 
 app.use((req, res, next) => {

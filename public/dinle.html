@@ -16,7 +16,7 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=19" />
-  <script src="/vercel-ws-shim.js?v=73"></script>
+  <script src="/vercel-ws-shim.js?v=74"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/umrah-steps-map.js?v=47"></script>
   <style>
@@ -272,7 +272,6 @@
           <svg class="svg-icon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Yükle
         </button>
-        <a href="/rehber" class="btn btn-outline btn-sm">Rehber</a>
       </div>
     </div>
   </header>
@@ -448,7 +447,7 @@
 
           <div style="display:flex; align-items:center; gap:10px; font-size:0.8rem; color:#cbd5e1; margin-bottom:16px; background:rgba(0,0,0,0.22); padding:10px 14px; border-radius:12px;">
             <svg class="svg-icon svg-gold" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-            <span>Ses Güçlendirici:</span>
+            <span id="i18n_volBoostLabel">Ses Güçlendirici:</span>
             <input type="range" id="volumeSlider" min="0" max="200" value="120" style="flex:1; accent-color:#dfbe78;" oninput="updateVolume(this.value)" />
             <span id="volumeLabel" style="font-weight:800; color:var(--color-gold-bright); min-width:42px; text-align:right;">%120</span>
           </div>
@@ -622,7 +621,7 @@
           <div style="text-align:center; margin-bottom:16px;">
             <span class="badge" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca;">ACİL DURUM & KAYIP DESTEĞİ</span>
             <h3 style="font-size:1.25rem; color:var(--color-emerald-night); margin-top:8px;" id="i18n_sosTitle">Acil Konum (SOS) Bildirimi</h3>
-            <p style="font-size:0.86rem; color:var(--color-muted); margin-top:4px;">
+            <p id="i18n_sosDesc" style="font-size:0.86rem; color:var(--color-muted); margin-top:4px;">
               Kalabalıkta kafileden ayrıldıysanız veya acil yardıma ihtiyacınız varsa aşağıdaki butona <strong>3 saniye basılı tutun</strong>. Tam GPS harita konumunuz rehber hocamıza ve acente merkezine anında iletilir.
             </p>
           </div>
@@ -638,10 +637,10 @@
           <div id="sosStatusMsg" style="display:none; margin-top:12px; padding:14px; border-radius:12px; background:#dcfce7; color:#166534; font-size:0.85rem; font-weight:700;"></div>
 
           <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--color-hairline); display:flex; gap:10px; flex-wrap:wrap;">
-            <a href="tel:+905383999666" class="btn btn-outline" style="flex:1;">
+            <a id="i18n_callGuideBtn" href="tel:+905383999666" class="btn btn-outline" style="flex:1;">
               Rehberi Ara
             </a>
-            <a href="https://wa.me/905383999666" target="_blank" class="btn btn-primary" style="flex:1;">
+            <a id="i18n_waSupportBtn" href="https://wa.me/905383999666" target="_blank" class="btn btn-primary" style="flex:1;">
               WhatsApp Destek
             </a>
           </div>
@@ -802,6 +801,16 @@
         sosHoldBtnText: 'ACİL DURUM / KAYBOLDUM (3 Sn Basılı Tutun)',
         audioPlayBtn: 'Sesi Aç / Rehberi Dinle',
         audioMuteBtn: 'Sesi Kapat (Canlı Yayın Dinleniyor)',
+        volBoostLabel: 'Ses Güçlendirici:',
+        wakeLockStatusTitle: 'Tavaf Kesintisiz Modu: Hazır',
+        wakeLockStatusSub: 'Telefon cebinizdeyken veya ekran kilitliyken sesin kesilmemesini sağlar.',
+        wakeLockBtn: 'Ekran Kilidini Önle',
+        annTabPushTitle: '🔔 Arka Plan Bildirim Durumu',
+        annTabPushSub: 'Uygulama kapalıyken kilit ekranına bildirim düşmesi için bildirim izni verin.',
+        annTabPushBtn: 'Bildirimlere İzin Ver',
+        sosDesc: 'Kalabalıkta kafileden ayrıldıysanız veya acil yardıma ihtiyacınız varsa aşağıdaki butona 3 saniye basılı tutun. Tam GPS konumunuz rehber hocamıza ve acente merkezine anında iletilir.',
+        callGuideBtn: 'Rehberi Ara',
+        waSupportBtn: 'WhatsApp Destek',
         leaveBtn: '← Kafile Kodunu Değiştir / Odadan Ayrıl',
         navLive: 'Yayın',
         navRoute: 'Rota',
@@ -826,6 +835,16 @@
         sosHoldBtnText: 'حالة طوارئ / تائه (اضغط مطولاً 3 ثوانٍ)',
         audioPlayBtn: 'تشغيل الصوت / الاستماع للمرشد',
         audioMuteBtn: 'كتم الصوت (البث المباشر قيد الاستماع)',
+        volBoostLabel: 'مقوي الصوت:',
+        wakeLockStatusTitle: 'وضع الطواف المتواصل: جاهز',
+        wakeLockStatusSub: 'يحافظ على استمرار الصوت عندما يكون الهاتف في جيبك أو الشاشة مغلقة.',
+        wakeLockBtn: 'منع قفل الشاشة',
+        annTabPushTitle: '🔔 حالة الإشعارات في الخلفية',
+        annTabPushSub: 'اسمح بالإشعارات لتصلك تنبيهات الحملة حتى عند إغلاق التطبيق.',
+        annTabPushBtn: 'تفعيل الإشعارات',
+        sosDesc: 'إذا ابتعدت عن القافلة في الزحام، اضغط مطولاً على الزر لمدة 3 ثوانٍ لإرسال موقعك الفوري عبر GPS إلى المرشد والمركز.',
+        callGuideBtn: 'اتصل بالمرشد',
+        waSupportBtn: 'دعم واتساب',
         leaveBtn: '← تغيير رمز القافلة / مغادرة الغرفة',
         navLive: 'البث',
         navRoute: 'المسار',
@@ -850,6 +869,16 @@
         sosHoldBtnText: 'EMERGENCY / I AM LOST (Hold for 3 Seconds)',
         audioPlayBtn: 'Unmute / Listen to Guide',
         audioMuteBtn: 'Mute Audio (Listening Live)',
+        volBoostLabel: 'Volume Booster:',
+        wakeLockStatusTitle: 'Uninterrupted Tawaf Mode: Ready',
+        wakeLockStatusSub: 'Keeps live audio uninterrupted while your phone is in your pocket.',
+        wakeLockBtn: 'Keep Screen Awake',
+        annTabPushTitle: '🔔 Background Notification Status',
+        annTabPushSub: 'Allow notifications to receive group announcements even when the app is closed.',
+        annTabPushBtn: 'Allow Notifications',
+        sosDesc: 'If you get separated from the group, press and hold the button below for 3 seconds to send your live GPS location to your guide immediately.',
+        callGuideBtn: 'Call Guide',
+        waSupportBtn: 'WhatsApp Support',
         leaveBtn: '← Change Tour Code / Leave Room',
         navLive: 'Live',
         navRoute: 'Route',
@@ -874,6 +903,16 @@
         sosHoldBtnText: 'URGENCE / JE SUIS PERDU (Maintenir 3s)',
         audioPlayBtn: 'Activer le Son / Écouter le Guide',
         audioMuteBtn: 'Couper le Son (En Direct)',
+        volBoostLabel: 'Amplification Audio',
+        wakeLockStatusTitle: 'Veille de l’Écran et Audio Arrière-Plan',
+        wakeLockStatusSub: 'Gardez l’écran éveillé pendant le Tawaf.',
+        wakeLockBtn: 'Garder l’Écran Éveillé',
+        annTabPushTitle: '🔔 Notifications en Arrière-Plan',
+        annTabPushSub: 'Autorisez les notifications pour recevoir les annonces même lorsque l’application est fermée.',
+        annTabPushBtn: 'Autoriser les Notifications',
+        sosDesc: 'Si vous êtes séparé du groupe, maintenez le bouton ci-dessous pendant 3 secondes pour envoyer votre position GPS au guide.',
+        callGuideBtn: 'Appeler le Guide',
+        waSupportBtn: 'Support WhatsApp',
         leaveBtn: '← Changer de Code / Quitter la Salle',
         navLive: 'Direct',
         navRoute: 'Route',
@@ -898,6 +937,16 @@
         sosHoldBtnText: 'DARURAT / TERSESAT (Tahan 3 Detik)',
         audioPlayBtn: 'Nyalakan Suara / Dengarkan Pembimbing',
         audioMuteBtn: 'Matikan Suara (Mendengarkan Langsung)',
+        volBoostLabel: 'Penguat Suara Earphone',
+        wakeLockStatusTitle: 'Kunci Layar & Audio Latar Belakang',
+        wakeLockStatusSub: 'Jaga layar tetap menyala selama Thawaf.',
+        wakeLockBtn: 'Jaga Layar Menyala',
+        annTabPushTitle: '🔔 Status Notifikasi Latar Belakang',
+        annTabPushSub: 'Izinkan notifikasi agar pengumuman tetap masuk saat aplikasi ditutup.',
+        annTabPushBtn: 'Izinkan Notifikasi',
+        sosDesc: 'Jika terpisah dari rombongan, tahan tombol di bawah selama 3 detik untuk mengirim lokasi GPS Anda ke pembimbing.',
+        callGuideBtn: 'Hubungi Pembimbing',
+        waSupportBtn: 'Dukungan WhatsApp',
         leaveBtn: '← Ganti Kode / Keluar Ruangan',
         navLive: 'Siaran',
         navRoute: 'Rute',
@@ -922,6 +971,16 @@
         sosHoldBtnText: 'ایمرجنسی / راستہ بھول گیا (3 سیکنڈ دبائے رکھیں)',
         audioPlayBtn: 'آواز کھولیں / معلم کو سنیں',
         audioMuteBtn: 'آواز بند کریں (لائیو نشریات جاری)',
+        volBoostLabel: 'ہیڈ فون آواز بڑھائیں',
+        wakeLockStatusTitle: 'اسکرین لاک اور پس منظر آڈیو تحفظ',
+        wakeLockStatusSub: 'طواف کے دوران آواز بند نہ ہونے کے لیے اسکرین کھلی رکھیں۔',
+        wakeLockBtn: 'اسکرین کھلی رکھیں',
+        annTabPushTitle: '🔔 پس منظر اطلاعات کی حیثیت',
+        annTabPushSub: 'ایپ بند ہونے پر بھی قافلے کے اعلانات حاصل کرنے کے لیے اطلاعات کی اجازت دیں۔',
+        annTabPushBtn: 'اطلاعات کی اجازت دیں',
+        sosDesc: 'اگر آپ قافلے سے بچھڑ گئے ہیں تو نیچے بٹن کو 3 سیکنڈ دبائے رکھیں، آپ کا GPS مقام فوری طور پر معلم کو بھیج دیا جائے گا۔',
+        callGuideBtn: 'معلم کو کال کریں',
+        waSupportBtn: 'واٹس ایپ مدد',
         leaveBtn: '← قافلہ کوڈ تبدیل کریں / کمرے سے نکلیں',
         navLive: 'نشریات',
         navRoute: 'راستہ',
@@ -944,6 +1003,24 @@
         const el = document.getElementById(`i18n_${k}`);
         if (el) el.textContent = dict[k];
       });
+      if (!wakeLockSentinel) {
+        const wlTitle = document.getElementById('wakeLockStatusTitle');
+        const wlSub = document.getElementById('wakeLockStatusSub');
+        const wlBtn = document.getElementById('wakeLockBtn');
+        if (wlTitle && dict.wakeLockStatusTitle) wlTitle.textContent = dict.wakeLockStatusTitle;
+        if (wlSub && dict.wakeLockStatusSub) wlSub.textContent = dict.wakeLockStatusSub;
+        if (wlBtn && dict.wakeLockBtn) wlBtn.textContent = dict.wakeLockBtn;
+      }
+      if (typeof window.__rysSyncPushUi === 'function' && rysWebPushState().status === 'subscribed') {
+        window.__rysSyncPushUi();
+      } else {
+        const pTitle = document.getElementById('annTabPushTitle');
+        const pSub = document.getElementById('annTabPushSub');
+        const pBtn = document.getElementById('annTabPushBtn');
+        if (pTitle && dict.annTabPushTitle) pTitle.textContent = dict.annTabPushTitle;
+        if (pSub && dict.annTabPushSub) pSub.textContent = dict.annTabPushSub;
+        if (pBtn && dict.annTabPushBtn) pBtn.textContent = dict.annTabPushBtn;
+      }
       const sosBtnTxt = document.getElementById('sosBtnText');
       if (sosBtnTxt && dict.sosHoldBtnText) sosBtnTxt.textContent = dict.sosHoldBtnText;
       if (typeof syncAudioUnlockButtonUi === 'function') {
@@ -973,6 +1050,7 @@
     let currentTour = null;
     let intentionalLeave = false;
     let availableToursCache = [];
+    let availableHotelsCache = [];
 
     // Parse URL query params & restore saved pilgrim name/phone
     const urlParams = new URLSearchParams(window.location.search);
@@ -1036,6 +1114,9 @@
     fetch('/api/bootstrap')
       .then((r) => r.json())
       .then((data) => {
+        if (data && Array.isArray(data.hotels)) {
+          availableHotelsCache = data.hotels;
+        }
         if (data && data.tours && data.tours.length > 0) {
           availableToursCache = data.tours;
           const container = document.getElementById('tourPillsContainer');
@@ -1083,14 +1164,20 @@
       const hotelDirBtn = document.getElementById('pilgrimHotelDirBtn');
       const sosHotelDirBtn = document.getElementById('sosHotelDirBtn');
 
-      if (makkahEl) makkahEl.textContent = `🏨 Mekke: ${makkahName}`;
-      if (madinahEl) madinahEl.textContent = `📍 Ajyad Street, 23333 Mekke • Medine: ${madinahName}`;
-      if (sosLabelEl) sosLabelEl.textContent = `🏨 Kafile Oteli: ${makkahName} (Ajyad Street, Mekke)`;
-
+      const matchedHotel = availableHotelsCache.find((h) => h && h.name && h.name.toLowerCase() === makkahName.toLowerCase())
+        || availableHotelsCache.find((h) => h && h.name && makkahName.toLowerCase().includes(h.name.toLowerCase()));
       const isKudi = /kudi/i.test(makkahName);
-      const destQuery = isKudi
-        ? '21.4008,39.8261'
-        : encodeURIComponent(`${makkahName} Makkah`);
+      const cityLabel = matchedHotel?.city || (isKudi ? 'Ajyad Street, 23333 Mekke' : 'Mekke-i Mükerreme');
+
+      if (makkahEl) makkahEl.textContent = `🏨 Mekke: ${makkahName}`;
+      if (madinahEl) madinahEl.textContent = `📍 ${cityLabel} • Medine: ${madinahName}`;
+      if (sosLabelEl) sosLabelEl.textContent = `🏨 Kafile Oteli: ${makkahName} (${cityLabel})`;
+      if (sosHotelDirBtn) sosHotelDirBtn.textContent = `🏨 Otelime Yol Tarifi (${makkahName})`;
+
+      const coords = matchedHotel?.coordinates;
+      const destQuery = (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lng))
+        ? `${coords.lat},${coords.lng}`
+        : (isKudi ? '21.4008,39.8261' : encodeURIComponent(`${makkahName} Makkah`));
       const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${destQuery}&travelmode=walking`;
       if (hotelDirBtn) hotelDirBtn.href = mapsUrl;
       if (sosHotelDirBtn) sosHotelDirBtn.href = mapsUrl;
@@ -2717,13 +2804,6 @@
       }
     })();
 
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        // PATCH: sw-register-v53
-        navigator.serviceWorker.register('/sw.js?v=73').catch(() => {});
-      });
-    }
-
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredInstallPrompt = e;
@@ -2940,7 +3020,7 @@
     navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(rysWebPushState().context)void syncWebPushSubscription();});
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=73').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=74').catch(() => {});
     }
 
     let subscribedBannerDismissed = false;
@@ -2971,7 +3051,7 @@
         return;
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=73').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=74').catch(() => {});
       }
       // iOS WebKit zorunluluğu: setWebPushTour senkron çalışır, Notification.requestPermission() doğrudan dokunuş içinde çağrılır.
       const state = rysWebPushState();
