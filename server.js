@@ -659,7 +659,7 @@ function rysSosPushSubscribe(body,principal){
   const rawAuthTok=typeof body._rawAuthToken==='string'?body._rawAuthToken.trim():'';
   const authTokenHash=rawAuthTok?crypto.createHash('sha256').update(rawAuthTok).digest('hex'):previous?.authTokenHash||null;
   const sessExp=rawAuthTok&&typeof activeAuthSessions!=='undefined'?activeAuthSessions.get(rawAuthTok)?.expiresAt:null;
-  const targetView=body?.targetView==='panel'?'panel':'rehber';
+  const targetView=body?.targetView==='panel'?'panel':body?.targetView==='rehber'?'rehber':(previous?.targetView==='panel'?'panel':'rehber');
   let s={endpoint:target.url.href,keys:{p256dh:p.toString('base64url'),auth:auth.toString('base64url')},
     tourCode:code,role:rysCanAdmin(principal)?'admin':'guide',targetView,deviceId:body.deviceId.trim(),
     revision:body.revision,subscriptionToken:previous?.subscriptionToken||crypto.randomBytes(32).toString('base64url'),
@@ -670,7 +670,7 @@ function rysSosPushSubscribe(body,principal){
   }
   if(previous&&previous!==s)rysPushCancel(s.endpoint,previous);
   rysSosPushSubs.delete(s.endpoint);rysSosPushSubs.set(s.endpoint,s);rysSosPushPrune();rysSosPushPersist();
-  return {success:true,subscriptionToken:s.subscriptionToken,revision:s.revision,tourCode:s.tourCode};
+  return {success:true,subscriptionToken:s.subscriptionToken,revision:s.revision,tourCode:s.tourCode,targetView:s.targetView};
 }
 function rysSosPushUnsubscribe(body){
   const target=rysPushEndpoint(body?.endpoint),s=rysSosPushSubs.get(target.url.href);
@@ -754,7 +754,7 @@ function rysPushRotate(body){
   }
   store.delete(updated.endpoint);store.set(updated.endpoint,updated);
   if(isSos){rysSosPushPrune();rysSosPushPersist();}else{rysPushPrune();rysPushPersist();}
-  return {success:true,subscriptionToken:updated.subscriptionToken,revision:updated.revision,tourCode:updated.tourCode};
+  return {success:true,subscriptionToken:updated.subscriptionToken,revision:updated.revision,tourCode:updated.tourCode,...(isSos?{targetView:updated.targetView||'rehber'}:{})};
 }
 function rysPushUnsubscribe(body){
   const target=rysPushEndpoint(body?.endpoint),s=rysPushSubs.get(target.url.href);
@@ -2778,7 +2778,7 @@ wss.on('connection', (ws, req) => {
                 sumSq += s * s;
               }
               const rms = sampleCount > 0 ? Math.sqrt(sumSq / sampleCount) : 0;
-              const computedLevel = rms < 0.002 ? 0 : Math.min(1, Math.round(rms * 3.2 * 1000) / 1000);
+              const computedLevel = rms < 0.0005 ? 0 : Math.min(1, Math.max(0.009, Math.round(rms * 6 * 1000) / 1000));
               fallbackPayload = {
                 type: 'audio-chunk',
                 seq,
@@ -4526,7 +4526,7 @@ function resolveTrustedPublicBaseUrl(req) {
   return inferred || 'https://ses.ridvanyilmazturizm.com';
 }
 
-const qrRateLimiter = createRateLimiter({ max: 600, windowMs: 60000, message: 'Çok fazla QR isteği gönderildi.' });
+const qrRateLimiter = createRateLimiter({ max: 2400, windowMs: 60000, message: 'Çok fazla QR isteği gönderildi.' });
 
 app.get('/api/qr-img', qrRateLimiter, async (req, res) => {
   try {

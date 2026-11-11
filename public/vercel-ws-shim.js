@@ -424,7 +424,7 @@
         const pending=this._sendQueue.splice(0),now=Date.now();
         for(const m of pending){
           if(['join','family-subscribe','admin-subscribe','guide-stream-state'].includes(m.type))continue;
-          if(m.type==='audio-chunk'&&(!Number.isFinite(m._queuedAt)||now-m._queuedAt>200))continue;
+          if(m.type==='audio-chunk'&&(!Number.isFinite(m._queuedAt)||now-m._queuedAt>(m.synthNote?200:560)))continue;
           try{this.send(JSON.stringify(m));}catch(e){this.onerror?.(e);}
         }
         this._audioCoalescer?.flush();this._closeMqttClients();window.__ryConsecutiveVdsFailures=0;
@@ -862,10 +862,10 @@
       const now=Date.now();
       if(message.type==='audio-chunk'&&!Number.isFinite(message._queuedAt))message={...message,_queuedAt:now};
       this._sendQueue=this._sendQueue.filter(m=>m.type!=='audio-chunk'||
-        (Number.isFinite(m._queuedAt)&&now-m._queuedAt<=200));
+        (Number.isFinite(m._queuedAt)&&now-m._queuedAt<=(m.synthNote?200:560)));
       const audio=message.type==='audio-chunk';
       const matches=this._sendQueue.filter(m=>(m.type==='audio-chunk')===audio).length;
-      const limit=audio?4:64;
+      const limit=audio?9:64;
       if(matches>=limit){
         this._relayQueueDrops=(this._relayQueueDrops||0)+1;
         if(!audio)return false;
@@ -890,7 +890,7 @@
       const sameRoute=()=>route===this._relayRoutingKey();
       const current=()=>this.readyState===1&&this._isRelay&&(this._httpEpoch||0)===epoch;
       const batch=this._sendQueue.splice(0).filter(m=>m.type!=='audio-chunk'||
-        (Number.isFinite(m._queuedAt)&&Date.now()-m._queuedAt<=200));
+        (Number.isFinite(m._queuedAt)&&Date.now()-m._queuedAt<=(m.synthNote?200:560)));
       this._inFlight=true;const ac=new AbortController();this._relayAbort=ac;
       const timer=setTimeout(()=>ac.abort(),3000);let success=false;
       try{
@@ -935,7 +935,7 @@
           this._joinContext;
         const fresh=batch.filter(m=>{
           if(m.type!=='audio-chunk')return true;
-          if(!Number.isFinite(m._queuedAt)||Date.now()-m._queuedAt>200)return false;
+          if(!Number.isFinite(m._queuedAt)||Date.now()-m._queuedAt>(m.synthNote?200:560))return false;
           const state=this._lastGuideState,source=this._joinContext?.audioSourceId;
           if(this._joinContext?.role==='guide'&&state&&(state.isLive===false||!m.synthNote&&String(state.broadcastMode||'').startsWith('demo')))return false;
           const frames=Array.isArray(m.frames)?m.frames:[m];

@@ -1,7 +1,7 @@
 // PATCH: sw-v53
 // PATCH: sw-v53
 // PATCH: sw-v53
-const CACHE_NAME = 'ridvanses-pwa-v83';
+const CACHE_NAME = 'ridvanses-pwa-v84';
 const PUSH_META_CACHE = 'ridvanses-push-meta-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -9,14 +9,14 @@ const ASSETS_TO_CACHE = [
   '/rota',
   '/ani-kitabi',
   '/kullanim-rehberi',
-  '/css/style.css?v=83',
-  '/vercel-ws-shim.js?v=83',
+  '/css/style.css?v=84',
+  '/vercel-ws-shim.js?v=84',
   '/vendor/leaflet/leaflet.js',
   '/vendor/leaflet/leaflet.css',
   '/vendor/mqtt/mqtt.min.js',
-  '/js/umrah-steps-map.js?v=83',
-  '/pcm-capture-worklet.js?v=72-audio',
-  '/pcm-player-worklet.js?v=72-audio',
+  '/js/umrah-steps-map.js?v=84',
+  '/pcm-capture-worklet.js?v=84-audio',
+  '/pcm-player-worklet.js?v=84-audio',
   '/manifest.json',
   '/icons/icon-512.png',
   '/icons/icon-512-maskable.png',
@@ -88,7 +88,7 @@ self.addEventListener('fetch', (event) => {
   if (isFastAudioOrVendorAsset) {
     event.respondWith(
       (async () => {
-        const cached = (await caches.match(event.request)) || (await caches.match(url.pathname, { ignoreSearch: true }));
+        const cached = await caches.match(event.request);
         const netUpdate = fetch(event.request)
           .then((res) => {
             if (res && res.ok && res.status === 200 && res.type === 'basic') {
@@ -101,6 +101,8 @@ self.addEventListener('fetch', (event) => {
         if (cached) return cached;
         const fresh = await netUpdate;
         if (fresh) return fresh;
+        const fallback = await caches.match(url.pathname, { ignoreSearch: true });
+        if (fallback) return fallback;
         return new Response('', { status: 503, statusText: 'Offline' });
       })()
     );

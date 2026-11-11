@@ -8,13 +8,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=83" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=83" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=83" />
+  <link rel="manifest" href="/manifest.json?v=84" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=84" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=84" />
   <title>Rehber (Hoca) Canlı Yayın Stüdyosu | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/rehber" />
-  <link rel="stylesheet" href="/css/style.css?v=83" />
+  <link rel="stylesheet" href="/css/style.css?v=84" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -63,8 +63,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=83"></script>
-  <script src="/js/umrah-steps-map.js?v=83"></script>
+  <script src="/vercel-ws-shim.js?v=84"></script>
+  <script src="/js/umrah-steps-map.js?v=84"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -234,7 +234,7 @@
   <header class="navbar">
     <div class="container navbar-inner">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=83" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=84" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="margin:0; font-size:1.12rem; line-height:1.2;">Rıdvan Yılmaz Turizm</h1>
           <span class="brand-sub"><span class="live-dot"></span> Rehber (Hoca) Canlı Yayın Stüdyosu</span>
@@ -855,6 +855,7 @@
         }
         connectGuideWs();
         loadGuideSteps();
+        if (typeof refreshGuideMicDeviceList === 'function') refreshGuideMicDeviceList(false);
         if ('serviceWorker' in navigator && typeof Notification !== 'undefined' && Notification.permission === 'granted' && localStorage.getItem('rys_sos_push_receipt')) {
           syncGuideSosPushSubscription(true);
         }
@@ -1656,6 +1657,14 @@
     function setGuideComfortFade(enabled){guideComfortFade=!!enabled;syncGuideAudioProfile();}
     function setGuideAutoLeveler(enabled){guideAutoLeveler=!!enabled;syncGuideAudioProfile();}
 
+    function isNarrowbandBtAudioLabel(rawLbl) {
+      const s = String(rawLbl || '');
+      return (
+        /airpods|bluetooth|hands-free|headset|buds|hfp|sco|freeclip|quietcomfort|wh-1000|wf-1000|soundcore|jabra|plantronics|momentum/i.test(s) &&
+        !/usb|receiver|dji|rode|hollyland|boya|lark|wireless\s*go|wireless\s*me|lavalier/i.test(s)
+      );
+    }
+
     async function refreshGuideMicDeviceList(showToast = false) {
       try {
         if (!navigator?.mediaDevices || typeof navigator.mediaDevices.enumerateDevices !== 'function') return;
@@ -1663,19 +1672,25 @@
         const mics = (devices || []).filter((d) => d && d.kind === 'audioinput');
         const sel = document.getElementById('guideMicDeviceSelect');
         if (!sel) return;
+        const hasNamedDevices = mics.some((m) => m.label && String(m.label).trim());
+        if (selectedGuideMicDeviceId && hasNamedDevices && !mics.some((m) => String(m.deviceId || '') === selectedGuideMicDeviceId)) {
+          selectedGuideMicDeviceId = '';
+        }
         const currentVal = selectedGuideMicDeviceId || sel.value || '';
         const opts = ['<option value="" style="color:#000;">📱 Otomatik (Telefon / Kablolu Yaka Mikrofonu Önerilir)</option>'];
         mics.forEach((m, idx) => {
           const id = String(m.deviceId || '');
           if (!id || id === 'default' || id === 'communications') return;
           const rawLbl = String(m.label || `Mikrofon ${idx + 1}`).trim();
-          const isBt = /airpods|bluetooth|hands-free|headset|buds|hfp|sco|wireless/i.test(rawLbl) && !/usb|receiver|dji|rode|hollyland|boya/i.test(rawLbl);
+          const isBt = isNarrowbandBtAudioLabel(rawLbl);
           const prefix = isBt ? '🎧 [BT Dar-Bant Riski] ' : '🎙️ ';
           opts.push(`<option value="${escapeHtml(id)}" style="color:#000;"${id === currentVal ? ' selected' : ''}>${prefix}${escapeHtml(rawLbl)}</option>`);
         });
         sel.innerHTML = opts.join('');
         if (currentVal && Array.from(sel.options || []).some((o) => o.value === currentVal)) {
           sel.value = currentVal;
+        } else {
+          sel.value = '';
         }
         if (showToast && typeof updateGuideBtMicWarning === 'function' && micStream) {
           updateGuideBtMicWarning(micStream);
@@ -1683,32 +1698,36 @@
       } catch {}
     }
 
-    function updateGuideBtMicWarning(stream) {
+    function updateGuideBtMicWarning(stream, recovered = false) {
       try {
         const warnEl = document.getElementById('guideBtHfpWarning');
         const srcEl = document.getElementById('micSourceLabel');
-        if (!warnEl) return;
         const track = stream?.getAudioTracks?.()?.[0];
         if (!track) {
-          warnEl.style.display = 'none';
+          if (warnEl) warnEl.style.display = 'none';
+          if (srcEl && isMicBroadcasting) {
+            srcEl.textContent = recovered
+              ? 'Yayın Kaynağı: 24 kHz Stüdyo Kristal HD (Mikrofon Yenilendi)'
+              : 'Yayın Kaynağı: 24 kHz Yakın-Alan Ses Kilidi (Yan Ses Kalkanı Aktif)';
+          }
           return;
         }
-        const label = String(track.label || '');
+        const label = String(track.label || '').trim();
         const settings = typeof track.getSettings === 'function' ? track.getSettings() || {} : {};
         const sr = Number(settings.sampleRate) || 0;
-        const looksBtHfp =
-          (sr > 0 && sr <= 16000) ||
-          (/airpods|bluetooth|hands-free|buds|hfp|sco/i.test(label) && !/usb|dji|rode|hollyland|boya/i.test(label));
+        const looksBtHfp = (sr > 0 && sr <= 16000) || isNarrowbandBtAudioLabel(label);
         if (looksBtHfp) {
-          warnEl.style.display = 'block';
-          warnEl.innerHTML = `⚠️ <strong>Bluetooth Kulaklık Mikrofonu Algılandı (${escapeHtml(label || 'BT HFP')}${sr ? ` • ${sr} Hz` : ''}):</strong> Standart Bluetooth kulaklıklar sesi telefon kalitesine (8–16 kHz) düşürebilir. En berrak <strong>24 kHz Stüdyo HD</strong> ses için yukarıdaki listeden <strong>Telefonun Kendi Mikrofonunu</strong> veya <strong>USB-C/Lightning Yaka Mikrofonunu</strong> seçmeniz önerilir.`;
+          if (warnEl) {
+            warnEl.style.display = 'block';
+            warnEl.innerHTML = `⚠️ <strong>Bluetooth Kulaklık Mikrofonu Algılandı (${escapeHtml(label || 'BT HFP')}${sr ? ` • ${sr} Hz` : ''}):</strong> Standart Bluetooth kulaklıklar sesi telefon kalitesine (8–16 kHz) düşürebilir. En berrak <strong>24 kHz Stüdyo HD</strong> ses için yukarıdaki listeden <strong>Telefonun Kendi Mikrofonunu</strong> veya <strong>USB-C/Lightning Yaka Mikrofonunu</strong> seçmeniz önerilir.`;
+          }
           if (srcEl && isMicBroadcasting) {
-            srcEl.textContent = `Yayın Kaynağı: ${label || 'Bluetooth Mikrofon'}${sr ? ` (${sr} Hz → 24 kHz)` : ''}`;
+            srcEl.textContent = `Yayın Kaynağı: ${label || 'Bluetooth Mikrofon'}${sr ? ` (${sr} Hz → 24 kHz)` : ''}${recovered ? ' • Yenilendi' : ''}`;
           }
         } else {
-          warnEl.style.display = 'none';
+          if (warnEl) warnEl.style.display = 'none';
           if (srcEl && isMicBroadcasting) {
-            srcEl.textContent = `Yayın Kaynağı: 24 kHz Stüdyo Kristal HD${label ? ` • ${label}` : ''}`;
+            srcEl.textContent = `Yayın Kaynağı: 24 kHz Stüdyo Kristal HD${label ? ` • ${label}` : ''}${recovered ? ' (Mikrofon Yenilendi)' : ''}`;
           }
         }
       } catch {}
@@ -1869,8 +1888,8 @@
           artist: `${guideName} (${tourCode})`,
           album: 'Rıdvan Yılmaz Turizm — Rehber Stüdyosu',
           artwork: [
-            { src: '/icons/icon-192.png?v=83', sizes: '192x192', type: 'image/png' },
-            { src: '/icons/icon-512.png?v=83', sizes: '512x512', type: 'image/png' }
+            { src: '/icons/icon-192.png?v=84', sizes: '192x192', type: 'image/png' },
+            { src: '/icons/icon-512.png?v=84', sizes: '512x512', type: 'image/png' }
           ]
         });
         navigator.mediaSession.playbackState = (isMicBroadcasting || isDemoBroadcasting) ? 'playing' : 'paused';
@@ -2147,11 +2166,12 @@
       }
 
       const isDtxEligibleSilence = Boolean(isGuideMicMuted || m.comfortSilent === true);
+      guideAudioSeq = (guideAudioSeq + 1) & 0x7fffffff;
       if (isDtxEligibleSilence) {
         globalThis.guideConsecutiveSilentFrames = (typeof globalThis.guideConsecutiveSilentFrames === 'number' ? globalThis.guideConsecutiveSilentFrames : 0) + 1;
         // Send the first 3 zero frames (60 ms) for smooth comfort-fade tail, then pause RF/uplink until speech resumes
-        // (with a tiny 1-packet keepalive every 50 frames = 1.0s so active speaker indicators stay warm).
-        if (globalThis.guideConsecutiveSilentFrames > 3 && (globalThis.guideConsecutiveSilentFrames % 50) !== 0) {
+        // while keeping guideAudioSeq advancing in real time (50 Hz) so receiver expected never overtakes new speech.
+        if (globalThis.guideConsecutiveSilentFrames > 3) {
           guideWasIdlePaused = true;
           return;
         }
@@ -2159,7 +2179,6 @@
         globalThis.guideConsecutiveSilentFrames = 0;
       }
 
-      guideAudioSeq = (guideAudioSeq + 1) & 0x7fffffff;
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         guideWasIdlePaused = true;
         return;
@@ -2217,7 +2236,10 @@
           };
         }
         ctx=audioCtx;
-        if(ctx.state==='suspended'||ctx.state==='interrupted')await ctx.resume();
+        if(ctx.state==='suspended'||ctx.state==='interrupted'){
+          let rt=null;
+          await Promise.race([Promise.resolve(ctx.resume()).catch(()=>{}),new Promise(r=>{rt=setTimeout(r,600);})]).finally(()=>{if(rt)clearTimeout(rt);});
+        }
         check();
         // Guide studio has zero speaker playback during live broadcast; disabling OS echoCancellation prevents mobile HFP/VoIP telephony DSP degradation.
         const prefDevId=typeof selectedGuideMicDeviceId==='string'&&selectedGuideMicDeviceId?selectedGuideMicDeviceId:'';
@@ -2225,8 +2247,13 @@
           ...(prefDevId?{deviceId:{exact:prefDevId}}:{})};
         try{stream=await navigator.mediaDevices.getUserMedia({audio:micAudioConstraints});}
         catch(error){check();
-          try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}});}
-          catch(e2){check();stream=await navigator.mediaDevices.getUserMedia({audio:true});}
+          try{
+            if(prefDevId)stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1,deviceId:{ideal:prefDevId}}});
+            else throw error;
+          }catch(eMid){check();
+            try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}});}
+            catch(e2){check();stream=await navigator.mediaDevices.getUserMedia({audio:true});}
+          }
         }
         check();
         const preset=typeof getGuideAcousticPreset==='function'?getGuideAcousticPreset():{highPassHz:85,mudCutDb:-2.5,presenceDb:2.8,lowPassHz:9500,gainBoost:1.0};
@@ -2239,7 +2266,7 @@
         const zero=own(ctx.createGain());zero.gain.value=0;
         source.connect(highPass);highPass.connect(mudCut);mudCut.connect(presence);presence.connect(lowPass);lowPass.connect(gain);
         const onFrame=message=>{if(current())handleGuideMicFloatChunk(message);};
-        const url='/pcm-capture-worklet.js?v=72-audio';
+        const url='/pcm-capture-worklet.js?v=84-audio';
         const options=()=>({muted:isGuideMicMuted,reject:guideSideVoiceRejectLevel,
           continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade,
           leveler:typeof guideAutoLeveler!=='undefined'?guideAutoLeveler:true});
@@ -2299,7 +2326,9 @@
         const ticket={};guideMicHealTicket=ticket;isHealingGuideMic=true;
         try{
           disconnectGuideAudioNodes();stopGuideMicrophoneStream(micStream);micStream=null;
-          if((forced||trackDead||trackMuted||captureStalled)&&audioCtx){
+          const isHidden=typeof document!=='undefined'&&document.visibilityState==='hidden';
+          const ctxDead=audioCtx&&(audioCtx.state==='closed'||(!isHidden&&captureStalled&&!forced&&!trackDead&&!trackMuted));
+          if(ctxDead&&audioCtx){
             const oldCtx=audioCtx;audioCtx=null;workletModuleLoaded=false;
             oldCtx.onstatechange=null;try{oldCtx.close().catch(()=>{});}catch(e){}
           }
@@ -2307,8 +2336,8 @@
           if(!isMicBroadcasting||installed!==guideMicGeneration||guideMicHealTicket!==ticket)return;
           if(typeof window.ryBroadcastGuideStream==='function')window.ryBroadcastGuideStream(micStream,
             document.getElementById('guideTourSelect')?.value||'RY-KASIM',document.getElementById('guideRoomSelect')?.value||'genel');
-          const label=document.getElementById('micSourceLabel');
-          if(label)label.textContent='Yayın Kaynağı: 24 kHz (Mikrofon Yenilendi)';
+          if(typeof updateGuideBtMicWarning==='function')updateGuideBtMicWarning(micStream,true);
+          else{const label=document.getElementById('micSourceLabel');if(label)label.textContent='Yayın Kaynağı: 24 kHz (Mikrofon Yenilendi)';}
         }catch(error){if(error.name!=='AbortError')console.warn('Mikrofon kurtarma beklemede:',error);}
         finally{if(guideMicHealTicket===ticket){guideMicHealTicket=null;isHealingGuideMic=false;}}
       }else if(audioCtx&&(audioCtx.state==='suspended'||audioCtx.state==='interrupted'))audioCtx.resume().catch(()=>{});
@@ -2319,6 +2348,8 @@
         if (isMicBroadcasting) {
           clearTimeout(guideDeviceChangeTimer);
           guideDeviceChangeTimer = setTimeout(() => healGuideMicrophoneIfNeeded(true), 350);
+        } else if (typeof refreshGuideMicDeviceList === 'function') {
+          refreshGuideMicDeviceList(false);
         }
       });
     }
@@ -2540,7 +2571,8 @@
         startBroadcastClock();
         btn.textContent = '⏹️ Canlı Mikrofon Yayınını Durdur (YAYINDA)';
         btn.className = 'btn btn-danger';
-        document.getElementById('micSourceLabel').textContent = 'Yayın Kaynağı: 24 kHz Yakın-Alan Ses Kilidi (Yan Ses Kalkanı Aktif)';
+        if (typeof updateGuideBtMicWarning === 'function') updateGuideBtMicWarning(micStream);
+        else document.getElementById('micSourceLabel').textContent = 'Yayın Kaynağı: 24 kHz Yakın-Alan Ses Kilidi (Yan Ses Kalkanı Aktif)';
 
         if (!ws || ws.readyState !== WebSocket.OPEN || needsTakeover) {
           connectGuideWs();
@@ -3233,7 +3265,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=83');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=84');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -3251,10 +3283,12 @@
         localStorage.setItem('rys_sos_push_rev', String(revision));
         const selectedTourCode = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').trim().toUpperCase();
         const tourCode = (!forceSelectedTour && silent && receipt && receipt.tourCode === 'ALL') ? 'ALL' : selectedTourCode;
+        const targetView = (silent && receipt && receipt.targetView === 'panel') ? 'panel' : 'rehber';
         const buildPayload = (rev) => ({
           endpoint: json.endpoint,
           keys: json.keys,
           tourCode,
+          targetView,
           deviceId: guideDeviceId,
           revision: rev,
           ...(receipt && receipt.subscriptionToken ? { subscriptionToken: receipt.subscriptionToken } : {})
@@ -3280,7 +3314,7 @@
           saved = await res.json().catch(() => ({}));
         }
         if (!res.ok || !saved.success) throw new Error(saved.error || 'SOS bildirimi kaydedilemedi');
-        localStorage.setItem('rys_sos_push_receipt', JSON.stringify({ endpoint: json.endpoint, subscriptionToken: saved.subscriptionToken, tourCode: saved.tourCode }));
+        localStorage.setItem('rys_sos_push_receipt', JSON.stringify({ endpoint: json.endpoint, subscriptionToken: saved.subscriptionToken, tourCode: saved.tourCode, targetView: saved.targetView || targetView }));
         try {
           const swTarget = (reg && reg.active) || (navigator.serviceWorker && navigator.serviceWorker.controller);
           if (swTarget) {
@@ -3346,7 +3380,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=83').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=84').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED') {
           if (ev.data.rotated?.sos?.subscriptionToken) {
@@ -3372,7 +3406,7 @@
                 return;
               }
               const tSel = document.getElementById('guideTourSelect');
-              if (clickedCode && tSel && Array.from(tSel.options).some((o) => o.value === clickedCode) && tSel.value !== clickedCode) {
+              if (!isMicBroadcasting && !isDemoBroadcasting && clickedCode && tSel && Array.from(tSel.options).some((o) => o.value === clickedCode) && tSel.value !== clickedCode) {
                 tSel.value = clickedCode;
                 onTourSelectionChange();
               }

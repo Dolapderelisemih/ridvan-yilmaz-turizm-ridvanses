@@ -8,17 +8,17 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
-  <link rel="manifest" href="/manifest.json?v=83" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=83" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=83" />
+  <link rel="manifest" href="/manifest.json?v=84" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=84" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=84" />
   <title>Hacı Canlı Dinleme Ekranı | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=83" />
-  <script src="/vercel-ws-shim.js?v=83"></script>
+  <link rel="stylesheet" href="/css/style.css?v=84" />
+  <script src="/vercel-ws-shim.js?v=84"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=83"></script>
+  <script src="/js/umrah-steps-map.js?v=84"></script>
   <style>
     .arabic-text {
       direction: rtl;
@@ -264,7 +264,7 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:540px;">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=83" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=84" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="font-size:1rem; margin:0;">Rıdvan Yılmaz Turizm</h1>
           <span class="brand-sub"><span class="live-dot"></span> <span id="i18n_brandSub">RıdvanSes Hacı Canlı Odası</span></span>
@@ -297,7 +297,7 @@
     <!-- TELEFONA UYGULAMA OLARAK İNDİR (PWA BANNER) -->
     <div class="pwa-install-banner" id="pwaInstallBanner">
       <div style="display:flex; align-items:center; gap:12px; flex:1 1 210px; min-width:0;">
-        <img src="/icons/icon-192.png?v=83" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
+        <img src="/icons/icon-192.png?v=84" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
         <div style="min-width:0;">
           <div id="i18n_pwaBannerTitle" style="font-weight:800; font-size:0.88rem; color:var(--color-gold-bright);">RıdvanSes'i Ana Ekrana Ekleyin</div>
           <div id="i18n_pwaBannerSub" style="font-size:0.75rem; color:#e2e8f0; line-height:1.35;">Mağaza şifresi gerekmeden tek dokunuşla telefonunuza kurun.</div>
@@ -2948,7 +2948,7 @@
       rxPlayerWorkletLoading=true;window.__ryRxAudioStatus='loading';
       state.timer=setTimeout(()=>failed('load-timeout'),3000);
       let loading;
-      try{loading=ctx.audioWorklet.addModule('/pcm-player-worklet.js?v=72-audio');}
+      try{loading=ctx.audioWorklet.addModule('/pcm-player-worklet.js?v=84-audio');}
       catch(error){failed('load-error');return;}
       Promise.resolve(loading)
         .then(()=>{
@@ -3475,7 +3475,7 @@
             }
             return;
           }
-          if (phraseStart || rxFallbackNextTime > now + 0.36) {
+          if (rxFallbackNextTime > now + 0.42) {
             while (activeScheduledSources.length > 0) {
               const oldSrc = activeScheduledSources.shift();
               try {
@@ -3508,7 +3508,7 @@
           rxFallbackNextTime += a.length / 24000;
           return;
         }
-        if (pendingRxFrames.length >= 13) pendingRxFrames.shift();
+        if (pendingRxFrames.length >= 28) pendingRxFrames.shift();
         const prevRxSeq = typeof lastReceivedAudioSeq !== 'undefined' ? lastReceivedAudioSeq : null;
         const shouldResyncPhrase = Boolean(phraseStart || (prevRxSeq === 0 && seq > 1));
         if (typeof lastReceivedAudioSeq !== 'undefined' && seq > 0) lastReceivedAudioSeq = seq;
@@ -4511,7 +4511,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=83').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=84').catch(() => {});
     }
 
     let subscribedBannerDismissed = false;
@@ -4542,7 +4542,7 @@
         return;
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=83').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=84').catch(() => {});
       }
       // iOS WebKit zorunluluğu: setWebPushTour senkron çalışır, Notification.requestPermission() doğrudan dokunuş içinde çağrılır.
       const state = rysWebPushState();
@@ -4979,8 +4979,8 @@
         artist: `${artist} (${currentTour ? currentTour.code : 'RY-KASIM'})`,
         album,
         artwork: [
-          { src: '/icons/icon-192.png?v=83', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png?v=83', sizes: '512x512', type: 'image/png' }
+          { src: '/icons/icon-192.png?v=84', sizes: '192x192', type: 'image/png' },
+          { src: '/icons/icon-512.png?v=84', sizes: '512x512', type: 'image/png' }
         ]
       });
 

@@ -8,14 +8,14 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=83" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=83" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=83" />
+  <link rel="manifest" href="/manifest.json?v=84" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=84" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=84" />
   <title>Acente & Kafile Yönetim Paneli | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/panel" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=83" />
+  <link rel="stylesheet" href="/css/style.css?v=84" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -72,9 +72,9 @@
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=83"></script>
+  <script src="/vercel-ws-shim.js?v=84"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=83"></script>
+  <script src="/js/umrah-steps-map.js?v=84"></script>
   <style>
     .dashboard-layout {
       display: grid;
@@ -233,7 +233,7 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:100%;">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=83" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=84" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="margin:0; font-size:1.12rem; line-height:1.2;">Rıdvan Yılmaz Turizm — Acente Yönetim Paneli</h1>
           <span class="brand-sub"><span class="live-dot"></span> Osmangazi / Bursa Merkez Operasyon & Kafile Kontrolü</span>
@@ -504,12 +504,12 @@
                 </div>
                 <div>
                   <label class="label">Tur Tarihi</label>
-                  <input type="text" name="dateText" id="tourFormDateInput" class="input" placeholder="Örn: 13-14 Kasım 2026" required />
+                  <input type="text" name="dateText" id="tourFormDateInput" class="input" placeholder="Örn: 13 – 22 Kasım 2026" required />
                 </div>
               </div>
               <div>
                 <label class="label">Kafile / Program Adı *</label>
-                <input type="text" name="name" id="tourFormNameInput" class="input" placeholder="Örn: 13-14 Kasım Umresi" required />
+                <input type="text" name="name" id="tourFormNameInput" class="input" placeholder="Örn: 13 – 22 Kasım Umresi" required />
               </div>
               <div class="grid-2" style="gap:10px;">
                 <div>
@@ -1558,7 +1558,16 @@
       adminWs.onerror = () => {};
     }
 
+    function syncAdminHashTab() {
+      if (String(window.location.hash || '').toLowerCase() === '#sos') {
+        const sosTabBtn = document.getElementById('sideBtnSos') || document.querySelector('.side-btn[onclick*="tab-sos"]');
+        openTab('tab-sos', sosTabBtn || undefined);
+      }
+    }
+    window.addEventListener('hashchange', syncAdminHashTab);
+
     (async function initAdminPanel() {
+      syncAdminHashTab();
       await fetchAdminData();
       if (!appState) {
         if (!window.__adminRedirectingAuth) {
@@ -1566,6 +1575,7 @@
         }
         return;
       }
+      syncAdminHashTab();
       if (isScopedSubAgency()) {
         window.__adminWsScopedNoGlobal = true;
         if (!window.__adminScopedPollTimer) {
@@ -1927,7 +1937,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=83');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=84');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -1951,6 +1961,7 @@
         const targetTourCode = isScopedSubAgency()
           ? ((appState && appState.user && appState.user.assignedTour) || (appState && appState.tours && appState.tours[0] && appState.tours[0].code) || 'RY-KASIM')
           : 'ALL';
+        const targetView = (silent && receipt && receipt.targetView === 'rehber') ? 'rehber' : 'panel';
         const postSosSub = (rev) => fetch('/api/push/subscribe-sos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1958,7 +1969,7 @@
             endpoint: json.endpoint,
             keys: json.keys,
             tourCode: targetTourCode,
-            targetView: 'panel',
+            targetView,
             deviceId,
             revision: rev,
             ...(receipt && receipt.endpoint === json.endpoint ? { subscriptionToken: receipt.subscriptionToken } : {})
@@ -1977,7 +1988,7 @@
           saved = await res.json().catch(() => ({}));
         }
         if (!res.ok || !saved.success) throw new Error(saved.error || 'SOS bildirimi kaydedilemedi');
-        const nextMeta = { endpoint: json.endpoint, subscriptionToken: saved.subscriptionToken, tourCode: saved.tourCode };
+        const nextMeta = { endpoint: json.endpoint, subscriptionToken: saved.subscriptionToken, tourCode: saved.tourCode, targetView: saved.targetView || targetView };
         localStorage.setItem('rys_sos_push_receipt', JSON.stringify(nextMeta));
         try {
           const swTarget = reg.active || navigator.serviceWorker.controller;
@@ -2026,7 +2037,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=83').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=84').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED') {
           if (ev.data.rotated?.sos?.subscriptionToken) {

@@ -104,7 +104,13 @@ class RysPitchPlc {
         exc = this.p[this.pos++ % this.length];
       } else if (this.unvoicedLen && age < 960) {
         const ug = 0.5 + 0.5 * Math.cos((Math.PI * age) / 960);
-        exc = this.p[this.pos++ % this.unvoicedLen] * ug;
+        const step = this.pos++;
+        const pass = (step / 240) | 0;
+        const idx = step % 240;
+        if (pass === 0) exc = this.p[idx] * ug;
+        else if (pass === 1) exc = this.p[239 - idx] * ug;
+        else if (pass === 2) exc = (this.p[(idx + 89) % 240] - this.p[(239 - idx + 149) % 240]) * 0.7071 * ug;
+        else exc = (this.p[(239 - idx + 53) % 240] + this.p[(idx + 173) % 240]) * 0.7071 * ug;
       }
       out[i] = (exc + correction * b) * g;
     }
@@ -195,13 +201,14 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     if(this.expected===null)this.expected=m.seq;
     let d=rysDiff(m.seq,this.expected);
     if(d<0&&!this.playing&&d>=-12){this.expected=m.seq;d=0;}
-    if(d<0){this.stats.late++;return;}
-    if(this.q.has(m.seq)){this.stats.duplicate++;return;}
-    // Deliberate DTX silence gap followed by phraseStart: advance expected cleanly without counting a resync fault.
-    if(m.phraseStart&&d>0&&d<=3000&&this.q.size===0&&(!this.playing||this.missing>0)){
+    // Deliberate DTX silence gap followed by phraseStart: advance/re-anchor expected cleanly without late-drop or resync fault.
+    if(m.phraseStart&&this.q.size===0&&(!this.playing||this.missing>0)&&d>=-16){
       this.expected=m.seq;d=0;this.missing=0;this.lastArrival=null;this.lastSeq=null;
       this.pendingQueueBlend=this.playing&&this.haveHistory;
     }
+    if(d<0){this.stats.late++;return;}
+    if(this.q.has(m.seq)){this.stats.duplicate++;return;}
+    if(m.phraseStart){this.lastArrival=null;this.lastSeq=null;}
     // Large discontinuities or an isolated far-future packet still require a new buffer anchor.
     if(d>128||(d>32&&this.q.size<24)){
       this.stats.resync++;this._reset();this.expected=m.seq;

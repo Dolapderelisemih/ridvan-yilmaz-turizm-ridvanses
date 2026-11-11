@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#06231b" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=83" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=83" />
-  <link rel="manifest" href="/manifest.json?v=83" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=84" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=84" />
+  <link rel="manifest" href="/manifest.json?v=84" />
   <title>Baskıya Hazır Hacı Yaka Kartı & QR Kod | Rıdvan Yılmaz Turizm</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/yaka-karti" />
-  <link rel="stylesheet" href="/css/style.css?v=83" />
+  <link rel="stylesheet" href="/css/style.css?v=84" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -23,7 +23,7 @@
       }
     })();
   </script>
-  <script src="/vercel-ws-shim.js?v=83"></script>
+  <script src="/vercel-ws-shim.js?v=84"></script>
   <style>
     .print-toolbar {
       background: linear-gradient(155deg, #06231B 0%, #093529 100%);
@@ -485,6 +485,28 @@
         clearTimeout(badgeDebounceTimer);
         badgeDebounceTimer = null;
         await updateBadges();
+      }
+      const imgs = Array.from(document.querySelectorAll('#badgesContainer img'));
+      const pending = imgs.filter((img) => !img.complete);
+      if (pending.length > 0) {
+        let timer = null;
+        await Promise.race([
+          Promise.all(
+            pending.map(
+              (img) =>
+                new Promise((resolve) => {
+                  const done = () => resolve();
+                  img.addEventListener('load', done, { once: true });
+                  img.addEventListener('error', done, { once: true });
+                })
+            )
+          ),
+          new Promise((resolve) => {
+            timer = setTimeout(resolve, 3500);
+          })
+        ]).finally(() => {
+          if (timer) clearTimeout(timer);
+        });
       }
       window.print();
     }

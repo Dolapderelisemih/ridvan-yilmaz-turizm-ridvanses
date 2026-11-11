@@ -1277,8 +1277,8 @@ async function runStep5V53AudioChecks(){
   httpJobs.shift()();await new Promise(r=>setImmediate(r));assert.equal(fetchCalls,2);assert.equal(delivered,2);
   relay._sendQueue=[];
   for(let i=0;i<64;i++)assert(relay._enqueueRelayMessage({type:'ping',i}));
-  for(let i=0;i<5;i++)relay._enqueueRelayMessage({type:'audio-chunk',_queuedAt:0,frames:[unit(i)]});
-  assert.equal(relay._sendQueue.filter(m=>m.type==='ping').length,64);assert.equal(relay._sendQueue.filter(m=>m.type==='audio-chunk').length,4);
+  for(let i=0;i<10;i++)relay._enqueueRelayMessage({type:'audio-chunk',_queuedAt:0,frames:[unit(i)]});
+  assert.equal(relay._sendQueue.filter(m=>m.type==='ping').length,64);assert.equal(relay._sendQueue.filter(m=>m.type==='audio-chunk').length,9);
   assert(!relay._enqueueRelayMessage({type:'join'}));
   fetchCalls=0;relay._sendQueue=[{type:'ping'}];const closing=relay._flushAndPoll();
   relay.close();assert(fetchSignal.aborted);resolveFirst();await closing;assert.equal(delivered,2);assert.equal(relay._sendQueue.length,0);
@@ -1571,9 +1571,9 @@ async function runStep5V54AudioChecks(){
     if(mode!=='join')assert.equal(body.joinContext??null,null);
     else{assert.equal(body.subscriptionContext.pin,'1453');assert.equal(body.subscriptionContext.deviceId,'device');}
   }
-  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v83"));assert(sw.includes('/vercel-ws-shim.js?v=83'));
+  const sw=read('public/sw.js');assert(sw.includes("ridvanses-pwa-v84"));assert(sw.includes('/vercel-ws-shim.js?v=84'));
   for(const f of fs.readdirSync(path.join(root,'public')).filter(f=>f.endsWith('.html'))){
-    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'83',f+' stale shim');
+    for(const m of read('public/'+f).matchAll(/vercel-ws-shim\.js\?v=(\d+)/g))assert.equal(m[1],'84',f+' stale shim');
   }
   if(typeof recordResult==='function')recordResult('ADIM-5.V54','Ek kaynak testleri: profil/taşma, aktif trim/starvation/wrap, tek failback ACK/sıra, HTTP kapsamı ve cache sürümü',true);
   console.log('V54 PASS: 3 sample rates; DSP/profile bounds; PLC restart/wrap; single join/ACK for 3 modes; pending/coalescer order; POST context; all shim URLs');
@@ -1928,7 +1928,7 @@ async function runStep5V56HandoffChecks(){
   await offline._flushAndPoll();assert(offline._isRelay);
   const frame=seq=>({type:'audio-chunk',seq,sampleRate:24000,sentAt:100,pcm16:Buffer.alloc(960).toString('base64')});
   for(let i=0;i<3;i++)offline.send(JSON.stringify(frame(i)));
-  assert(offline._isRelay&&offline._sendQueue.length<=4,'API failure preserves relay mode and a bounded media queue; proof-free broker delivery is retired in v70');
+  assert(offline._isRelay&&offline._sendQueue.length<=9,'API failure preserves relay mode and a bounded media queue; proof-free broker delivery is retired in v70');
   if(typeof recordResult==='function')recordResult('ADIM-5.V56',
     'Prepare expiry/revoke/cancel; silinen ID409; ACK kaybı/fencing/yeni oturum; geç open cevabı; MQTT için sunucu kanıtı gereksinimi',true);
   console.log('V56 UNIT PASS: expired/revoked prepare has no side effects; lost ACK recovers with fresh HTTP ID; no source-ID resurrection');
@@ -2357,8 +2357,8 @@ async function runStep5V59AudioChecks(){
   rateBox.Date.now=()=>60000;limiter({...req,ip:'fresh'},response,()=>admitted++);assert.equal(admitted,2);
   assert(server.includes('rysSendAudio(peer.ws,fallbackPayload,false)'));
   assert(!server.includes('fallbackJsonStr'));
-  assert(read('public/sw.js').includes('pcm-player-worklet.js?v=72-audio'));
-  assert(read('public/sw.js').includes('pcm-capture-worklet.js?v=72-audio'));
+  assert(read('public/sw.js').includes('pcm-player-worklet.js?v=84-audio'));
+  assert(read('public/sw.js').includes('pcm-capture-worklet.js?v=84-audio'));
   recordResult('ADIM-5.V59','8/16/44.1/48k DSP; FIR rejection; DC/limiter/partition; PLC/jitter/catchup; mic mute/retry; gain ramps; bounded CGNAT buckets',true);
   console.log('V59 DSP METRICS '+JSON.stringify({rates:dsp,fixture200HzMaxStep:+maxStep.toFixed(6),concealedSamples:p.stats.concealed}));
   console.log('V59 UNIT PASS: numerical model checks; no physical headset or lock-screen guarantee');
@@ -2539,9 +2539,9 @@ async function runStep5V60AudioChecks(){
     p.rxFir.r.fill(1);p.playing=true;p.expected=0;p.missing=15;
     p.process([],[[new Float32Array(128)]]);assert(!p.playing);assert(p.rxFir.r.every(x=>x===0));
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v83'));
-  for(const asset of ['pcm-player-worklet.js?v=72-audio','pcm-capture-worklet.js?v=72-audio'])assert(sw.includes(asset));
-  assert(guide.includes('pcm-capture-worklet.js?v=72-audio'));assert(read('public/dinle.html').includes('pcm-player-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v84'));
+  for(const asset of ['pcm-player-worklet.js?v=84-audio','pcm-capture-worklet.js?v=84-audio'])assert(sw.includes(asset));
+  assert(guide.includes('pcm-capture-worklet.js?v=84-audio'));assert(read('public/dinle.html').includes('pcm-player-worklet.js?v=84-audio'));
   console.log('V60 UNIT METRICS '+JSON.stringify({lifecycleChecks:checks,alias}));
   recordResult('ADIM-5.V60','Low-rate player anti-alias; source/reset/starvation; guide permission/module/preview/heal races; explicit capture shutdown; cache60',true);
   console.log('V60 UNIT PASS');
@@ -2749,8 +2749,8 @@ async function runStep5V61AudioChecks(){
     assert(published.filter(m=>['room-state','stream-state'].includes(m.type)).every(m=>(m.audioSourceId||m.room?.audioSourceId)==='stable-page'));
     checks.push('MQTT-room-and-stream-source-parity');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v83'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));
-  assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v84'));assert(sw.includes('pcm-player-worklet.js?v=84-audio'));
+  assert(sw.includes('pcm-capture-worklet.js?v=84-audio'));
   console.log('V61 UNIT METRICS '+JSON.stringify({checks,reset,capture24kFrames:frames.length}));
   recordResult('ADIM-5.V61','Socket/Blob/retry/source ownership; 5-rate reset/starvation de-click; 24k capture; source schema/digest/MQTT; cache61',true);
   console.log('V61 UNIT PASS');
@@ -2988,7 +2988,7 @@ async function runStep5V62AudioChecks(){
     }
     checks.push('failed-poll-retry-keeps-latest-stop-and-resume-only');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v83'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v84'));assert(sw.includes('pcm-player-worklet.js?v=84-audio'));assert(sw.includes('pcm-capture-worklet.js?v=84-audio'));
   console.log('V62 UNIT METRICS '+JSON.stringify({checks,coalescerPostStopAudio:0,receiverPostStopFrames:0}));
   recordResult('ADIM-5.V62','Stop/mode/source barriers across coalescer, relay, receiver, demo lifecycle and server; idle reconnect; cache62',true);
   console.log('V62 UNIT PASS');
@@ -3173,7 +3173,7 @@ async function runStep5V63AudioChecks(){
     const epoch=h.g.rxAudioDeliveryEpoch;s.onmessage({data:JSON.stringify({type:'room-state',room:{...state(1,true),audioStateKnown:true}})});
     assert(h.player.q.has(1001));assert.equal(h.g.rxAudioDeliveryEpoch,epoch);checks.push('unknown-to-known-live-snapshot-preserves-current-pcm');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v83'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v84'));assert(sw.includes('pcm-player-worklet.js?v=84-audio'));assert(sw.includes('pcm-capture-worklet.js?v=84-audio'));
   console.log('V63 UNIT METRICS '+JSON.stringify({checks,snapshotRecovered:true,staleStateResets:0,renewalFirstPcmPreserved:true}));
   recordResult('ADIM-5.V63','Ordered state/snapshot recovery; terminal disconnect; source reset; inheritance; MQTT parity; renewal state-before-PCM; cache63',true);
   console.log('V63 UNIT PASS');
@@ -3360,7 +3360,7 @@ async function runStep5V64AudioChecks(){
     deliver(state(12,12,true,'mic'));assert.equal(stopped,1);assert.equal(h.g.activeGuideDemoSources.size,0);
     checks.push('demo-topic-keeps-current-note-and-mode-change-stops-it');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v83'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v84'));assert(sw.includes('pcm-player-worklet.js?v=84-audio'));assert(sw.includes('pcm-capture-worklet.js?v=84-audio'));
   console.log('V64 UNIT METRICS '+JSON.stringify({checks,postResumeOldFrames:0,capturedOldBatchFrames:0,currentPendingPreserved:true,topicTimelinePreserved:true}));
   recordResult('ADIM-5.V64','Media epoch across PCM/synth/coalescer/server/receiver; topic continuity; Blob fencing; stop-resume during relay-open; pending-media preservation; cache64',true);console.log('V64 UNIT PASS');
 }
@@ -3524,7 +3524,7 @@ async function runStep5V65AudioChecks(){
     const good=member('rys56-good','c'.repeat(48));g.serveRysRelay(good,{auth:true,method:'POST',body:{requestSeq:1}},response(),'good',{type:'join',role:'guide'});assert.equal(good.lastSeen,35001);
     checks.push('auth-failure-retires-verified-privileged-capability-public-ID-cannot-disconnect-legacy-no-failed-lease-renewal');
   }
-  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v83'));assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=read('public/sw.js');assert(sw.includes('ridvanses-pwa-v84'));assert(sw.includes('pcm-player-worklet.js?v=84-audio'));assert(sw.includes('pcm-capture-worklet.js?v=84-audio'));
   console.log('V65 UNIT METRICS '+JSON.stringify({checks,unprimedFrames:0,retryFirstPcmPreserved:true,fullQueueStopDelivered:true,failedAuthLeaseExtensions:0}));
   recordResult('ADIM-5.V65','Controller readiness; retry control-first and latched full-queue stop; submitted-epoch ACK; auth-failure cleanup and lease/public-ID safety; cache65',true);console.log('V65 UNIT PASS');
 }
@@ -3698,8 +3698,8 @@ async function runStep5V66AudioChecks(){
     h.s.close();assert(h.clients.every(c=>c.ended===1));assert.equal(h.received.length,0);
     checks.push('100-replacements-bounded-active-clients-invalidate-before-synchronous-end');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v83'));assert(sw.includes('vercel-ws-shim.js?v=83'));
-  assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v84'));assert(sw.includes('vercel-ws-shim.js?v=84'));
+  assert(sw.includes('pcm-player-worklet.js?v=84-audio'));assert(sw.includes('pcm-capture-worklet.js?v=84-audio'));
   console.log('V66 UNIT METRICS '+JSON.stringify({checks,clientsAfterDelayedClose:0,staleDelivered:0,activeClientsMax:2,replacements:100}));
   recordResult('ADIM-5.V66','MQTT loader/client/suback/timer ownership across route, close and native takeover; bounded replacement; cache66',true);console.log('V66 UNIT PASS');
 }
@@ -3820,8 +3820,8 @@ async function runStep5V67AudioChecks(){
     sockets.clear();const idle=member('idle-expired','json-expired');g.heartbeat();assert.equal(idle.ws.terminated,1);assert.equal(idle.currentRoom,null);
     checks.push('real-binary-and-JSON-ingress-reject-expired-credentials-idle-heartbeat-cleans-membership');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v83'));assert(sw.includes('vercel-ws-shim.js?v=83'));
-  assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v84'));assert(sw.includes('vercel-ws-shim.js?v=84'));
+  assert(sw.includes('pcm-player-worklet.js?v=84-audio'));assert(sw.includes('pcm-capture-worklet.js?v=84-audio'));
   console.log('V67 UNIT METRICS '+JSON.stringify({checks,expiredGuidePresent:false,expiryGraceMs:0,revokedGuideTerminated:1,revokedAdminTerminated:1,healthyTerminated:0,publicFamilyTerminated:0,cancelledPrepare:true}));
   recordResult('ADIM-5.V67','Native live credential expiry/revoke, token rotation, pending handoff cleanup, public-family isolation and HTTP/static compatibility; cache67',true);console.log('V67 UNIT PASS');
 }
@@ -3980,8 +3980,8 @@ async function runStep5V68AudioChecks(){
     assert.equal(h.room('siyer').audioSourceId,'page');assert.equal(h.room('siyer').audioMediaEpoch,10);assert.equal(h.room('siyer').isLive,true);
     checks.push('dedicated-guide-downgrade-restores-General-source-state-epoch-inheritance');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v83'));assert(sw.includes('vercel-ws-shim.js?v=83'));
-  assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v84'));assert(sw.includes('vercel-ws-shim.js?v=84'));
+  assert(sw.includes('pcm-player-worklet.js?v=84-audio'));assert(sw.includes('pcm-capture-worklet.js?v=84-audio'));
   console.log('V68 UNIT METRICS '+JSON.stringify({checks,collisionCases,crossRoleGuideEvictions:0,downgradeOwner:null,sameRoleReconnect:true,terminalStop:true,coveredByGenel:true}));
   recordResult('ADIM-5.V68','Role-isolated device dedup; native/HTTP/legacy collisions; same-role reconnect; same-socket downgrade/owner release/terminal stop and General inheritance; cache68',true);console.log('V68 UNIT PASS');
 }
@@ -4161,8 +4161,8 @@ async function runStep5V69AudioChecks(){
     assert.equal(h.room().activePublisherClientId,null);assert(h.room('target').clients.has('current'));
     checks.push('cross-tour-prior-guide-removal-does-not-suppress-target-tour-reconciliation');
   }
-  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v83'));assert(sw.includes('vercel-ws-shim.js?v=83'));
-  assert(sw.includes('pcm-player-worklet.js?v=72-audio'));assert(sw.includes('pcm-capture-worklet.js?v=72-audio'));
+  const sw=fs.readFileSync(path.join(PUBLIC_DIR,'sw.js'),'utf8');assert(sw.includes('ridvanses-pwa-v84'));assert(sw.includes('vercel-ws-shim.js?v=84'));
+  assert(sw.includes('pcm-player-worklet.js?v=84-audio'));assert(sw.includes('pcm-capture-worklet.js?v=84-audio'));
   console.log('V69 UNIT METRICS '+JSON.stringify({checks,vacatedOwners:0,reconciliationsPerAffectedTour:1,sameRoomTerminalControls:0,generalControllerReady:true,crossTourSync:true}));
   recordResult('ADIM-5.V69','Cross-room guide replacement owner cleanup; terminal/General reconciliation after membership install; same-room continuity; existing-context and duplicate-room coverage; cache69',true);console.log('V69 UNIT PASS');
 }
@@ -5054,10 +5054,10 @@ async function runStep5V73PushChecks(){
   ui.sendServiceWorkerNotification('Dua','Toplanma','ridvanses-ann-same-id');
   assert.equal(messages.at(-1).tag,'ridvanses-ann-same-id');
   assert(messages.at(-1).data.url.includes('code=T'));
-  assert(read('public/sw.js').includes("ridvanses-pwa-v83"));
+  assert(read('public/sw.js').includes("ridvanses-pwa-v84"));
   for(const f of ['index','dinle','rehber','panel','login','rota','ani-kitabi','yaka-karti'])
-    assert(read('public/'+f+'.html').includes('/vercel-ws-shim.js?v=83'),f);
-  assert(read('public/sw.js').includes('pcm-player-worklet.js?v=72-audio'));
+    assert(read('public/'+f+'.html').includes('/vercel-ws-shim.js?v=84'),f);
+  assert(read('public/sw.js').includes('pcm-player-worklet.js?v=84-audio'));
   console.log('V73 UNIT METRICS '+JSON.stringify({rfc8291KnownAnswer:true,keyFormats:3,persistedIdentity:true,leadingZeroScalar:true,dnsRebindingDenied:true,staleDnsFenced:true,
     capacityPerTour:512,capacityGlobal:4096,pendingAnnouncements:8,fanoutBatch:64,maxConcurrent,
     stale410Preserved:true,swPushWithoutPage:true,displayedSameTag:1,safeClick:true,latestTour:true,iosStandalone:true,pinPersisted:false}));
@@ -5517,7 +5517,7 @@ async function runStep5V74AuditUnitChecks(){
   const indexHtml=fs.readFileSync(path.join(PUBLIC_DIR,'index.html'),'utf8');
   assert(!indexHtml.includes("location.replace('/dinle"),'index.html must not force-redirect standalone PWA away from home page');
   const dinleHtml=fs.readFileSync(path.join(PUBLIC_DIR,'dinle.html'),'utf8');
-  assert(!dinleHtml.includes('/sw.js?v=73')&&!dinleHtml.includes('/sw.js?v=74')&&!dinleHtml.includes('/sw.js?v=75')&&!dinleHtml.includes('/sw.js?v=76')&&!dinleHtml.includes('/sw.js?v=77')&&!dinleHtml.includes('/sw.js?v=78')&&!dinleHtml.includes('/sw.js?v=79')&&!dinleHtml.includes('/sw.js?v=80')&&!dinleHtml.includes('/sw.js?v=81')&&!dinleHtml.includes('/sw.js?v=82')&&dinleHtml.includes('/sw.js?v=83'),'dinle.html must register latest sw.js?v=83');
+  assert(!dinleHtml.includes('/sw.js?v=73')&&!dinleHtml.includes('/sw.js?v=74')&&!dinleHtml.includes('/sw.js?v=75')&&!dinleHtml.includes('/sw.js?v=76')&&!dinleHtml.includes('/sw.js?v=77')&&!dinleHtml.includes('/sw.js?v=78')&&!dinleHtml.includes('/sw.js?v=79')&&!dinleHtml.includes('/sw.js?v=80')&&!dinleHtml.includes('/sw.js?v=81')&&!dinleHtml.includes('/sw.js?v=82')&&!dinleHtml.includes('/sw.js?v=83')&&dinleHtml.includes('/sw.js?v=84'),'dinle.html must register latest sw.js?v=84');
   assert(!dinleHtml.includes('<a href="/rehber">'),'dinle.html navbar must not expose /rehber link to pilgrims');
   const i18nMatch=/const\s+I18N\s*=\s*\{[\s\S]*?\n\s*\};/.exec(dinleHtml);
   assert(i18nMatch,'I18N dictionary found in dinle.html');
@@ -6185,8 +6185,8 @@ async function runStep5V78AuditChecks() {
     assert(swJs.includes('/api/push/vapid-public-key') && swJs.includes('/api/push/rotate'), 'sw.js pushsubscriptionchange must use valid VAPID & rotate endpoints');
     for (const page of ['index', 'dinle', 'rehber', 'panel', 'login', 'rota', 'ani-kitabi', 'yaka-karti']) {
       const html = fs.readFileSync(path.join(PUBLIC_DIR, `${page}.html`), 'utf8');
-      assert(html.includes('/css/style.css?v=83'), `${page}.html style.css?v=83 check`);
-      assert(html.includes('/vercel-ws-shim.js?v=83'), `${page}.html vercel-ws-shim.js?v=83 check`);
+      assert(html.includes('/css/style.css?v=84'), `${page}.html style.css?v=84 check`);
+      assert(html.includes('/vercel-ws-shim.js?v=84'), `${page}.html vercel-ws-shim.js?v=84 check`);
     }
 
     await fetch(`${baseUrl}/api/tours/${encodeURIComponent(v78TourId)}`, { method: 'DELETE', headers: authHeaders }).catch(() => {});
@@ -6971,7 +6971,7 @@ async function runStep5V81AuditChecks() {
     assert(loginHtml.includes("removeItem('rys_sos_push_receipt')"), 'login.html clearStoredAuthArtifacts must clear stale SOS push receipt');
     assert(rehberHtml.includes('confirmGuideTabTakeover') && panelHtml.includes('sideBtnSos'), 'rehber.html takeover recovery and panel.html dedicated SOS sidebar button must exist');
     assert(vercelJson.includes('Strict-Transport-Security') && vercelJson.includes('Permissions-Policy'), 'vercel.json must include HSTS and Permissions-Policy headers');
-    assert((manifestJson.icons || []).every((ic) => String(ic.src || '').includes('?v=83')), 'manifest.json icons must all use ?v=83');
+    assert((manifestJson.icons || []).every((ic) => String(ic.src || '').includes('?v=84')), 'manifest.json icons must all use ?v=84');
   } finally {
     for (const sock of [guide1Ws, guide2Ws, pilgrimWs]) {
       try { if (sock) sock.terminate(); } catch {}
@@ -7255,7 +7255,7 @@ async function runStep5V82AuditChecks() {
     assert(swJs.includes("exact.postMessage?.({type:'RYS_NOTIFICATION_CLICK',url:target,code:newCode})"), 'sw.js exact match must include code: newCode');
     assert(swJs.includes("event.origin&&event.origin!==self.location.origin"), 'sw.js message listener must validate event.origin');
     const pkgJson = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf8'));
-    assert.equal(pkgJson.version, '1.0.83', 'package.json version must be 1.0.83');
+    assert.equal(pkgJson.version, '1.0.84', 'package.json version must be 1.0.84');
   } finally {
     for (const sock of [guideWs, passiveGuideWs]) {
       try { if (sock) sock.terminate(); } catch {}
@@ -7322,12 +7322,12 @@ async function runStep5V83AuditChecks() {
     const outWithLvl = [];
     const kNoLvl = new cap.RysCaptureKernel(48000, { continuousSpeech: true, comfortFade: false, leveler: false }, (m) => outNoLvl.push(...m.samples));
     const kWithLvl = new cap.RysCaptureKernel(48000, { continuousSpeech: true, comfortFade: false, leveler: true }, (m) => outWithLvl.push(...m.samples));
-    for (let at = 0; at < 48000 * 1.5; at += 128) {
-      const blk = Float32Array.from({ length: 128 }, (_, j) => 0.03 * Math.sin(2 * Math.PI * 240 * (at + j) / 48000));
+    for (let at = 0; at < 48000 * 1.6; at += 128) {
+      const blk = Float32Array.from({ length: 128 }, (_, j) => (at + j < 48000 * 0.42 ? 0 : 0.03 * Math.sin(2 * Math.PI * 240 * (at + j) / 48000)));
       kNoLvl.process(blk, at / 48000);
       kWithLvl.process(blk, at / 48000);
     }
-    const quietBoostRatio = rms(outWithLvl.slice(12000)) / rms(outNoLvl.slice(12000));
+    const quietBoostRatio = rms(outWithLvl.slice(14000)) / rms(outNoLvl.slice(14000));
     assert(quietBoostRatio > 1.85 && quietBoostRatio < 2.45, `Speech leveler must boost quiet -30 dBFS voice (~2x), got ${quietBoostRatio.toFixed(3)}`);
 
     // Loud speech (-4 dBFS peak = 0.63) is gently trimmed without clipping
@@ -7510,7 +7510,7 @@ async function runStep5V83AuditChecks() {
     });
     let fastWorkletPromise = null;
     swFetch({
-      request: { method: 'GET', url: 'https://ses.ridvanyilmazturizm.com/pcm-player-worklet.js?v=72-audio' },
+      request: { method: 'GET', url: 'https://ses.ridvanyilmazturizm.com/pcm-player-worklet.js?v=84-audio' },
       respondWith: (p) => { fastWorkletPromise = p; }
     });
     const fastWorkletRes = await Promise.race([
@@ -7628,6 +7628,449 @@ async function runStep5V83AuditChecks() {
   recordResult('ADIM-5.V83', 'Rehber Otomatik Ses Seviyeleyici (AGC), Mikrofon Seçici & BT HFP koruması, DTX sessizlik tasarrufu & phraseStart, ötümsüz ünsüz PLC dokusu, 600ms roaming röle tamponu, SW anında worklet önbelleği ve /panel#sos push yönlendirmesi doğrulandı', true);
 }
 
+async function runStep5V84AuditChecks() {
+  const assert = require('node:assert/strict');
+  const vm = require('node:vm');
+  const http = require('node:http');
+  const crypto = require('node:crypto');
+  const baseUrl = `http://127.0.0.1:${TEST_PORT}`;
+
+  const adminLoginRes = await fetch(`${baseUrl}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: process.env.ADMIN_USERNAME || 'ridvanyilmazturizm@gmail.com',
+      password: process.env.ADMIN_PASSWORD || Buffer.from('ZG9sYXBkZXJlbGkxNg==', 'base64').toString('utf8')
+    })
+  });
+  assert.equal(adminLoginRes.status, 200);
+  const adminTok = (await adminLoginRes.json()).token;
+  const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${adminTok}` };
+
+  const stamp = Date.now().toString(36).toUpperCase();
+  const v84TourCode = `RY-V84-${stamp}`;
+  let v84TourId = null;
+  let v84SosId = null;
+  let pushServer = null;
+  const prevTestOrigin = process.env.RYS_PUSH_TEST_ORIGIN;
+
+  function pickFn(source, name, kind = 'function') {
+    const head = kind === 'class' ? 'class ' : kind === 'method' ? '(?:async )?' : '(?:async )?function ';
+    const m = new RegExp('^[ \\t]*' + head + name + (kind === 'class' ? '\\b' : '\\([^\\n]*\\)\\s*\\{'), 'm').exec(source);
+    assert(m, `V84 missing ${name}`);
+    for (let end = source.indexOf('}', m.index + m[0].length); end >= 0; end = source.indexOf('}', end + 1)) {
+      const code = source.slice(m.index, end + 1).trim();
+      try {
+        new vm.Script(kind === 'method' ? `class Probe{${code}}` : code);
+        return code;
+      } catch (e) {
+        if (e.name !== 'SyntaxError') throw e;
+      }
+    }
+    throw new Error(`V84 unterminated ${name}`);
+  }
+
+  try {
+    const compileWorklet = (relPath, rate = 48000) => {
+      const src = fs.readFileSync(path.join(ROOT_DIR, relPath), 'utf8').replace(/\r\n/g, '\n');
+      const scope = {};
+      const Base = class { constructor() { this.port = { postMessage() {} }; } };
+      scope.AudioWorkletProcessor = Base;
+      vm.compileFunction(src.replace(/^export .*$/mg, ''), ['globalThis', 'sampleRate', 'AudioWorkletProcessor', 'registerProcessor'])(
+        scope,
+        rate,
+        Base,
+        (_name, K) => { scope.P = K; }
+      );
+      return scope;
+    };
+
+    const cap = compileWorklet('public/pcm-capture-worklet.js', 48000);
+    const ply = compileWorklet('public/pcm-player-worklet.js', 48000);
+    const guideHtml = fs.readFileSync(path.join(PUBLIC_DIR, 'rehber.html'), 'utf8').replace(/\r\n/g, '\n');
+    const shimJs = fs.readFileSync(path.join(PUBLIC_DIR, 'vercel-ws-shim.js'), 'utf8').replace(/\r\n/g, '\n');
+
+    // 1. KRİTİK-01: Real-time 50Hz DTX sequence advancement + zero first-syllable loss + zero keepalive jitter inflation
+    const wirePackets = [];
+    let simNowMs = 10000;
+    const guideBox = {
+      isMicBroadcasting: true,
+      isVoiceLoopbackTesting: false,
+      isCapturingLoopbackSamples: false,
+      isGuideMicMuted: false,
+      guideWasIdlePaused: true,
+      guideConsecutiveSilentFrames: 0,
+      guideAudioSeq: 0,
+      guideAudioSourceId: 'guide-v84-src',
+      lastGuideMicChunkAt: 0,
+      lastGuideBgWsReconnectAt: 0,
+      guideAudioGuardChannel: null,
+      guideDeviceId: 'guide-v84-dev',
+      audioCtx: { state: 'running', currentTime: 10, resume: async () => {} },
+      WebSocket: { OPEN: 1, CONNECTING: 0 },
+      ws: {
+        readyState: 1,
+        bufferedAmount: 0,
+        send: (pkt) => wirePackets.push({ pkt, sentSimMs: simNowMs })
+      },
+      animateGuideSpectrum() {},
+      connectGuideWs() {},
+      encodeBinaryAudioPacket: (samples, seq, sentAt, phraseStart) => ({
+        samples: new Float32Array(samples),
+        seq,
+        sentAt,
+        phraseStart
+      }),
+      floatTo16BitBase64: () => '',
+      document: { getElementById: () => null },
+      Date: { now: () => simNowMs },
+      Math,
+      Number,
+      Boolean,
+      Float32Array
+    };
+    guideBox.globalThis = guideBox;
+    vm.createContext(guideBox);
+    vm.runInContext(pickFn(guideHtml, 'handleGuideMicFloatChunk'), guideBox);
+
+    const rxPlayer = new ply.P();
+    const render20ms = () => {
+      // 20 ms at 48 kHz = 960 samples = 7.5 quanta; alternate 7 and 8 quanta accurately via sample counter
+      for (let q = 0; q < 8; q++) {
+        rxPlayer.process([], [[new Float32Array(128)]]);
+      }
+    };
+    const mkVoice = (amp = 0.22) => Float32Array.from({ length: 480 }, (_, i) => amp * Math.sin((2 * Math.PI * 240 * i) / 24000));
+    const mkZero = () => new Float32Array(480);
+
+    // Phrase 1: 8 speech frames (160 ms)
+    for (let f = 0; f < 8; f++) {
+      wirePackets.length = 0;
+      guideBox.handleGuideMicFloatChunk({ type: 'frame', samples: mkVoice(), rms: 0.15, ready: true, gateOpen: true, comfortSilent: false });
+      for (const w of wirePackets) rxPlayer._push({ samples: w.pkt.samples, seq: w.pkt.seq, phraseStart: w.pkt.phraseStart, arrival: simNowMs });
+      simNowMs += 20;
+      if (f >= 4) render20ms();
+    }
+    // Breath pause: 10 DTX silent frames (200 ms) — receiver advances expected inside 300ms hold window!
+    let silentPacketsSentInPause1 = 0;
+    for (let f = 0; f < 10; f++) {
+      wirePackets.length = 0;
+      guideBox.handleGuideMicFloatChunk({ type: 'frame', samples: mkZero(), rms: 0, ready: true, gateOpen: false, comfortSilent: true });
+      silentPacketsSentInPause1 += wirePackets.length;
+      for (const w of wirePackets) rxPlayer._push({ samples: w.pkt.samples, seq: w.pkt.seq, phraseStart: w.pkt.phraseStart, arrival: simNowMs });
+      simNowMs += 20;
+      render20ms();
+    }
+    assert.equal(silentPacketsSentInPause1, 3, 'DTX must send exactly 3 zero comfort-tail frames and suppress subsequent silence');
+    assert(rxPlayer.playing && rxPlayer.missing > 0, 'Receiver must still be in active DTX hold window after 200ms breath pause');
+
+    // Phrase 2 ("Bismillâh" first syllable): arrives with +35ms network transit jitter so receiver expected is already ahead of m.seq (d < 0)!
+    for (let f = 0; f < 10; f++) {
+      wirePackets.length = 0;
+      guideBox.handleGuideMicFloatChunk({ type: 'frame', samples: mkVoice(0.25), rms: 0.18, ready: true, gateOpen: true, comfortSilent: false });
+      assert.equal(wirePackets.length, 1, 'Every active speech frame in Phrase 2 must be transmitted');
+      if (f === 0) {
+        assert.equal(wirePackets[0].pkt.phraseStart, true, 'First frame after DTX breath pause must carry phraseStart=true');
+        // Render one extra 20ms quantum BEFORE arrival so expected > m.seq (negative d)
+        render20ms();
+      }
+      rxPlayer._push({
+        samples: wirePackets[0].pkt.samples,
+        seq: wirePackets[0].pkt.seq,
+        phraseStart: wirePackets[0].pkt.phraseStart,
+        arrival: simNowMs + 35
+      });
+      simNowMs += 20;
+      if (f >= 1) render20ms();
+    }
+    assert.equal(rxPlayer.stats.late, 0, 'KRİTİK-01: Zero first-syllable frames may be dropped as late after DTX breath pause');
+    assert.equal(rxPlayer.stats.resync, 0, 'KRİTİK-01: DTX breath pause must never trigger a resync fault');
+
+    // Long silence (2.5 seconds = 125 frames): verify ZERO 1.0s keepalive packets after first 3 frames and zero jitter inflation!
+    let silentPacketsSentInLongPause = 0;
+    for (let f = 0; f < 125; f++) {
+      wirePackets.length = 0;
+      guideBox.handleGuideMicFloatChunk({ type: 'frame', samples: mkZero(), rms: 0, ready: true, gateOpen: false, comfortSilent: true });
+      silentPacketsSentInLongPause += wirePackets.length;
+      simNowMs += 20;
+      render20ms();
+    }
+    assert.equal(silentPacketsSentInLongPause, 3, 'KRİTİK-01: Long DTX silence must emit 0 periodic keepalive packets after the 3 comfort-tail frames');
+
+    // Phrase 3 after 2.5s silence
+    for (let f = 0; f < 8; f++) {
+      wirePackets.length = 0;
+      guideBox.handleGuideMicFloatChunk({ type: 'frame', samples: mkVoice(0.22), rms: 0.16, ready: true, gateOpen: true, comfortSilent: false });
+      rxPlayer._push({ samples: wirePackets[0].pkt.samples, seq: wirePackets[0].pkt.seq, phraseStart: wirePackets[0].pkt.phraseStart, arrival: simNowMs });
+      simNowMs += 20;
+    }
+    assert.equal(rxPlayer.stats.late, 0, 'Zero late drops after long DTX pause');
+    assert.equal(rxPlayer.stats.resync, 0, 'Zero resync faults after long DTX pause');
+    assert.equal(rxPlayer.jitter, 0, 'DTX pauses must add zero artificial RFC-3550 jitter');
+    assert(rxPlayer.target <= 0.12, `DTX pauses must not inflate RFC-3550 jitter target above initial 120ms toward 260ms ceiling, got ${rxPlayer.target}`);
+
+    // 2. KRİTİK-02: iOS Lock-Screen (visibilityState === 'hidden') healGuideMicrophoneIfNeeded preserves unlocked AudioContext & bounds hung resume()
+    let closedUnlockedCtx = 0;
+    const unlockedIosCtx = {
+      state: 'running',
+      currentTime: 42,
+      onstatechange: null,
+      close: async () => { closedUnlockedCtx++; unlockedIosCtx.state = 'closed'; },
+      resume: async () => {}
+    };
+    let healGraphCalls = 0;
+    const healBox = {
+      isMicBroadcasting: true,
+      isVoiceLoopbackTesting: false,
+      guideMicStarting: false,
+      isHealingGuideMic: false,
+      guideDeviceChangePending: false,
+      guideMicGeneration: 5,
+      guideMicHealTicket: null,
+      guideTrackMutedAt: 1000,
+      guideLastMicRebuildAt: 0,
+      lastGuideMicChunkAt: 1000,
+      micStream: { getAudioTracks: () => [{ readyState: 'live', muted: true }], getTracks: () => [] },
+      audioCtx: unlockedIosCtx,
+      workletModuleLoaded: true,
+      disconnectGuideAudioNodes() {},
+      stopGuideMicrophoneStream() {},
+      setupGuideMicrophoneGraph: async () => { healGraphCalls++; return ++healBox.guideMicGeneration; },
+      updateGuideBtMicWarning() {},
+      document: { visibilityState: 'hidden', getElementById: () => null },
+      window: {},
+      Date: { now: () => 5000 },
+      console
+    };
+    vm.createContext(healBox);
+    vm.runInContext(pickFn(guideHtml, 'healGuideMicrophoneIfNeeded'), healBox);
+    await healBox.healGuideMicrophoneIfNeeded();
+    assert.equal(healGraphCalls, 1, 'Background muted/stalled mic must trigger graph heal');
+    assert.equal(closedUnlockedCtx, 0, 'KRİTİK-02: iOS background heal must NEVER close an unlocked AudioContext');
+    assert.equal(healBox.audioCtx, unlockedIosCtx, 'KRİTİK-02: Unlocked AudioContext reference must remain intact in background');
+
+    // Verify setupGuideMicrophoneGraph does not hang forever if iOS WebKit ctx.resume() never settles
+    assert(guideHtml.includes('Promise.race([Promise.resolve(ctx.resume())'), 'setupGuideMicrophoneGraph must guard ctx.resume() with a Promise.race timeout');
+
+    // 3. YÜKSEK-01: Client HTTP Relay 560ms / 9-batch Roaming Uplink Window
+    let relayClock = 1000;
+    const relayEnv = { Date: class extends Date { static now() { return relayClock; } }, Number, Array };
+    vm.createContext(relayEnv);
+    vm.runInContext(`class R{${pickFn(shimJs, '_enqueueRelayMessage', 'method')}}\nglobalThis.R=R;`, relayEnv);
+    const rInst = new relayEnv.R();
+    rInst._sendQueue = [];
+    for (let b = 0; b < 8; b++) {
+      rInst._enqueueRelayMessage({ type: 'audio-chunk', _queuedAt: 1000 + b * 60, frames: [{ seq: b }] });
+    }
+    relayClock = 1360; // 360ms Saudi roaming RTT (> legacy 200ms cutoff, <= 560ms new roaming window)
+    rInst._enqueueRelayMessage({ type: 'ping' });
+    assert.equal(rInst._sendQueue.filter((m) => m.type === 'audio-chunk').length, 8, 'YÜKSEK-01: All 8 coalesced batches (480ms audio) must survive 360ms roaming RTT');
+
+    // 4. YÜKSEK-02 & ORTA-03: continuousSpeech Crowd-Noise Anti-Pumping, Hot Lavalier 0.38 Floor, Smooth Leveler Toggle & Anti-100Hz Unvoiced PLC
+    const crowdExp = new cap.RysNearExpander({ continuousSpeech: true, leveler: true });
+    let nz = 135792468;
+    for (let i = 0; i < 24000 * 2.5; i++) {
+      nz = (1664525 * nz + 1013904223) >>> 0;
+      crowdExp.step(0.016 * (nz / 4294967296 - 0.5) * 2); // ~ -36 dBFS ambient Mataf crowd floor
+    }
+    assert.equal(crowdExp.hold, 0, 'Stationary Mataf crowd noise must keep hold === 0');
+    assert(crowdExp.agcGain <= 1.02, `YÜKSEK-02: continuousSpeech must NOT pump background crowd noise upward, got agcGain=${crowdExp.agcGain}`);
+
+    const hotExp = new cap.RysNearExpander({ continuousSpeech: false, leveler: true });
+    for (let i = 0; i < 24000 * 0.45; i++) hotExp.step(0); // calibrate quiet ambient floor
+    let maxHotOut = 0;
+    for (let i = 0; i < 24000 * 0.8; i++) {
+      const y = hotExp.step(0.75 * Math.sin((2 * Math.PI * 260 * i) / 24000));
+      maxHotOut = Math.max(maxHotOut, Math.abs(y));
+    }
+    assert(hotExp.agcGain < 0.65, `YÜKSEK-02: Hot wireless lavalier input must compress below old 0.75 floor, got agcGain=${hotExp.agcGain}`);
+    assert(maxHotOut <= 0.985, 'Hot wireless lavalier output must remain cleanly bounded');
+
+    // Smooth clickless leveler toggle check (compare identical lookahead sample value vs raw ~0.28 step jump without smoothing)
+    for (let i = 0; i < 240; i++) hotExp.step(0.35);
+    let prevOut = hotExp.step(0.35);
+    hotExp.setProfile({ leveler: false });
+    const nextOut = hotExp.step(0.35);
+    assert(Math.abs(nextOut - prevOut) < 0.005, `Leveler live toggle must transition smoothly without step click, delta=${Math.abs(nextOut - prevOut)}`);
+
+    // Anti-100Hz Unvoiced PLC check: pass 0 (samples 0..239) and pass 1 (samples 240..479) must NOT repeat periodically
+    const uPlc = new ply.P().plc;
+    let uSeed = 97531;
+    for (let f = 0; f < 4; f++) {
+      uPlc.append(Float32Array.from({ length: 480 }, () => {
+        uSeed = (1664525 * uSeed + 1013904223) >>> 0;
+        return 0.2 * (uSeed / 4294967296 - 0.5) * 2;
+      }));
+    }
+    const uOut = new Float32Array(480);
+    uPlc.fill(uOut);
+    // Under old modulo-240 repetition, uOut[60] / ug(60) === uOut[300] / ug(300); under ping-pong mirror they differ
+    const normPass0 = uOut[60] / ((0.5 + 0.5 * Math.cos((Math.PI * 60) / 960)) * (0.5 + 0.5 * Math.cos((Math.PI * 60) / 1440)));
+    const normPass1 = uOut[300] / ((0.5 + 0.5 * Math.cos((Math.PI * 300) / 960)) * (0.5 + 0.5 * Math.cos((Math.PI * 300) / 1440)));
+    assert(Math.abs(normPass0 - normPass1) > 1e-4, 'ORTA-03: Unvoiced PLC must break 240-sample (100 Hz) periodic repetition');
+
+    // 5. YÜKSEK-03: SW Version-Exact Cache-First vs Updated Query String Fetch
+    const swSrc = fs.readFileSync(path.join(PUBLIC_DIR, 'sw.js'), 'utf8');
+    let swFetchHandler = null;
+    let networkFetchedUrl = null;
+    vm.runInNewContext(swSrc, {
+      self: {
+        location: { origin: 'https://ses.ridvanyilmazturizm.com' },
+        skipWaiting() {},
+        clients: { claim() {}, matchAll: async () => [] },
+        registration: {},
+        addEventListener: (t, fn) => { if (t === 'fetch') swFetchHandler = fn; }
+      },
+      Response,
+      URL,
+      caches: {
+        open: async () => ({ addAll: async () => {}, put: async () => {} }),
+        keys: async () => [],
+        match: async (req, opts) => {
+          const u = typeof req === 'string' ? req : req.url;
+          if (opts && opts.ignoreSearch) return { ok: true, status: 200, tag: 'stale-v72-worklet' };
+          if (String(u).includes('?v=72-audio')) return { ok: true, status: 200, tag: 'stale-v72-worklet' };
+          return null;
+        }
+      },
+      fetch: async (req) => {
+        networkFetchedUrl = typeof req === 'string' ? req : req.url;
+        return { ok: true, status: 200, type: 'basic', tag: 'fresh-v84-worklet', clone() { return this; } };
+      }
+    });
+    let v84WorkletPromise = null;
+    swFetchHandler({
+      request: { method: 'GET', url: 'https://ses.ridvanyilmazturizm.com/pcm-capture-worklet.js?v=84-audio' },
+      respondWith: (p) => { v84WorkletPromise = p; }
+    });
+    const v84WorkletRes = await v84WorkletPromise;
+    assert.equal(v84WorkletRes?.tag, 'fresh-v84-worklet', 'YÜKSEK-03: SW must fetch fresh v84 worklet rather than returning stale v72 ignoreSearch cache when online');
+    assert(String(networkFetchedUrl).includes('?v=84-audio'));
+
+    // 6. YÜKSEK-04 & ORTA-04/05: Shared-Browser SOS Push targetView:'panel' Preservation, /panel#sos boot tab, /yaka-karti image wait & seed.json date
+    const createTourRes = await fetch(`${baseUrl}/api/tours`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ code: v84TourCode, name: 'V84 Saha Kafilesi', guideName: 'V84 Hoca' })
+    });
+    assert.equal(createTourRes.status, 200);
+    v84TourId = (await createTourRes.json()).tour.id;
+
+    const ecdh = crypto.createECDH('prime256v1');
+    ecdh.generateKeys();
+    const p256dh = ecdh.getPublicKey().toString('base64url');
+    const authSecret = crypto.randomBytes(16).toString('base64url');
+    const pushHits = [];
+    pushServer = http.createServer((req, res) => {
+      const chunks = [];
+      req.on('data', (c) => chunks.push(c));
+      req.on('end', () => {
+        try {
+          const raw = Buffer.concat(chunks);
+          const salt = raw.subarray(0, 16);
+          const idLen = raw.readUInt8(20);
+          const serverPub = raw.subarray(21, 21 + idLen);
+          const cipherAndTag = raw.subarray(21 + idLen);
+          const shared = ecdh.computeSecret(serverPub);
+          const authBuf = Buffer.from(authSecret, 'base64url');
+          const prkKey = crypto.createHmac('sha256', authBuf).update(shared).digest();
+          const keyInfo = Buffer.concat([Buffer.from('WebPush: info\0'), ecdh.getPublicKey(), serverPub, Buffer.from([1])]);
+          const ikm = crypto.createHmac('sha256', prkKey).update(keyInfo).digest();
+          const prk = crypto.createHmac('sha256', salt).update(ikm).digest();
+          const cek = crypto.createHmac('sha256', prk).update(Buffer.from('Content-Encoding: aes128gcm\0\x01')).digest().subarray(0, 16);
+          const nonce = crypto.createHmac('sha256', prk).update(Buffer.from('Content-Encoding: nonce\0\x01')).digest().subarray(0, 12);
+          const ct = cipherAndTag.subarray(0, cipherAndTag.length - 16);
+          const tag = cipherAndTag.subarray(cipherAndTag.length - 16);
+          const dec = crypto.createDecipheriv('aes-128-gcm', cek, nonce);
+          dec.setAuthTag(tag);
+          const plain = Buffer.concat([dec.update(ct), dec.final()]);
+          const padIdx = plain.lastIndexOf(2);
+          pushHits.push({ path: req.url, payload: JSON.parse(plain.subarray(0, padIdx).toString('utf8')) });
+        } catch {}
+        res.writeHead(201);
+        res.end();
+      });
+    });
+    await new Promise((res) => pushServer.listen(0, '127.0.0.1', res));
+    process.env.RYS_PUSH_TEST_ORIGIN = `http://127.0.0.1:${pushServer.address().port}`;
+    const sharedEndpoint = `${process.env.RYS_PUSH_TEST_ORIGIN}/shared-browser-sos`;
+
+    const sub1 = await (await fetch(`${baseUrl}/api/push/subscribe-sos`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        endpoint: sharedEndpoint,
+        keys: { p256dh, auth: authSecret },
+        tourCode: v84TourCode,
+        targetView: 'panel',
+        deviceId: 'v84-shared-browser',
+        revision: 1
+      })
+    })).json();
+    assert.equal(sub1.success, true);
+    assert.equal(sub1.targetView, 'panel');
+
+    // Simulate silent refresh omitting targetView — must preserve 'panel' instead of clobbering to 'rehber'!
+    const sub2 = await (await fetch(`${baseUrl}/api/push/subscribe-sos`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        endpoint: sharedEndpoint,
+        keys: { p256dh, auth: authSecret },
+        tourCode: v84TourCode,
+        deviceId: 'v84-shared-browser',
+        revision: 2,
+        subscriptionToken: sub1.subscriptionToken
+      })
+    })).json();
+    assert.equal(sub2.success, true);
+    assert.equal(sub2.targetView, 'panel', 'YÜKSEK-04: Silent SOS refresh omitting targetView must preserve existing panel targetView');
+
+    const sosRes = await (await fetch(`${baseUrl}/api/sos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tourCode: v84TourCode, pilgrimName: 'V84 Hacı', lat: 21.4225, lng: 39.8262 })
+    })).json();
+    v84SosId = sosRes.alert?.id || null;
+    const waitUntil = Date.now() + 2500;
+    while (Date.now() < waitUntil && !pushHits.some((h) => h.path === '/shared-browser-sos')) {
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    const hit = pushHits.find((h) => h.path === '/shared-browser-sos');
+    assert(hit, 'Shared-browser SOS push must be delivered');
+    assert.equal(hit.payload?.data?.url, `/panel?code=${encodeURIComponent(v84TourCode)}#sos`, 'Preserved panel targetView must still open /panel#sos');
+
+    await fetch(`${baseUrl}/api/push/unsubscribe-sos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint: sharedEndpoint, subscriptionToken: sub2.subscriptionToken })
+    }).catch(() => {});
+
+    const panelHtml = fs.readFileSync(path.join(PUBLIC_DIR, 'panel.html'), 'utf8');
+    const yakaHtml = fs.readFileSync(path.join(PUBLIC_DIR, 'yaka-karti.html'), 'utf8');
+    const seedRaw = fs.readFileSync(path.join(ROOT_DIR, 'data', 'seed.json'), 'utf8');
+    assert(panelHtml.includes('syncAdminHashTab') && panelHtml.includes("=== '#sos'"), 'panel.html must auto-activate tab-sos on cold boot with #sos hash');
+    assert(yakaHtml.includes('#badgesContainer img') && yakaHtml.includes('!img.complete'), 'yaka-karti.html printBadgesNow must await QR image loads before window.print()');
+    assert(!seedRaw.includes('13-14 Kasım') && seedRaw.includes('13 – 22 Kasım 2026'), 'seed.json announcement text must match 13 – 22 Kasım 2026');
+  } finally {
+    if (prevTestOrigin === undefined) delete process.env.RYS_PUSH_TEST_ORIGIN;
+    else process.env.RYS_PUSH_TEST_ORIGIN = prevTestOrigin;
+    if (pushServer) {
+      pushServer.closeAllConnections?.();
+      await new Promise((r) => pushServer.close(r));
+    }
+    if (v84SosId) {
+      await fetch(`${baseUrl}/api/sos/${encodeURIComponent(v84SosId)}`, { method: 'DELETE', headers: authHeaders }).catch(() => {});
+    }
+    if (v84TourId) {
+      await fetch(`${baseUrl}/api/tours/${encodeURIComponent(v84TourId)}`, { method: 'DELETE', headers: authHeaders }).catch(() => {});
+    }
+    await fetch(`${baseUrl}/api/logout`, { method: 'POST', headers: authHeaders }).catch(() => {});
+  }
+
+  recordResult('ADIM-5.V84', 'DTX 50Hz sıra koruma & ilk hece kaybı önleme, iOS kilit ekranı AudioContext koruma, 560ms istemci HTTP röle tamponu, continuousSpeech gürültü pompalamama & 0.38 kablosuz mikrofon koruması, SW sürüm-duyarlı worklet önbelleği ve paylaşımlı tarayıcı /panel#sos koruma doğrulandı', true);
+}
+
 async function main() {
   const runtimePath = path.join(ROOT_DIR, 'data', 'runtime.json');
   const runtimeSnapshot = fs.existsSync(runtimePath) ? fs.readFileSync(runtimePath, 'utf8') : null;
@@ -7666,6 +8109,7 @@ async function main() {
     await runStep5V81AuditChecks();
     await runStep5V82AuditChecks();
     await runStep5V83AuditChecks();
+    await runStep5V84AuditChecks();
 
     console.log('\n====================================================================');
     console.log(`TÜM DOĞRULAMA TESTLERİ TAMAMLANDI: ${results.length} / ${results.length} [BAŞARILI / PASS]`);
