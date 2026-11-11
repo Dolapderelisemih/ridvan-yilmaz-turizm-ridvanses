@@ -364,7 +364,7 @@
         const lat = Number(step.lat) || 21.4225;
         const lng = Number(step.lng) || 39.8262;
         const status = ['completed', 'active', 'planned'].includes(step.status) ? step.status : 'planned';
-        const num = step.order || idx + 1;
+        const num = Number(step.order) || (idx + 1);
         const size = status === 'active' ? 40 : 34;
 
         const iconHtml = `<div class="ps-pin ${status}" title="${escapeHtml(step.title)}">${num}</div>`;
@@ -545,7 +545,7 @@
               : status === 'completed'
               ? md.badgeCompleted
               : md.badgePlanned;
-          const num = step.order || idx + 1;
+          const num = Number(step.order) || (idx + 1);
           const stepOrdinalLabel = currentLang === 'tr' ? `${num}. ${md.stepWord}` : `${md.stepWord} ${num}`;
           const adminActions = options.editable
             ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--color-hairline);" onclick="event.stopPropagation();">

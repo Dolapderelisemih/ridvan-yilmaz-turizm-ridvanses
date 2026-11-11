@@ -29,6 +29,18 @@
       }
     })();
     async function ryLogout() {
+      window.__adminRedirectingAuth = true;
+      try {
+        if (typeof adminWsReconnectTimer !== 'undefined' && adminWsReconnectTimer) clearTimeout(adminWsReconnectTimer);
+        if (window.__adminScopedPollTimer) clearInterval(window.__adminScopedPollTimer);
+        if (typeof adminWsInstance !== 'undefined' && adminWsInstance) {
+          adminWsInstance.onopen = null;
+          adminWsInstance.onmessage = null;
+          adminWsInstance.onclose = null;
+          adminWsInstance.onerror = null;
+          adminWsInstance.close();
+        }
+      } catch {}
       const savedTok = (window.ryReadAuthToken ? window.ryReadAuthToken() : (localStorage.getItem('ry_auth_token') || '').trim());
       try {
         if (navigator.serviceWorker && navigator.serviceWorker.controller) {
@@ -58,9 +70,9 @@
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=79"></script>
+  <script src="/vercel-ws-shim.js?v=80"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=79"></script>
+  <script src="/js/umrah-steps-map.js?v=80"></script>
   <style>
     .dashboard-layout {
       display: grid;
@@ -414,7 +426,7 @@
             <div class="grid-2" style="gap:10px; margin-bottom:14px;">
               <div>
                 <label class="label">Kafile Seçiniz</label>
-                <select id="qrTourSelect" class="select" onchange="generateQrAndInvite()">
+                <select id="qrTourSelect" class="select" onchange="onQrTourChange()">
                   <option value="RY-KASIM">RY-KASIM — 13-14 Kasım Umresi</option>
                 </select>
               </div>
@@ -536,6 +548,10 @@
                   <label class="label">İsteğe Bağlı Oda PIN</label>
                   <input type="text" name="pin" id="tourFormPinInput" class="input" placeholder="Şifresiz" />
                 </div>
+              </div>
+              <div>
+                <label class="label">Ek Özel Yayın Odaları (İsteğe Bağlı — Genel &amp; Siyer otomatik açılır)</label>
+                <input type="text" name="customRooms" id="tourFormCustomRoomsInput" class="input" placeholder="Örn: hanimlar:Hanımlar Sohbet Odası, otobus2:2. Otobüs Kanalı" />
               </div>
               <div>
                 <label class="label">Program Açıklaması</label>
@@ -873,11 +889,40 @@
       }
     }
 
+    function syncQrRoomSelectOptions() {
+      const rSel = document.getElementById('qrRoomSelect');
+      if (!rSel) return;
+      const code = document.getElementById('qrTourSelect')?.value || 'RY-KASIM';
+      const tourObj = ((appState && appState.tours) || []).find((t) => t.code === code);
+      const prev = (rSel.value || 'genel').trim().toLowerCase();
+      const rooms = Array.isArray(tourObj?.rooms) && tourObj.rooms.length > 0
+        ? tourObj.rooms
+        : [
+            { id: 'genel', name: 'Genel Kafile & Tavaf Yayını' },
+            { id: 'siyer', name: 'Siyer-i Nebi Sohbet Odası' }
+          ];
+      rSel.innerHTML = rooms.map((rm) => {
+        const rid = String(rm.id || 'genel').trim().toLowerCase();
+        return `<option value="${escapeHtml(rid)}">${escapeHtml(rm.name || rid)}</option>`;
+      }).join('');
+      if (Array.from(rSel.options).some((o) => o.value === prev)) {
+        rSel.value = prev;
+      } else {
+        rSel.value = rSel.options[0]?.value || 'genel';
+      }
+    }
+
+    function onQrTourChange() {
+      syncQrRoomSelectOptions();
+      generateQrAndInvite();
+    }
+
     function openQrGeneratorForTour(code) {
       const sel = document.getElementById('qrTourSelect');
       if (sel) {
         sel.value = code;
       }
+      syncQrRoomSelectOptions();
       openTab('tab-qr', document.getElementById('sideBtnQr'));
     }
 
@@ -1004,6 +1049,7 @@
         const prev = qrSel.value || 'RY-KASIM';
         qrSel.innerHTML = appState.tours.map((t) => `<option value="${escapeHtml(t.code)}">${escapeHtml(t.code)} — ${escapeHtml(t.name)}</option>`).join('');
         if (appState.tours.some((t) => t.code === prev)) qrSel.value = prev;
+        syncQrRoomSelectOptions();
       }
 
       const routeSel = document.getElementById('adminRouteTourSelect');
@@ -1122,14 +1168,30 @@
       if (nextSosSignature !== lastRenderedSosSignature) {
         lastRenderedSosSignature = nextSosSignature;
         const sosHtml = (appState.sosAlerts || []).map((s) => {
-          const lat = Number(s.lat) || 21.4225;
-          const lng = Number(s.lng) || 39.8262;
-          const bbox = `${(lng - 0.003).toFixed(5)}%2C${(lat - 0.002).toFixed(5)}%2C${(lng + 0.003).toFixed(5)}%2C${(lat + 0.002).toFixed(5)}`;
-          const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
-          const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+          const hasValidGps =
+            s.lat !== null &&
+            s.lat !== undefined &&
+            s.lng !== null &&
+            s.lng !== undefined &&
+            Number.isFinite(Number(s.lat)) &&
+            Number.isFinite(Number(s.lng)) &&
+            !(Number(s.lat) === 0 && Number(s.lng) === 0);
+          const lat = hasValidGps ? Number(s.lat) : 0;
+          const lng = hasValidGps ? Number(s.lng) : 0;
+          const bbox = hasValidGps
+            ? `${(lng - 0.003).toFixed(5)}%2C${(lat - 0.002).toFixed(5)}%2C${(lng + 0.003).toFixed(5)}%2C${(lat + 0.002).toFixed(5)}`
+            : '';
+          const osmUrl = hasValidGps
+            ? `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`
+            : '';
+          const dirUrl = hasValidGps ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}` : '';
+          const isTourFallback = s.gpsSource === 'tour-fallback';
           const safeName = escapeHtml(s.pilgrimName || 'Hacı Misafir');
           const safeTour = escapeHtml(s.tourCode || 'RY-KASIM');
-          const safePhone = escapeHtml(s.phone || '');
+          const rawPhone = String(s.phone || '').trim();
+          const hasRealPhone = Boolean(rawPhone && rawPhone !== '+90 538 000 00 00');
+          const safePhone = hasRealPhone ? escapeHtml(rawPhone) : '';
+          const cleanWaDigits = hasRealPhone ? rawPhone.replace(/\D/g, '') : '';
           const safeNote = escapeHtml(s.locationNote || '');
           const safeTime = escapeHtml(s.createdAt || '');
           const safeId = escapeHtml(s.id || '');
@@ -1141,17 +1203,19 @@
                   ${s.status === 'active' ? 'AKTİF ALARM' : 'ÇÖZÜLDÜ'} — ${safeName} (${safeTour})
                 </div>
                 <div style="font-size:0.84rem; color:var(--color-muted); margin-top:2px;">
-                  ${safePhone ? `${safePhone} • ` : ''}${safeNote} (${lat.toFixed(5)}, ${lng.toFixed(5)}) • ${safeTime}
+                  ${safePhone ? `${safePhone} • ` : ''}${safeNote} ${hasValidGps ? `(${lat.toFixed(5)}, ${lng.toFixed(5)}${isTourFallback ? ' • Yaklaşık Durak' : ''})` : '<strong style="color:#B91C1C;">(⚠️ Canlı GPS Yok — Telefonla Ulaşın)</strong>'} • ${safeTime}
                 </div>
               </div>
               <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">Yol Tarifi</a>
-                <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Harita</a>
+                ${hasValidGps ? `<a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">Yol Tarifi</a>` : ''}
+                ${hasValidGps ? `<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Harita</a>` : ''}
+                ${safePhone ? `<a href="tel:${safePhone}" class="btn btn-outline btn-sm">📞 Ara</a>` : ''}
+                ${cleanWaDigits.length >= 10 ? `<a href="https://wa.me/${cleanWaDigits}" target="_blank" class="btn btn-outline btn-sm" style="color:#15803D; border-color:#86EFAC;">💬 WhatsApp</a>` : ''}
                 ${s.status === 'active' ? `<button type="button" class="btn btn-primary btn-sm" data-panel-action="resolve-sos" data-id="${safeId}">Çözüldü İşaretle</button>` : ''}
                 <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger);" data-panel-action="delete-sos" data-id="${safeId}">Sil</button>
               </div>
             </div>
-            ${s.status === 'active' ? `
+            ${s.status === 'active' && hasValidGps ? `
             <div style="border-radius:10px; overflow:hidden; border:1px solid #FCA5A5; height:190px; background:#F8FAFC;">
               <iframe src="${osmUrl}" style="width:100%; height:100%; border:0;" loading="lazy"></iframe>
             </div>` : ''}
@@ -1185,7 +1249,7 @@
         ? reqList.map((r) => {
             const cleanPhone = String(r.phone || '').replace(/[^0-9]/g, '');
             const waPhone = cleanPhone.startsWith('0') ? '90' + cleanPhone.slice(1) : cleanPhone;
-            const waUrl = waPhone ? `https://wa.me/${waPhone}?text=${encodeURIComponent(`Selamün Aleyküm ${r.name || ''}, Rıdvan Yılmaz Turizm Umre ön kayıt talebiniz için iletişime geçiyoruz.`)}` : '';
+            const waUrl = waPhone.length >= 10 ? `https://wa.me/${waPhone}?text=${encodeURIComponent(`Selamün Aleyküm ${r.name || ''}, Rıdvan Yılmaz Turizm Umre ön kayıt talebiniz için iletişime geçiyoruz.`)}` : '';
             const safeName = escapeHtml(r.name || 'Misafir');
             const safeComp = escapeHtml(r.company_name || 'Kasım Umresi');
             const safeTime = escapeHtml(r.createdAt || '');
@@ -1295,13 +1359,15 @@
 
     // Real-time Admin WebSocket
     function connectAdminWs() {
-      if (window.__adminWsScopedNoGlobal || isScopedSubAgency()) return;
+      if (window.__adminRedirectingAuth || window.__adminWsScopedNoGlobal || isScopedSubAgency()) return;
       if (adminWsReconnectTimer) {
         clearTimeout(adminWsReconnectTimer);
         adminWsReconnectTimer = null;
       }
       if (adminWsInstance) {
         try {
+          adminWsInstance.onopen = null;
+          adminWsInstance.onmessage = null;
           adminWsInstance.onclose = null;
           adminWsInstance.onerror = null;
           adminWsInstance.close();
@@ -1314,14 +1380,19 @@
         : window.location.host;
       const adminWs = new WebSocket(`${proto}//${wsHost}/ws`);
       adminWsInstance = adminWs;
+      const current = () => adminWsInstance === adminWs && !window.__adminRedirectingAuth;
       adminWs.onopen = () => {
+        if (!current()) return;
+        window.__adminWsAuthFailed = false;
         const authToken = (window.ryReadAuthToken ? window.ryReadAuthToken() : (localStorage.getItem('ry_auth_token') || '').trim());
         adminWs.send(JSON.stringify({ type: 'admin-subscribe', token: authToken }));
       };
       adminWs.onmessage = (ev) => {
+        if (!current()) return;
         try {
           const msg = JSON.parse(ev.data);
           if (msg.type === 'auth-error') {
+            window.__adminWsAuthFailed = true;
             let savedUser = null;
             try { savedUser = JSON.parse(localStorage.getItem('user') || 'null'); } catch {}
             if ((savedUser && savedUser.assignedTour) || isScopedSubAgency()) {
@@ -1334,9 +1405,11 @@
               try { adminWs.close(); } catch {}
               return;
             }
+            try { adminWs.close(); } catch {}
             fetch('/api/bootstrap').then((r) => r.json()).then((d) => {
-              if (d && d.authenticated === false) handleAdminAuthExpired();
-              else if (d && d.user && d.user.assignedTour) {
+              if (!d || d.authenticated === false) {
+                handleAdminAuthExpired();
+              } else if (d.user && d.user.assignedTour) {
                 appState = d;
                 window.__adminWsScopedNoGlobal = true;
                 if (!window.__adminScopedPollTimer) {
@@ -1345,7 +1418,10 @@
                   }, 10000);
                 }
                 renderAll();
-                try { adminWs.close(); } catch {}
+              } else {
+                window.__adminWsAuthFailed = false;
+                if (adminWsReconnectTimer) clearTimeout(adminWsReconnectTimer);
+                adminWsReconnectTimer = setTimeout(connectAdminWs, 4000);
               }
             }).catch(() => {});
             return;
@@ -1397,7 +1473,7 @@
         } catch (e) {}
       };
       adminWs.onclose = () => {
-        if (window.__adminWsScopedNoGlobal) return;
+        if (!current() || window.__adminWsScopedNoGlobal || window.__adminWsAuthFailed || window.__adminRedirectingAuth) return;
         if (adminWsReconnectTimer) clearTimeout(adminWsReconnectTimer);
         adminWsReconnectTimer = setTimeout(connectAdminWs, 2500);
       };
@@ -1486,6 +1562,13 @@
       document.getElementById('tourFormRegInput').value = tour.registeredCount ?? 1;
       document.getElementById('tourFormCapInput').value = tour.capacity ?? 45;
       document.getElementById('tourFormPinInput').value = tour.pin || '';
+      const customRoomsEl = document.getElementById('tourFormCustomRoomsInput');
+      if (customRoomsEl) {
+        const extraRooms = (Array.isArray(tour.rooms) ? tour.rooms : [])
+          .filter((r) => r && r.id && r.id !== 'genel' && r.id !== 'siyer')
+          .map((r) => `${r.id}:${r.name || r.id}`);
+        customRoomsEl.value = extraRooms.join(', ');
+      }
       document.getElementById('tourFormDescInput').value = tour.description || '';
       const tourCard = document.getElementById('tourFormCard');
       if (tourCard) tourCard.style.display = '';
@@ -1596,6 +1679,9 @@
 
     document.getElementById('createGuideForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      if (submitBtn && submitBtn.disabled) return;
+      if (submitBtn) submitBtn.disabled = true;
       try {
         const payload = Object.fromEntries(new FormData(e.target).entries());
         const res = await fetch('/api/guides', {
@@ -1616,11 +1702,16 @@
         fetchAdminData();
       } catch (err) {
         alert('Bağlantı hatası: Rehber kaydı eklenemedi.');
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
       }
     });
 
     document.getElementById('adminAnnForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      if (submitBtn && submitBtn.disabled) return;
+      if (submitBtn) submitBtn.disabled = true;
       try {
         const payload = Object.fromEntries(new FormData(e.target).entries());
         const res = await fetch('/api/announcements', {
@@ -1641,6 +1732,8 @@
         fetchAdminData();
       } catch (err) {
         alert('Bağlantı hatası: Duyuru yayınlanamadı.');
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
       }
     });
 
@@ -1693,9 +1786,23 @@
       if (window.__adminRedirectingAuth) return;
       window.__adminRedirectingAuth = true;
       try {
+        if (adminWsReconnectTimer) clearTimeout(adminWsReconnectTimer);
+        if (window.__adminScopedPollTimer) clearInterval(window.__adminScopedPollTimer);
+        if (adminWsInstance) {
+          adminWsInstance.onopen = null;
+          adminWsInstance.onmessage = null;
+          adminWsInstance.onclose = null;
+          adminWsInstance.onerror = null;
+          adminWsInstance.close();
+          adminWsInstance = null;
+        }
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'SYNC_PUSH_META', kind: 'sos', meta: null });
+        }
         localStorage.removeItem('ry_auth_token');
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        localStorage.removeItem('rys_sos_push_receipt');
         const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
         document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax' + secureFlag;
       } catch {}
@@ -1721,7 +1828,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=79');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=80');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -1819,10 +1926,19 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=79').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=80').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
-        if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED' && localStorage.getItem('rys_sos_push_receipt')) {
-          syncAdminSosPush(true);
+        if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED') {
+          if (ev.data.rotated?.sos?.subscriptionToken) {
+            try { localStorage.setItem('rys_sos_push_receipt', JSON.stringify(ev.data.rotated.sos)); } catch {}
+          }
+          if (localStorage.getItem('rys_sos_push_receipt')) {
+            syncAdminSosPush(true);
+          }
+        }
+        if (ev.data && ev.data.type === 'RYS_NOTIFICATION_CLICK') {
+          const sosTabBtn = document.querySelector('.side-btn[onclick*="tab-sos"]');
+          openTab('tab-sos', sosTabBtn || undefined);
         }
       });
     }

@@ -86,7 +86,7 @@
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
   <title>Rıdvan Yılmaz Turizm | RıdvanSes — Dijital Sesli Rehberlik & Kafile Sistemi</title>
   <link rel="stylesheet" href="/css/style.css?v=22" />
-  <script src="/vercel-ws-shim.js?v=79"></script>
+  <script src="/vercel-ws-shim.js?v=80"></script>
   <style>
     .hero {
       padding: 64px 0 76px;
@@ -905,9 +905,15 @@
           </div>
         `).join('');
 
-        const ryRoom = (data.liveRooms || []).find((r) => r.tourCode === 'RY-KASIM') || (data.liveRooms || [])[0];
+        const liveRooms = Array.isArray(data.liveRooms) ? data.liveRooms : [];
+        const heroCode = liveRooms.some((r) => r.tourCode === 'RY-KASIM')
+          ? 'RY-KASIM'
+          : (liveRooms[0] ? liveRooms[0].tourCode : '');
+        const heroRooms = heroCode ? liveRooms.filter((r) => r.tourCode === heroCode) : [];
+        const ryRoom = heroRooms.find((r) => r.isLive) || heroRooms[0];
         if (ryRoom) {
-          document.getElementById('heroListenersCount').textContent = ryRoom.totalListeners;
+          const maxTourListeners = heroRooms.reduce((mx, r) => Math.max(mx, Number(r.totalListeners) || 0), 0);
+          document.getElementById('heroListenersCount').textContent = maxTourListeners;
           document.getElementById('heroLiveTopic').textContent = ryRoom.currentTopic;
         }
         if (data.tours && data.tours.length > 0) {
@@ -922,7 +928,7 @@
       }
     }
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=79').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=80').catch(() => {});
     }
     loadBootstrap();
 

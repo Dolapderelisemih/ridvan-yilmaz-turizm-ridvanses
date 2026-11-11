@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=22" />
-  <script src="/vercel-ws-shim.js?v=79"></script>
+  <script src="/vercel-ws-shim.js?v=80"></script>
   <style>
     .rota-hero-strip {
       background:
@@ -236,7 +236,7 @@
               Bu kafilenin canlı konumunu, ziyaret duraklarını ve duyurularını görüntülemek için acentenizin paylaştığı kafile PIN kodunu giriniz.
             </p>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <input id="rotaPinInput" type="password" inputmode="numeric" class="input" placeholder="Kafile PIN Kodu" style="max-width:190px; font-weight:700;" />
+              <input id="rotaPinInput" type="password" maxlength="32" autocomplete="off" class="input" placeholder="Kafile PIN Kodu" style="max-width:190px; font-weight:700;" />
               <button id="rotaPinSubmitBtn" type="button" class="btn btn-primary btn-sm">PIN Doğrula ve Rotayı Aç</button>
             </div>
             <div id="rotaPinErrorMsg" style="display:none; margin-top:8px; font-size:0.8rem; font-weight:700; color:var(--color-danger);"></div>
@@ -263,7 +263,7 @@
   <div id="rotaToast" class="toast-banner"></div>
 
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=79"></script>
+  <script src="/js/umrah-steps-map.js?v=80"></script>
   <script>
     (function () {
       const params = new URLSearchParams(window.location.search);
@@ -466,10 +466,25 @@
 
       function clearStaleRouteView() {
         currentSteps = [];
+        currentTour = null;
+        currentActiveStepTitle = 'Rota doğrulaması bekleniyor';
         routeMap.setSteps([], { autoFit: false });
         routeMap.updateGuideLocation(null);
         renderFamilyTawafStage(null);
+        document.getElementById('statDay').textContent = '-';
+        document.getElementById('statKm').textContent = '0 km';
+        document.getElementById('statVisited').textContent = '0 / 0';
         document.getElementById('statListeners').textContent = '0 Kişi';
+        document.getElementById('tourTitle').textContent = 'Kafile Manevi Yolculuk Haritası';
+        document.getElementById('tourMeta').textContent = 'Kafile bilgileri doğrulanıyor...';
+        document.getElementById('hotelInfoText').textContent = '🏨 Konaklama bilgisi kafile doğrulandığında görüntülenir.';
+        document.getElementById('liveTopicText').textContent = 'Canlı rehberlik bilgisi bekleniyor...';
+        document.getElementById('guideGpsText').textContent = '📍 Konum bilgisi bekleniyor';
+        const badge = document.getElementById('heroLiveBadge');
+        if (badge) {
+          badge.className = 'badge badge-gold';
+          badge.textContent = 'MANEVİ ROTA TAKİBİ';
+        }
         renderAnnouncements([]);
       }
 
@@ -542,6 +557,8 @@
         }
         if (ws) {
           try {
+            ws.onopen = null;
+            ws.onmessage = null;
             ws.onclose = null;
             ws.onerror = null;
             ws.close();
@@ -554,17 +571,21 @@
           ? 'ses.ridvanyilmazturizm.com'
           : window.location.host;
         try {
-          ws = new WebSocket(`${proto}//${wsHost}/ws`);
-          ws.onopen = () => {
+          const socket = new WebSocket(`${proto}//${wsHost}/ws`);
+          ws = socket;
+          const current = () => ws === socket;
+          socket.onopen = () => {
+            if (!current()) return;
             if (pollTimer) {
               clearInterval(pollTimer);
               pollTimer = null;
             }
             document.getElementById('syncIndicator').textContent = '● Canlı Bağlantı';
             const pinVal = getSavedTourPin(currentCode);
-            ws.send(JSON.stringify({ type: 'family-subscribe', tourCode: currentCode, ...(pinVal ? { pin: pinVal } : {}) }));
+            socket.send(JSON.stringify({ type: 'family-subscribe', tourCode: currentCode, ...(pinVal ? { pin: pinVal } : {}) }));
           };
-          ws.onmessage = (ev) => {
+          socket.onmessage = (ev) => {
+            if (!current()) return;
             if (typeof ev.data !== 'string') return;
             try {
               const msg = JSON.parse(ev.data);
@@ -640,10 +661,12 @@
               }
             } catch (_) {}
           };
-          ws.onerror = () => {
+          socket.onerror = () => {
+            if (!current()) return;
             if (!subscriptionBlocked) startFallbackPolling();
           };
-          ws.onclose = (ev) => {
+          socket.onclose = (ev) => {
+            if (!current()) return;
             if (ev && (ev.code === 4003 || ev.code === 4004)) {
               subscriptionBlocked = true;
               if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -758,7 +781,7 @@
       }
 
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=79').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=80').catch(() => {});
       }
 
       updateLinks(currentCode);

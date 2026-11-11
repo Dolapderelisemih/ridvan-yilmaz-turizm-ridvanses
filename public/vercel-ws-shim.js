@@ -524,33 +524,12 @@
 
           client.on('connect', () => {
             if(!current())return;
-            // Rehber ve Admin her zaman Global SOS kanalını da dinler (hangi turda olursa olsun kayıp hacıyı görür!)
-            if (isAdminMode || (joinMsg && joinMsg.role === 'guide')) {
-              client.subscribe(GLOBAL_SOS_TOPIC, { qos: 0 });
-            }
             if (!joinMsg) return;
             if (joinMsg.role !== 'guide' && roomClean !== this._encodeTopicSegment('genel')) {
               client.subscribe(`ridvanses/v3/room/${codeClean}/ugenel`, { qos: 0 });
             }
             client.subscribe(topic, { qos: 0 }, () => {
               if(!current())return;
-              if (joinMsg.role !== 'guide') {
-                this._publishMqtt({
-                  _msgId: 'hello-' + this._clientId + '-' + Date.now(),
-                  type: 'p2p-pilgrim-hello',
-                  clientId: this._clientId,
-                  name: joinMsg.name || 'Hacı Misafir',
-                  phone: joinMsg.phone || '',
-                  lang: joinMsg.lang || 'tr',
-                  joinedAt: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-                });
-              } else {
-                this._publishMqtt({
-                  _msgId: 'gping-' + this._clientId + '-' + Date.now(),
-                  type: 'p2p-guide-ping',
-                  guideName: joinMsg.name || 'Ömer Ali Gültekin'
-                });
-              }
             });
           });
 

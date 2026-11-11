@@ -11,7 +11,7 @@
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/login" />
   <link rel="stylesheet" href="/css/style.css?v=22" />
-  <script src="/vercel-ws-shim.js?v=79"></script>
+  <script src="/vercel-ws-shim.js?v=80"></script>
   <style>
     .login-shell {
       max-width: 460px;
@@ -107,10 +107,10 @@
         </button>
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:4px;">
-          <button type="button" class="btn btn-gold btn-sm" onclick="submitWithTarget('/rehber')">
+          <button type="button" id="guideQuickSubmitBtn" class="btn btn-gold btn-sm" onclick="submitWithTarget('/rehber')">
             Rehber Konsolu
           </button>
-          <button type="button" class="btn btn-outline btn-sm" onclick="submitWithTarget('/panel')">
+          <button type="button" id="panelQuickSubmitBtn" class="btn btn-outline btn-sm" onclick="submitWithTarget('/panel')">
             Acente Paneli
           </button>
         </div>
@@ -158,24 +158,77 @@
     }
     updateLoginTargetUi();
 
+    let recoveryAborted = false;
+    function setLoginButtonsDisabled(disabled) {
+      mainBtn.disabled = disabled;
+      const gBtn = document.getElementById('guideQuickSubmitBtn');
+      const pBtn = document.getElementById('panelQuickSubmitBtn');
+      if (gBtn) gBtn.disabled = disabled;
+      if (pBtn) pBtn.disabled = disabled;
+    }
+
+    function clearStoredAuthArtifacts() {
+      const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = `ry_auth=; path=/; max-age=0; SameSite=Lax${secureFlag}`;
+      localStorage.removeItem('ry_auth_token');
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    }
+
+    async function purgePreviousSosPushIfNeeded() {
+      let receipt = null;
+      try {
+        receipt = JSON.parse(localStorage.getItem('rys_sos_push_receipt') || 'null');
+      } catch {}
+      localStorage.removeItem('rys_sos_push_receipt');
+      localStorage.removeItem('rys_sos_push_rev');
+      localStorage.removeItem('rys_admin_device_id');
+      try { sessionStorage.clear(); } catch {}
+      try {
+        if (receipt && receipt.endpoint && receipt.subscriptionToken) {
+          await fetch('/api/push/unsubscribe-sos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endpoint: receipt.endpoint, subscriptionToken: receipt.subscriptionToken })
+          });
+        }
+      } catch {}
+      try {
+        if ('serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.ready;
+          const sw = (navigator.serviceWorker && navigator.serviceWorker.controller) || (reg && reg.active);
+          if (sw) sw.postMessage({ type: 'SYNC_PUSH_META', kind: 'sos', meta: null });
+        }
+      } catch {}
+    }
+
+    document.getElementById('email').addEventListener('input', () => { recoveryAborted = true; });
+    document.getElementById('password').addEventListener('input', () => { recoveryAborted = true; });
+
     (async function attemptStoredTokenRecovery() {
       const savedTok = (localStorage.getItem('ry_auth_token') || '').trim();
       if (!savedTok) return;
+      let recentRedirectTs = 0;
+      try { recentRedirectTs = Number(sessionStorage.getItem('ry_recovery_redirect_ts') || '0'); } catch {}
+      if (recentRedirectTs && Date.now() - recentRedirectTs < 6000) {
+        clearStoredAuthArtifacts();
+        return;
+      }
       try {
         const res = await fetch('/api/bootstrap', {
           headers: { Authorization: 'Bearer ' + savedTok }
         });
-        if (!res.ok) return;
-        const data = await res.json();
+        if (!res.ok || recoveryAborted) return;
+        const data = await res.json().catch(() => null);
+        if (recoveryAborted) return;
         if (data && data.authenticated === true) {
           const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
           document.cookie = `ry_auth=${encodeURIComponent(savedTok)}; path=/; max-age=2592000; SameSite=Lax${secureFlag}`;
           if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+          try { sessionStorage.setItem('ry_recovery_redirect_ts', String(Date.now())); } catch {}
           window.location.replace(nextUrl);
         } else if (data && data.authenticated === false) {
-          localStorage.removeItem('ry_auth_token');
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
+          clearStoredAuthArtifacts();
         }
       } catch (e) {}
     })();
@@ -193,7 +246,19 @@
     }
 
     function submitWithTarget(target) {
-      nextUrl = sanitizeNextUrl(target);
+      if (mainBtn.disabled) return;
+      const cleanTarget = sanitizeNextUrl(target);
+      try {
+        const currentParsed = new URL(nextUrl, window.location.origin);
+        const targetParsed = new URL(cleanTarget, window.location.origin);
+        if (currentParsed.pathname === targetParsed.pathname && currentParsed.search) {
+          nextUrl = currentParsed.pathname + currentParsed.search + currentParsed.hash;
+        } else {
+          nextUrl = cleanTarget;
+        }
+      } catch {
+        nextUrl = cleanTarget;
+      }
       updateLoginTargetUi();
       document.getElementById('loginForm').requestSubmit();
     }
@@ -201,13 +266,14 @@
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       if (mainBtn.disabled) return;
+      recoveryAborted = true;
       const errBox = document.getElementById('loginErrorBox');
       errBox.style.display = 'none';
 
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value.trim();
       const origText = mainBtn.textContent;
-      mainBtn.disabled = true;
+      setLoginButtonsDisabled(true);
       mainBtn.textContent = 'Doğrulanıyor...';
 
       try {
@@ -216,20 +282,46 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password })
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
 
         if (!res.ok || !data.token) {
-          errBox.textContent = data.message || 'Kullanıcı adı veya şifre hatalı!';
+          const retryAfter = res.status === 429 ? Math.min(120, Math.max(5, Number(res.headers.get('Retry-After')) || 30)) : 0;
+          errBox.textContent =
+            data.message ||
+            (res.status === 429
+              ? `Çok fazla giriş denemesi yapıldı (${retryAfter} sn bekleyiniz).`
+              : res.status >= 500
+                ? 'Sunucu geçici olarak yanıt veremedi, lütfen birkaç saniye sonra tekrar deneyin.'
+                : 'Kullanıcı adı veya şifre hatalı!');
           errBox.style.display = 'block';
-          mainBtn.disabled = false;
-          mainBtn.textContent = origText;
+          if (retryAfter > 0) {
+            let left = retryAfter;
+            mainBtn.textContent = `Lütfen Bekleyiniz (${left} sn)`;
+            const timer = setInterval(() => {
+              left -= 1;
+              if (left <= 0) {
+                clearInterval(timer);
+                setLoginButtonsDisabled(false);
+                mainBtn.textContent = origText;
+              } else {
+                mainBtn.textContent = `Lütfen Bekleyiniz (${left} sn)`;
+              }
+            }, 1000);
+          } else {
+            setLoginButtonsDisabled(false);
+            mainBtn.textContent = origText;
+          }
           return;
         }
 
         try {
           const prevUser = JSON.parse(localStorage.getItem('user') || 'null');
-          if (prevUser && prevUser.email && data.user && prevUser.email !== data.user.email) {
-            localStorage.removeItem('rys_sos_push_receipt');
+          const hasOrphanSosReceipt = !prevUser && Boolean(localStorage.getItem('rys_sos_push_receipt'));
+          const switchedUser = Boolean(prevUser && prevUser.email && data.user && prevUser.email !== data.user.email);
+          if (switchedUser || hasOrphanSosReceipt) {
+            await purgePreviousSosPushIfNeeded();
+          } else {
+            try { sessionStorage.removeItem('ry_recovery_redirect_ts'); } catch {}
           }
         } catch (_) {}
 
@@ -242,7 +334,7 @@
       } catch (err) {
         errBox.textContent = 'Bağlantı hatası oluştu, lütfen tekrar deneyin.';
         errBox.style.display = 'block';
-        mainBtn.disabled = false;
+        setLoginButtonsDisabled(false);
         mainBtn.textContent = origText;
       }
     });

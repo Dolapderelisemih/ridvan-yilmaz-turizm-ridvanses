@@ -23,7 +23,7 @@
       }
     })();
   </script>
-  <script src="/vercel-ws-shim.js?v=79"></script>
+  <script src="/vercel-ws-shim.js?v=80"></script>
   <style>
     .print-toolbar {
       background: linear-gradient(155deg, #06231B 0%, #093529 100%);
@@ -113,6 +113,10 @@
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
+    @page {
+      size: A4 portrait;
+      margin: 8mm;
+    }
     @media print {
       .print-toolbar,
       .bulk-panel,
@@ -133,7 +137,34 @@
       }
       .badges-sheet {
         margin: 0;
+        padding: 0;
         max-width: 100%;
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px;
+      }
+      .neck-badge {
+        border-radius: 14px;
+      }
+      .badge-top {
+        padding: 10px 12px 9px;
+      }
+      .lanyard-slot {
+        height: 8px;
+        margin: 0 auto 6px;
+      }
+      .badge-body {
+        padding: 10px 12px;
+      }
+      .qr-box {
+        width: 132px;
+        height: 132px;
+        margin: 6px auto;
+        padding: 6px;
+        border-radius: 12px;
+      }
+      .badge-footer {
+        padding: 8px 12px;
+        font-size: 0.72rem;
       }
     }
     .bulk-panel {
@@ -148,7 +179,7 @@
       padding: 18px 20px;
       box-shadow: var(--shadow-soft);
     }
-    @media (max-width: 720px) {
+    @media screen and (max-width: 720px) {
       .badges-sheet {
         grid-template-columns: 1fr;
       }
@@ -164,7 +195,7 @@
       </h1>
     </div>
     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-      <select id="tourCodePicker" class="select" style="width:auto; padding:8px 12px; font-size:0.85rem;" onchange="updateBadges()">
+      <select id="tourCodePicker" class="select" style="width:auto; padding:8px 12px; font-size:0.85rem;" onchange="onBadgeTourChange()">
         <option value="RY-KASIM">RY-KASIM (13-14 Kasım Umresi • Ömer Ali Gültekin)</option>
       </select>
       <select id="badgeRoomPicker" class="select" style="width:auto; padding:8px 12px; font-size:0.85rem;" onchange="updateBadges()">
@@ -205,9 +236,17 @@
 
   <script>
     const params = new URLSearchParams(window.location.search);
-    const initialBadgeRoom = (params.get('room') || 'genel').trim() === 'siyer' ? 'siyer' : 'genel';
+    const initialBadgeRoom = (params.get('room') || 'genel').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'genel';
     const roomSel = document.getElementById('badgeRoomPicker');
-    if (roomSel) roomSel.value = initialBadgeRoom;
+    if (roomSel) {
+      if (!Array.from(roomSel.options).some((o) => o.value === initialBadgeRoom)) {
+        const opt = document.createElement('option');
+        opt.value = initialBadgeRoom;
+        opt.textContent = `Özel Oda (${initialBadgeRoom})`;
+        roomSel.appendChild(opt);
+      }
+      roomSel.value = initialBadgeRoom;
+    }
     if (params.get('code')) {
       const sel = document.getElementById('tourCodePicker');
       const code = params.get('code').toUpperCase();
@@ -260,6 +299,44 @@
         .replace(/'/g, '&#39;');
     }
 
+    function syncBadgeRoomOptions(tourObj, preferredRoom) {
+      const picker = document.getElementById('badgeRoomPicker');
+      if (!picker) return;
+      const prev = String(preferredRoom || picker.value || initialBadgeRoom || 'genel').trim().toLowerCase();
+      const defaultRooms = [
+        { id: 'genel', name: 'Genel Rehberlik Odası' },
+        { id: 'siyer', name: 'Siyer / Tavaf Özel Odası' }
+      ];
+      const baseRooms = Array.isArray(tourObj?.rooms) && tourObj.rooms.length > 0 ? tourObj.rooms : [];
+      const seen = new Set();
+      const allRooms = [];
+      for (const r of [...defaultRooms, ...baseRooms]) {
+        const rawId = typeof r === 'string' ? r : (r && r.id) || '';
+        const cleanId = String(rawId).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        if (!cleanId || seen.has(cleanId)) continue;
+        seen.add(cleanId);
+        const customName = typeof r === 'object' && r && r.name ? String(r.name).trim() : '';
+        const label =
+          cleanId === 'genel'
+            ? 'Genel Rehberlik Odası'
+            : cleanId === 'siyer'
+            ? 'Siyer / Tavaf Özel Odası'
+            : customName || `Özel Oda (${cleanId})`;
+        allRooms.push({ id: cleanId, label });
+      }
+      picker.innerHTML = allRooms
+        .map((rm) => `<option value="${escapeHtml(rm.id)}">${escapeHtml(rm.label)}</option>`)
+        .join('');
+      picker.value = allRooms.some((rm) => rm.id === prev) ? prev : 'genel';
+    }
+
+    function onBadgeTourChange() {
+      const selCode = document.getElementById('tourCodePicker')?.value || 'RY-KASIM';
+      const matched = toursData.find((t) => t.code === selCode);
+      syncBadgeRoomOptions(matched);
+      updateBadges();
+    }
+
     async function init() {
       try {
         const res = await fetch('/api/bootstrap');
@@ -282,6 +359,8 @@
           const current = sel.value;
           sel.innerHTML = toursData.map((t) => `<option value="${escapeHtml(t.code)}">${escapeHtml(t.code)} (${escapeHtml(t.name)} • ${escapeHtml(t.guideName)})</option>`).join('');
           if (toursData.some((t) => t.code === current)) sel.value = current;
+          const matched = toursData.find((t) => t.code === sel.value) || toursData[0];
+          syncBadgeRoomOptions(matched, initialBadgeRoom);
         }
       } catch (e) {
         bootstrapFailed = true;
@@ -315,7 +394,7 @@
     async function updateBadges() {
       const currentSeq = ++renderSeq;
       const code = document.getElementById('tourCodePicker').value;
-      const badgeRoom = (document.getElementById('badgeRoomPicker')?.value || initialBadgeRoom) === 'siyer' ? 'siyer' : 'genel';
+      const badgeRoom = (document.getElementById('badgeRoomPicker')?.value || initialBadgeRoom || 'genel').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'genel';
       const customName = document.getElementById('customPilgrimInput').value.trim();
       const bulkRaw = (document.getElementById('bulkPilgrimsTextarea')?.value || '').trim();
       const matchedTour = toursData.find((t) => t.code === code);
@@ -345,11 +424,16 @@
         samplePilgrims = bulkRaw
           .split(/\r?\n/)
           .map((line) => line.replace(/^\s*\d+[\.\)\-\s]+/, '').trim())
-          .filter(Boolean);
+          .filter(Boolean)
+          .map((pName) => ({ label: pName, qrName: pName }));
       } else if (customName) {
-        samplePilgrims = [customName];
+        samplePilgrims = [{ label: customName, qrName: customName }];
       } else {
-        samplePilgrims = ['Hacı Mustafa Kaya', 'Hacı Fatma Yıldırım', 'Hacı Ahmet Demir', 'Hacı Ayşe Çelik'];
+        const defaultCount = Math.min(200, Math.max(1, Number(tour.registeredCount) || 4));
+        samplePilgrims = Array.from({ length: defaultCount }, (_, idx) => ({
+          label: `Umre Misafiri #${idx + 1}`,
+          qrName: ''
+        }));
       }
 
       const countLbl = document.getElementById('badgeCountLabel');
@@ -359,31 +443,37 @@
         ? 'https://ses.ridvanyilmazturizm.com'
         : '';
       const container = document.getElementById('badgesContainer');
-      container.innerHTML = samplePilgrims.map((pName) => `
+      container.innerHTML = samplePilgrims.map((entry) => {
+        const pName = entry.label;
+        const qrName = entry.qrName;
+        const qrSrc = qrName
+          ? `${qrImgOrigin}/api/qr-img?code=${encodeURIComponent(tour.code)}&room=${encodeURIComponent(badgeRoom)}&name=${encodeURIComponent(qrName)}`
+          : (window.__genericBadgeQr || `${qrImgOrigin}/api/qr-img?code=${encodeURIComponent(tour.code)}&room=${encodeURIComponent(badgeRoom)}`);
+        return `
         <div class="neck-badge">
           <div class="badge-top">
             <div class="lanyard-slot"></div>
             <div style="font-size:0.72rem; color:#E2C785; font-weight:800; letter-spacing:0.12em;">RIDVAN YILMAZ TURİZM • BURSA</div>
-            <div style="font-family:var(--font-display); font-size:1.25rem; font-weight:700; margin-top:4px; color:#FFFFFF;">${escapeHtml(tour.name)}</div>
+            <div style="font-family:var(--font-display); font-size:1.15rem; font-weight:700; margin-top:3px; color:#FFFFFF;">${escapeHtml(tour.name)}</div>
           </div>
 
           <div class="badge-body">
-            <div style="font-size:0.72rem; color:var(--color-muted); font-weight:800; letter-spacing:0.08em; text-transform:uppercase;">UMRE MİSAFİRİ / HACI</div>
-            <div style="font-family:var(--font-sans); font-size:1.35rem; font-weight:800; color:var(--color-emerald-night); margin:4px 0 10px;">
+            <div style="font-size:0.7rem; color:var(--color-muted); font-weight:800; letter-spacing:0.08em; text-transform:uppercase;">UMRE MİSAFİRİ / HACI</div>
+            <div style="font-family:var(--font-sans); font-size:1.22rem; font-weight:800; color:var(--color-emerald-night); margin:3px 0 8px;">
               ${escapeHtml(pName)}
             </div>
 
-            <span class="badge badge-gold" style="font-size:0.8rem;">KAFİLE KODU: ${escapeHtml(tour.code)}</span>
+            <span class="badge badge-gold" style="font-size:0.78rem;">KAFİLE KODU: ${escapeHtml(tour.code)}${badgeRoom !== 'genel' ? ` • ODA: ${escapeHtml(badgeRoom.toUpperCase())}` : ''}</span>
 
             <div class="qr-box">
-              <img src="${qrImgOrigin}/api/qr-img?code=${encodeURIComponent(tour.code)}&room=${encodeURIComponent(badgeRoom)}&name=${encodeURIComponent(pName)}" onerror="handleBadgeQrFallback(this)" alt="QR Code ${escapeHtml(tour.code)} - ${escapeHtml(pName)}" />
+              <img src="${qrSrc}" onerror="handleBadgeQrFallback(this)" alt="QR Code ${escapeHtml(tour.code)} - ${escapeHtml(pName)}" />
             </div>
 
-            <div style="font-size:0.79rem; color:var(--color-muted); max-width:265px; margin:0 auto 14px; line-height:1.45;">
-              <strong>İsme Özel QR Rehberlik:</strong> Telefon kameranızı QR koda okutarak adınızı bile yazmadan <strong>${escapeHtml(tour.guideName)}</strong> canlı anlatımına doğrudan bağlanın.
+            <div style="font-size:0.76rem; color:var(--color-muted); max-width:265px; margin:0 auto 10px; line-height:1.4;">
+              <strong>${qrName ? 'İsme Özel QR Rehberlik:' : 'Hızlı QR Rehberlik:'}</strong> Telefon kameranızı QR koda okutarak <strong>${escapeHtml(tour.guideName)}</strong> canlı anlatımına doğrudan bağlanın.
             </div>
 
-            <div style="background:var(--color-ground); border:1px solid var(--color-hairline); border-radius:12px; padding:11px 14px; font-size:0.78rem; text-align:left; display:flex; flex-direction:column; gap:4px; color:var(--color-ink);">
+            <div style="background:var(--color-ground); border:1px solid var(--color-hairline); border-radius:12px; padding:9px 12px; font-size:0.75rem; text-align:left; display:flex; flex-direction:column; gap:3px; color:var(--color-ink);">
               <div><strong>Kafile Rehberi:</strong> ${escapeHtml(tour.guideName)}</div>
               <div><strong>Mekke Otel:</strong> ${escapeHtml(tour.makkahHotel)}</div>
               <div><strong>Medine Otel:</strong> ${escapeHtml(tour.madinahHotel)}</div>
@@ -395,7 +485,8 @@
             ACİL / KAYIP İLETİŞİM (WHATSAPP): ${escapeHtml(agencyPhone)}
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
     init();

@@ -16,10 +16,14 @@
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
   <link rel="stylesheet" href="/css/style.css?v=22" />
-  <script src="/vercel-ws-shim.js?v=79"></script>
+  <script src="/vercel-ws-shim.js?v=80"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=79"></script>
+  <script src="/js/umrah-steps-map.js?v=80"></script>
   <style>
+    .arabic-text {
+      direction: rtl;
+      unicode-bidi: isolate;
+    }
     .app-shell {
       max-width: 540px;
       margin: 18px auto 110px;
@@ -632,6 +636,7 @@
           <div class="sos-hold-btn" id="sosHoldBtn" role="button" tabindex="0"
                onmousedown="startSosHold()" onmouseup="cancelSosHold()" onmouseleave="cancelSosHold()"
                ontouchstart="startSosHold(event)" ontouchend="cancelSosHold()" ontouchcancel="cancelSosHold()"
+               onblur="cancelSosHold()"
                oncontextmenu="event.preventDefault()"
                onkeydown="if(event.key===' '||event.key==='Enter')startSosHold(event)"
                onkeyup="if(event.key===' '||event.key==='Enter')cancelSosHold()">
@@ -897,6 +902,10 @@
         pushModalLaterBtn: 'Daha Sonra',
         sosQueuedOfflineTitle: 'İNTERNET BAĞLANTISI YOK — ACİL SOS SIRAYA ALINDI!',
         sosQueuedOfflineSub: 'Telefonunuz şu an çevrimdışı. Bağlantı gelir gelmez konumunuz otomatik iletilecektir; acil durumda hemen aşağıdaki Rehberi Ara veya WhatsApp butonunu kullanın.',
+        gpsPermDeniedHtml: 'Telefon tarayıcınızda <strong>Konum (GPS) İzni Reddedilmiş</strong>. Tam sokak noktanız için adres çubuğunun yanındaki kilit simgesine dokunup <strong>Konum → İzin Ver</strong> yapın.',
+        gpsFallbackNote: 'GPS kapalı — yaklaşık kafile durağı konumu baz alındı',
+        hotelDirBtnPrefix: '🏨 Otelime Yol Tarifi',
+        tourHotelPrefix: '🏨 Kafile Oteli',
         sendViaWhatsapp: "WhatsApp'tan Gönder",
         addressLabel: 'Açık Adres',
         coordsLabel: 'GPS Koordinat',
@@ -1013,6 +1022,10 @@
         pushModalLaterBtn: 'لاحقاً',
         sosQueuedOfflineTitle: 'لا يوجد اتصال بالإنترنت — تم حفظ بلاغ الطوارئ!',
         sosQueuedOfflineSub: 'هاتفك غير متصل حالياً. سيتم إرسال موقعك تلقائياً فور عودة الشبكة؛ للحالات العاجلة اتصل بالمرشد فوراً.',
+        gpsPermDeniedHtml: 'تم <strong>رفض إذن الموقع (GPS)</strong> في متصفح هاتفك. يرجى السماح بالوصول إلى الموقع من إعدادات المتصفح لتحديد موقعك الدقيق.',
+        gpsFallbackNote: 'خدمة GPS متوقفة — تم اعتماد الموقع التقريبي للمحطة الحالية',
+        hotelDirBtnPrefix: '🏨 الاتجاه إلى الفندق',
+        tourHotelPrefix: '🏨 فندق الحملة',
         sendViaWhatsapp: 'إرسال عبر واتساب',
         addressLabel: 'العنوان',
         coordsLabel: 'إحداثيات GPS',
@@ -1129,6 +1142,10 @@
         pushModalLaterBtn: 'Later',
         sosQueuedOfflineTitle: 'NO INTERNET — SOS QUEUED FOR AUTO-SEND!',
         sosQueuedOfflineSub: 'Your phone is currently offline. Your SOS will be sent automatically as soon as signal returns; please call your guide directly if urgent.',
+        gpsPermDeniedHtml: '<strong>Location (GPS) Permission Denied</strong> in your browser. Tap the lock icon in the address bar and set <strong>Location → Allow</strong> for exact coordinates.',
+        gpsFallbackNote: 'GPS unavailable — approximate group stop location used',
+        hotelDirBtnPrefix: '🏨 Directions to My Hotel',
+        tourHotelPrefix: '🏨 Group Hotel',
         sendViaWhatsapp: 'Send via WhatsApp',
         addressLabel: 'Address',
         coordsLabel: 'GPS Coordinates',
@@ -1245,6 +1262,10 @@
         pushModalLaterBtn: 'Plus tard',
         sosQueuedOfflineTitle: 'HORS LIGNE — ALERTE SOS EN ATTENTE D’ENVOI !',
         sosQueuedOfflineSub: 'Votre téléphone est hors ligne. Votre position sera envoyée dès le retour du réseau ; appelez le guide en cas d’urgence.',
+        gpsPermDeniedHtml: '<strong>Autorisation GPS refusée</strong> dans votre navigateur. Appuyez sur l’icône cadenas et activez <strong>Position → Autoriser</strong>.',
+        gpsFallbackNote: 'GPS désactivé — position approximative de l’étape du groupe utilisée',
+        hotelDirBtnPrefix: '🏨 Itinéraire vers l’Hôtel',
+        tourHotelPrefix: '🏨 Hôtel du Groupe',
         sendViaWhatsapp: 'Envoyer sur WhatsApp',
         addressLabel: 'Adresse',
         coordsLabel: 'Coordonnées GPS',
@@ -1361,6 +1382,10 @@
         pushModalLaterBtn: 'Nanti',
         sosQueuedOfflineTitle: 'TIDAK ADA INTERNET — SOS DALAM ANTREAN OTOMATIS!',
         sosQueuedOfflineSub: 'Ponsel sedang offline. Lokasi Anda akan dikirim otomatis saat sinyal kembali; hubungi pembimbing langsung jika darurat.',
+        gpsPermDeniedHtml: '<strong>Izin Lokasi (GPS) Ditolak</strong> di browser ponsel Anda. Ketuk ikon gembok di bilah alamat lalu pilih <strong>Lokasi → Izinkan</strong>.',
+        gpsFallbackNote: 'GPS mati — menggunakan perkiraan lokasi titik rombongan',
+        hotelDirBtnPrefix: '🏨 Rute ke Hotel Saya',
+        tourHotelPrefix: '🏨 Hotel Rombongan',
         sendViaWhatsapp: 'Kirim via WhatsApp',
         addressLabel: 'Alamat',
         coordsLabel: 'Koordinat GPS',
@@ -1477,6 +1502,10 @@
         pushModalLaterBtn: 'بعد میں',
         sosQueuedOfflineTitle: 'انٹرنیٹ کنکشن نہیں ہے — ہنگامی اطلاع محفوظ کر لی گئی!',
         sosQueuedOfflineSub: 'فون اس وقت آف لائن ہے۔ سگنل آتے ہی آپ کا مقام خودکار طور پر بھیج دیا جائے گا؛ فوری ضرورت میں معلم کو کال کریں۔',
+        gpsPermDeniedHtml: 'آپ کے براؤزر میں <strong>لوکیشن (GPS) کی اجازت مسترد</strong> ہے۔ درست مقام کے لیے ایڈریس بار کے تالے پر ٹیپ کر کے <strong>لوکیشن کی اجازت</strong> دیں۔',
+        gpsFallbackNote: 'GPS بند ہے — قافلے کے موجودہ مقام کا تخمینی محل وقوع استعمال کیا گیا',
+        hotelDirBtnPrefix: '🏨 ہوٹل کا راستہ',
+        tourHotelPrefix: '🏨 قافلہ ہوٹل',
         sendViaWhatsapp: 'واٹس ایپ پر بھیجیں',
         addressLabel: 'پتہ',
         coordsLabel: 'GPS کوآرڈینیٹس',
@@ -1645,6 +1674,19 @@
     if (urlParams.get('name')) {
       document.getElementById('pilgrimNameInput').value = urlParams.get('name');
     }
+    const earlyWantedRoom = (urlParams.get('room') || (function () { try { return localStorage.getItem('ridvanses_saved_room') || ''; } catch { return ''; } })()).trim();
+    if (earlyWantedRoom) {
+      const earlyRoomSel = document.getElementById('roomSelect');
+      if (earlyRoomSel) {
+        if (!Array.from(earlyRoomSel.options).some((o) => o.value === earlyWantedRoom)) {
+          const customOpt = document.createElement('option');
+          customOpt.value = earlyWantedRoom;
+          customOpt.textContent = earlyWantedRoom;
+          earlyRoomSel.appendChild(customOpt);
+        }
+        earlyRoomSel.value = earlyWantedRoom;
+      }
+    }
     const initLangParam = urlParams.get('lang') || (function () { try { return localStorage.getItem('ridvanses_lang') || ''; } catch { return ''; } })();
     if (initLangParam && I18N[initLangParam]) {
       const btn = Array.from(document.querySelectorAll('.lang-btn')).find((b) => (b.getAttribute('onclick') || '').includes(`'${initLangParam}'`));
@@ -1752,10 +1794,11 @@
       const isKudi = /kudi/i.test(makkahName);
       const cityLabel = matchedHotel?.city || (isKudi ? 'Ajyad Street, 23333 Mekke' : 'Mekke-i Mükerreme');
 
-      if (makkahEl) makkahEl.textContent = `🏨 Mekke: ${makkahName}`;
-      if (madinahEl) madinahEl.textContent = `📍 ${cityLabel} • Medine: ${madinahName}`;
-      if (sosLabelEl) sosLabelEl.textContent = `🏨 Kafile Oteli: ${makkahName} (${cityLabel})`;
-      if (sosHotelDirBtn) sosHotelDirBtn.textContent = `🏨 Otelime Yol Tarifi (${makkahName})`;
+      const dict = I18N[currentLang] || I18N.tr;
+      if (makkahEl) makkahEl.textContent = `🏨 ${makkahName}`;
+      if (madinahEl) madinahEl.textContent = `📍 ${cityLabel} • ${madinahName}`;
+      if (sosLabelEl) sosLabelEl.textContent = `${dict.tourHotelPrefix || '🏨 Kafile Oteli'}: ${makkahName} (${cityLabel})`;
+      if (sosHotelDirBtn) sosHotelDirBtn.textContent = `${dict.hotelDirBtnPrefix || '🏨 Otelime Yol Tarifi'} (${makkahName})`;
 
       const coords = matchedHotel?.coordinates;
       const destQuery = (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lng))
@@ -2127,6 +2170,30 @@
 
         if (msg.type === 'guide-location') {
           renderGuideLiveLocation(msg.guideLocation);
+        }
+
+        if (msg.type === 'sos-ack' && msg.id) {
+          confirmedWsSosIds.add(String(msg.id));
+          try {
+            const q = JSON.parse(localStorage.getItem('rys_pending_sos_queue') || '[]');
+            if (Array.isArray(q) && q.some((item) => item && item.id === msg.id)) {
+              const filtered = q.filter((item) => item && item.id !== msg.id);
+              if (filtered.length > 0) localStorage.setItem('rys_pending_sos_queue', JSON.stringify(filtered));
+              else localStorage.removeItem('rys_pending_sos_queue');
+            }
+          } catch {}
+          const msgEl = document.getElementById('sosStatusMsg');
+          if (msgEl && msgEl.getAttribute('data-sos-queued') === '1' && msgEl.getAttribute('data-sos-id') === String(msg.id)) {
+            const sosDict = I18N[currentLang] || I18N.tr;
+            msgEl.removeAttribute('data-sos-queued');
+            msgEl.style.background = '#dcfce7';
+            msgEl.style.color = '#166534';
+            msgEl.style.border = '1px solid #86efac';
+            const titleStrong = msgEl.querySelector('[data-sos-status-title]');
+            if (titleStrong) titleStrong.textContent = sosDict.sosSentTitle || 'CANLI KONUMUNUZ REHBER HOCAMIZA İLETİLDİ!';
+            const offlineSub = msgEl.querySelector('[data-sos-offline-sub]');
+            if (offlineSub) offlineSub.remove();
+          }
         }
 
         if (msg.type === 'audio-chunk') {
@@ -2751,11 +2818,11 @@
         let rxPeakLimiter = null;
         if (typeof audioCtx.createDynamicsCompressor === 'function') {
           rxPeakLimiter = audioCtx.createDynamicsCompressor();
-          rxPeakLimiter.threshold.value = -2.5;
-          rxPeakLimiter.knee.value = 6;
-          rxPeakLimiter.ratio.value = 12;
-          rxPeakLimiter.attack.value = 0.002;
-          rxPeakLimiter.release.value = 0.09;
+          rxPeakLimiter.threshold.value = -3.0;
+          rxPeakLimiter.knee.value = 5;
+          rxPeakLimiter.ratio.value = 16;
+          rxPeakLimiter.attack.value = 0.0005;
+          rxPeakLimiter.release.value = 0.085;
         }
         let softClipper = null;
         if (typeof audioCtx.createWaveShaper === 'function') {
@@ -2807,6 +2874,7 @@
               wasSystemAudioInterrupted ||
               (lastRxWorkletHeartbeatAt > 0 && Date.now() - lastRxWorkletHeartbeatAt > 1600)
             ) {
+              window.__ryLastGestureAudioUnlockAt = Date.now();
               forceResurrectPilgrimAudio('user-gesture');
             } else {
               startBackgroundKeepAliveAudio();
@@ -2818,7 +2886,12 @@
     });
 
     function toggleAudioPlayback() {
-      const wasSuspendedWhileListening = isAudioListening && audioCtx && audioCtx.state !== 'running';
+      const recentlyUnlockedByGesture = Boolean(
+        window.__ryLastGestureAudioUnlockAt && Date.now() - window.__ryLastGestureAudioUnlockAt < 450
+      );
+      window.__ryLastGestureAudioUnlockAt = 0;
+      const wasSuspendedWhileListening =
+        isAudioListening && ((audioCtx && audioCtx.state !== 'running') || recentlyUnlockedByGesture);
       ensureAudioContext();
       if (wasSuspendedWhileListening) {
         isAudioListening = true;
@@ -2852,16 +2925,18 @@
     function updateVolume(val) {
       volumeMultiplier = Number(val) / 100;
       document.getElementById('volumeLabel').textContent = `%${val}`;
-      if (gainNode) gainNode.gain.setTargetAtTime(volumeMultiplier, audioCtx.currentTime, 0.010);
+      if (gainNode && audioCtx) gainNode.gain.setTargetAtTime(volumeMultiplier, audioCtx.currentTime, 0.010);
     }
 
     let lastPacketReceivedAt = 0;
     let lastReceivedAudioSeq = 0;
+    let rxFallbackNextTime = 0;
     const activeScheduledSources = [];
     const activeGuideDemoSources=new Map();
 
     function stopAllActiveSources() {
       ++rxAudioDeliveryEpoch;
+      rxFallbackNextTime = 0;
       pendingRxFrames.length = 0;
       for(const [source,envelope] of activeGuideDemoSources){
         activeGuideDemoSources.delete(source);
@@ -2960,6 +3035,31 @@
           try {
             pilgrimAudioGuardChannel.postMessage({ type: 'pilgrim-speaker-rms', rms: spkRms, ts: Date.now() });
           } catch {}
+        }
+        if (typeof window !== 'undefined' && window.__ryRxAudioStatus === 'unsupported' && audioCtx && gainNode && typeof audioCtx.createBuffer === 'function' && typeof audioCtx.createBufferSource === 'function') {
+          if (isSilent) return;
+          const now = audioCtx.currentTime || 0;
+          if (phraseStart || rxFallbackNextTime < now + 0.005 || rxFallbackNextTime > now + 0.36) {
+            rxFallbackNextTime = now + 0.06;
+          }
+          const buf = audioCtx.createBuffer(1, a.length, 24000);
+          if (typeof buf.copyToChannel === 'function') {
+            buf.copyToChannel(a, 0);
+          } else if (typeof buf.getChannelData === 'function') {
+            buf.getChannelData(0).set(a);
+          }
+          const src = audioCtx.createBufferSource();
+          src.buffer = buf;
+          src.connect(gainNode);
+          activeScheduledSources.push(src);
+          src.onended = () => {
+            const idx = activeScheduledSources.indexOf(src);
+            if (idx !== -1) activeScheduledSources.splice(idx, 1);
+            try { src.disconnect(); src.buffer = null; } catch {}
+          };
+          src.start(rxFallbackNextTime);
+          rxFallbackNextTime += a.length / 24000;
+          return;
         }
         if (pendingRxFrames.length >= 13) pendingRxFrames.shift();
         pendingRxFrames.push({
@@ -3160,6 +3260,7 @@
       }
     }
 
+    var confirmedWsSosIds = new Set();
     let isFlushingSosQueue = false;
     async function flushPendingSosQueue() {
       if (isFlushingSosQueue) return;
@@ -3172,12 +3273,19 @@
       }
       if (!Array.isArray(queue) || queue.length === 0) return;
       isFlushingSosQueue = true;
-      const remaining = [];
+      const handledIds = new Set();
+      const retryItems = [];
       let deliveredAny = false;
       try {
         for (const item of queue) {
           if (!item || !item.id || !item.tourCode) continue;
+          if (confirmedWsSosIds.has(String(item.id))) {
+            handledIds.add(String(item.id));
+            deliveredAny = true;
+            continue;
+          }
           let ok = false;
+          let permanentDrop = false;
           let timer = null;
           try {
             const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -3189,25 +3297,35 @@
               ...(ac ? { signal: ac.signal } : {})
             });
             ok = Boolean(res && res.ok);
+            if (!ok && res && (res.status === 400 || res.status === 403 || res.status === 404)) {
+              permanentDrop = true;
+            }
           } catch {
             ok = false;
           } finally {
             if (timer) clearTimeout(timer);
           }
+          handledIds.add(String(item.id));
           if (ok) {
             deliveredAny = true;
-          } else {
-            remaining.push(item);
+          } else if (!permanentDrop) {
+            retryItems.push(item);
           }
         }
+        let finalRemaining = retryItems;
         try {
-          if (remaining.length > 0) {
-            localStorage.setItem('rys_pending_sos_queue', JSON.stringify(remaining.slice(-5)));
+          const freshRaw = JSON.parse(localStorage.getItem('rys_pending_sos_queue') || '[]');
+          const concurrentNew = Array.isArray(freshRaw)
+            ? freshRaw.filter((q) => q && q.id && !handledIds.has(String(q.id)) && !confirmedWsSosIds.has(String(q.id)))
+            : [];
+          finalRemaining = [...retryItems, ...concurrentNew].slice(-5);
+          if (finalRemaining.length > 0) {
+            localStorage.setItem('rys_pending_sos_queue', JSON.stringify(finalRemaining));
           } else {
             localStorage.removeItem('rys_pending_sos_queue');
           }
         } catch {}
-        if (deliveredAny && remaining.length === 0) {
+        if (deliveredAny && finalRemaining.length === 0) {
           const msgEl = document.getElementById('sosStatusMsg');
           const sosDict = I18N[currentLang] || I18N.tr;
           if (msgEl && msgEl.getAttribute('data-sos-queued') === '1') {
@@ -3244,7 +3362,7 @@
       msgEl.style.border = '1px solid #86efac';
       msgEl.innerHTML = sosDict.sosFetchingGps || `<strong>Telefonunuzun Canlı GPS Konumu Alınıyor...</strong><br/>Ekranda konum izni penceresi çıkarsa lütfen <strong>"İzin Ver"</strong> seçeneğine dokunun.`;
 
-      const deliverSosPayload = async (lat, lng, accuracy, note, permWarning = '') => {
+      const deliverSosPayload = async (lat, lng, accuracy, note, permWarning = '', gpsSource = 'live-gps') => {
         const tourCode = (currentTour && currentTour.code) || document.getElementById('tourCodeInput').value.trim().toUpperCase() || 'RY-KASIM';
         const pilgrimName = document.getElementById('pilgrimNameInput').value.trim() || 'Hacı Misafir';
         const phone = document.getElementById('pilgrimPhoneInput').value.trim();
@@ -3253,6 +3371,7 @@
           try { pin = (sessionStorage.getItem('rys_tour_pin_' + tourCode) || '').trim(); } catch {}
         }
         const sosId = `sos-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        msgEl.setAttribute('data-sos-id', sosId);
         const httpPayload = {
           id: sosId,
           tourCode,
@@ -3263,10 +3382,10 @@
           lat,
           lng,
           accuracy,
+          gpsSource,
           locationNote: note
         };
 
-        let wsSent = false;
         if (ws && ws.readyState === WebSocket.OPEN) {
           try {
             ws.send(JSON.stringify({
@@ -3278,9 +3397,9 @@
               lat,
               lng,
               accuracy,
+              gpsSource,
               locationNote: note
             }));
-            wsSent = true;
           } catch {}
         }
 
@@ -3306,7 +3425,7 @@
           if (sosTimer) clearTimeout(sosTimer);
         }
 
-        const delivered = httpOk || (wsSent && (typeof navigator === 'undefined' || navigator.onLine !== false));
+        const delivered = httpOk || confirmedWsSosIds.has(sosId);
         if (!delivered) {
           try {
             const prevQueue = JSON.parse(localStorage.getItem('rys_pending_sos_queue') || '[]');
@@ -3393,15 +3512,16 @@
 
         const warnText =
           err && err.code === 1
-            ? `Telefon tarayıcınızda <strong>Konum (GPS) İzni Reddedilmiş</strong>. Tam sokak noktanız için adres çubuğunun yanındaki kilit simgesine dokunup <strong>Konum → İzin Ver</strong> yapın.`
-            : `Telefonunuzun GPS servisi kapalı olduğu için kafile durağı konumu (${escapeHtml(fallbackCity)}) baz alındı.`;
+            ? (sosDict.gpsPermDeniedHtml || `Telefon tarayıcınızda <strong>Konum (GPS) İzni Reddedilmiş</strong>. Tam sokak noktanız için adres çubuğunun yanındaki kilit simgesine dokunup <strong>Konum → İzin Ver</strong> yapın.`)
+            : `${escapeHtml(sosDict.gpsFallbackNote || 'Telefonunuzun GPS servisi kapalı olduğu için kafile durağı konumu baz alındı.')} (${escapeHtml(fallbackCity)})`;
 
         await deliverSosPayload(
           fallbackLat,
           fallbackLng,
           null,
           `${fallbackCity} (Kafile Durağı Yaklaşık Konumu — GPS İzni Bekleniyor)`,
-          warnText
+          warnText,
+          'tour-fallback'
         );
       } finally {
         if (gpsWatchId !== null && navigator.geolocation) {
@@ -3521,6 +3641,9 @@
       stopAllActiveSources();
       stopBackgroundKeepAliveAudio();
       releaseWakeLock();
+      if (audioCtx && audioCtx.state === 'running' && typeof audioCtx.suspend === 'function') {
+        try { audioCtx.suspend().catch(() => {}); } catch {}
+      }
       if (typeof renderLiveTawafStage === 'function') renderLiveTawafStage(null);
       if (typeof renderGuideLiveLocation === 'function') renderGuideLiveLocation(null);
       if (typeof pilgrimJourneySteps !== 'undefined') pilgrimJourneySteps = [];
@@ -3811,10 +3934,23 @@
     }
     window.addEventListener('online',()=>{if(rysWebPushState().context)void syncWebPushSubscription();void flushPendingSosQueue();});
     navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(rysWebPushState().context)void syncWebPushSubscription();});
-    navigator.serviceWorker?.addEventListener('message',(ev)=>{if(ev.data?.type==='PUSH_SUBSCRIPTION_CHANGED'&&rysWebPushState().context)void syncWebPushSubscription();});
+    navigator.serviceWorker?.addEventListener('message',(ev)=>{
+      if(ev.data?.type==='PUSH_SUBSCRIPTION_CHANGED'){
+        if(ev.data.rotated?.pilgrim?.subscriptionToken){
+          try{localStorage.setItem('rys_push_receipt',JSON.stringify(ev.data.rotated.pilgrim));}catch(e){}
+        }
+        if(rysWebPushState().context)void syncWebPushSubscription();
+      }
+      if(ev.data?.type==='RYS_NOTIFICATION_CLICK'){
+        if(document.getElementById('liveView')?.style.display!=='none'&&typeof switchPilgrimTab==='function'){
+          const annBtn=document.querySelector('#pilgrimBottomNav .p-nav-btn[onclick*="pilgrimTabAnn"]');
+          if(annBtn)switchPilgrimTab('pilgrimTabAnn',annBtn);
+        }
+      }
+    });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=79').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=80').catch(() => {});
     }
 
     let subscribedBannerDismissed = false;
@@ -3845,7 +3981,7 @@
         return;
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=79').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=80').catch(() => {});
       }
       // iOS WebKit zorunluluğu: setWebPushTour senkron çalışır, Notification.requestPermission() doğrudan dokunuş içinde çağrılır.
       const state = rysWebPushState();

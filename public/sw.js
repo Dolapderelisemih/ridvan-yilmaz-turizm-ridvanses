@@ -1,7 +1,7 @@
 // PATCH: sw-v53
 // PATCH: sw-v53
 // PATCH: sw-v53
-const CACHE_NAME = 'ridvanses-pwa-v79';
+const CACHE_NAME = 'ridvanses-pwa-v80';
 const PUSH_META_CACHE = 'ridvanses-push-meta-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -10,11 +10,11 @@ const ASSETS_TO_CACHE = [
   '/ani-kitabi',
   '/kullanim-rehberi',
   '/css/style.css?v=22',
-  '/vercel-ws-shim.js?v=79',
+  '/vercel-ws-shim.js?v=80',
   '/vendor/leaflet/leaflet.js',
   '/vendor/leaflet/leaflet.css',
   '/vendor/mqtt/mqtt.min.js',
-  '/js/umrah-steps-map.js?v=79',
+  '/js/umrah-steps-map.js?v=80',
   '/pcm-capture-worklet.js?v=72-audio',
   '/pcm-player-worklet.js?v=72-audio',
   '/manifest.json',
@@ -43,15 +43,25 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME && k !== PUSH_META_CACHE).map((k) => caches.delete(k)))
-    )
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME && k !== PUSH_META_CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
+
+function canonicalHtmlCachePath(lowerPath) {
+  if (lowerPath === '/' || lowerPath === '/index.html') return '/';
+  if (lowerPath === '/dinle' || lowerPath === '/haci' || lowerPath === '/dinle.html') return '/dinle';
+  if (lowerPath === '/rota' || lowerPath === '/izle' || lowerPath === '/rota.html') return '/rota';
+  if (lowerPath === '/ani-kitabi' || lowerPath === '/hatira-kitabi' || lowerPath === '/ani-kitabi.html') return '/ani-kitabi';
+  if (lowerPath === '/kullanim-rehberi' || lowerPath === '/kullanim-rehberi.html') return '/kullanim-rehberi';
+  return null;
+}
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  if (event.request.headers && typeof event.request.headers.has === 'function' && event.request.headers.has('range')) return;
   const url = new URL(event.request.url);
   const ownOrigin = self.location && self.location.origin ? self.location.origin : url.origin;
   const lowerPath = url.pathname.toLowerCase();
@@ -69,16 +79,23 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const canonicalPage = canonicalHtmlCachePath(lowerPath);
+
   event.respondWith(
     fetch(event.request)
       .then((res) => {
         if (res && res.ok && res.status === 200 && res.type === 'basic') {
           const copy = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
+          const cacheKey = canonicalPage ? canonicalPage : event.request;
+          caches.open(CACHE_NAME).then((cache) => cache.put(cacheKey, copy)).catch(() => {});
         }
         return res;
       })
       .catch(async () => {
+        if (canonicalPage) {
+          const pageHit = await caches.match(canonicalPage, { ignoreSearch: true });
+          if (pageHit) return pageHit;
+        }
         const exact = await caches.match(event.request);
         if (exact) return exact;
         const cleanHit = await caches.match(url.pathname, { ignoreSearch: true });
@@ -89,7 +106,9 @@ self.addEventListener('fetch', (event) => {
           if (altHit) return altHit;
         }
         if (event.request.mode === 'navigate') {
+          const navTarget = canonicalPage || '/dinle';
           return (
+            (await caches.match(navTarget, { ignoreSearch: true })) ||
             (await caches.match('/dinle', { ignoreSearch: true })) ||
             (await caches.match('/', { ignoreSearch: true })) ||
             new Response('Çevrimdışı bağlantı bekleniyor...', {
@@ -115,7 +134,7 @@ function showRysNotification(message){
   const data=message&&typeof message==='object'?message:{body:String(message||'')};
   const isSos=data.type==='sos-alert';
   const tag=typeof data.tag==='string'&&data.tag?data.tag.slice(0,180):
-    data.id?(isSos?'ridvanses-sos-':'ridvanses-ann-')+String(data.id).slice(0,96):'ridvanses-notify';
+    data.id?(isSos?'ridvanses-sos-':'ridvanses-ann-')+String(data.id).slice(0,96):'ridvanses-notify-'+Date.now();
   return self.registration.showNotification(String(data.title||'RıdvanSes Kafile Duyurusu').slice(0,160),{
     body:String(data.body||data.message||'').slice(0,2000),
     icon:'/icons/icon-512.png',badge:'/icons/icon-192.png',
@@ -169,10 +188,27 @@ self.addEventListener('notificationclick',event=>{
   const target=rysNotificationUrl(event.notification.data?.url);
   event.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(async clients=>{
     const exact=clients.find(c=>c.url===target);
-    if(exact){try{return await exact.focus();}catch(e){}}
-    const targetPath=new URL(target).pathname;
+    if(exact){
+      try{exact.postMessage?.({type:'RYS_NOTIFICATION_CLICK',url:target});}catch(e){}
+      try{return await exact.focus();}catch(e){}
+    }
+    const targetUrlObj=new URL(target);
+    const targetPath=targetUrlObj.pathname;
+    const newCode=(targetUrlObj.searchParams.get('code')||'').toUpperCase().trim();
     const active=clients.find(c=>{try{const u=new URL(c.url);return u.origin===self.location.origin&&u.pathname===targetPath;}catch(e){return false;}});
-    if(active?.navigate){try{const navigated=await active.navigate(target);if(navigated)return await navigated.focus();}catch(e){}}
+    if(active){
+      let oldCode='';
+      try{oldCode=(new URL(active.url).searchParams.get('code')||'').toUpperCase().trim();}catch(e){}
+      const switchingTour=Boolean(newCode&&oldCode&&newCode!==oldCode&&targetPath!=='/rehber'&&targetPath!=='/panel');
+      if(switchingTour&&typeof active.navigate==='function'){
+        try{
+          const next=await active.navigate(target);
+          return await (next||active).focus?.();
+        }catch(e){}
+      }
+      try{active.postMessage?.({type:'RYS_NOTIFICATION_CLICK',url:target});}catch(e){}
+      try{return await active.focus();}catch(e){}
+    }
     return self.clients.openWindow(target);
   }));
 });
@@ -199,6 +235,7 @@ self.addEventListener('pushsubscriptionchange',event=>{
         ? await self.registration.pushManager.subscribe(subOpts)
         : null);
       const newJson=newSub&&(typeof newSub.toJSON==='function'?newSub.toJSON():newSub);
+      const rotated={};
       if(newJson?.endpoint&&newJson?.keys){
         for(const kind of ['pilgrim','sos']){
           const meta=await rysLoadPushMeta(kind);
@@ -217,18 +254,21 @@ self.addEventListener('pushsubscriptionchange',event=>{
             });
             if(rotRes.ok){
               const rotData=await rotRes.json().catch(()=>({}));
-              await rysSavePushMeta(kind,{
+              const nextToken=rotData?.subscriptionToken||meta.subscriptionToken;
+              const nextMeta={
                 ...meta,
                 endpoint:newJson.endpoint,
-                subscriptionToken:rotData?.subscriptionToken||meta.subscriptionToken
-              });
+                subscriptionToken:nextToken
+              };
+              rotated[kind]={endpoint:newJson.endpoint,subscriptionToken:nextToken,tourCode:meta.tourCode};
+              await rysSavePushMeta(kind,nextMeta);
             }
           }catch(e){}
         }
       }
       const clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});
       for(const client of clients){
-        try{client.postMessage({type:'PUSH_SUBSCRIPTION_CHANGED'});}catch(e){}
+        try{client.postMessage({type:'PUSH_SUBSCRIPTION_CHANGED',rotated});}catch(e){}
       }
     }catch(e){}
   })());

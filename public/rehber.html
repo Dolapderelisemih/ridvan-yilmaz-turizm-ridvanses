@@ -60,8 +60,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=79"></script>
-  <script src="/js/umrah-steps-map.js?v=79"></script>
+  <script src="/vercel-ws-shim.js?v=80"></script>
+  <script src="/js/umrah-steps-map.js?v=80"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -368,6 +368,7 @@
               <select id="guideAcousticModeSelect" class="studio-select" style="flex:1; min-width:210px; padding:6px 10px; font-size:0.75rem;" onchange="onAcousticModeChange()">
                 <option value="studio_crystal_hd" style="color:#000;" selected>💎 Saf Stüdyo Kristal HD (24 kHz Geniş-Bant • Doğal Ses &amp; Akıllı Yan Ses Kalkanı)</option>
                 <option value="noisy_crowd" style="color:#000;">🛡️ Kalabalık Tavaf &amp; Rüzgâr Kalkanı (+3.2 dB Netlik EQ • Güçlü Uğultu Kesici)</option>
+                <option value="whisper" style="color:#000;">🤫 Fısıltı / Harem İçi Sessiz Ortam (Yüksek Hassasiyet • +4.2 dB Yakın Ses)</option>
               </select>
             </div>
           </div>
@@ -600,6 +601,28 @@
       }
     }
 
+    function syncGuideRoomSelectOptions(tourObj, preferredRoom = '') {
+      const rSel = document.getElementById('guideRoomSelect');
+      if (!rSel) return;
+      const prev = (preferredRoom || rSel.value || 'genel').trim().toLowerCase();
+      const rooms = Array.isArray(tourObj?.rooms) && tourObj.rooms.length > 0
+        ? tourObj.rooms
+        : [
+            { id: 'genel', name: 'Genel & Tavaf (Tüm Kafile)' },
+            { id: 'siyer', name: 'Siyer-i Nebi Sohbet Odası' }
+          ];
+      rSel.innerHTML = rooms.map((rm) => {
+        const rid = String(rm.id || 'genel').trim().toLowerCase();
+        const icon = rid === 'genel' ? '📡 ' : (rid === 'siyer' ? '🕌 ' : '🎙️ ');
+        return `<option value="${escapeHtml(rid)}" style="color:#000;">${icon}${escapeHtml(rm.name || rid)}</option>`;
+      }).join('');
+      if (Array.from(rSel.options).some((o) => o.value === prev)) {
+        rSel.value = prev;
+      } else {
+        rSel.value = rSel.options[0]?.value || 'genel';
+      }
+    }
+
     function applyTourTopicDefault(code) {
       const topicInput = document.getElementById('topicInput');
       if (!topicInput) return;
@@ -624,6 +647,7 @@
       const code = document.getElementById('guideTourSelect').value;
       const gSel = document.getElementById('guideNameSelect');
       const tourObj = guideToursCache.find((t) => t.code === code);
+      syncGuideRoomSelectOptions(tourObj);
       if (tourObj && tourObj.guideName) {
         ensureGuideOptionExists(tourObj.guideName, `${tourObj.code} Rehberi`);
         gSel.value = tourObj.guideName;
@@ -673,11 +697,31 @@
     if (urlParams.get('room')) {
       const rSel = document.getElementById('guideRoomSelect');
       const rVal = urlParams.get('room').trim().toLowerCase();
-      if (rSel && (rVal === 'genel' || rVal === 'siyer')) {
+      if (rSel && rVal) {
+        if (!Array.from(rSel.options).some((o) => o.value === rVal)) {
+          const opt = document.createElement('option');
+          opt.value = rVal;
+          opt.style.color = '#000';
+          opt.textContent = `🎙️ ${rVal}`;
+          rSel.appendChild(opt);
+        }
         rSel.value = rVal;
       }
     }
     syncGuideNavLinks();
+
+    var remoteGuideTabActiveAt = 0;
+    var remoteGuideTabTour = '';
+
+    function confirmGuideTabTakeover() {
+      window.ryGuideTabTakeoverConfirmed = true;
+      window.ryGuideTabPausedByOtherTab = false;
+      window.ryGuideSessionReplaced = false;
+      const banner = document.getElementById('guideAuthErrorBanner');
+      if (banner) banner.style.display = 'none';
+      connectGuideWs();
+      loadGuideSteps();
+    }
 
     // Bootstrap turları dinamik yükle; WS bağlantısını doğru tur seçildikten sonra başlat
     fetch('/api/bootstrap')
@@ -706,13 +750,22 @@
           });
           const tSel = document.getElementById('guideTourSelect');
           const prevVal = tSel.value;
-          const assigned = (data.user && data.user.assignedTour ? String(data.user.assignedTour) : '').toUpperCase();
-          const wantedCode = (urlParams.get('code') || assigned || prevVal || '').trim().toUpperCase();
-          tSel.innerHTML = data.tours.map((t) => `<option value="${escapeHtml(t.code)}" style="color:#000;">${escapeHtml(t.code)} — ${escapeHtml(t.name)}</option>`).join('');
-          if (data.tours.some((t) => t.code === wantedCode)) {
+          const assigned = (data.user && data.user.assignedTour ? String(data.user.assignedTour) : '').trim().toUpperCase();
+          const visibleTours = assigned
+            ? data.tours.filter((t) => String(t.code || '').toUpperCase() === assigned)
+            : data.tours;
+          const renderTours = visibleTours.length > 0 ? visibleTours : data.tours;
+          const wantedCode = assigned || (urlParams.get('code') || prevVal || '').trim().toUpperCase();
+          tSel.innerHTML = renderTours.map((t) => `<option value="${escapeHtml(t.code)}" style="color:#000;">${escapeHtml(t.code)} — ${escapeHtml(t.name)}</option>`).join('');
+          if (renderTours.some((t) => t.code === wantedCode)) {
             tSel.value = wantedCode;
           }
+          if (assigned) {
+            tSel.disabled = true;
+            tSel.title = `Hesabınız yalnızca ${assigned} kafilesine atanmıştır`;
+          }
           const activeTour = data.tours.find((t) => t.code === tSel.value);
+          syncGuideRoomSelectOptions(activeTour, urlParams.get('room') || '');
           if (activeTour && activeTour.guideName) {
             const gSel = document.getElementById('guideNameSelect');
             ensureGuideOptionExists(activeTour.guideName, `${activeTour.code} Rehberi`);
@@ -736,6 +789,22 @@
       .finally(() => {
         if (window.ryGuideSessionReplaced) return;
         guideBootstrapReady = true;
+        const selectedCode = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').toUpperCase();
+        if (
+          !window.ryGuideTabTakeoverConfirmed &&
+          remoteGuideTabActiveAt > 0 &&
+          Date.now() - remoteGuideTabActiveAt < 4000 &&
+          (!remoteGuideTabTour || remoteGuideTabTour.toUpperCase() === selectedCode)
+        ) {
+          window.ryGuideTabPausedByOtherTab = true;
+          const banner = document.getElementById('guideAuthErrorBanner');
+          if (banner) {
+            banner.innerHTML = `⚠️ <strong>Bu tarayıcıda başka bir Rehber Stüdyosu sekmesi şu an canlı yayında!</strong> Aktif yayının kesilmemesi için bu sekme beklemede açıldı. <button type="button" class="btn btn-gold btn-sm" style="margin-left:10px;" onclick="confirmGuideTabTakeover()">🔄 Yayını Bu Sekmeye Devral</button>`;
+            banner.style.display = 'block';
+          }
+          loadGuideSteps();
+          return;
+        }
         connectGuideWs();
         loadGuideSteps();
         if ('serviceWorker' in navigator && typeof Notification !== 'undefined' && Notification.permission === 'granted' && localStorage.getItem('rys_sos_push_receipt')) {
@@ -805,6 +874,7 @@
         token: authToken,
         deviceId: guideDeviceId,
         audioSourceId:guideAudioSourceId,
+        takeover: Boolean(isMicBroadcasting || isDemoBroadcasting || window.ryGuideTabTakeoverConfirmed),
         tourCode,
         roomId,
         name: guideName,
@@ -848,10 +918,17 @@
       stopMicBroadcast();
       const micBtn=document.getElementById('startMicBtn');
       if(micBtn){micBtn.textContent='🎙️ Gerçek Mikrofonla Canlı Yayını Başlat';micBtn.className='btn btn-gold';}
-      const demoBtn=document.getElementById('startDemoStreamBtn');
+      const demoBtn=document.getElementById('demoStreamBtn')||document.getElementById('startDemoStreamBtn');
       if(demoBtn){demoBtn.textContent='📡 Demo Siyer Ses Akışı Gönder (Test)';demoBtn.className='btn btn-outline';}
       const label=document.getElementById('micSourceLabel');
       if(label)label.textContent=isAuthError?'Oturum doğrulaması sona erdi; yayın durduruldu.':'Yayın başka bir sekmede devralındı. Yeniden devralmak için sayfayı yenileyin.';
+      if(!isAuthError){
+        const banner=document.getElementById('guideAuthErrorBanner');
+        if(banner){
+          banner.innerHTML='⚠️ <strong>Yayın başka bir sekmede devralındı.</strong> Bu sekmedeki mikrofon yayını durduruldu. <button type="button" class="btn btn-gold btn-sm" style="margin-left:10px;" onclick="confirmGuideTabTakeover()">🔄 Yayını Tekrar Bu Sekmeye Al</button>';
+          banner.style.display='block';
+        }
+      }
     }
     function connectGuideWs() {
       if(window.ryGuideSessionReplaced)return;
@@ -891,9 +968,42 @@
         }
 
         if(msg.type==='session-replaced'){fenceGuideSession();return;}
-        if(msg.type==='auth-error'){fenceGuideSession(true);if(typeof handleGuideAuthExpired==='function')handleGuideAuthExpired(msg.message);return;}
+        if(msg.type==='auth-error'){
+          if(msg.code==='forbidden-tour'&&msg.assignedTour){
+            stopMicBroadcast();
+            const tSel=document.getElementById('guideTourSelect');
+            if(tSel&&Array.from(tSel.options||[]).some(o=>o.value===msg.assignedTour)&&tSel.value!==msg.assignedTour){
+              tSel.value=msg.assignedTour;
+              if(typeof onTourSelectionChange==='function')onTourSelectionChange();
+              return;
+            }
+            const banner=document.getElementById('guideAuthErrorBanner');
+            if(banner){banner.textContent=msg.message||`⚠️ Hesabınız yalnızca ${msg.assignedTour} kafilesi için yetkilidir.`;banner.style.display='block';}
+            return;
+          }
+          fenceGuideSession(true);if(typeof handleGuideAuthExpired==='function')handleGuideAuthExpired(msg.message);return;
+        }
         if(msg.type==='subscription-error'||msg.type==='tour-unknown'){
           stopMicBroadcast();
+          if(msg.code==='forbidden-tour'&&msg.assignedTour){
+            const tSel=document.getElementById('guideTourSelect');
+            if(tSel&&Array.from(tSel.options||[]).some(o=>o.value===msg.assignedTour)&&tSel.value!==msg.assignedTour){
+              tSel.value=msg.assignedTour;
+              if(typeof onTourSelectionChange==='function')onTourSelectionChange();
+              return;
+            }
+          }
+          if(msg.code==='guide-already-live'){
+            window.ryGuideTabPausedByOtherTab=true;
+            clearTimeout(guideWsReconnectTimer);guideWsReconnectTimer=null;
+            try{if(ws){ws.onclose=null;ws.onerror=null;ws.close();ws=null;}}catch{}
+            const banner=document.getElementById('guideAuthErrorBanner');
+            if(banner){
+              banner.innerHTML='⚠️ <strong>Başka bir sekmede veya cihazda aktif canlı yayın devam ediyor!</strong> Aktif yayının kesilmemesi için bu sekme beklemede tutuldu. <button type="button" class="btn btn-gold btn-sm" style="margin-left:10px;" onclick="confirmGuideTabTakeover()">🔄 Yayını Bu Sekmeye Devral</button>';
+              banner.style.display='block';
+            }
+            return;
+          }
           const banner=document.getElementById('guideAuthErrorBanner');
           if(banner){
             banner.textContent=msg.message||'⚠️ Seçili kafileye bağlanılamadı. Lütfen aktif bir kafile seçiniz.';
@@ -1099,6 +1209,8 @@
     }
 
     function switchGuideRoom() {
+      currentActiveTawafId = null;
+      updateTawafButtonsUi(null);
       syncGuideNavLinks();
       const banner = document.getElementById('guideAuthErrorBanner');
       if (banner && !window.ryGuideSessionReplaced) banner.style.display = 'none';
@@ -1429,8 +1541,9 @@
       guideMicGainMultiplier = Number(val) / 100;
       const lbl = document.getElementById('guideMicGainLabel');
       if (lbl) lbl.textContent = `%${val}`;
-      if (guideMicGainNode) {
-        guideMicGainNode.gain.setTargetAtTime(guideMicGainMultiplier, audioCtx.currentTime, 0.010);
+      if (guideMicGainNode && audioCtx) {
+        const boost = (typeof getGuideAcousticPreset === 'function' && getGuideAcousticPreset().gainBoost) || 1.0;
+        guideMicGainNode.gain.setTargetAtTime(guideMicGainMultiplier * boost, audioCtx.currentTime, 0.010);
       }
     }
 
@@ -1476,25 +1589,47 @@
     function getGuideAcousticPreset() {
       const mode = document.getElementById('guideAcousticModeSelect')?.value || 'studio_crystal_hd';
       if (mode === 'noisy_crowd') {
-        return { highPassHz: 110, lowPassHz: 10000, mudCutDb: -3.0, presenceDb: 3.2 };
+        return { highPassHz: 110, lowPassHz: 10000, mudCutDb: -3.0, presenceDb: 3.2, gainBoost: 1.0 };
       }
-      return { highPassHz: 85, lowPassHz: 10500, mudCutDb: -2.5, presenceDb: 2.0 };
+      if (mode === 'whisper') {
+        return { highPassHz: 75, lowPassHz: 11000, mudCutDb: -1.5, presenceDb: 4.2, gainBoost: 1.35 };
+      }
+      return { highPassHz: 85, lowPassHz: 10500, mudCutDb: -2.5, presenceDb: 2.0, gainBoost: 1.0 };
     }
 
-    async function onAcousticModeChange() {
+    function onAcousticModeChange() {
       const preset = getGuideAcousticPreset();
+      const now = audioCtx ? audioCtx.currentTime : 0;
       if (guideHighPassNode && guideLowPassNode) {
-        guideHighPassNode.frequency.value = preset.highPassHz;
-        guideLowPassNode.frequency.value = preset.lowPassHz;
+        if (audioCtx && typeof guideHighPassNode.frequency.setTargetAtTime === 'function') {
+          guideHighPassNode.frequency.setTargetAtTime(preset.highPassHz, now, 0.015);
+          guideLowPassNode.frequency.setTargetAtTime(preset.lowPassHz, now, 0.015);
+        } else {
+          guideHighPassNode.frequency.value = preset.highPassHz;
+          guideLowPassNode.frequency.value = preset.lowPassHz;
+        }
       }
       if (guideMudCutNode) {
-        guideMudCutNode.gain.value = preset.mudCutDb;
+        if (audioCtx && typeof guideMudCutNode.gain.setTargetAtTime === 'function') {
+          guideMudCutNode.gain.setTargetAtTime(preset.mudCutDb, now, 0.015);
+        } else {
+          guideMudCutNode.gain.value = preset.mudCutDb;
+        }
       }
       if (guidePresenceNode) {
-        guidePresenceNode.gain.value = preset.presenceDb;
+        if (audioCtx && typeof guidePresenceNode.gain.setTargetAtTime === 'function') {
+          guidePresenceNode.gain.setTargetAtTime(preset.presenceDb, now, 0.015);
+        } else {
+          guidePresenceNode.gain.value = preset.presenceDb;
+        }
       }
-      if (isMicBroadcasting) {
-        await healGuideMicrophoneIfNeeded(true);
+      if (guideMicGainNode) {
+        const targetGain = guideMicGainMultiplier * (preset.gainBoost || 1.0);
+        if (audioCtx && typeof guideMicGainNode.gain.setTargetAtTime === 'function') {
+          guideMicGainNode.gain.setTargetAtTime(targetGain, now, 0.015);
+        } else {
+          guideMicGainNode.gain.value = targetGain;
+        }
       }
     }
 
@@ -1605,7 +1740,7 @@
     }
 
     function recoverGuideLiveSession() {
-      if (!guideBootstrapReady || window.ryGuideSessionReplaced) return;
+      if (!guideBootstrapReady || window.ryGuideSessionReplaced || window.ryGuideTabPausedByOtherTab) return;
       if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) {
         connectGuideWs();
       }
@@ -1734,7 +1869,30 @@
     let guideWasIdlePaused=true;
     let lastGuideMicChunkAt=0;
     let guideAudioGuardChannel=null;
-    try{if(typeof BroadcastChannel!=='undefined')guideAudioGuardChannel=new BroadcastChannel('ridvanses_audio_guard');}catch(e){}
+    try{
+      if(typeof BroadcastChannel!=='undefined'){
+        guideAudioGuardChannel=new BroadcastChannel('ridvanses_audio_guard');
+        guideAudioGuardChannel.onmessage=(ev)=>{
+          const msg=ev&&ev.data;
+          if(!msg||typeof msg!=='object')return;
+          if(msg.type==='guide-mic-active'&&msg.tabId&&msg.tabId!==guideDeviceId){
+            remoteGuideTabActiveAt=Date.now();
+            remoteGuideTabTour=String(msg.tourCode||'');
+          }else if(msg.type==='guide-tab-probe'&&msg.tabId&&msg.tabId!==guideDeviceId&&(isMicBroadcasting||isDemoBroadcasting)){
+            try{
+              guideAudioGuardChannel.postMessage({
+                type:'guide-mic-active',
+                tabId:guideDeviceId,
+                tourCode:document.getElementById('guideTourSelect')?.value||'RY-KASIM',
+                rms:0.1,
+                ts:Date.now()
+              });
+            }catch(e){}
+          }
+        };
+        guideAudioGuardChannel.postMessage({type:'guide-tab-probe',tabId:guideDeviceId,ts:Date.now()});
+      }
+    }catch(e){}
 
     // PATCH: guide-handler-v51
     function handleGuideMicFloatChunk(m) {
@@ -1777,7 +1935,13 @@
       const nowMs = Date.now();
       if (guideAudioGuardChannel) {
         try {
-          guideAudioGuardChannel.postMessage({ type: 'guide-mic-active', rms, ts: nowMs });
+          guideAudioGuardChannel.postMessage({
+            type: 'guide-mic-active',
+            tabId: guideDeviceId,
+            tourCode: document.getElementById('guideTourSelect')?.value || 'RY-KASIM',
+            rms,
+            ts: nowMs
+          });
         } catch {}
       }
       if ((!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) && nowMs - lastGuideBgWsReconnectAt >= 2500) {
@@ -1849,13 +2013,13 @@
           noiseSuppression:false,autoGainControl:false,channelCount:1,sampleRate:48000}});}
         catch(error){check();stream=await navigator.mediaDevices.getUserMedia({audio:true});}
         check();
-        const preset=typeof getGuideAcousticPreset==='function'?getGuideAcousticPreset():{highPassHz:85,mudCutDb:-2.5,presenceDb:2.8,lowPassHz:9500};
+        const preset=typeof getGuideAcousticPreset==='function'?getGuideAcousticPreset():{highPassHz:85,mudCutDb:-2.5,presenceDb:2.8,lowPassHz:9500,gainBoost:1.0};
         const source=own(ctx.createMediaStreamSource(stream));
         const highPass=own(ctx.createBiquadFilter());highPass.type='highpass';highPass.frequency.value=preset.highPassHz;highPass.Q.value = -3.0103;
         const mudCut=own(ctx.createBiquadFilter());mudCut.type='peaking';mudCut.frequency.value=210;mudCut.Q.value=1.2;mudCut.gain.value=preset.mudCutDb;
         const presence=own(ctx.createBiquadFilter());presence.type='peaking';presence.frequency.value=3200;presence.Q.value=.85;presence.gain.value=preset.presenceDb;
         const lowPass=own(ctx.createBiquadFilter());lowPass.type='lowpass';lowPass.frequency.value=preset.lowPassHz;lowPass.Q.value = -3.0103;
-        const gain=own(ctx.createGain());gain.gain.value=guideMicGainMultiplier;
+        const gain=own(ctx.createGain());gain.gain.value=guideMicGainMultiplier*(preset.gainBoost||1.0);
         const zero=own(ctx.createGain());zero.gain.value=0;
         source.connect(highPass);highPass.connect(mudCut);mudCut.connect(presence);presence.connect(lowPass);lowPass.connect(gain);
         const onFrame=message=>{if(current())handleGuideMicFloatChunk(message);};
@@ -1864,7 +2028,8 @@
           continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade});
         if(ctx.audioWorklet&&typeof AudioWorkletNode!=='undefined'){
           try{
-            await ctx.audioWorklet.addModule(url);check();
+            if(!ctx.__rysWorkletReady){await ctx.audioWorklet.addModule(url);ctx.__rysWorkletReady=true;}
+            check();
             processor=new AudioWorkletNode(ctx,'rys-pcm-capture',{numberOfInputs:1,numberOfOutputs:1,
               outputChannelCount:[1],processorOptions:options()});
             processor.port.onmessage=e=>onFrame(e.data);
@@ -1901,8 +2066,8 @@
       }
     }
 
-    async function healGuideMicrophoneIfNeeded(forceRebuild = false) {
-      if(forceRebuild&&isMicBroadcasting)guideDeviceChangePending=true;
+    async function healGuideMicrophoneIfNeeded(forceDeviceRefresh = false) {
+      if(forceDeviceRefresh===true&&isMicBroadcasting)guideDeviceChangePending=true;
       if(!isMicBroadcasting||isVoiceLoopbackTesting||guideMicStarting||isHealingGuideMic)return;
       const track=micStream?.getAudioTracks?.()[0],trackDead=!track||track.readyState==='ended';
       const trackMuted=!!track?.muted&&guideTrackMutedAt>0&&Date.now()-guideTrackMutedAt>2000;
@@ -1914,7 +2079,7 @@
         const ticket={};guideMicHealTicket=ticket;isHealingGuideMic=true;
         try{
           disconnectGuideAudioNodes();stopGuideMicrophoneStream(micStream);micStream=null;
-          if((trackDead||trackMuted||captureStalled)&&audioCtx){
+          if((forced||trackDead||trackMuted||captureStalled)&&audioCtx){
             const oldCtx=audioCtx;audioCtx=null;workletModuleLoaded=false;
             oldCtx.onstatechange=null;try{oldCtx.close().catch(()=>{});}catch(e){}
           }
@@ -1939,7 +2104,7 @@
     }
 
     function guideBackgroundHeartbeatTick() {
-      if(!guideBootstrapReady||window.ryGuideSessionReplaced)return;
+      if(!guideBootstrapReady||window.ryGuideSessionReplaced||window.ryGuideTabPausedByOtherTab)return;
       if (isMicBroadcasting) {
         healGuideMicrophoneIfNeeded();
         const el = document.getElementById('guideBgKeepAliveAudio');
@@ -2010,6 +2175,9 @@
       }
       if (isDemoBroadcasting) {
         toggleDemoBroadcast();
+      }
+      if (isGuideMicMuted) {
+        toggleGuideMicMute(false);
       }
 
       const testVersion=guideMicGeneration+1;
@@ -2100,6 +2268,9 @@
     }
 
     async function toggleMicBroadcast() {
+      if (window.ryGuideTabPausedByOtherTab) {
+        confirmGuideTabTakeover();
+      }
       if(window.ryGuideSessionReplaced)return;
       const btn = document.getElementById('startMicBtn');
       if (isMicBroadcasting || guideMicStarting) {
@@ -2117,6 +2288,9 @@
       // Demo ses akışı açıksa otomatik kapat ki gerçek mikrofonun arkasına demo nota sesi karışmasın!
       if (isDemoBroadcasting) {
         toggleDemoBroadcast();
+      }
+      if (isGuideMicMuted) {
+        toggleGuideMicMute(false);
       }
 
       const startVersion=guideMicGeneration+1;guideMicStarting=true;
@@ -2239,6 +2413,8 @@
       if(specBox&&typeof specBox.querySelectorAll==='function'){specBox.querySelectorAll('.spectrum-bar').forEach(b=>{b.style.height='8px';});}
       const testButton=document.getElementById('testMyVoiceBtn');
       if(testButton){testButton.disabled=false;testButton.textContent='🎧 Sesimi Test Et (4 Sn Kaydet & Dinle)';}
+      const voiceStatusBox=document.getElementById('voiceTestStatusBox');
+      if(voiceStatusBox){voiceStatusBox.style.display='none';}
       toggleGuideMicMute(false);stopBroadcastClock();disableGuideKeepAlive();
       try{if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'guide-stream-state',isLive:false,
         broadcastMode:'idle',topic:document.getElementById('topicInput')?.value||''}));}catch(e){}
@@ -2250,7 +2426,7 @@
       if(window.ryGuideSessionReplaced)return;
       if(isVoiceLoopbackTesting)return;
       if(guideMicStarting)stopMicBroadcast();
-      const btn = document.getElementById('startDemoStreamBtn');
+      const btn = document.getElementById('demoStreamBtn') || document.getElementById('startDemoStreamBtn');
       const micBtn = document.getElementById('startMicBtn');
       const srcLabel = document.getElementById('micSourceLabel');
       const topicEl = document.getElementById('topicInput');
@@ -2461,13 +2637,29 @@
       }
       el.style.display = 'block';
       el.innerHTML = activeSosAlerts.map((a) => {
-        const lat = Number(a.lat) || 21.4225;
-        const lng = Number(a.lng) || 39.8262;
-        const bbox = `${(lng - 0.003).toFixed(5)}%2C${(lat - 0.002).toFixed(5)}%2C${(lng + 0.003).toFixed(5)}%2C${(lat + 0.002).toFixed(5)}`;
-        const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
-        const dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+        const hasValidGps =
+          a.lat !== null &&
+          a.lat !== undefined &&
+          a.lng !== null &&
+          a.lng !== undefined &&
+          Number.isFinite(Number(a.lat)) &&
+          Number.isFinite(Number(a.lng)) &&
+          !(Number(a.lat) === 0 && Number(a.lng) === 0);
+        const lat = hasValidGps ? Number(a.lat) : 0;
+        const lng = hasValidGps ? Number(a.lng) : 0;
+        const bbox = hasValidGps
+          ? `${(lng - 0.003).toFixed(5)}%2C${(lat - 0.002).toFixed(5)}%2C${(lng + 0.003).toFixed(5)}%2C${(lat + 0.002).toFixed(5)}`
+          : '';
+        const osmUrl = hasValidGps
+          ? `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`
+          : '';
+        const dirUrl = hasValidGps ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}` : '';
+        const isTourFallback = a.gpsSource === 'tour-fallback';
         const safeName = escapeHtml(a.pilgrimName || 'Hacı Misafir');
-        const safePhone = escapeHtml(a.phone || '');
+        const rawPhone = String(a.phone || '').trim();
+        const hasRealPhone = Boolean(rawPhone && rawPhone !== '+90 538 000 00 00');
+        const safePhone = hasRealPhone ? escapeHtml(rawPhone) : '';
+        const cleanWaDigits = hasRealPhone ? rawPhone.replace(/\D/g, '') : '';
         const safeTour = escapeHtml(a.tourCode || '');
         const safeNote = escapeHtml(a.locationNote || '');
         const safeTime = escapeHtml(a.createdAt || '');
@@ -2480,21 +2672,24 @@
                 ACİL SOS KONUM ALARMI — ${safeName}${safePhone ? ` (${safePhone})` : ''} ${safeTour ? `<span class="badge badge-gold" style="margin-left:6px;">${safeTour}</span>` : ''}
               </div>
               <div style="font-size:0.86rem; color:var(--color-ink); margin-top:4px;">
-                <strong>Açık Konum:</strong> ${safeNote}<br/>
-                <strong>GPS Koordinat:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)} ${a.accuracy ? `(±${Number(a.accuracy)}m)` : ''} • ${safeTime}
+                <strong>Açık Konum:</strong> ${safeNote || 'Konum bilgisi girilmedi'}<br/>
+                ${hasValidGps
+                  ? `<strong>GPS Koordinat:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)} ${a.accuracy ? `(±${Number(a.accuracy)}m)` : ''} ${isTourFallback ? '<span style="color:#B45309; font-weight:700;">(⚠️ Yaklaşık Kafile Durağı Konumu — Canlı GPS Kapalı)</span>' : ''} • ${safeTime}`
+                  : `<span style="color:#B91C1C; font-weight:800;">⚠️ Cihaz GPS Konumu Alınamadı — Lütfen Hacıya Hemen Telefon veya WhatsApp İle Ulaşın</span> • ${safeTime}`}
               </div>
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">Yol Tarifi Aç (Google Maps)</a>
-              <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Haritada Gör</a>
-              ${safePhone ? `<a href="tel:${safePhone}" class="btn btn-outline btn-sm">Hemen Ara</a>` : ''}
+              ${hasValidGps ? `<a href="${dirUrl}" target="_blank" class="btn btn-gold btn-sm">Yol Tarifi Aç (Google Maps)</a>` : ''}
+              ${hasValidGps ? `<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn btn-outline btn-sm">Haritada Gör</a>` : ''}
+              ${safePhone ? `<a href="tel:${safePhone}" class="btn btn-outline btn-sm">📞 Hemen Ara</a>` : ''}
+              ${cleanWaDigits.length >= 10 ? `<a href="https://wa.me/${cleanWaDigits}" target="_blank" class="btn btn-outline btn-sm" style="color:#15803D; border-color:#86EFAC;">💬 WhatsApp</a>` : ''}
               <button type="button" class="btn btn-primary btn-sm" data-guide-action="resolve-sos" data-id="${safeId}">Hacıya Ulaşıldı</button>
               <button type="button" class="btn btn-outline btn-sm" style="color:var(--color-danger); border-color:#FCA5A5;" data-guide-action="delete-sos" data-id="${safeId}">Kaydı Sil</button>
             </div>
           </div>
-          <div style="border-radius:12px; overflow:hidden; border:2px solid #FCA5A5; height:210px; background:#F8FAFC;">
+          ${hasValidGps ? `<div style="border-radius:12px; overflow:hidden; border:2px solid #FCA5A5; height:210px; background:#F8FAFC;">
             <iframe src="${osmUrl}" style="width:100%; height:100%; border:0;" loading="lazy"></iframe>
-          </div>
+          </div>` : ''}
         </div>
       `;
       }).join('<hr style="margin:14px 0; border-color:#FECACA;"/>');
@@ -2510,7 +2705,10 @@
         handleGuideAuthExpired();
         return;
       }
-      if (!res || (!res.ok && res.status !== 404)) return;
+      if (!res || (!res.ok && res.status !== 404)) {
+        alert('SOS durumu güncellenemedi. Lütfen internet bağlantınızı kontrol edip tekrar deneyin.');
+        return;
+      }
       activeSosAlerts = activeSosAlerts.filter((a) => a.id !== id);
       renderSosBanner();
     }
@@ -2522,7 +2720,10 @@
         handleGuideAuthExpired();
         return;
       }
-      if (!res || (!res.ok && res.status !== 404)) return;
+      if (!res || (!res.ok && res.status !== 404)) {
+        alert('SOS kaydı silinemedi. Lütfen internet bağlantınızı kontrol edip tekrar deneyin.');
+        return;
+      }
       activeSosAlerts = activeSosAlerts.filter((a) => a.id !== id);
       renderSosBanner();
     }
@@ -2749,8 +2950,12 @@
       if (badge) badge.style.cssText = 'background:rgba(220,38,38,0.28); color:#FCA5A5; border:1px solid rgba(248,113,113,0.6);';
       if (statusTxt) statusTxt.textContent = 'OTURUM DOĞRULAMA GEREKLİ';
       try {
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'SYNC_PUSH_META', kind: 'sos', meta: null });
+        }
         localStorage.removeItem('ry_auth_token');
         localStorage.removeItem('token');
+        localStorage.removeItem('rys_sos_push_receipt');
         const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
         document.cookie = 'ry_auth=; path=/; max-age=0; SameSite=Lax' + secureFlag;
       } catch {}
@@ -2779,7 +2984,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=79');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=80');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -2892,10 +3097,21 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=79').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=80').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
-        if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED' && localStorage.getItem('rys_sos_push_receipt')) {
-          syncGuideSosPushSubscription(true);
+        if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED') {
+          if (ev.data.rotated?.sos?.subscriptionToken) {
+            try { localStorage.setItem('rys_sos_push_receipt', JSON.stringify(ev.data.rotated.sos)); } catch {}
+          }
+          if (localStorage.getItem('rys_sos_push_receipt')) {
+            syncGuideSosPushSubscription(true);
+          }
+        }
+        if (ev.data && ev.data.type === 'RYS_NOTIFICATION_CLICK') {
+          const sosEl = document.getElementById('sosAlertContainer');
+          if (sosEl && sosEl.style.display !== 'none') {
+            try { sosEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
+          }
         }
       });
     }
