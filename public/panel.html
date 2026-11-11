@@ -8,14 +8,14 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=19" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
+  <link rel="manifest" href="/manifest.json?v=81" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=81" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=81" />
   <title>Acente & Kafile Yönetim Paneli | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/panel" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=22" />
+  <link rel="stylesheet" href="/css/style.css?v=81" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -70,9 +70,9 @@
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=80"></script>
+  <script src="/vercel-ws-shim.js?v=81"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=80"></script>
+  <script src="/js/umrah-steps-map.js?v=81"></script>
   <style>
     .dashboard-layout {
       display: grid;
@@ -231,7 +231,7 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:100%;">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=19" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=81" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="margin:0; font-size:1.12rem; line-height:1.2;">Rıdvan Yılmaz Turizm — Acente Yönetim Paneli</h1>
           <span class="brand-sub"><span class="live-dot"></span> Osmangazi / Bursa Merkez Operasyon & Kafile Kontrolü</span>
@@ -289,9 +289,10 @@
         <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         Toplu Push Duyuru
       </button>
-      <button class="side-btn" onclick="openTab('tab-sos', this)">
+      <button class="side-btn" id="sideBtnSos" onclick="openTab('tab-sos', this)">
         <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-        Canlı SOS & Konum Takip
+        <span>Canlı SOS & Konum Takip</span>
+        <span id="sideSosBadge" style="display:none; margin-left:auto; background:#DC2626; color:#FFFFFF; border-radius:999px; padding:1px 7px; font-size:0.72rem; font-weight:800; line-height:1.4;">0</span>
       </button>
       <button class="side-btn" onclick="openTab('tab-hotels', this)">
         <svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
@@ -943,7 +944,7 @@
 
         const dlBtn = document.getElementById('downloadQrBtn');
         dlBtn.href = data.dataUrl;
-        dlBtn.download = `RidvanYilmazTurizm-${data.code}-QR.png`;
+        dlBtn.download = `RidvanYilmazTurizm-${data.code}-${room}-QR.png`;
 
         document.getElementById('openPrintableBadgeBtn').href = `/yaka-karti?code=${encodeURIComponent(data.code)}&room=${encodeURIComponent(room)}`;
       } catch (e) {
@@ -975,6 +976,35 @@
     }
 
     let lastRenderedSosSignature = null;
+    let adminKnownActiveSosIds = null;
+    let adminSosAudioCtx = null;
+
+    function playAdminSosTone() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        if (!adminSosAudioCtx || adminSosAudioCtx.state === 'closed') {
+          adminSosAudioCtx = new AudioCtx();
+        }
+        if (adminSosAudioCtx.state === 'suspended') {
+          adminSosAudioCtx.resume().catch(() => {});
+        }
+        const now = adminSosAudioCtx.currentTime || 0;
+        [880, 660, 880].forEach((freq, idx) => {
+          const osc = adminSosAudioCtx.createOscillator();
+          const gain = adminSosAudioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.16);
+          gain.gain.setValueAtTime(0.0001, now + idx * 0.16);
+          gain.gain.exponentialRampToValueAtTime(0.22, now + idx * 0.16 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.16 + 0.14);
+          osc.connect(gain);
+          gain.connect(adminSosAudioCtx.destination);
+          osc.start(now + idx * 0.16);
+          osc.stop(now + idx * 0.16 + 0.15);
+        });
+      } catch {}
+    }
 
     async function fetchAdminData() {
       try {
@@ -1040,8 +1070,39 @@
       let totalListeners = 0;
       for (const c of listenersByTour.values()) totalListeners += c;
       document.getElementById('statListenersCount').textContent = totalListeners;
-      const activeSos = (appState.sosAlerts || []).filter((s) => s.status === 'active').length;
+      const activeSosList = (appState.sosAlerts || []).filter((s) => s.status === 'active');
+      const activeSos = activeSosList.length;
       document.getElementById('statSosCount').textContent = activeSos;
+      const sideSosBadge = document.getElementById('sideSosBadge');
+      if (sideSosBadge) {
+        sideSosBadge.textContent = String(activeSos);
+        sideSosBadge.style.display = activeSos > 0 ? 'inline-block' : 'none';
+      }
+      if (adminKnownActiveSosIds === null) {
+        adminKnownActiveSosIds = new Set(activeSosList.map((s) => s.id).filter(Boolean));
+      } else {
+        let hasNewEmergencySos = false;
+        for (const s of activeSosList) {
+          if (s && s.id && !adminKnownActiveSosIds.has(s.id)) {
+            if (!s.isTest) hasNewEmergencySos = true;
+          }
+        }
+        adminKnownActiveSosIds = new Set(activeSosList.map((s) => s.id).filter(Boolean));
+        if (hasNewEmergencySos) playAdminSosTone();
+      }
+
+      const annSenderInput = document.querySelector('#adminAnnForm input[name="sender"]');
+      if (annSenderInput && appState.user && appState.user.name) {
+        const dynamicSender = scopedAgency
+          ? String(appState.user.name).trim()
+          : `${String(appState.user.name).trim()} / Operasyon Merkezi`;
+        if (dynamicSender) {
+          annSenderInput.defaultValue = dynamicSender;
+          if (!annSenderInput.dataset.userEdited) {
+            annSenderInput.value = dynamicSender;
+          }
+        }
+      }
 
       // Populate QR tour dropdown
       const qrSel = document.getElementById('qrTourSelect');
@@ -1079,12 +1140,21 @@
 
       // Live Rooms
       const roomsBox = document.getElementById('liveRoomsBox');
-      roomsBox.innerHTML = (appState.liveRooms || []).map((r) => `
+      roomsBox.innerHTML = (appState.liveRooms || []).map((r) => {
+        const roomLower = String(r.roomId || 'genel').trim().toLowerCase();
+        const matchedTour = (appState.tours || []).find((t) => t.code === r.tourCode);
+        const matchedRoom = Array.isArray(matchedTour?.rooms)
+          ? matchedTour.rooms.find((rm) => String(rm.id || '').trim().toLowerCase() === roomLower)
+          : null;
+        const roomDisplay = matchedRoom && matchedRoom.name && roomLower !== 'genel' && roomLower !== 'siyer'
+          ? `${roomLower.toUpperCase()} • ${matchedRoom.name}`
+          : roomLower.toUpperCase();
+        return `
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:14px 16px; border-radius:14px; background:var(--color-ground); border:1px solid var(--color-hairline); margin-bottom:10px;">
           <div>
             <div style="font-weight:800; color:var(--color-emerald-night);">
               ${r.isLive ? '<span class="live-dot" style="display:inline-block; margin-right:6px;"></span>' : '<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#94a3b8; margin-right:6px; vertical-align:middle;"></span>'}
-              ${escapeHtml(r.tourCode)} (${escapeHtml(String(r.roomId || '').toUpperCase())}) — ${escapeHtml(r.guideName)}
+              ${escapeHtml(r.tourCode)} (${escapeHtml(roomDisplay)}) — ${escapeHtml(r.guideName)}
               <span class="badge ${r.isLive ? 'badge-live' : 'badge-gold'}" style="margin-left:6px; font-size:0.68rem;">${r.isLive ? 'CANLI YAYIN' : 'HAZIR'}</span>
             </div>
             <div style="font-size:0.8rem; color:var(--color-muted); margin-top:2px;">${escapeHtml(r.currentTopic)}</div>
@@ -1095,7 +1165,8 @@
             <a href="/rehber?code=${encodeURIComponent(r.tourCode)}&room=${encodeURIComponent(r.roomId || 'genel')}" target="_blank" class="btn btn-primary btn-sm">Stüdyo</a>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
 
       // Overview Tours Table
       document.getElementById('overviewToursTable').innerHTML = appState.tours.map((t) => `
@@ -1167,7 +1238,7 @@
       const nextSosSignature = JSON.stringify(appState.sosAlerts || []);
       if (nextSosSignature !== lastRenderedSosSignature) {
         lastRenderedSosSignature = nextSosSignature;
-        const sosHtml = (appState.sosAlerts || []).map((s) => {
+        const renderSosCardHtml = (s) => {
           const hasValidGps =
             s.lat !== null &&
             s.lat !== undefined &&
@@ -1185,7 +1256,7 @@
             ? `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`
             : '';
           const dirUrl = hasValidGps ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}` : '';
-          const isTourFallback = s.gpsSource === 'tour-fallback';
+          const isTourFallback = s.gpsSource === 'tour-fallback' || s.gpsSource === 'tour-step-fallback';
           const safeName = escapeHtml(s.pilgrimName || 'Hacı Misafir');
           const safeTour = escapeHtml(s.tourCode || 'RY-KASIM');
           const rawPhone = String(s.phone || '').trim();
@@ -1203,7 +1274,7 @@
                   ${s.status === 'active' ? 'AKTİF ALARM' : 'ÇÖZÜLDÜ'} — ${safeName} (${safeTour})
                 </div>
                 <div style="font-size:0.84rem; color:var(--color-muted); margin-top:2px;">
-                  ${safePhone ? `${safePhone} • ` : ''}${safeNote} ${hasValidGps ? `(${lat.toFixed(5)}, ${lng.toFixed(5)}${isTourFallback ? ' • Yaklaşık Durak' : ''})` : '<strong style="color:#B91C1C;">(⚠️ Canlı GPS Yok — Telefonla Ulaşın)</strong>'} • ${safeTime}
+                  ${safePhone ? `${safePhone} • ` : ''}${safeNote} ${hasValidGps ? `(${lat.toFixed(5)}, ${lng.toFixed(5)}${isTourFallback ? ' • ⚠️ Yaklaşık Kafile Durağı — Canlı GPS Kapalı' : ''})` : '<strong style="color:#B91C1C;">(⚠️ Canlı GPS Yok — Telefonla Ulaşın)</strong>'} • ${safeTime}
                 </div>
               </div>
               <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -1221,9 +1292,11 @@
             </div>` : ''}
           </div>
         `;
-        }).join('');
-        document.getElementById('overviewSosBox').innerHTML = sosHtml || 'SOS kaydı yok.';
-        document.getElementById('fullSosList').innerHTML = sosHtml || 'SOS kaydı yok.';
+        };
+        const activeOnlyHtml = activeSosList.map(renderSosCardHtml).join('');
+        const allSosHtml = (appState.sosAlerts || []).map(renderSosCardHtml).join('');
+        document.getElementById('overviewSosBox').innerHTML = activeOnlyHtml || 'Aktif SOS alarmı bulunmuyor.';
+        document.getElementById('fullSosList').innerHTML = allSosHtml || 'SOS kaydı yok.';
       }
 
       // Hotels Grid
@@ -1375,7 +1448,7 @@
         adminWsInstance = null;
       }
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsHost = window.location.host.includes('vercel.app')
+      const wsHost = String((window.location && (window.location.hostname || window.location.host)) || '').split(':')[0].endsWith('.vercel.app')
         ? 'ses.ridvanyilmazturizm.com'
         : window.location.host;
       const adminWs = new WebSocket(`${proto}//${wsHost}/ws`);
@@ -1516,11 +1589,19 @@
       e.preventDefault();
       const submitBtn = e.target.querySelector('button[type="submit"]');
       if (submitBtn && submitBtn.disabled) return;
+      const payload = Object.fromEntries(new FormData(e.target).entries());
+      const rawLat = String(payload.lat ?? '').trim();
+      const rawLng = String(payload.lng ?? '').trim();
+      const latNum = Number(rawLat);
+      const lngNum = Number(rawLng);
+      if (!rawLat || !rawLng || !Number.isFinite(latNum) || latNum < -90 || latNum > 90 || !Number.isFinite(lngNum) || lngNum < -180 || lngNum > 180) {
+        alert('Lütfen geçerli bir enlem (-90..90) ve boylam (-180..180) koordinatı giriniz.');
+        return;
+      }
       if (submitBtn) submitBtn.disabled = true;
       try {
         const sel = document.getElementById('adminRouteTourSelect');
         const code = sel && sel.value ? sel.value : 'RY-KASIM';
-        const payload = Object.fromEntries(new FormData(e.target).entries());
         const res = await fetch(`/api/trips/${encodeURIComponent(code)}/steps`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1707,6 +1788,10 @@
       }
     });
 
+    document.querySelector('#adminAnnForm input[name="sender"]')?.addEventListener('input', (ev) => {
+      ev.target.dataset.userEdited = '1';
+    });
+
     document.getElementById('adminAnnForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const submitBtn = e.target.querySelector('button[type="submit"]');
@@ -1828,7 +1913,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=80');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=81');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -1926,7 +2011,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=80').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=81').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED') {
           if (ev.data.rotated?.sos?.subscriptionToken) {
@@ -1937,7 +2022,8 @@
           }
         }
         if (ev.data && ev.data.type === 'RYS_NOTIFICATION_CLICK') {
-          const sosTabBtn = document.querySelector('.side-btn[onclick*="tab-sos"]');
+          fetchAdminData();
+          const sosTabBtn = document.getElementById('sideBtnSos') || document.querySelector('.side-btn[onclick*="tab-sos"]');
           openTab('tab-sos', sosTabBtn || undefined);
         }
       });

@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#06231b" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
-  <link rel="manifest" href="/manifest.json?v=19" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=81" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=81" />
+  <link rel="manifest" href="/manifest.json?v=81" />
   <title>Baskıya Hazır Hacı Yaka Kartı & QR Kod | Rıdvan Yılmaz Turizm</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/yaka-karti" />
-  <link rel="stylesheet" href="/css/style.css?v=22" />
+  <link rel="stylesheet" href="/css/style.css?v=81" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -23,7 +23,7 @@
       }
     })();
   </script>
-  <script src="/vercel-ws-shim.js?v=80"></script>
+  <script src="/vercel-ws-shim.js?v=81"></script>
   <style>
     .print-toolbar {
       background: linear-gradient(155deg, #06231B 0%, #093529 100%);
@@ -134,37 +134,92 @@
       }
       body {
         background: #FFFFFF !important;
+        line-height: 1.2 !important;
       }
       .badges-sheet {
-        margin: 0;
-        padding: 0;
-        max-width: 100%;
+        margin: 0 !important;
+        padding: 0 !important;
+        max-width: 100% !important;
         grid-template-columns: repeat(2, 1fr) !important;
-        gap: 10px;
+        gap: 8px !important;
       }
       .neck-badge {
-        border-radius: 14px;
+        border-radius: 12px !important;
+        line-height: 1.2 !important;
       }
       .badge-top {
-        padding: 10px 12px 9px;
+        padding: 6px 10px 5px !important;
+        border-bottom-width: 2px !important;
       }
       .lanyard-slot {
-        height: 8px;
-        margin: 0 auto 6px;
+        width: 48px !important;
+        height: 6px !important;
+        margin: 0 auto 3px !important;
+      }
+      .badge-brand-kicker {
+        font-size: 0.62rem !important;
+        line-height: 1.15 !important;
+      }
+      .badge-tour-title {
+        font-size: 0.92rem !important;
+        line-height: 1.18 !important;
+        margin-top: 2px !important;
+        display: -webkit-box;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
       }
       .badge-body {
-        padding: 10px 12px;
+        padding: 6px 10px !important;
+      }
+      .badge-role-kicker {
+        font-size: 0.62rem !important;
+        line-height: 1.15 !important;
+      }
+      .badge-pilgrim-name {
+        font-size: 1rem !important;
+        line-height: 1.18 !important;
+        margin: 2px 0 4px !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .badge-code-pill {
+        font-size: 0.68rem !important;
+        padding: 2px 8px !important;
       }
       .qr-box {
-        width: 132px;
-        height: 132px;
-        margin: 6px auto;
-        padding: 6px;
-        border-radius: 12px;
+        width: 112px !important;
+        height: 112px !important;
+        margin: 4px auto !important;
+        padding: 4px !important;
+        border-radius: 10px !important;
+      }
+      .badge-qr-desc {
+        font-size: 0.66rem !important;
+        line-height: 1.2 !important;
+        margin: 0 auto 5px !important;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .badge-meta-box {
+        padding: 5px 8px !important;
+        font-size: 0.65rem !important;
+        gap: 1px !important;
+        line-height: 1.18 !important;
+        border-radius: 8px !important;
+      }
+      .badge-meta-box > div {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       .badge-footer {
-        padding: 8px 12px;
-        font-size: 0.72rem;
+        padding: 5px 8px !important;
+        font-size: 0.66rem !important;
+        line-height: 1.15 !important;
       }
     }
     .bulk-panel {
@@ -206,7 +261,7 @@
       <button type="button" class="btn btn-outline btn-sm" style="color:#E2C785; border-color:rgba(226,199,133,0.5); background:rgba(197,160,89,0.12);" onclick="toggleBulkListPanel()">
         📋 Toplu Hacı İsim Listesi Yapıştır (<span id="badgeCountLabel">4</span> Kart)
       </button>
-      <button class="btn btn-gold btn-sm" onclick="window.print()">A4 Yaka Kartlarını Yazdır / PDF Kaydet</button>
+      <button class="btn btn-gold btn-sm" onclick="printBadgesNow()">A4 Yaka Kartlarını Yazdır / PDF Kaydet</button>
       <a href="/panel" class="btn btn-outline btn-sm" style="color:#FFFFFF; border-color:rgba(255,255,255,0.3); background:transparent;">← Panele Dön</a>
     </div>
   </div>
@@ -280,14 +335,25 @@
     }
 
     function handleBadgeQrFallback(imgEl) {
-      if (!imgEl) return;
-      imgEl.onerror = null;
-      if (window.__genericBadgeQr) {
+      if (!imgEl || !imgEl.isConnected) return;
+      if (window.__genericBadgeQr && imgEl.src !== window.__genericBadgeQr) {
+        imgEl.onerror = null;
         imgEl.src = window.__genericBadgeQr;
         showBadgeWarning('Uyarı: İsme özel QR servisine ulaşılamadığı için bazı kartlarda genel kafile QR kodu kullanıldı (hacı girişte adını kendisi yazabilir).');
-      } else {
-        showBadgeWarning('Uyarı: İnternet bağlantısı kurulamadı, QR kod görselleri yüklenemedi. Yazdırmadan önce bağlantınızı kontrol edin.');
+        return;
       }
+      if (!imgEl.dataset.retriedGenericImg) {
+        imgEl.dataset.retriedGenericImg = '1';
+        const fallbackCode = (document.getElementById('tourCodePicker')?.value || 'RY-KASIM').trim().toUpperCase();
+        const fallbackRoom = (document.getElementById('badgeRoomPicker')?.value || initialBadgeRoom || 'genel').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'genel';
+        const fallbackOrigin = String((window.location && (window.location.hostname || window.location.host)) || '').split(':')[0].endsWith('.vercel.app')
+          ? 'https://ses.ridvanyilmazturizm.com'
+          : '';
+        imgEl.src = `${fallbackOrigin}/api/qr-img?code=${encodeURIComponent(fallbackCode)}&room=${encodeURIComponent(fallbackRoom)}`;
+        return;
+      }
+      imgEl.onerror = null;
+      showBadgeWarning('Uyarı: İnternet bağlantısı kurulamadı, QR kod görselleri yüklenemedi. Yazdırmadan önce bağlantınızı kontrol edin.');
     }
 
     function escapeHtml(str) {
@@ -360,7 +426,7 @@
           sel.innerHTML = toursData.map((t) => `<option value="${escapeHtml(t.code)}">${escapeHtml(t.code)} (${escapeHtml(t.name)} • ${escapeHtml(t.guideName)})</option>`).join('');
           if (toursData.some((t) => t.code === current)) sel.value = current;
           const matched = toursData.find((t) => t.code === sel.value) || toursData[0];
-          syncBadgeRoomOptions(matched, initialBadgeRoom);
+          syncBadgeRoomOptions(matched, document.getElementById('badgeRoomPicker')?.value || initialBadgeRoom);
         }
       } catch (e) {
         bootstrapFailed = true;
@@ -389,6 +455,15 @@
         badgeDebounceTimer = null;
         updateBadges();
       }, 300);
+    }
+
+    async function printBadgesNow() {
+      if (badgeDebounceTimer) {
+        clearTimeout(badgeDebounceTimer);
+        badgeDebounceTimer = null;
+        await updateBadges();
+      }
+      window.print();
     }
 
     async function updateBadges() {
@@ -439,7 +514,7 @@
       const countLbl = document.getElementById('badgeCountLabel');
       if (countLbl) countLbl.textContent = samplePilgrims.length;
 
-      const qrImgOrigin = window.location.host && window.location.host.includes('vercel.app')
+      const qrImgOrigin = String((window.location && (window.location.hostname || window.location.host)) || '').split(':')[0].endsWith('.vercel.app')
         ? 'https://ses.ridvanyilmazturizm.com'
         : '';
       const container = document.getElementById('badgesContainer');
@@ -453,27 +528,27 @@
         <div class="neck-badge">
           <div class="badge-top">
             <div class="lanyard-slot"></div>
-            <div style="font-size:0.72rem; color:#E2C785; font-weight:800; letter-spacing:0.12em;">RIDVAN YILMAZ TURİZM • BURSA</div>
-            <div style="font-family:var(--font-display); font-size:1.15rem; font-weight:700; margin-top:3px; color:#FFFFFF;">${escapeHtml(tour.name)}</div>
+            <div class="badge-brand-kicker" style="font-size:0.72rem; color:#E2C785; font-weight:800; letter-spacing:0.12em;">RIDVAN YILMAZ TURİZM • BURSA</div>
+            <div class="badge-tour-title" style="font-family:var(--font-display); font-size:1.15rem; font-weight:700; margin-top:3px; color:#FFFFFF;">${escapeHtml(tour.name)}</div>
           </div>
 
           <div class="badge-body">
-            <div style="font-size:0.7rem; color:var(--color-muted); font-weight:800; letter-spacing:0.08em; text-transform:uppercase;">UMRE MİSAFİRİ / HACI</div>
-            <div style="font-family:var(--font-sans); font-size:1.22rem; font-weight:800; color:var(--color-emerald-night); margin:3px 0 8px;">
+            <div class="badge-role-kicker" style="font-size:0.7rem; color:var(--color-muted); font-weight:800; letter-spacing:0.08em; text-transform:uppercase;">UMRE MİSAFİRİ / HACI</div>
+            <div class="badge-pilgrim-name" style="font-family:var(--font-sans); font-size:1.22rem; font-weight:800; color:var(--color-emerald-night); margin:3px 0 8px;">
               ${escapeHtml(pName)}
             </div>
 
-            <span class="badge badge-gold" style="font-size:0.78rem;">KAFİLE KODU: ${escapeHtml(tour.code)}${badgeRoom !== 'genel' ? ` • ODA: ${escapeHtml(badgeRoom.toUpperCase())}` : ''}</span>
+            <span class="badge badge-gold badge-code-pill" style="font-size:0.78rem;">KAFİLE KODU: ${escapeHtml(tour.code)}${badgeRoom !== 'genel' ? ` • ODA: ${escapeHtml(badgeRoom.toUpperCase())}` : ''}</span>
 
             <div class="qr-box">
               <img src="${qrSrc}" onerror="handleBadgeQrFallback(this)" alt="QR Code ${escapeHtml(tour.code)} - ${escapeHtml(pName)}" />
             </div>
 
-            <div style="font-size:0.76rem; color:var(--color-muted); max-width:265px; margin:0 auto 10px; line-height:1.4;">
+            <div class="badge-qr-desc" style="font-size:0.76rem; color:var(--color-muted); max-width:265px; margin:0 auto 10px; line-height:1.4;">
               <strong>${qrName ? 'İsme Özel QR Rehberlik:' : 'Hızlı QR Rehberlik:'}</strong> Telefon kameranızı QR koda okutarak <strong>${escapeHtml(tour.guideName)}</strong> canlı anlatımına doğrudan bağlanın.
             </div>
 
-            <div style="background:var(--color-ground); border:1px solid var(--color-hairline); border-radius:12px; padding:9px 12px; font-size:0.75rem; text-align:left; display:flex; flex-direction:column; gap:3px; color:var(--color-ink);">
+            <div class="badge-meta-box" style="background:var(--color-ground); border:1px solid var(--color-hairline); border-radius:12px; padding:9px 12px; font-size:0.75rem; text-align:left; display:flex; flex-direction:column; gap:3px; color:var(--color-ink);">
               <div><strong>Kafile Rehberi:</strong> ${escapeHtml(tour.guideName)}</div>
               <div><strong>Mekke Otel:</strong> ${escapeHtml(tour.makkahHotel)}</div>
               <div><strong>Medine Otel:</strong> ${escapeHtml(tour.madinahHotel)}</div>

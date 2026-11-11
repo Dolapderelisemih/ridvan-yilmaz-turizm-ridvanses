@@ -6,11 +6,11 @@
   <title>Dijital Umre Hatıra Kitabı &amp; Ziyaret Beratı — Rıdvan Yılmaz Turizm</title>
   <meta name="description" content="Rıdvan Yılmaz Turizm Umre ve Siyer yolculuğunuzun baskıya hazır A4 manevi hatıra kitapçığı ve imzalı Umre Ziyaret Beratı." />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=19" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
-  <link rel="stylesheet" href="/css/style.css?v=22" />
-  <script src="/vercel-ws-shim.js?v=80"></script>
+  <link rel="manifest" href="/manifest.json?v=81" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=81" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=81" />
+  <link rel="stylesheet" href="/css/style.css?v=81" />
+  <script src="/vercel-ws-shim.js?v=81"></script>
   <style>
     body {
       background: #e9e2d5;
@@ -251,7 +251,7 @@
         </div>
 
         <div>
-          <img src="/icons/app-logo.png?v=19" alt="Rıdvan Yılmaz Turizm" style="height:68px;background:#fff;padding:6px 12px;border-radius:12px;margin:0 auto 20px;box-shadow:0 8px 24px rgba(0,0,0,0.28);" onerror="this.style.display='none'" />
+          <img src="/icons/app-logo.png?v=81" alt="Rıdvan Yılmaz Turizm" style="height:68px;background:#fff;padding:6px 12px;border-radius:12px;margin:0 auto 20px;box-shadow:0 8px 24px rgba(0,0,0,0.28);" onerror="this.style.display='none'" />
           <div style="font-size:0.82rem;font-weight:800;color:var(--color-gold-bright);text-transform:uppercase;letter-spacing:0.14em;margin-bottom:8px;">
             MANEVİ YOLCULUK HATIRA KİTAPÇIĞI
           </div>
@@ -407,13 +407,14 @@
       let isBookPinProtected = false;
       function getSavedBookPin(c) {
         const clean = String(c || '').toUpperCase().trim();
+        if (clean === code && tourPinParam) return tourPinParam;
         try {
           if (typeof sessionStorage !== 'undefined') {
             const v = sessionStorage.getItem('rys_tour_pin_' + clean);
             if (v) return v;
           }
         } catch (_) {}
-        return clean === code ? tourPinParam : '';
+        return '';
       }
       function setSavedBookPin(c, p) {
         const clean = String(c || '').toUpperCase().trim();
@@ -425,7 +426,6 @@
         } catch (_) {}
       }
       if (tourPinParam) {
-        setSavedBookPin(code, tourPinParam);
         try {
           const cleanUrl = new URL(window.location.href);
           cleanUrl.searchParams.delete('pin');
@@ -465,10 +465,14 @@
                   `<option value="${escapeHtml(t.code)}" style="color:#06231b;">${escapeHtml(t.code)} — ${escapeHtml(String(t.name || '').replace(/^🕋\s*/, ''))}</option>`
               )
               .join('');
+            const prevCode = code;
             if (!params.get('code') && !data.tours.some((t) => t.code === code)) {
               code = data.tours[0].code;
             }
             syncBookCodeUi(code);
+            if (code !== prevCode) {
+              loadBookData();
+            }
           }
         })
         .catch(() => {});
@@ -529,7 +533,6 @@
           const val = String(bookPinInp.value || '').trim();
           if (!val) return;
           tourPinParam = val;
-          setSavedBookPin(code, val);
           loadBookData();
         };
         bookPinBtn.addEventListener('click', submitBookPin);
@@ -550,7 +553,12 @@
         try {
           const activePin = getSavedBookPin(code);
           const stepUrl = `/api/trips/${encodeURIComponent(code)}/steps`;
-          const res = await fetch(stepUrl, activePin ? { headers: { 'X-Tour-Pin': activePin } } : undefined);
+          const res = await fetch(
+            stepUrl,
+            activePin
+              ? { headers: { 'X-Tour-Pin': encodeURIComponent(activePin), 'X-Tour-Pin-Enc': 'uri' } }
+              : undefined
+          );
           const data = await res.json();
           if (res.status === 429 || (data && data.error === 'rate-limited')) {
             if (bookStage) bookStage.style.display = 'none';
@@ -598,6 +606,10 @@
           if (bookStage) bookStage.style.display = 'flex';
           if (printBtn) printBtn.disabled = false;
           if (data && data.success) {
+            if (activePin) {
+              setSavedBookPin(code, activePin);
+              tourPinParam = '';
+            }
             const tour = data.tour || {};
             currentBookTour = tour;
             isBookPinProtected = Boolean(tour.pinProtected || tour.pinRequired);
@@ -637,13 +649,15 @@
               .join('');
           }
 
-          const qrRes = await fetch(`/api/qr?code=${encodeURIComponent(code)}`);
-          const qrJson = await qrRes.json();
-          if (qrJson && qrJson.dataUrl) {
-            const img = document.getElementById('certQrImg');
-            img.src = qrJson.dataUrl;
-            img.style.display = 'block';
-          }
+          try {
+            const qrRes = await fetch(`/api/qr?code=${encodeURIComponent(code)}`);
+            const qrJson = await qrRes.json();
+            if (qrJson && qrJson.dataUrl) {
+              const img = document.getElementById('certQrImg');
+              img.src = qrJson.dataUrl;
+              img.style.display = 'block';
+            }
+          } catch (_) {}
         } catch (e) {
           console.warn('Hatıra kitabı yüklenemedi:', e);
           if (bookStage) bookStage.style.display = 'none';
@@ -656,7 +670,7 @@
       }
 
       if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=80').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=81').catch(() => {});
       }
 
       loadBookData();

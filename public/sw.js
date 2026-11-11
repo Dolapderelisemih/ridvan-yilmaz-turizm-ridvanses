@@ -1,7 +1,7 @@
 // PATCH: sw-v53
 // PATCH: sw-v53
 // PATCH: sw-v53
-const CACHE_NAME = 'ridvanses-pwa-v80';
+const CACHE_NAME = 'ridvanses-pwa-v81';
 const PUSH_META_CACHE = 'ridvanses-push-meta-v1';
 const ASSETS_TO_CACHE = [
   '/',
@@ -9,12 +9,12 @@ const ASSETS_TO_CACHE = [
   '/rota',
   '/ani-kitabi',
   '/kullanim-rehberi',
-  '/css/style.css?v=22',
-  '/vercel-ws-shim.js?v=80',
+  '/css/style.css?v=81',
+  '/vercel-ws-shim.js?v=81',
   '/vendor/leaflet/leaflet.js',
   '/vendor/leaflet/leaflet.css',
   '/vendor/mqtt/mqtt.min.js',
-  '/js/umrah-steps-map.js?v=80',
+  '/js/umrah-steps-map.js?v=81',
   '/pcm-capture-worklet.js?v=72-audio',
   '/pcm-player-worklet.js?v=72-audio',
   '/manifest.json',
@@ -206,7 +206,7 @@ self.addEventListener('notificationclick',event=>{
           return await (next||active).focus?.();
         }catch(e){}
       }
-      try{active.postMessage?.({type:'RYS_NOTIFICATION_CLICK',url:target});}catch(e){}
+      try{active.postMessage?.({type:'RYS_NOTIFICATION_CLICK',url:target,code:newCode});}catch(e){}
       try{return await active.focus();}catch(e){}
     }
     return self.clients.openWindow(target);
@@ -215,7 +215,7 @@ self.addEventListener('notificationclick',event=>{
 self.addEventListener('pushsubscriptionchange',event=>{
   event.waitUntil((async()=>{
     try{
-      const apiOrigin=self.location.hostname.endsWith('.vercel.app')?'https://ses.ridvanyilmazturizm.com':self.location.origin;
+      const apiOrigin=String((self.location&&(self.location.hostname||self.location.host))||'').split(':')[0].endsWith('.vercel.app')?'https://ses.ridvanyilmazturizm.com':self.location.origin;
       const subOpts={userVisibleOnly:true};
       if(event.oldSubscription?.options?.applicationServerKey){
         subOpts.applicationServerKey=event.oldSubscription.options.applicationServerKey;

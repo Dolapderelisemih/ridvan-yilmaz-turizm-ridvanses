@@ -169,7 +169,7 @@
         url.endsWith('/ws') &&
         (url.includes(window.location.host) ||
           url.includes('ridvanyilmazturizm.com') ||
-          url.includes('vercel.app'));
+          url.includes('.vercel.app/ws'));
       if (!isAppWs) {
         return protocols ? new NativeWebSocket(url, protocols) : new NativeWebSocket(url);
       }
@@ -628,9 +628,18 @@
         const list = unpackRysAudio(msg);
         if (!list?.length) return;
         if (typeof this.onmessage === 'function') {
-          for (const f of list) this.onmessage({ data: JSON.stringify(f) });
+          for (const f of list) {
+            this.onmessage({ data: JSON.stringify(f) });
+          }
         }
         return;
+      }
+      if (msg.type === 'audio-chunk' && msg.synthNote && msg.audioSourceId && msg.audioMediaEpoch != null && msg.sentAt != null) {
+        const seenSynth = this._seenSynthKeys || (this._seenSynthKeys = new Set());
+        const sk = `${msg.audioSourceId}:${msg.audioMediaEpoch}:${msg.synthNote}:${msg.sentAt}`;
+        if (seenSynth.has(sk)) return;
+        seenSynth.add(sk);
+        if (seenSynth.size > 128) seenSynth.delete(seenSynth.values().next().value);
       }
       if (typeof this.onmessage === 'function') {
         this.onmessage({ data: JSON.stringify(msg) });
@@ -1069,9 +1078,7 @@
           }
           if (
             parsedUrl.origin === window.location.origin &&
-            window.location &&
-            window.location.host &&
-            window.location.host.includes('vercel.app')
+            String((window.location && (window.location.hostname || window.location.host)) || '').split(':')[0].endsWith('.vercel.app')
           ) {
             const vdsUrl = VDS_API_ORIGIN + apiPath + (parsedUrl.search || '');
             targetInput = isReqObj ? new Request(vdsUrl, input) : vdsUrl;

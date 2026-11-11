@@ -6,12 +6,12 @@
   <title>Canlı Manevi Rota & Aile Takip Ekranı — Rıdvan Yılmaz Turizm</title>
   <meta name="description" content="Rıdvan Yılmaz Turizm Umre kafilesinin kutsal topraklardaki canlı manevi yolculuk rotasını, ziyaret edilen Siyer duraklarını ve rehber konumunu canlı takip edin." />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=19" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
+  <link rel="manifest" href="/manifest.json?v=81" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=81" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=81" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=22" />
-  <script src="/vercel-ws-shim.js?v=80"></script>
+  <link rel="stylesheet" href="/css/style.css?v=81" />
+  <script src="/vercel-ws-shim.js?v=81"></script>
   <style>
     .rota-hero-strip {
       background:
@@ -91,7 +91,7 @@
   <header class="navbar">
     <div class="container navbar-inner">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=19" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=81" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <div class="brand-title">RıdvanSes Manevi Rota</div>
           <div class="brand-sub">Aile &amp; Yakın Canlı Kafile Takip Sistemi</div>
@@ -263,12 +263,13 @@
   <div id="rotaToast" class="toast-banner"></div>
 
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=80"></script>
+  <script src="/js/umrah-steps-map.js?v=81"></script>
   <script>
     (function () {
       const params = new URLSearchParams(window.location.search);
       let currentCode = (params.get('code') || 'RY-KASIM').toUpperCase().trim();
       const initialUrlPin = (params.get('pin') || '').trim();
+      let pendingPinInput = initialUrlPin;
       let currentSteps = [];
       let currentTour = null;
       let currentActiveStepTitle = 'Mescid-i Haram & Kâbe-i Muazzama';
@@ -285,7 +286,13 @@
             if (v) return v;
           }
         } catch (_) {}
-        return clean === currentCode ? initialUrlPin : '';
+        return '';
+      }
+
+      function getActiveTourPin(code) {
+        const clean = String(code || '').toUpperCase().trim();
+        if (clean === currentCode && pendingPinInput) return pendingPinInput;
+        return getSavedTourPin(clean);
       }
 
       function setSavedTourPin(code, pinVal) {
@@ -298,7 +305,6 @@
         } catch (_) {}
       }
       if (initialUrlPin) {
-        setSavedTourPin(currentCode, initialUrlPin);
         try {
           const cleanUrl = new URL(window.location.href);
           cleanUrl.searchParams.delete('pin');
@@ -490,8 +496,10 @@
 
       async function fetchStepsRest(autoFit = false) {
         try {
-          const pinVal = getSavedTourPin(currentCode);
-          const headers = pinVal ? { 'X-Tour-Pin': pinVal } : {};
+          const pinVal = getActiveTourPin(currentCode);
+          const headers = pinVal
+            ? { 'X-Tour-Pin': encodeURIComponent(pinVal), 'X-Tour-Pin-Enc': 'uri' }
+            : {};
           const res = await fetch(`/api/trips/${encodeURIComponent(currentCode)}/steps`, { headers });
           const json = await res.json().catch(() => ({}));
           const pinGate = document.getElementById('rotaPinGateBox');
@@ -526,6 +534,7 @@
             if (pinGate) pinGate.style.display = 'block';
             if (pinErr) {
               if (pinVal) {
+                pendingPinInput = '';
                 setSavedTourPin(currentCode, '');
                 pinErr.textContent = 'Girilen PIN kodu hatalı. Lütfen tekrar deneyiniz.';
                 pinErr.style.display = 'block';
@@ -533,12 +542,22 @@
                 pinErr.style.display = 'none';
               }
             }
-            if (json.tour) applyJourneyPayload({ tour: json.tour, steps: [], stats: json.stats, announcements: [] }, false);
+            const accessBadge = document.getElementById('rotaAccessBadge');
+            if (accessBadge) accessBadge.textContent = '🔒 PIN Korumalı Aile Takip Ekranı';
+            if (json.tour && json.tour.name) {
+              document.getElementById('tourTitle').textContent = `${json.tour.name} — Manevi Yolculuk Haritası`;
+            }
+            document.getElementById('tourMeta').textContent = '🔒 Rehber ve konaklama detayları PIN doğrulamasından sonra görüntülenir.';
+            document.getElementById('hotelInfoText').textContent = '🏨 Konaklama bilgisi PIN doğrulandığında görüntülenir.';
             document.getElementById('familyTimeline').innerHTML =
               '<div style="padding:16px;text-align:center;color:var(--color-muted);font-size:0.86rem;">🔒 Rota adımlarını görmek için yukarıdaki kutuya kafile PIN kodunu giriniz.</div>';
             return;
           }
           subscriptionBlocked = false;
+          if (pinVal) {
+            setSavedTourPin(currentCode, pinVal);
+            pendingPinInput = '';
+          }
           if (pinGate) pinGate.style.display = 'none';
           if (pinErr) pinErr.style.display = 'none';
           if (json && json.success) {
@@ -567,7 +586,7 @@
         }
 
         const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsHost = window.location.host.includes('vercel.app')
+        const wsHost = String((window.location && (window.location.hostname || window.location.host)) || '').split(':')[0].endsWith('.vercel.app')
           ? 'ses.ridvanyilmazturizm.com'
           : window.location.host;
         try {
@@ -581,7 +600,7 @@
               pollTimer = null;
             }
             document.getElementById('syncIndicator').textContent = '● Canlı Bağlantı';
-            const pinVal = getSavedTourPin(currentCode);
+            const pinVal = getActiveTourPin(currentCode);
             socket.send(JSON.stringify({ type: 'family-subscribe', tourCode: currentCode, ...(pinVal ? { pin: pinVal } : {}) }));
           };
           socket.onmessage = (ev) => {
@@ -591,6 +610,7 @@
               const msg = JSON.parse(ev.data);
               if (msg.type === 'pin-error') {
                 subscriptionBlocked = true;
+                pendingPinInput = '';
                 setSavedTourPin(currentCode, '');
                 if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
                 if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
@@ -612,6 +632,10 @@
               }
               if (msg.type === 'family-state') {
                 subscriptionBlocked = false;
+                if (pendingPinInput) {
+                  setSavedTourPin(currentCode, pendingPinInput);
+                  pendingPinInput = '';
+                }
                 applyJourneyPayload(msg, false);
               } else if (msg.type === 'steps-updated') {
                 applyJourneyPayload(msg, false);
@@ -729,6 +753,7 @@
         const val = String(codeInput.value || '').toUpperCase().trim();
         if (!val) return;
         currentCode = val;
+        pendingPinInput = '';
         subscriptionBlocked = false;
         const url = new URL(window.location.href);
         url.searchParams.set('code', currentCode);
@@ -766,7 +791,7 @@
           const entered = String(rotaPinInp.value || '').trim();
           if (!entered) return;
           subscriptionBlocked = false;
-          setSavedTourPin(currentCode, entered);
+          pendingPinInput = entered;
           updateLinks(currentCode);
           fetchStepsRest(true);
           connectRealtime();
@@ -781,7 +806,7 @@
       }
 
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=80').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=81').catch(() => {});
       }
 
       updateLinks(currentCode);

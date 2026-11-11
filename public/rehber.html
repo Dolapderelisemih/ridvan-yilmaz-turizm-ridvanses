@@ -8,13 +8,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=19" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
+  <link rel="manifest" href="/manifest.json?v=81" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=81" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=81" />
   <title>Rehber (Hoca) Canlı Yayın Stüdyosu | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/rehber" />
-  <link rel="stylesheet" href="/css/style.css?v=22" />
+  <link rel="stylesheet" href="/css/style.css?v=81" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -60,8 +60,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=80"></script>
-  <script src="/js/umrah-steps-map.js?v=80"></script>
+  <script src="/vercel-ws-shim.js?v=81"></script>
+  <script src="/js/umrah-steps-map.js?v=81"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -231,7 +231,7 @@
   <header class="navbar">
     <div class="container navbar-inner">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=19" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=81" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="margin:0; font-size:1.12rem; line-height:1.2;">Rıdvan Yılmaz Turizm</h1>
           <span class="brand-sub"><span class="live-dot"></span> Rehber (Hoca) Canlı Yayın Stüdyosu</span>
@@ -580,7 +580,7 @@
 
     function syncGuideNavLinks() {
       const code = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').trim().toUpperCase();
-      const room = (document.getElementById('guideRoomSelect')?.value || 'genel').trim();
+      const room = (document.getElementById('guideRoomSelect')?.value || 'genel').trim().toLowerCase();
       const enc = encodeURIComponent(code);
       const rBtn = document.getElementById('navGuideRotaBtn');
       const dBtn = document.getElementById('navGuideDinleBtn');
@@ -618,6 +618,13 @@
       }).join('');
       if (Array.from(rSel.options).some((o) => o.value === prev)) {
         rSel.value = prev;
+      } else if (preferredRoom && /^[a-z0-9_-]{1,32}$/.test(prev)) {
+        const customOpt = document.createElement('option');
+        customOpt.value = prev;
+        customOpt.style.color = '#000';
+        customOpt.textContent = `🎙️ ${prev}`;
+        rSel.appendChild(customOpt);
+        rSel.value = prev;
       } else {
         rSel.value = rSel.options[0]?.value || 'genel';
       }
@@ -637,6 +644,10 @@
     }
 
     function onTourSelectionChange() {
+      window.ryGuideTabPausedByOtherTab = false;
+      if (window.ryGuideSessionReplaced && !window.ryGuideAuthExpired) {
+        window.ryGuideSessionReplaced = false;
+      }
       if (currentActiveTawafId && ws && ws.readyState === WebSocket.OPEN) {
         try { ws.send(JSON.stringify({ type: 'tawaf-stage-update', clear: true })); } catch {}
       }
@@ -712,13 +723,20 @@
 
     var remoteGuideTabActiveAt = 0;
     var remoteGuideTabTour = '';
+    var remoteGuideTabRoom = '';
+    var lastJoinedGuideRoomKey = '';
 
     function confirmGuideTabTakeover() {
       window.ryGuideTabTakeoverConfirmed = true;
       window.ryGuideTabPausedByOtherTab = false;
       window.ryGuideSessionReplaced = false;
+      window.ryGuideAuthExpired = false;
       const banner = document.getElementById('guideAuthErrorBanner');
       if (banner) banner.style.display = 'none';
+      const statusTxtEl = document.getElementById('broadcastStatusText');
+      if (statusTxtEl && !isMicBroadcasting && !isDemoBroadcasting) {
+        statusTxtEl.textContent = 'STÜDYO BAĞLANTISI AKTİF';
+      }
       connectGuideWs();
       loadGuideSteps();
     }
@@ -790,13 +808,17 @@
         if (window.ryGuideSessionReplaced) return;
         guideBootstrapReady = true;
         const selectedCode = (document.getElementById('guideTourSelect')?.value || 'RY-KASIM').toUpperCase();
+        const selectedRoom = (document.getElementById('guideRoomSelect')?.value || 'genel').trim().toLowerCase();
         if (
           !window.ryGuideTabTakeoverConfirmed &&
           remoteGuideTabActiveAt > 0 &&
           Date.now() - remoteGuideTabActiveAt < 4000 &&
-          (!remoteGuideTabTour || remoteGuideTabTour.toUpperCase() === selectedCode)
+          (!remoteGuideTabTour || remoteGuideTabTour.toUpperCase() === selectedCode) &&
+          (!remoteGuideTabRoom || remoteGuideTabRoom === selectedRoom)
         ) {
           window.ryGuideTabPausedByOtherTab = true;
+          const statusTxtEl = document.getElementById('broadcastStatusText');
+          if (statusTxtEl) statusTxtEl.textContent = 'BEKLEMEDE (BAŞKA SEKME YAYINDA)';
           const banner = document.getElementById('guideAuthErrorBanner');
           if (banner) {
             banner.innerHTML = `⚠️ <strong>Bu tarayıcıda başka bir Rehber Stüdyosu sekmesi şu an canlı yayında!</strong> Aktif yayının kesilmemesi için bu sekme beklemede açıldı. <button type="button" class="btn btn-gold btn-sm" style="margin-left:10px;" onclick="confirmGuideTabTakeover()">🔄 Yayını Bu Sekmeye Devral</button>`;
@@ -860,12 +882,26 @@
     function sendGuideJoinAndSync() {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       const tourCode = document.getElementById('guideTourSelect').value;
-      const roomId = document.getElementById('guideRoomSelect')?.value || 'genel';
+      const roomId = String(document.getElementById('guideRoomSelect')?.value || 'genel').trim().toLowerCase();
       const guideName = document.getElementById('guideNameSelect').value;
       const guidePeerId =
         typeof window.ryGetDynamicChannelId === 'function'
           ? window.ryGetDynamicChannelId(tourCode, roomId)
           : `ridvanses-${String(tourCode || 'RY-KASIM').toLowerCase()}-${roomId}-guide-v26`;
+
+      const nextRoomKey = `${String(tourCode || 'RY-KASIM').toUpperCase()}:${roomId}`;
+      const prevJoinedKey = window.__ryLastJoinedGuideRoomKey || '';
+      if (prevJoinedKey && prevJoinedKey !== nextRoomKey && (isMicBroadcasting || isDemoBroadcasting)) {
+        try {
+          ws.send(JSON.stringify({
+            type: 'guide-stream-state',
+            isLive: false,
+            broadcastMode: 'idle',
+            topic: ''
+          }));
+        } catch {}
+      }
+      window.__ryLastJoinedGuideRoomKey = nextRoomKey;
 
       const authToken = (window.ryReadAuthToken ? window.ryReadAuthToken() : (localStorage.getItem('ry_auth_token') || '').trim());
       ws.send(JSON.stringify({
@@ -913,6 +949,8 @@
     function fenceGuideSession(isAuthError){
       if(window.ryGuideSessionReplaced)return;
       window.ryGuideSessionReplaced=true;
+      window.ryGuideAuthExpired=Boolean(isAuthError);
+      window.ryGuideTabTakeoverConfirmed=false;
       clearTimeout(guideWsReconnectTimer);guideWsReconnectTimer=null;
       isDemoBroadcasting=false;++guideDemoGeneration;clearInterval(demoInterval);demoInterval=null;
       stopMicBroadcast();
@@ -921,7 +959,9 @@
       const demoBtn=document.getElementById('demoStreamBtn')||document.getElementById('startDemoStreamBtn');
       if(demoBtn){demoBtn.textContent='📡 Demo Siyer Ses Akışı Gönder (Test)';demoBtn.className='btn btn-outline';}
       const label=document.getElementById('micSourceLabel');
-      if(label)label.textContent=isAuthError?'Oturum doğrulaması sona erdi; yayın durduruldu.':'Yayın başka bir sekmede devralındı. Yeniden devralmak için sayfayı yenileyin.';
+      if(label)label.textContent=isAuthError?'Oturum doğrulaması sona erdi; yayın durduruldu.':'Yayın başka bir sekmede devralındı. Tekrar yayına girmek için yayın butonuna basın.';
+      const statusTxtEl=document.getElementById('broadcastStatusText');
+      if(!isAuthError&&statusTxtEl)statusTxtEl.textContent='YAYIN BAŞKA SEKMEDE DEVRALINDI';
       if(!isAuthError){
         const banner=document.getElementById('guideAuthErrorBanner');
         if(banner){
@@ -932,6 +972,7 @@
     }
     function connectGuideWs() {
       if(window.ryGuideSessionReplaced)return;
+      window.__ryLastJoinedGuideRoomKey = '';
       if (guideWsReconnectTimer) {
         clearTimeout(guideWsReconnectTimer);
         guideWsReconnectTimer = null;
@@ -946,7 +987,7 @@
         ws = null;
       }
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsHost = window.location.host.includes('vercel.app')
+      const wsHost = String((window.location && (window.location.hostname || window.location.host)) || '').split(':')[0].endsWith('.vercel.app')
         ? 'ses.ridvanyilmazturizm.com'
         : window.location.host;
       const socket=new WebSocket(`${proto}//${wsHost}/ws`);ws=socket;
@@ -997,6 +1038,8 @@
             window.ryGuideTabPausedByOtherTab=true;
             clearTimeout(guideWsReconnectTimer);guideWsReconnectTimer=null;
             try{if(ws){ws.onclose=null;ws.onerror=null;ws.close();ws=null;}}catch{}
+            const statusTxtEl=document.getElementById('broadcastStatusText');
+            if(statusTxtEl)statusTxtEl.textContent='BEKLEMEDE (BAŞKA SEKME YAYINDA)';
             const banner=document.getElementById('guideAuthErrorBanner');
             if(banner){
               banner.innerHTML='⚠️ <strong>Başka bir sekmede veya cihazda aktif canlı yayın devam ediyor!</strong> Aktif yayının kesilmemesi için bu sekme beklemede tutuldu. <button type="button" class="btn btn-gold btn-sm" style="margin-left:10px;" onclick="confirmGuideTabTakeover()">🔄 Yayını Bu Sekmeye Devral</button>';
@@ -1012,6 +1055,9 @@
           return;
         }
         if (msg.type === 'joined' || msg.type === 'room-state') {
+          if (msg.type === 'joined') {
+            window.ryGuideTabTakeoverConfirmed = false;
+          }
           renderRoomState(msg.room);
           if (msg.steps) renderGuideStepsList(msg.steps);
           if (Array.isArray(msg.announcements)) {
@@ -1209,6 +1255,10 @@
     }
 
     function switchGuideRoom() {
+      window.ryGuideTabPausedByOtherTab = false;
+      if (window.ryGuideSessionReplaced && !window.ryGuideAuthExpired) {
+        window.ryGuideSessionReplaced = false;
+      }
       currentActiveTawafId = null;
       updateTawafButtonsUi(null);
       syncGuideNavLinks();
@@ -1216,7 +1266,7 @@
       if (banner && !window.ryGuideSessionReplaced) banner.style.display = 'none';
       if (isMicBroadcasting && micStream && typeof window.ryBroadcastGuideStream === 'function') {
         const activeTourCode = document.getElementById('guideTourSelect')?.value || 'RY-KASIM';
-        const activeRoomId = document.getElementById('guideRoomSelect')?.value || 'genel';
+        const activeRoomId = String(document.getElementById('guideRoomSelect')?.value || 'genel').trim().toLowerCase();
         try { window.ryBroadcastGuideStream(micStream, activeTourCode, activeRoomId); } catch {}
       }
       if (!guideBootstrapReady) return;
@@ -1498,7 +1548,7 @@
           <div>
             <div style="font-weight:700; font-size:0.93rem; color:var(--color-emerald-night); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
               <span>🎧 ${safeName}</span>
-              <span class="badge badge-live" style="padding:2px 8px; font-size:0.68rem;">Canlı Bağlı${p.roomId === 'siyer' ? ' • Siyer' : ''}</span>
+              <span class="badge badge-live" style="padding:2px 8px; font-size:0.68rem;">Canlı Bağlı${p.roomId && p.roomId !== 'genel' ? ` • ${escapeHtml(p.roomId === 'siyer' ? 'Siyer' : String(p.roomId).toUpperCase())}` : ''}</span>
             </div>
             <div style="font-size:0.78rem; color:var(--color-muted); margin-top:2px;">
               ${hasRealPhone ? `${safePhone} • ` : ''}Katılım: ${safeJoined}
@@ -1675,8 +1725,8 @@
           artist: `${guideName} (${tourCode})`,
           album: 'Rıdvan Yılmaz Turizm — Rehber Stüdyosu',
           artwork: [
-            { src: '/icons/icon-192.png?v=19', sizes: '192x192', type: 'image/png' },
-            { src: '/icons/icon-512.png?v=19', sizes: '512x512', type: 'image/png' }
+            { src: '/icons/icon-192.png?v=81', sizes: '192x192', type: 'image/png' },
+            { src: '/icons/icon-512.png?v=81', sizes: '512x512', type: 'image/png' }
           ]
         });
         navigator.mediaSession.playbackState = (isMicBroadcasting || isDemoBroadcasting) ? 'playing' : 'paused';
@@ -1878,12 +1928,14 @@
           if(msg.type==='guide-mic-active'&&msg.tabId&&msg.tabId!==guideDeviceId){
             remoteGuideTabActiveAt=Date.now();
             remoteGuideTabTour=String(msg.tourCode||'');
+            remoteGuideTabRoom=String(msg.roomId||'genel').trim().toLowerCase();
           }else if(msg.type==='guide-tab-probe'&&msg.tabId&&msg.tabId!==guideDeviceId&&(isMicBroadcasting||isDemoBroadcasting)){
             try{
               guideAudioGuardChannel.postMessage({
                 type:'guide-mic-active',
                 tabId:guideDeviceId,
                 tourCode:document.getElementById('guideTourSelect')?.value||'RY-KASIM',
+                roomId:String(document.getElementById('guideRoomSelect')?.value||'genel').trim().toLowerCase(),
                 rms:0.1,
                 ts:Date.now()
               });
@@ -1939,6 +1991,7 @@
             type: 'guide-mic-active',
             tabId: guideDeviceId,
             tourCode: document.getElementById('guideTourSelect')?.value || 'RY-KASIM',
+            roomId: String(document.getElementById('guideRoomSelect')?.value || 'genel').trim().toLowerCase(),
             rms,
             ts: nowMs
           });
@@ -2268,7 +2321,7 @@
     }
 
     async function toggleMicBroadcast() {
-      if (window.ryGuideTabPausedByOtherTab) {
+      if (window.ryGuideTabPausedByOtherTab || (window.ryGuideSessionReplaced && !window.ryGuideAuthExpired)) {
         confirmGuideTabTakeover();
       }
       if(window.ryGuideSessionReplaced)return;
@@ -2299,7 +2352,7 @@
         if(installed!==guideMicGeneration||startVersion!==guideMicGeneration)return;
 
         const activeTourCode = document.getElementById('guideTourSelect').value || 'RY-KASIM';
-        const activeRoomId = document.getElementById('guideRoomSelect')?.value || 'genel';
+        const activeRoomId = String(document.getElementById('guideRoomSelect')?.value || 'genel').trim().toLowerCase();
         if (typeof window.ryBroadcastGuideStream === 'function') {
           window.ryBroadcastGuideStream(micStream, activeTourCode, activeRoomId);
         }
@@ -2316,7 +2369,7 @@
           connectGuideWs();
         } else {
           const currentCode = document.getElementById('guideTourSelect').value || 'RY-KASIM';
-          const currentRoom = document.getElementById('guideRoomSelect')?.value || 'genel';
+          const currentRoom = String(document.getElementById('guideRoomSelect')?.value || 'genel').trim().toLowerCase();
           ws.send(JSON.stringify({
             type: 'guide-stream-state',
             isLive: true,
@@ -2401,6 +2454,7 @@
       clearTimeout(guideDeviceChangeTimer);guideDeviceChangeTimer=null;guideDeviceChangePending=false;
       if(guideLoopbackSource){try{guideLoopbackSource.stop();guideLoopbackSource.disconnect();}catch(e){}guideLoopbackSource=null;}
       isMicBroadcasting=false;
+      window.ryGuideTabTakeoverConfirmed=false;
       // Release hardware before optional UI/transport hooks can fail.
       disconnectGuideAudioNodes();const stream=micStream;micStream=null;stopGuideMicrophoneStream(stream);
       const micButton=document.getElementById('startMicBtn');
@@ -2423,6 +2477,9 @@
 
     // Demo Audio Broadcast (Works without physical mic)
     function toggleDemoBroadcast() {
+      if (window.ryGuideTabPausedByOtherTab || (window.ryGuideSessionReplaced && !window.ryGuideAuthExpired)) {
+        confirmGuideTabTakeover();
+      }
       if(window.ryGuideSessionReplaced)return;
       if(isVoiceLoopbackTesting)return;
       if(guideMicStarting)stopMicBroadcast();
@@ -2654,7 +2711,7 @@
           ? `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`
           : '';
         const dirUrl = hasValidGps ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}` : '';
-        const isTourFallback = a.gpsSource === 'tour-fallback';
+        const isTourFallback = a.gpsSource === 'tour-fallback' || a.gpsSource === 'tour-step-fallback';
         const safeName = escapeHtml(a.pilgrimName || 'Hacı Misafir');
         const rawPhone = String(a.phone || '').trim();
         const hasRealPhone = Boolean(rawPhone && rawPhone !== '+90 538 000 00 00');
@@ -2984,7 +3041,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=80');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=81');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -3097,7 +3154,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=80').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=81').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED') {
           if (ev.data.rotated?.sos?.subscriptionToken) {
@@ -3108,10 +3165,27 @@
           }
         }
         if (ev.data && ev.data.type === 'RYS_NOTIFICATION_CLICK') {
-          const sosEl = document.getElementById('sosAlertContainer');
-          if (sosEl && sosEl.style.display !== 'none') {
-            try { sosEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
-          }
+          const clickedCode = String(ev.data.code || '').trim().toUpperCase();
+          fetch('/api/bootstrap', { cache: 'no-store' })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+              if (!data) return;
+              const tSel = document.getElementById('guideTourSelect');
+              if (clickedCode && tSel && Array.from(tSel.options).some((o) => o.value === clickedCode) && tSel.value !== clickedCode) {
+                tSel.value = clickedCode;
+                onTourSelectionChange();
+              }
+              const activeCode = (tSel?.value || clickedCode || 'RY-KASIM').toUpperCase();
+              if (Array.isArray(data.sosAlerts)) {
+                activeSosAlerts = data.sosAlerts.filter((a) => a.status === 'active' && (!a.tourCode || a.tourCode === activeCode));
+                renderSosBanner();
+              }
+              const sosEl = document.getElementById('sosAlertContainer');
+              if (sosEl && sosEl.style.display !== 'none') {
+                try { sosEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
+              }
+            })
+            .catch(() => {});
         }
       });
     }

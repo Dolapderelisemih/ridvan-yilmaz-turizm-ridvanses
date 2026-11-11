@@ -4,14 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#06231b" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=19" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=19" />
-  <link rel="manifest" href="/manifest.json?v=19" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=81" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=81" />
+  <link rel="manifest" href="/manifest.json?v=81" />
   <title>Yetkili Girişi (Rehber & Acente) | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/login" />
-  <link rel="stylesheet" href="/css/style.css?v=22" />
-  <script src="/vercel-ws-shim.js?v=80"></script>
+  <link rel="stylesheet" href="/css/style.css?v=81" />
+  <script src="/vercel-ws-shim.js?v=81"></script>
   <style>
     .login-shell {
       max-width: 460px;
@@ -55,7 +55,7 @@
   <header class="navbar">
     <div class="container navbar-inner">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=19" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=81" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <span class="brand-title">Rıdvan Yılmaz Turizm</span>
           <span class="brand-sub">Rehber Yayını & Acente Yönetim Girişi</span>
@@ -173,6 +173,12 @@
       localStorage.removeItem('ry_auth_token');
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      localStorage.removeItem('rys_sos_push_receipt');
+      try {
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'SYNC_PUSH_META', kind: 'sos', meta: null });
+        }
+      } catch (_) {}
     }
 
     async function purgePreviousSosPushIfNeeded() {

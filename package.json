@@ -1,6 +1,6 @@
 {
   "name": "ridvanyilmaz-umreses-sistemi",
-  "version": "1.0.0",
+  "version": "1.0.81",
   "description": "Rıdvan Yılmaz Turizm - Canlı Sesli Rehberlik ve Umre Kafile Yönetim Sistemi (UmrahVoice Entegrasyonu)",
   "main": "server.js",
   "engines": {
