@@ -149,9 +149,11 @@ class RysNearExpander {
       const e = this.e[1] + 1.3 * this.e[2] + 0.35 * this.e[3];
       const n = this.n[1] + 1.3 * this.n[2] + 0.35 * this.n[3] + 1e-12;
       const snr = 10 * Math.log10((e + 1e-12) / n);
-      // 2 dB hysteresis stays above the measured stationary noise excess.
-      const rumble = (this.e[1] + this.e[2]) / (this.e[0] + 1e-12) > 0.8;
-      if (this.ready && rumble && snr > (this.hold ? open - 2 : open)) {
+      const sibSnr = 10 * Math.log10((0.4 * this.e[2] + this.e[3] + 1e-12) / (0.4 * this.n[2] + this.n[3] + 1e-12));
+      const effSnr = Math.max(snr, sibSnr - 1.5);
+      // 2 dB hysteresis stays above the measured stationary noise excess; include b3 so /s/-/ş/ onsets open immediately over bus/wind rumble.
+      const rumble = (this.e[1] + this.e[2] + 0.85 * this.e[3]) / (this.e[0] + 1e-12) > 0.8;
+      if (this.ready && rumble && effSnr > (this.hold ? open - 2 : open)) {
         this.hold = 24;
       } else if (this.hold) {
         this.hold--;
@@ -165,12 +167,15 @@ class RysNearExpander {
     if (this.leveler && this.ready) {
       this.lvlEnv += (d * d - this.lvlEnv) * 0.0021;
       const rms = Math.sqrt(this.lvlEnv + 1e-12);
+      const hotPeak = Math.abs(d) * this.agcGain > 0.72;
       if (this.hold > 0) {
         const wantAgc = rms > 0.004 ? Math.min(2.0, Math.max(0.38, Math.pow(0.11 / rms, 0.45))) : 1;
-        this.agcGain += (wantAgc - this.agcGain) * (wantAgc < this.agcGain ? 0.0028 : 0.00018);
+        const atk = wantAgc < this.agcGain ? (hotPeak ? 0.018 : 0.0028) : 0.00018;
+        this.agcGain += (wantAgc - this.agcGain) * atk;
       } else if (this.continuousSpeech && rms > 0.11) {
         const wantAgc = Math.min(1.0, Math.max(0.38, Math.pow(0.11 / rms, 0.45)));
-        this.agcGain += (wantAgc - this.agcGain) * (wantAgc < this.agcGain ? 0.0028 : 0.0004);
+        const atk = wantAgc < this.agcGain ? (hotPeak ? 0.018 : 0.0028) : 0.0004;
+        this.agcGain += (wantAgc - this.agcGain) * atk;
       } else {
         this.agcGain += (1 - this.agcGain) * 0.0004;
       }
@@ -178,7 +183,8 @@ class RysNearExpander {
       this.agcGain += (1 - this.agcGain) * 0.0005;
     }
     const targetScale = this.leveler ? this.agcGain * 0.92 : 0.8;
-    this.outScale += (targetScale - this.outScale) * 0.002;
+    const scaleRate = targetScale < this.outScale && Math.abs(d) * this.outScale > 0.78 ? 0.014 : 0.002;
+    this.outScale += (targetScale - this.outScale) * scaleRate;
     let y = d * this.g * this.outScale;
     if (Math.abs(y) > 0.85) {
       y = Math.sign(y) * (0.85 + 0.13 * Math.tanh((Math.abs(y) - 0.85) / 0.13));

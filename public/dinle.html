@@ -8,17 +8,17 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
-  <link rel="manifest" href="/manifest.json?v=84" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=84" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=84" />
+  <link rel="manifest" href="/manifest.json?v=85" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=85" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=85" />
   <title>Hacı Canlı Dinleme Ekranı | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=84" />
-  <script src="/vercel-ws-shim.js?v=84"></script>
+  <link rel="stylesheet" href="/css/style.css?v=85" />
+  <script src="/vercel-ws-shim.js?v=85"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=84"></script>
+  <script src="/js/umrah-steps-map.js?v=85"></script>
   <style>
     .arabic-text {
       direction: rtl;
@@ -264,7 +264,7 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:540px;">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=84" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=85" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="font-size:1rem; margin:0;">Rıdvan Yılmaz Turizm</h1>
           <span class="brand-sub"><span class="live-dot"></span> <span id="i18n_brandSub">RıdvanSes Hacı Canlı Odası</span></span>
@@ -297,7 +297,7 @@
     <!-- TELEFONA UYGULAMA OLARAK İNDİR (PWA BANNER) -->
     <div class="pwa-install-banner" id="pwaInstallBanner">
       <div style="display:flex; align-items:center; gap:12px; flex:1 1 210px; min-width:0;">
-        <img src="/icons/icon-192.png?v=84" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
+        <img src="/icons/icon-192.png?v=85" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
         <div style="min-width:0;">
           <div id="i18n_pwaBannerTitle" style="font-weight:800; font-size:0.88rem; color:var(--color-gold-bright);">RıdvanSes'i Ana Ekrana Ekleyin</div>
           <div id="i18n_pwaBannerSub" style="font-size:0.75rem; color:#e2e8f0; line-height:1.35;">Mağaza şifresi gerekmeden tek dokunuşla telefonunuza kurun.</div>
@@ -342,7 +342,7 @@
           <label class="label" id="i18n_codeLabel">Kafile / Tur Kodu *</label>
           <input type="text" id="tourCodeInput" class="input" style="font-size:1.25rem; font-weight:800; text-transform:uppercase; text-align:center; letter-spacing:0.08em; border-color:var(--color-gold);" value="RY-KASIM" oninput="syncJoinCodeUi()" required />
           <div id="tourPillsContainer" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; justify-content:center;">
-            <button type="button" class="code-pill" style="padding:5px 12px; font-size:0.76rem; border-radius:99px; border:1px solid var(--color-gold); background:var(--color-gold-soft); font-weight:700; cursor:pointer;" onclick="selectTourCodePill('RY-KASIM')">RY-KASIM (13-14 Kasım • Ömer Ali Gültekin)</button>
+            <button type="button" class="code-pill" style="padding:5px 12px; font-size:0.76rem; border-radius:99px; border:1px solid var(--color-gold); background:var(--color-gold-soft); font-weight:700; cursor:pointer;" onclick="selectTourCodePill('RY-KASIM')">RY-KASIM (13 – 22 Kasım • Ömer Ali Gültekin)</button>
           </div>
         </div>
 
@@ -2948,7 +2948,7 @@
       rxPlayerWorkletLoading=true;window.__ryRxAudioStatus='loading';
       state.timer=setTimeout(()=>failed('load-timeout'),3000);
       let loading;
-      try{loading=ctx.audioWorklet.addModule('/pcm-player-worklet.js?v=84-audio');}
+      try{loading=ctx.audioWorklet.addModule('/pcm-player-worklet.js?v=85-audio');}
       catch(error){failed('load-error');return;}
       Promise.resolve(loading)
         .then(()=>{
@@ -3093,7 +3093,7 @@
         if ((window.__ryLastServerMsgAt || 0) < sent) {
           reconnect();
         }
-      }, 3500);
+      }, 5500);
     }
 
     // PATCH: recovery-v51
@@ -3408,7 +3408,7 @@
       }
       const rms = Math.sqrt(sumSq / sampleCount);
       const pktLevel = Math.min(1, rms * 6.0);
-      const isSilentFrame = pktLevel <= 0.002;
+      const isSilentFrame = pktLevel <= 0.008;
 
       if (pktLevel > 0.015) {
         lastPacketReceivedAt = Date.now();
@@ -4011,7 +4011,11 @@
 
       try {
         const gps = await getPhoneRealGpsPosition();
-        const streetAddr = await reverseGeocodeAddress(gps.lat, gps.lng);
+        // SAHA-03: Bound reverse geocoding to 800ms max so slow/throttled Nominatim behind Saudi CGNAT never delays live SOS delivery!
+        const streetAddr = await Promise.race([
+          reverseGeocodeAddress(gps.lat, gps.lng).catch(() => ''),
+          new Promise((resolve) => setTimeout(() => resolve(''), 800))
+        ]);
         const note = streetAddr
           ? `${streetAddr} (Canlı Telefon GPS ±${gps.accuracy}m)`
           : `Canlı Telefon GPS Konumu (±${gps.accuracy}m Hassasiyet)`;
@@ -4511,7 +4515,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=84').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=85').catch(() => {});
     }
 
     let subscribedBannerDismissed = false;
@@ -4542,7 +4546,7 @@
         return;
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=84').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=85').catch(() => {});
       }
       // iOS WebKit zorunluluğu: setWebPushTour senkron çalışır, Notification.requestPermission() doğrudan dokunuş içinde çağrılır.
       const state = rysWebPushState();
@@ -4809,8 +4813,13 @@
 
     let lastPilgrimWsPingAt = 0;
     let lastPilgrimBgReconnectAt = 0;
+    let lastPilgrimSosFlushAt = 0;
+    let pilgrimDeviceChangeTimer = null;
 
     function pilgrimBackgroundHeartbeatTick() {
+      if (nowAndFlushQueuedSos(Date.now())) {
+        // Periodic SOS queue check completed asynchronously
+      }
       if (!currentTour || intentionalLeave) return;
       const now = Date.now();
       if (isAudioListening) {
@@ -4827,7 +4836,7 @@
         }
       }
       if (ws && ws.readyState === WebSocket.OPEN) {
-        if (now - lastPilgrimWsPingAt >= 10000) {
+        if (!ws.isRelay && !ws._isRelay && now - lastPilgrimWsPingAt >= 10000) {
           lastPilgrimWsPingAt = now;
           try {
             ws.send(JSON.stringify({ type: 'ping', ts: now }));
@@ -4840,6 +4849,19 @@
         const phone = document.getElementById('pilgrimPhoneInput')?.value?.trim() || '';
         connectWebSocket(currentTour.code, roomId, name, phone);
       }
+    }
+
+    function nowAndFlushQueuedSos(nowMs) {
+      if (nowMs - lastPilgrimSosFlushAt < 12000) return false;
+      lastPilgrimSosFlushAt = nowMs;
+      try {
+        const raw = localStorage.getItem('rys_pending_sos_queue');
+        if (raw && raw !== '[]') {
+          flushPendingSosQueue().catch(() => {});
+          return true;
+        }
+      } catch {}
+      return false;
     }
 
     document.addEventListener('visibilitychange', () => {
@@ -4865,8 +4887,10 @@
     if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
       navigator.mediaDevices.addEventListener('devicechange', () => {
         if (isAudioListening) {
-          stopAllActiveSources();
-          setTimeout(() => recoverPilgrimLiveSession(), 250);
+          clearTimeout(pilgrimDeviceChangeTimer);
+          pilgrimDeviceChangeTimer = setTimeout(() => {
+            forceResurrectPilgrimAudio('devicechange');
+          }, 300);
         }
       });
     }
@@ -4893,7 +4917,7 @@
 
     function createSilentWavDataUri() {
       const sampleRate = 8000;
-      const numSamples = sampleRate;
+      const numSamples = sampleRate * 8;
       const buffer = new ArrayBuffer(44 + numSamples * 2);
       const view = new DataView(buffer);
       const writeStr = (offset, str) => {
@@ -4979,8 +5003,8 @@
         artist: `${artist} (${currentTour ? currentTour.code : 'RY-KASIM'})`,
         album,
         artwork: [
-          { src: '/icons/icon-192.png?v=84', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png?v=84', sizes: '512x512', type: 'image/png' }
+          { src: '/icons/icon-192.png?v=85', sizes: '192x192', type: 'image/png' },
+          { src: '/icons/icon-512.png?v=85', sizes: '512x512', type: 'image/png' }
         ]
       });
 

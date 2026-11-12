@@ -8,13 +8,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=84" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=84" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=84" />
+  <link rel="manifest" href="/manifest.json?v=85" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=85" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=85" />
   <title>Rehber (Hoca) Canlı Yayın Stüdyosu | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/rehber" />
-  <link rel="stylesheet" href="/css/style.css?v=84" />
+  <link rel="stylesheet" href="/css/style.css?v=85" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -63,8 +63,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=84"></script>
-  <script src="/js/umrah-steps-map.js?v=84"></script>
+  <script src="/vercel-ws-shim.js?v=85"></script>
+  <script src="/js/umrah-steps-map.js?v=85"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -234,7 +234,7 @@
   <header class="navbar">
     <div class="container navbar-inner">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=84" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=85" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="margin:0; font-size:1.12rem; line-height:1.2;">Rıdvan Yılmaz Turizm</h1>
           <span class="brand-sub"><span class="live-dot"></span> Rehber (Hoca) Canlı Yayın Stüdyosu</span>
@@ -283,7 +283,7 @@
             <div>
               <label class="studio-field-label" for="guideTourSelect">Kafile / Tur Kodu</label>
               <select id="guideTourSelect" class="studio-select" onchange="onTourSelectionChange()">
-                <option value="RY-KASIM" style="color:#000;">RY-KASIM — 13-14 Kasım Umresi (Ömer Ali Gültekin)</option>
+                <option value="RY-KASIM" style="color:#000;">RY-KASIM — 13 – 22 Kasım Umresi (Ömer Ali Gültekin)</option>
               </select>
             </div>
             <div>
@@ -1805,7 +1805,7 @@
         return { highPassHz: 110, lowPassHz: 10000, mudCutDb: -3.0, presenceDb: 3.2, gainBoost: 1.0 };
       }
       if (mode === 'whisper') {
-        return { highPassHz: 75, lowPassHz: 11000, mudCutDb: -1.5, presenceDb: 4.2, gainBoost: 1.35 };
+        return { highPassHz: 80, lowPassHz: 10600, mudCutDb: -2.0, presenceDb: 3.0, gainBoost: 1.28 };
       }
       return { highPassHz: 85, lowPassHz: 10500, mudCutDb: -2.5, presenceDb: 2.0, gainBoost: 1.0 };
     }
@@ -1848,7 +1848,7 @@
 
     function createGuideSilentWavUri() {
       const sampleRate = 8000;
-      const numSamples = sampleRate;
+      const numSamples = sampleRate * 8;
       const buffer = new ArrayBuffer(44 + numSamples * 2);
       const view = new DataView(buffer);
       const writeStr = (offset, str) => {
@@ -1872,7 +1872,9 @@
       }
       const bytes = new Uint8Array(buffer);
       let binary = '';
-      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      for (let i = 0; i < bytes.byteLength; i += 4096) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 4096));
+      }
       return 'data:audio/wav;base64,' + btoa(binary);
     }
 
@@ -1888,8 +1890,8 @@
           artist: `${guideName} (${tourCode})`,
           album: 'Rıdvan Yılmaz Turizm — Rehber Stüdyosu',
           artwork: [
-            { src: '/icons/icon-192.png?v=84', sizes: '192x192', type: 'image/png' },
-            { src: '/icons/icon-512.png?v=84', sizes: '512x512', type: 'image/png' }
+            { src: '/icons/icon-192.png?v=85', sizes: '192x192', type: 'image/png' },
+            { src: '/icons/icon-512.png?v=85', sizes: '512x512', type: 'image/png' }
           ]
         });
         navigator.mediaSession.playbackState = (isMicBroadcasting || isDemoBroadcasting) ? 'playing' : 'paused';
@@ -2184,7 +2186,12 @@
         return;
       }
       if (ws.bufferedAmount > 19200) return;
-      const phraseStart = Boolean(guideWasIdlePaused && !isDtxEligibleSilence);
+      if (guideWasIdlePaused && !isDtxEligibleSilence) {
+        globalThis.guidePhraseStartBurst = 2;
+      } else if (isDtxEligibleSilence) {
+        globalThis.guidePhraseStartBurst = 0;
+      }
+      const phraseStart = Boolean(!isDtxEligibleSilence && (guideWasIdlePaused || (globalThis.guidePhraseStartBurst || 0) > 0));
       try {
         if (ws.isRelay || ws._isRelay) {
           ws.send(JSON.stringify({
@@ -2200,7 +2207,10 @@
         } else {
           ws.send(encodeBinaryAudioPacket(a, guideAudioSeq, Date.now(), phraseStart));
         }
-        if (!isDtxEligibleSilence) guideWasIdlePaused = false;
+        if (!isDtxEligibleSilence) {
+          guideWasIdlePaused = false;
+          if ((globalThis.guidePhraseStartBurst || 0) > 0) globalThis.guidePhraseStartBurst -= 1;
+        }
         else if (globalThis.guideConsecutiveSilentFrames > 3) guideWasIdlePaused = true;
       } catch (e) {
         guideWasIdlePaused = true;
@@ -2266,7 +2276,7 @@
         const zero=own(ctx.createGain());zero.gain.value=0;
         source.connect(highPass);highPass.connect(mudCut);mudCut.connect(presence);presence.connect(lowPass);lowPass.connect(gain);
         const onFrame=message=>{if(current())handleGuideMicFloatChunk(message);};
-        const url='/pcm-capture-worklet.js?v=84-audio';
+        const url='/pcm-capture-worklet.js?v=85-audio';
         const options=()=>({muted:isGuideMicMuted,reject:guideSideVoiceRejectLevel,
           continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade,
           leveler:typeof guideAutoLeveler!=='undefined'?guideAutoLeveler:true});
@@ -2325,8 +2335,15 @@
         guideDeviceChangePending=false;guideLastMicRebuildAt=Date.now();
         const ticket={};guideMicHealTicket=ticket;isHealingGuideMic=true;
         try{
-          disconnectGuideAudioNodes();stopGuideMicrophoneStream(micStream);micStream=null;
           const isHidden=typeof document!=='undefined'&&document.visibilityState==='hidden';
+          // SAHA-01: When screen is locked in pocket (hidden) and existing mic track is still 'live' (e.g. muted by an incoming/rejected phone call),
+          // NEVER kill micStream before setupGuideMicrophoneGraph() succeeds — if background getUserMedia() is denied by iOS/Android,
+          // keeping micStream alive lets OS track.onunmute restore live voice automatically the instant the call ends.
+          if(!isHidden||forced||trackDead){
+            disconnectGuideAudioNodes();stopGuideMicrophoneStream(micStream);micStream=null;
+          }else if(audioCtx&&(audioCtx.state==='suspended'||audioCtx.state==='interrupted')){
+            audioCtx.resume().catch(()=>{});
+          }
           const ctxDead=audioCtx&&(audioCtx.state==='closed'||(!isHidden&&captureStalled&&!forced&&!trackDead&&!trackMuted));
           if(ctxDead&&audioCtx){
             const oldCtx=audioCtx;audioCtx=null;workletModuleLoaded=false;
@@ -2367,6 +2384,12 @@
       }
       if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) {
         connectGuideWs();
+      } else if (ws.readyState === WebSocket.OPEN && !ws.isRelay && !ws._isRelay) {
+        const nowMs = Date.now();
+        if (nowMs - (globalThis.lastGuideWsPingAt || 0) >= 15000) {
+          globalThis.lastGuideWsPingAt = nowMs;
+          try { ws.send(JSON.stringify({ type: 'ping', ts: nowMs })); } catch {}
+        }
       }
     }
 
@@ -3265,7 +3288,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=84');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=85');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -3380,7 +3403,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=84').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=85').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED') {
           if (ev.data.rotated?.sos?.subscriptionToken) {

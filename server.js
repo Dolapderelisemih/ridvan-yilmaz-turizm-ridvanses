@@ -887,9 +887,15 @@ for(const [route,handler] of [['subscribe',rysPushSubscribe],['unsubscribe',rysP
     res.setHeader('Cache-Control','no-store');
     if(!rysPushVapid)return res.status(503).json({success:false,error:'push-unavailable'});
     const clientIp=typeof getClientIp==='function'?getClientIp(req):(req.ip||'local');
-    if(route==='subscribe'&&typeof isIpBucketLocked==='function'&&isIpBucketLocked(clientIp,'push-pin-fail',30)){
-      res.setHeader('Retry-After','60');
-      return res.status(429).json({success:false,error:'rate-limited',message:'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.'});
+    if(route==='subscribe'&&typeof isIpBucketLocked==='function'){
+      const subCode=String(req.body?.tourCode||'RY-KASIM').toUpperCase().trim();
+      const subTour=typeof findRysTour==='function'?findRysTour(subCode):null;
+      const reqSubPin=subTour&&typeof getRequiredTourPin==='function'?getRequiredTourPin(subTour):'';
+      const wrongOrMissingPin=Boolean(reqSubPin&&reqSubPin!==String(req.body?.pin||'').trim()&&typeof req.body?.subscriptionToken!=='string');
+      if(wrongOrMissingPin&&isIpBucketLocked(clientIp,'push-pin-fail',30)){
+        res.setHeader('Retry-After','60');
+        return res.status(429).json({success:false,error:'rate-limited',message:'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.'});
+      }
     }
     try{return res.json(handler(req.body));}
     catch(e){
@@ -991,33 +997,22 @@ function queueRysPushSos(alertItem){
   pumpRysSosPushQueue();
 }
 let activeSmtpConnections=0;
+const pendingSosEmailQueue=[];
 const sosEmailCooldownByTour=new Map();
-function sendEmergencySosEmail(alertItem){
-  if(process.env.NODE_ENV==='test')return;
-  const smtpPass=String(process.env.GMAIL_APP_PASSWORD||'').replace(/\s+/g,'').trim();
-  const smtpUser=String(process.env.ADMIN_USERNAME||'').trim();
-  if(!smtpPass||!smtpUser||!smtpUser.includes('@'))return;
-  if(/^\[TEST\]/i.test(String(alertItem.pilgrimName||''))||alertItem.isTest)return;
-  if(activeSmtpConnections>=2)return;
-  const now=Date.now();
-  const tourKey=String(alertItem.tourCode||'RY-KASIM').toUpperCase().trim();
-  const pilgrimKey=String(alertItem.deviceId||alertItem.pilgrimName||'misafir').trim().toLowerCase().slice(0,80);
-  const compositeKey=`${tourKey}:${pilgrimKey}`;
-  const lastEmailAt=sosEmailCooldownByTour.get(compositeKey)||0;
-  if(now-lastEmailAt<15000)return;
-  if(sosEmailCooldownByTour.size>=256){
-    for(const [k,ts] of sosEmailCooldownByTour)if(now-ts>60000)sosEmailCooldownByTour.delete(k);
-    while(sosEmailCooldownByTour.size>=512){
-      const oldest=sosEmailCooldownByTour.keys().next().value;
-      if(!oldest)break;
-      sosEmailCooldownByTour.delete(oldest);
-    }
-  }
-  sosEmailCooldownByTour.set(compositeKey,now);
+function dispatchSosSmtpNow(alertItem,smtpUser,smtpPass){
   activeSmtpConnections++;
   setImmediate(()=>{
     let released=false;
-    const releaseSmtp=()=>{if(!released){released=true;activeSmtpConnections=Math.max(0,activeSmtpConnections-1);}};
+    const releaseSmtp=()=>{
+      if(!released){
+        released=true;
+        activeSmtpConnections=Math.max(0,activeSmtpConnections-1);
+        if(pendingSosEmailQueue.length>0&&activeSmtpConnections<2){
+          const nextItem=pendingSosEmailQueue.shift();
+          if(nextItem)dispatchSosSmtpNow(nextItem.alertItem,nextItem.smtpUser,nextItem.smtpPass);
+        }
+      }
+    };
     try{
       const tls=require('node:tls');
       const cleanSmtpField=(val,maxLen=240)=>String(val??'').replace(/[\r\n\0]+/g,' ').trim().slice(0,maxLen);
@@ -1072,6 +1067,33 @@ function sendEmergencySosEmail(alertItem){
       sock.on('close',()=>{clearTimeout(timer);releaseSmtp();});
     }catch(e){releaseSmtp();}
   });
+}
+function sendEmergencySosEmail(alertItem){
+  if(process.env.NODE_ENV==='test')return;
+  const smtpPass=String(process.env.GMAIL_APP_PASSWORD||'').replace(/\s+/g,'').trim();
+  const smtpUser=String(process.env.ADMIN_USERNAME||'').trim();
+  if(!smtpPass||!smtpUser||!smtpUser.includes('@'))return;
+  if(/^\[TEST\]/i.test(String(alertItem.pilgrimName||''))||alertItem.isTest)return;
+  const now=Date.now();
+  const tourKey=String(alertItem.tourCode||'RY-KASIM').toUpperCase().trim();
+  const pilgrimKey=String(alertItem.deviceId||alertItem.pilgrimName||'misafir').trim().toLowerCase().slice(0,80);
+  const compositeKey=`${tourKey}:${pilgrimKey}`;
+  const lastEmailAt=sosEmailCooldownByTour.get(compositeKey)||0;
+  if(now-lastEmailAt<15000)return;
+  if(sosEmailCooldownByTour.size>=256){
+    for(const [k,ts] of sosEmailCooldownByTour)if(now-ts>60000)sosEmailCooldownByTour.delete(k);
+    while(sosEmailCooldownByTour.size>=512){
+      const oldest=sosEmailCooldownByTour.keys().next().value;
+      if(!oldest)break;
+      sosEmailCooldownByTour.delete(oldest);
+    }
+  }
+  sosEmailCooldownByTour.set(compositeKey,now);
+  if(activeSmtpConnections>=2){
+    if(pendingSosEmailQueue.length<16)pendingSosEmailQueue.push({alertItem,smtpUser,smtpPass});
+    return;
+  }
+  dispatchSosSmtpNow(alertItem,smtpUser,smtpPass);
 }
 
 // Live Room State in Memory
@@ -1595,12 +1617,30 @@ function joinTourRateLimiter(req, res, next) {
   const valid = !!tour && !(reqPin && reqPin !== String(body.pin || '').trim());
   return (valid ? joinTourAdmissionLimiter : joinTourFailureLimiter)(req, res, next);
 }
-const sosRateLimiter = createRateLimiter({
+const sosIpAdmissionLimiter = createRateLimiter({
   scope: 'sos-http',
   windowMs: 60000,
-  max: 20,
+  max: 240,
   message: 'Acil SOS bildiriminiz zaten iletildi. Lütfen bekleyiniz.'
 });
+function sosRateLimiter(req, res, next) {
+  const rawId = String(req?.body?.id || '').trim();
+  if (rawId && Array.isArray(db?.sosAlerts) && db.sosAlerts.some((s) => s && s.id === rawId)) {
+    return next();
+  }
+  const devId = String(req?.body?.deviceId || '').trim().slice(0, 80);
+  if (devId && typeof consumeIpBucket === 'function') {
+    const ip = typeof getClientIp === 'function' ? getClientIp(req) : (req.ip || 'local');
+    if (!consumeIpBucket(`${ip}:${devId}`, 'sos-dev', 8, 60000)) {
+      res.setHeader('Retry-After', '60');
+      return res.status(429).json({
+        success: false,
+        message: 'Acil SOS bildiriminiz zaten iletildi. Lütfen bekleyiniz.'
+      });
+    }
+  }
+  return sosIpAdmissionLimiter(req, res, next);
+}
 const demoRequestRateLimiter = createRateLimiter({
   windowMs: 60000,
   max: 15,
@@ -2215,11 +2255,11 @@ function processClientJsonMessageV49(ctx, msg) {
       ? getRequiredTourPin(matchedTour)
       : (matchedTour.pinProtected || matchedTour.pin ? String(matchedTour.pin || '').trim() : '');
     if (!rysCanGuide(principal, tourCode) && requiredFamilyPin) {
-      if (typeof isIpBucketLocked === 'function' && ctx.clientIp && isIpBucketLocked(ctx.clientIp, 'ws-pin-fail', 60)) {
-        ws.send(JSON.stringify({ type: 'pin-error', code: 'rate-limited', message: 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.' }));
-        return;
-      }
       if (requiredFamilyPin !== String(msg.pin || '').trim()) {
+        if (typeof isIpBucketLocked === 'function' && ctx.clientIp && isIpBucketLocked(ctx.clientIp, 'ws-pin-fail', 60)) {
+          ws.send(JSON.stringify({ type: 'pin-error', code: 'rate-limited', message: 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.' }));
+          return;
+        }
         if (typeof consumeIpBucket === 'function' && ctx.clientIp && String(msg.pin || '').trim().length > 0) {
           if (!consumeIpBucket(ctx.clientIp, 'ws-pin-fail', 60, 60000)) {
             ws.send(JSON.stringify({ type: 'pin-error', code: 'rate-limited', message: 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.' }));
@@ -2287,11 +2327,11 @@ function processClientJsonMessageV49(ctx, msg) {
       ? getRequiredTourPin(matchedTour)
       : (matchedTour && (matchedTour.pinProtected || matchedTour.pin) ? String(matchedTour.pin || '').trim() : '');
     if (role !== 'guide' && !rysCanGuide(principal, tourCode) && requiredJoinPin) {
-      if (typeof isIpBucketLocked === 'function' && ctx.clientIp && isIpBucketLocked(ctx.clientIp, 'ws-pin-fail', 60)) {
-        ws.send(JSON.stringify({ type: 'pin-error', code: 'rate-limited', message: 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.' }));
-        return;
-      }
       if (requiredJoinPin !== String(msg.pin || '').trim()) {
+        if (typeof isIpBucketLocked === 'function' && ctx.clientIp && isIpBucketLocked(ctx.clientIp, 'ws-pin-fail', 60)) {
+          ws.send(JSON.stringify({ type: 'pin-error', code: 'rate-limited', message: 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.' }));
+          return;
+        }
         if (typeof consumeIpBucket === 'function' && ctx.clientIp && String(msg.pin || '').trim().length > 0) {
           if (!consumeIpBucket(ctx.clientIp, 'ws-pin-fail', 60, 60000)) {
             ws.send(JSON.stringify({ type: 'pin-error', code: 'rate-limited', message: 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.' }));
@@ -2590,9 +2630,13 @@ function processClientJsonMessageV49(ctx, msg) {
     }
 
     case 'sos-trigger': {
-      if (typeof consumeIpBucket === 'function') {
+      const wsSosId = String(msg.id || '').trim();
+      const alreadyRecorded = Boolean(wsSosId && Array.isArray(db?.sosAlerts) && db.sosAlerts.some((s) => s && s.id === wsSosId));
+      if (!alreadyRecorded && typeof consumeIpBucket === 'function') {
         const sosIp = ctx.clientIp || ctx.clientId || 'local';
-        if (!consumeIpBucket(sosIp, 'ws-sos', 20, 60000)) break;
+        const sosDev = String(sender.deviceId || ctx.clientId || 'anon').trim().slice(0, 80);
+        if (!consumeIpBucket(sosIp, 'ws-sos', 240, 60000)) break;
+        if (!consumeIpBucket(`${sosIp}:${sosDev}`, 'ws-sos-dev', 8, 60000)) break;
       }
       const createdWsSos = recordAndBroadcastSosAlert({
         id: msg.id,
@@ -3010,13 +3054,13 @@ function handleRysNativeHandoff(ctx,msg){
     if(!raw||!['join','family-subscribe','admin-subscribe'].includes(raw.type)||
       JSON.stringify(raw).length>8192){fail('invalid-subscription');return true;}
     const request=JSON.parse(JSON.stringify(raw));
-    if(typeof isIpBucketLocked==='function'&&ctx.clientIp&&isIpBucketLocked(ctx.clientIp,'ws-pin-fail',60)&&(request.type==='family-subscribe'||request.type==='join'&&request.role!=='guide')){
-      fail('rate-limited');return true;
-    }
     const invalid=validateRysHandoff(ctx,request);
     if(invalid){
-      if(invalid==='pin-required'&&typeof consumeIpBucket==='function'&&ctx.clientIp&&String(request.pin||'').trim().length>0){
-        if(!consumeIpBucket(ctx.clientIp,'ws-pin-fail',60,60000)){fail('rate-limited');return true;}
+      if(invalid==='pin-required'&&ctx.clientIp){
+        if(typeof isIpBucketLocked==='function'&&isIpBucketLocked(ctx.clientIp,'ws-pin-fail',60)){fail('rate-limited');return true;}
+        if(typeof consumeIpBucket==='function'&&String(request.pin||'').trim().length>0){
+          if(!consumeIpBucket(ctx.clientIp,'ws-pin-fail',60,60000)){fail('rate-limited');return true;}
+        }
       }
       fail(invalid);return true;
     }
@@ -3963,22 +4007,13 @@ app.get('/api/trips/:code/steps', (req, res) => {
   const headerPin = typeof decodeTourPinHeader === 'function' ? decodeTourPinHeader(req) : String(req.headers['x-tour-pin'] || '');
   const suppliedPin = String(headerPin || req.query?.pin || '').trim();
   const reqIp = getClientIp(req);
-  if (requiresPin && !isAuthedForTour && suppliedPin.length > 0) {
-    if (isIpBucketLocked(reqIp, 'steps-pin-fail', 60)) {
+  if (requiresPin && !isAuthedForTour && suppliedPin.length > 0 && suppliedPin !== String(rawTour.pin).trim()) {
+    if (isIpBucketLocked(reqIp, 'steps-pin-fail', 60) || !consumeIpBucket(reqIp, 'steps-pin-fail', 60, 60000)) {
       return res.status(429).json({
         success: false,
         error: 'rate-limited',
         message: 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.'
       });
-    }
-    if (suppliedPin !== String(rawTour.pin).trim()) {
-      if (!consumeIpBucket(reqIp, 'steps-pin-fail', 60, 60000)) {
-        return res.status(429).json({
-          success: false,
-          error: 'rate-limited',
-          message: 'Çok fazla hatalı PIN denemesi yapıldı. Lütfen 1 dakika bekleyiniz.'
-        });
-      }
     }
   }
   const pinSatisfied = !requiresPin || isAuthedForTour || suppliedPin === String(rawTour.pin).trim();

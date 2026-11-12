@@ -201,8 +201,9 @@ class RysPcmPlayerProcessor extends AudioWorkletProcessor {
     if(this.expected===null)this.expected=m.seq;
     let d=rysDiff(m.seq,this.expected);
     if(d<0&&!this.playing&&d>=-12){this.expected=m.seq;d=0;}
-    // Deliberate DTX silence gap followed by phraseStart: advance/re-anchor expected cleanly without late-drop or resync fault.
-    if(m.phraseStart&&this.q.size===0&&(!this.playing||this.missing>0)&&d>=-16){
+    // Deliberate DTX silence gap followed by phraseStart (or starved >=120ms recovery if phraseStart packet dropped on 4G):
+    // advance/re-anchor expected cleanly without late-drop, 500ms backlog inflation, or resync fault.
+    if(this.q.size===0&&((m.phraseStart&&(!this.playing||this.missing>0)&&d>=-16)||(!m.phraseStart&&this.playing&&this.missing>=6&&d>=6&&d<=32))){
       this.expected=m.seq;d=0;this.missing=0;this.lastArrival=null;this.lastSeq=null;
       this.pendingQueueBlend=this.playing&&this.haveHistory;
     }

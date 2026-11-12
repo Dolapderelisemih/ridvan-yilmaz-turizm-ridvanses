@@ -1,22 +1,30 @@
 // PATCH: sw-v53
 // PATCH: sw-v53
 // PATCH: sw-v53
-const CACHE_NAME = 'ridvanses-pwa-v84';
+const CACHE_NAME = 'ridvanses-pwa-v85';
 const PUSH_META_CACHE = 'ridvanses-push-meta-v1';
+const CORE_SHELL_ASSETS = [
+  '/',
+  '/dinle',
+  '/css/style.css?v=85',
+  '/vercel-ws-shim.js?v=85',
+  '/pcm-player-worklet.js?v=85-audio',
+  '/manifest.json'
+];
 const ASSETS_TO_CACHE = [
   '/',
   '/dinle',
   '/rota',
   '/ani-kitabi',
   '/kullanim-rehberi',
-  '/css/style.css?v=84',
-  '/vercel-ws-shim.js?v=84',
+  '/css/style.css?v=85',
+  '/vercel-ws-shim.js?v=85',
   '/vendor/leaflet/leaflet.js',
   '/vendor/leaflet/leaflet.css',
   '/vendor/mqtt/mqtt.min.js',
-  '/js/umrah-steps-map.js?v=84',
-  '/pcm-capture-worklet.js?v=84-audio',
-  '/pcm-player-worklet.js?v=84-audio',
+  '/js/umrah-steps-map.js?v=85',
+  '/pcm-capture-worklet.js?v=85-audio',
+  '/pcm-player-worklet.js?v=85-audio',
   '/manifest.json',
   '/icons/icon-512.png',
   '/icons/icon-512-maskable.png',
@@ -26,19 +34,44 @@ const ASSETS_TO_CACHE = [
   '/icons/app-logo.png'
 ];
 
+function fetchWithSwTimeout(req, timeoutMs) {
+  if (typeof AbortController === 'undefined' || typeof setTimeout !== 'function') {
+    return fetch(req);
+  }
+  const ac = new AbortController();
+  const timer = setTimeout(() => {
+    try { ac.abort(); } catch (e) {}
+  }, timeoutMs);
+  const cleanup = () => {
+    if (typeof clearTimeout === 'function') clearTimeout(timer);
+  };
+  try {
+    return fetch(req, { signal: ac.signal }).then(
+      (res) => { cleanup(); return res; },
+      (err) => { cleanup(); throw err; }
+    );
+  } catch (err) {
+    cleanup();
+    return fetch(req);
+  }
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => {
-        if (typeof cache.add === 'function') {
-          return Promise.allSettled(ASSETS_TO_CACHE.map((asset) => cache.add(asset)));
-        }
-        return cache.addAll(ASSETS_TO_CACHE);
-      })
-      .catch(() => {})
+    caches.open(CACHE_NAME).then(async (cache) => {
+      if (typeof cache.add === 'function') {
+        await Promise.all(CORE_SHELL_ASSETS.map((asset) => cache.add(asset)));
+        const coreSet = new Set(CORE_SHELL_ASSETS);
+        const optionalAssets = ASSETS_TO_CACHE.filter((asset) => !coreSet.has(asset));
+        await Promise.allSettled(optionalAssets.map((asset) => cache.add(asset)));
+      } else {
+        await cache.addAll(ASSETS_TO_CACHE);
+      }
+      if (typeof self.skipWaiting === 'function') {
+        await self.skipWaiting();
+      }
+    })
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -89,7 +122,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       (async () => {
         const cached = await caches.match(event.request);
-        const netUpdate = fetch(event.request)
+        const netUpdate = fetchWithSwTimeout(event.request, 4000)
           .then((res) => {
             if (res && res.ok && res.status === 200 && res.type === 'basic') {
               const copy = res.clone();
@@ -110,7 +143,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    fetch(event.request)
+    fetchWithSwTimeout(event.request, 4000)
       .then((res) => {
         if (res && res.ok && res.status === 200 && res.type === 'basic') {
           const copy = res.clone();
