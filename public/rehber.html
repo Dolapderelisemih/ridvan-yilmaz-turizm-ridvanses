@@ -8,13 +8,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=85" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=85" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=85" />
+  <link rel="manifest" href="/manifest.json?v=86" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=86" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=86" />
   <title>Rehber (Hoca) Canlı Yayın Stüdyosu | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/rehber" />
-  <link rel="stylesheet" href="/css/style.css?v=85" />
+  <link rel="stylesheet" href="/css/style.css?v=86" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -63,8 +63,8 @@
       window.location.href = '/login?next=/rehber';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=85"></script>
-  <script src="/js/umrah-steps-map.js?v=85"></script>
+  <script src="/vercel-ws-shim.js?v=86"></script>
+  <script src="/js/umrah-steps-map.js?v=86"></script>
   <style>
     .console-wrap {
       max-width: 1220px;
@@ -234,7 +234,7 @@
   <header class="navbar">
     <div class="container navbar-inner">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=85" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=86" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="margin:0; font-size:1.12rem; line-height:1.2;">Rıdvan Yılmaz Turizm</h1>
           <span class="brand-sub"><span class="live-dot"></span> Rehber (Hoca) Canlı Yayın Stüdyosu</span>
@@ -295,7 +295,7 @@
             </div>
             <div>
               <label class="studio-field-label" for="guideNameSelect">Rehber Hoca Seçimi</label>
-              <select id="guideNameSelect" class="studio-select" onchange="switchGuideRoom()">
+              <select id="guideNameSelect" class="studio-select" onchange="onGuideNameChange()">
                 <option value="Ömer Ali Gültekin" style="color:#000;">Ömer Ali Gültekin (Kasım Umresi Rehberi)</option>
                 <option value="Rıdvan Yılmaz Hoca" style="color:#000;">Rıdvan Yılmaz Hoca (Baş Rehber)</option>
               </select>
@@ -670,6 +670,9 @@
       if (isSharingGuideLocation) {
         stopGuideLocationSharing();
       }
+      if (ws && (ws.isRelay || ws._isRelay) && typeof ws._flushAndPoll === 'function') {
+        try { ws._flushAndPoll(); } catch {}
+      }
       updateTawafButtonsUi(null);
       const code = document.getElementById('guideTourSelect').value;
       const gSel = document.getElementById('guideNameSelect');
@@ -700,7 +703,12 @@
           if (data && Array.isArray(data.tours) && data.tours.length > 0) {
             guideToursCache = data.tours;
             const freshTour = data.tours.find((t) => t.code === activeCode);
-            if (freshTour) syncGuideRoomSelectOptions(freshTour);
+            if (freshTour) {
+              const roomBefore = document.getElementById('guideRoomSelect')?.value || 'genel';
+              syncGuideRoomSelectOptions(freshTour);
+              const roomAfter = document.getElementById('guideRoomSelect')?.value || 'genel';
+              if (roomAfter !== roomBefore) switchGuideRoom();
+            }
           }
           if (data && Array.isArray(data.sosAlerts)) {
             activeSosAlerts = data.sosAlerts.filter((a) => a.status === 'active' && (!a.tourCode || a.tourCode === activeCode));
@@ -974,6 +982,21 @@
     }
 
     function handleGuideRoomRemovedFallback(removedId, customMessage) {
+      // Never auto-hijack 'genel' with takeover:true when a custom room is removed while live
+      if (isMicBroadcasting || guideMicStarting) {
+        stopMicBroadcast();
+        const micBtn = document.getElementById('startMicBtn');
+        if (micBtn) {
+          micBtn.disabled = false;
+          micBtn.textContent = '🎙️ Gerçek Mikrofonla Canlı Yayını Başlat';
+          micBtn.className = 'btn btn-gold';
+        }
+        const srcLabel = document.getElementById('micSourceLabel');
+        if (srcLabel) srcLabel.textContent = 'Yayın Kaynağı: Özel oda kapatıldığı için durduruldu';
+      }
+      if (isDemoBroadcasting && typeof toggleDemoBroadcast === 'function') {
+        toggleDemoBroadcast();
+      }
       const rSel = document.getElementById('guideRoomSelect');
       const targetId = String(removedId || rSel?.value || '').trim().toLowerCase();
       if (targetId && targetId !== 'genel' && targetId !== 'siyer') {
@@ -993,7 +1016,7 @@
       switchGuideRoom();
       const banner = document.getElementById('guideAuthErrorBanner');
       if (banner) {
-        banner.textContent = customMessage || 'ℹ️ Özel sohbet odası kapatıldığı için Genel & Tavaf odasına geçildi.';
+        banner.textContent = customMessage || 'ℹ️ Özel sohbet odası kapatıldığı için yayın durdurulup Genel & Tavaf odasına geçildi.';
         banner.style.display = 'block';
       }
     }
@@ -1155,6 +1178,10 @@
           renderGuideStepsList(msg.steps);
         }
 
+        if (msg.type === 'tawaf-stage') {
+          updateTawafButtonsUi(msg.activeTawafStage ? msg.activeTawafStage.id : null);
+        }
+
         if (msg.type === 'sos-alert' && msg.alert) {
           const selCode = (document.getElementById('guideTourSelect')?.value || '').trim().toUpperCase();
           if (selCode && msg.alert.tourCode && String(msg.alert.tourCode).toUpperCase() !== selCode) return;
@@ -1238,8 +1265,12 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ status: newStatus })
             });
-            const data = await res.json();
-            if (data && data.success) {
+            if (res.status === 401) {
+              handleGuideAuthExpired();
+              return;
+            }
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data && data.success) {
               renderGuideStepsList(data.steps);
               if (action === 'activate') {
                 const topicEl = document.getElementById('topicInput');
@@ -1248,9 +1279,12 @@
                   updateTopic();
                 }
               }
+            } else {
+              alert(data.message || data.error || 'Durak durumu güncellenemedi.');
             }
           } catch (err) {
             console.error('Durak güncellenemedi:', err);
+            alert('Bağlantı hatası: Durak durumu güncellenemedi.');
           } finally {
             if (btnEl) btnEl.disabled = false;
           }
@@ -1305,8 +1339,12 @@
             status: 'active'
           })
         });
-        const data = await res.json();
-        if (data && data.success) {
+        if (res.status === 401) {
+          handleGuideAuthExpired();
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data && data.success) {
           renderGuideStepsList(data.steps);
           document.getElementById('gStepTitle').value = '';
           document.getElementById('gStepLoc').value = '';
@@ -1317,6 +1355,8 @@
             topicEl.value = `${title} — ${locationLabel}`;
             updateTopic();
           }
+        } else {
+          alert(data.message || data.error || 'Yeni durak eklenemedi.');
         }
       } catch (e) {
         alert('Yeni durak eklenemedi.');
@@ -1325,6 +1365,38 @@
           btn.disabled = false;
           btn.textContent = '📍 GPS Konumumla Kaydet & Yayınla';
         }
+      }
+    }
+
+    function onGuideNameChange() {
+      updateGuideMediaSession();
+      if (!guideBootstrapReady) return;
+      if (ws && ws.readyState === WebSocket.OPEN && !window.ryGuideWsHalted && !window.ryGuideSessionReplaced) {
+        const tourCode = document.getElementById('guideTourSelect').value || 'RY-KASIM';
+        const roomId = String(document.getElementById('guideRoomSelect')?.value || 'genel').trim().toLowerCase();
+        const guideName = document.getElementById('guideNameSelect').value || 'Ömer Ali Gültekin';
+        const guidePeerId =
+          typeof window.ryGetDynamicChannelId === 'function'
+            ? window.ryGetDynamicChannelId(tourCode, roomId)
+            : `ridvanses-${String(tourCode).toLowerCase()}-${roomId}-guide-v26`;
+        const authToken = (window.ryReadAuthToken ? window.ryReadAuthToken() : (localStorage.getItem('ry_auth_token') || '').trim());
+        try {
+          ws.send(JSON.stringify({
+            type: 'join',
+            role: 'guide',
+            token: authToken,
+            deviceId: guideDeviceId,
+            audioSourceId: guideAudioSourceId,
+            takeover: Boolean(isMicBroadcasting || isDemoBroadcasting || window.ryGuideTabTakeoverConfirmed),
+            tourCode,
+            roomId,
+            name: guideName,
+            guidePeerId
+          }));
+        } catch {}
+      } else if (!window.ryGuideAuthExpired) {
+        window.ryGuideWsHalted = false;
+        connectGuideWs();
       }
     }
 
@@ -1345,7 +1417,7 @@
         try { window.ryBroadcastGuideStream(micStream, activeTourCode, activeRoomId); } catch {}
       }
       if (!guideBootstrapReady) return;
-      if (ws && ws.readyState === WebSocket.OPEN) {
+      if (ws && ws.readyState === WebSocket.OPEN && !ws._relayFenced) {
         sendGuideJoinAndSync();
       } else {
         connectGuideWs();
@@ -1526,7 +1598,7 @@
     function selectTawafStage(stageId) {
       if (!stageId || !TAWAF_STAGES[stageId]) {
         updateTawafButtonsUi(null);
-        if (ws && ws.readyState === WebSocket.OPEN) {
+        if (ws && ws.readyState === WebSocket.OPEN && !ws._relayFenced) {
           ws.send(JSON.stringify({ type: 'tawaf-stage-update', clear: true }));
         }
         return;
@@ -1536,7 +1608,7 @@
       const topicEl = document.getElementById('topicInput');
       if (topicEl) topicEl.value = st.topic;
 
-      if (ws && ws.readyState === WebSocket.OPEN) {
+      if (ws && ws.readyState === WebSocket.OPEN && !ws._relayFenced) {
         ws.send(JSON.stringify({
           type: 'tawaf-stage-update',
           stageId: st.id,
@@ -1553,13 +1625,18 @@
     function updateTopic() {
       const topic = document.getElementById('topicInput').value.trim();
       const currentlyLive = Boolean(isMicBroadcasting || isDemoBroadcasting);
-      if (ws && ws.readyState === WebSocket.OPEN) {
+      if (ws && ws.readyState === WebSocket.OPEN && !ws._relayFenced) {
         ws.send(JSON.stringify({
           type: 'guide-stream-state',
           isLive: currentlyLive,
           broadcastMode: isMicBroadcasting ? 'mic' : (isDemoBroadcasting ? 'demo-synth' : 'idle'),
           topic
         }));
+      } else if (!window.ryGuideAuthExpired) {
+        window.ryGuideWsHalted = false;
+        connectGuideWs();
+        const label = document.getElementById('micSourceLabel');
+        if (label) label.textContent = 'Başlık kaydedildi; bağlantı yenilenince hacılara aktarılacak...';
       }
       updateGuideMediaSession();
     }
@@ -1572,6 +1649,18 @@
 
     function renderRoomState(room) {
       if (!room) return;
+      if (Array.isArray(room.tourRooms) && room.tourRooms.length > 0 && room.tourCode) {
+        const activeCode = String(document.getElementById('guideTourSelect')?.value || '').trim().toUpperCase();
+        const rCode = String(room.tourCode || '').trim().toUpperCase();
+        const tObj = guideToursCache.find((t) => String(t.code || '').toUpperCase() === rCode);
+        if (tObj) {
+          tObj.rooms = room.tourRooms;
+          if (room.tourName) tObj.name = room.tourName;
+          if (activeCode === rCode && typeof syncGuideRoomSelectOptions === 'function') {
+            syncGuideRoomSelectOptions(tObj);
+          }
+        }
+      }
       if (typeof room.activeTawafStage !== 'undefined') {
         updateTawafButtonsUi(room.activeTawafStage ? room.activeTawafStage.id : null);
       }
@@ -1890,8 +1979,8 @@
           artist: `${guideName} (${tourCode})`,
           album: 'Rıdvan Yılmaz Turizm — Rehber Stüdyosu',
           artwork: [
-            { src: '/icons/icon-192.png?v=85', sizes: '192x192', type: 'image/png' },
-            { src: '/icons/icon-512.png?v=85', sizes: '512x512', type: 'image/png' }
+            { src: '/icons/icon-192.png?v=86', sizes: '192x192', type: 'image/png' },
+            { src: '/icons/icon-512.png?v=86', sizes: '512x512', type: 'image/png' }
           ]
         });
         navigator.mediaSession.playbackState = (isMicBroadcasting || isDemoBroadcasting) ? 'playing' : 'paused';
@@ -2125,20 +2214,24 @@
       const a = m.samples;
       const rms = m.rms;
       const level = Math.min(1, rms * 6);
-      animateGuideSpectrum(level);
+      const nowMs = Date.now();
+      if (!globalThis.__rysLastGuideUiPaintAt || nowMs - globalThis.__rysLastGuideUiPaintAt >= 65) {
+        globalThis.__rysLastGuideUiPaintAt = nowMs;
+        animateGuideSpectrum(level);
 
-      const label = document.getElementById('dbMeterText');
-      if (label) {
-        if (isGuideMicMuted) {
-          label.textContent = '🔇 Mikrofon Geçici Sessizde (Özel Konuşma Modu)';
-        } else if (!m.ready) {
-          label.textContent = '400 ms ortam ölçümü; ses iletiliyor, kısa süre bekleyin';
-        } else {
-          const dbVal = rms > 0.0001 ? Math.max(-48, Math.min(0, Math.round(20 * Math.log10(rms)))) : -48;
-          label.textContent =
-            !m.gateOpen || dbVal <= -42
-              ? '🛡️ Yakın-Alan Ses Kilidi: Yan Sesler Engelleniyor'
-              : `🎙️ Rehber Sesi Yayında (${dbVal} dB • Saf Stüdyo Kristal HD)`;
+        const label = document.getElementById('dbMeterText');
+        if (label) {
+          if (isGuideMicMuted) {
+            label.textContent = '🔇 Mikrofon Geçici Sessizde (Özel Konuşma Modu)';
+          } else if (!m.ready) {
+            label.textContent = '400 ms ortam ölçümü; ses iletiliyor, kısa süre bekleyin';
+          } else {
+            const dbVal = rms > 0.0001 ? Math.max(-48, Math.min(0, Math.round(20 * Math.log10(rms)))) : -48;
+            label.textContent =
+              !m.gateOpen || dbVal <= -42
+                ? '🛡️ Yakın-Alan Ses Kilidi: Yan Sesler Engelleniyor'
+                : `🎙️ Rehber Sesi Yayında (${dbVal} dB • Saf Stüdyo Kristal HD)`;
+          }
         }
       }
 
@@ -2149,8 +2242,8 @@
         return;
       }
 
-      const nowMs = Date.now();
-      if (guideAudioGuardChannel) {
+      if (guideAudioGuardChannel && (!globalThis.__rysLastGuideGuardPingAt || nowMs - globalThis.__rysLastGuideGuardPingAt >= 200)) {
+        globalThis.__rysLastGuideGuardPingAt = nowMs;
         try {
           guideAudioGuardChannel.postMessage({
             type: 'guide-mic-active',
@@ -2252,17 +2345,30 @@
         }
         check();
         // Guide studio has zero speaker playback during live broadcast; disabling OS echoCancellation prevents mobile HFP/VoIP telephony DSP degradation.
+        const getUserMediaTimed = (constraints, timeoutMs = 5000) => {
+          let tid = null;
+          return Promise.race([
+            navigator.mediaDevices.getUserMedia(constraints),
+            new Promise((_, reject) => {
+              tid = setTimeout(() => {
+                const err = new Error('Mikrofon cihazı yanıt vermedi (zaman aşımı).');
+                err.name = 'TimeoutError';
+                reject(err);
+              }, timeoutMs);
+            })
+          ]).finally(() => { if (tid) clearTimeout(tid); });
+        };
         const prefDevId=typeof selectedGuideMicDeviceId==='string'&&selectedGuideMicDeviceId?selectedGuideMicDeviceId:'';
         const micAudioConstraints={echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1,sampleRate:48000,
           ...(prefDevId?{deviceId:{exact:prefDevId}}:{})};
-        try{stream=await navigator.mediaDevices.getUserMedia({audio:micAudioConstraints});}
+        try{stream=await getUserMediaTimed({audio:micAudioConstraints}, prefDevId ? 4000 : 6000);}
         catch(error){check();
           try{
-            if(prefDevId)stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1,deviceId:{ideal:prefDevId}}});
+            if(prefDevId)stream=await getUserMediaTimed({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1,deviceId:{ideal:prefDevId}}}, 4000);
             else throw error;
           }catch(eMid){check();
-            try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}});}
-            catch(e2){check();stream=await navigator.mediaDevices.getUserMedia({audio:true});}
+            try{stream=await getUserMediaTimed({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}}, 5000);}
+            catch(e2){check();stream=await getUserMediaTimed({audio:true}, 5000);}
           }
         }
         check();
@@ -2276,7 +2382,7 @@
         const zero=own(ctx.createGain());zero.gain.value=0;
         source.connect(highPass);highPass.connect(mudCut);mudCut.connect(presence);presence.connect(lowPass);lowPass.connect(gain);
         const onFrame=message=>{if(current())handleGuideMicFloatChunk(message);};
-        const url='/pcm-capture-worklet.js?v=85-audio';
+        const url='/pcm-capture-worklet.js?v=86-audio';
         const options=()=>({muted:isGuideMicMuted,reject:guideSideVoiceRejectLevel,
           continuousSpeech:guideContinuousSpeech,comfortFade:guideComfortFade,
           leveler:typeof guideAutoLeveler!=='undefined'?guideAutoLeveler:true});
@@ -2336,10 +2442,9 @@
         const ticket={};guideMicHealTicket=ticket;isHealingGuideMic=true;
         try{
           const isHidden=typeof document!=='undefined'&&document.visibilityState==='hidden';
-          // SAHA-01: When screen is locked in pocket (hidden) and existing mic track is still 'live' (e.g. muted by an incoming/rejected phone call),
-          // NEVER kill micStream before setupGuideMicrophoneGraph() succeeds — if background getUserMedia() is denied by iOS/Android,
-          // keeping micStream alive lets OS track.onunmute restore live voice automatically the instant the call ends.
-          if(!isHidden||forced||trackDead){
+          // Preserve working live micStream until setupGuideMicrophoneGraph() commits the new stream atomically!
+          // Only tear down upfront when track is already dead or non-forced foreground capture stalled.
+          if(trackDead||(!isHidden&&!forced&&captureStalled)){
             disconnectGuideAudioNodes();stopGuideMicrophoneStream(micStream);micStream=null;
           }else if(audioCtx&&(audioCtx.state==='suspended'||audioCtx.state==='interrupted')){
             audioCtx.resume().catch(()=>{});
@@ -2349,14 +2454,41 @@
             const oldCtx=audioCtx;audioCtx=null;workletModuleLoaded=false;
             oldCtx.onstatechange=null;try{oldCtx.close().catch(()=>{});}catch(e){}
           }
-          const installed=await setupGuideMicrophoneGraph();
+          let installed;
+          try {
+            installed = await setupGuideMicrophoneGraph();
+          } catch (firstErr) {
+            if (firstErr?.name === 'AbortError' || !selectedGuideMicDeviceId) throw firstErr;
+            // Selected device failed/timed out — fall back to system default mic cleanly instead of freezing live audio
+            selectedGuideMicDeviceId = '';
+            const selEl = document.getElementById('guideMicDeviceSelect');
+            if (selEl) selEl.value = '';
+            const lbl = document.getElementById('micSourceLabel');
+            if (lbl) lbl.textContent = '⚠️ Seçilen mikrofon açılamadı, sistem varsayılan mikrofonuna geçiliyor...';
+            installed = await setupGuideMicrophoneGraph();
+          }
           if(!isMicBroadcasting||installed!==guideMicGeneration||guideMicHealTicket!==ticket)return;
           if(typeof window.ryBroadcastGuideStream==='function')window.ryBroadcastGuideStream(micStream,
             document.getElementById('guideTourSelect')?.value||'RY-KASIM',document.getElementById('guideRoomSelect')?.value||'genel');
           if(typeof updateGuideBtMicWarning==='function')updateGuideBtMicWarning(micStream,true);
           else{const label=document.getElementById('micSourceLabel');if(label)label.textContent='Yayın Kaynağı: 24 kHz (Mikrofon Yenilendi)';}
-        }catch(error){if(error.name!=='AbortError')console.warn('Mikrofon kurtarma beklemede:',error);}
-        finally{if(guideMicHealTicket===ticket){guideMicHealTicket=null;isHealingGuideMic=false;}}
+        }catch(error){
+          if(error.name!=='AbortError'){
+            console.warn('Mikrofon kurtarma beklemede:',error);
+            const lbl = document.getElementById('micSourceLabel');
+            if (lbl && isMicBroadcasting && !micStream) {
+              lbl.textContent = '⚠️ Mikrofon bağlantısı bekleniyor — lütfen mikrofon seçimini kontrol edin';
+            }
+          }
+        }
+        finally{
+          if(guideMicHealTicket===ticket){
+            guideMicHealTicket=null;isHealingGuideMic=false;
+            if(guideDeviceChangePending&&isMicBroadcasting){
+              setTimeout(()=>{if(isMicBroadcasting&&!isHealingGuideMic)healGuideMicrophoneIfNeeded(false);},50);
+            }
+          }
+        }
       }else if(audioCtx&&(audioCtx.state==='suspended'||audioCtx.state==='interrupted'))audioCtx.resume().catch(()=>{});
     }
 
@@ -2459,6 +2591,14 @@
         loopbackRecordedChunks = [];
         isVoiceLoopbackTesting = true;
         isCapturingLoopbackSamples = true;
+        if (testBtn) {
+          testBtn.disabled = true;
+          testBtn.textContent = '⏳ Mikrofon Açılıyor...';
+        }
+        if (statusBox) {
+          statusBox.style.display = 'block';
+          statusBox.innerHTML = '⏳ <strong>Mikrofon hazırlanıyor...</strong>';
+        }
         const installed=await setupGuideMicrophoneGraph();
         if(installed!==guideMicGeneration||testVersion!==guideMicGeneration)return;
 
@@ -2569,10 +2709,19 @@
       }
 
       const startVersion=guideMicGeneration+1;guideMicStarting=true;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Mikrofon Hazırlanıyor...';
+      }
       try {
         const installed=await setupGuideMicrophoneGraph();
         if(installed!==guideMicGeneration||startVersion!==guideMicGeneration)return;
 
+        if (window.ryGuideWsHalted) {
+          window.ryGuideWsHalted = false;
+          const banner = document.getElementById('guideAuthErrorBanner');
+          if (banner) banner.style.display = 'none';
+        }
         if (needsTakeover) {
           window.ryGuideWsHalted = false;
           window.ryGuideTabTakeoverConfirmed = true;
@@ -2635,7 +2784,18 @@
           errorMsg = 'Mikrofon şu anda başka bir program (Zoom, Discord vb.) tarafından kullanılıyor.';
         }
         alert(errorMsg);
-      }finally{if(startVersion===guideMicGeneration)guideMicStarting=false;}
+      }finally{
+        if(startVersion===guideMicGeneration){
+          guideMicStarting=false;
+          if(btn){
+            btn.disabled=false;
+            if(!isMicBroadcasting){
+              btn.textContent='🎙️ Gerçek Mikrofonla Canlı Yayını Başlat';
+              btn.className='btn btn-gold';
+            }
+          }
+        }
+      }
     }
 
     let broadcastStartedAtTs = 0;
@@ -2681,7 +2841,14 @@
       }
       const timerEl = document.getElementById('broadcastTimer');
       const statusTxtEl = document.getElementById('broadcastStatusText');
-      if (statusTxtEl) statusTxtEl.textContent = 'STÜDYO BAĞLANTISI AKTİF';
+      if (statusTxtEl) {
+        if (window.ryGuideAuthExpired) statusTxtEl.textContent = 'OTURUM SÜRESİ DOLDU';
+        else if (window.ryGuideSessionReplaced) statusTxtEl.textContent = 'YAYIN BAŞKA SEKMEDE DEVRALINDI';
+        else if (window.ryGuideTabPausedByOtherTab) statusTxtEl.textContent = 'BEKLEMEDE (BAŞKA SEKME YAYINDA)';
+        else if (window.ryGuideWsHalted) statusTxtEl.textContent = 'STÜDYO BAĞLANTISI DURDURULDU';
+        else if (!ws || ws.readyState === WebSocket.CLOSED) statusTxtEl.textContent = 'BAĞLANTI YENİLENİYOR...';
+        else statusTxtEl.textContent = 'STÜDYO BAĞLANTISI AKTİF';
+      }
       if (timerEl) {
         timerEl.textContent = 'CANLI AKÜSTİK DECK';
         timerEl.style.color = '';
@@ -2746,7 +2913,7 @@
           btn.className = 'btn btn-primary';
         }
         if (srcLabel) srcLabel.textContent = 'Yayın Kaynağı: Canlı Demo Ses Akışı';
-        if (ws && ws.readyState === WebSocket.OPEN) {
+        if (ws && ws.readyState === WebSocket.OPEN && !ws._relayFenced) {
           ws.send(JSON.stringify({
             type: 'guide-stream-state',
             isLive: true,
@@ -2760,7 +2927,7 @@
           if(!isDemoBroadcasting||generation!==guideDemoGeneration)return;
           const level = 0.4 + Math.random() * 0.45;
           animateGuideSpectrum(level);
-          if (ws && ws.readyState === WebSocket.OPEN) {
+          if (ws && ws.readyState === WebSocket.OPEN && !ws._relayFenced) {
             ws.send(JSON.stringify({
               type: 'audio-chunk',
               level,
@@ -2774,7 +2941,7 @@
         clearInterval(demoInterval);
         if (!isMicBroadcasting) {
           stopBroadcastClock();
-          if (ws && ws.readyState === WebSocket.OPEN) {
+          if (ws && ws.readyState === WebSocket.OPEN && !ws._relayFenced) {
             ws.send(JSON.stringify({
               type: 'guide-stream-state',
               isLive: false,
@@ -2791,12 +2958,16 @@
       }
     }
 
+    let guideSpectrumBarsCache = null;
     function animateGuideSpectrum(level) {
-      const bars = specEl.querySelectorAll('.spectrum-bar');
-      bars.forEach((b, i) => {
-        const h = Math.min(42, Math.max(6, level * 38 + Math.sin(Date.now() / 100 + i) * 10));
-        b.style.height = `${h.toFixed(0)}px`;
-      });
+      if (!guideSpectrumBarsCache || !guideSpectrumBarsCache.length) {
+        guideSpectrumBarsCache = specEl ? Array.from(specEl.querySelectorAll('.spectrum-bar')) : [];
+      }
+      const phaseBase = Date.now() / 100;
+      for (let i = 0; i < guideSpectrumBarsCache.length; i++) {
+        const h = Math.min(42, Math.max(6, level * 38 + Math.sin(phaseBase + i) * 10));
+        guideSpectrumBarsCache[i].style.height = `${h.toFixed(0)}px`;
+      }
     }
 
     function fillQuickAnn(title, msg) {
@@ -2808,7 +2979,7 @@
       const title = document.getElementById('annTitleInput').value.trim();
       const message = document.getElementById('annMsgInput').value.trim();
       if (!title || !message) return;
-      if (ws && ws.readyState === WebSocket.OPEN) {
+      if (ws && ws.readyState === WebSocket.OPEN && !ws._relayFenced) {
         ws.send(JSON.stringify({
           type: 'quick-announcement',
           title,
@@ -3039,7 +3210,7 @@
     function onGuideLocNoteEdit() {
       if (isSharingGuideLocation && lastGuideLocState) {
         lastGuideLocState.note = document.getElementById('guideLocNoteInput').value.trim() || 'Kafile Rehber Hocamızın Canlı Konumu';
-        if (ws && ws.readyState === WebSocket.OPEN) {
+        if (ws && ws.readyState === WebSocket.OPEN && !ws._relayFenced) {
           ws.send(JSON.stringify({
             type: 'guide-location-update',
             ...lastGuideLocState
@@ -3116,7 +3287,7 @@
       }
       frameWrap.style.display = 'block';
 
-      if (ws && ws.readyState === WebSocket.OPEN) {
+      if (ws && ws.readyState === WebSocket.OPEN && !ws._relayFenced) {
         ws.send(JSON.stringify({
           type: 'guide-location-update',
           ...lastGuideLocState
@@ -3288,7 +3459,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=85');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=86');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -3403,7 +3574,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=85').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=86').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED') {
           if (ev.data.rotated?.sos?.subscriptionToken) {

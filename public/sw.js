@@ -1,14 +1,14 @@
 // PATCH: sw-v53
 // PATCH: sw-v53
 // PATCH: sw-v53
-const CACHE_NAME = 'ridvanses-pwa-v85';
+const CACHE_NAME = 'ridvanses-pwa-v86';
 const PUSH_META_CACHE = 'ridvanses-push-meta-v1';
 const CORE_SHELL_ASSETS = [
   '/',
   '/dinle',
-  '/css/style.css?v=85',
-  '/vercel-ws-shim.js?v=85',
-  '/pcm-player-worklet.js?v=85-audio',
+  '/css/style.css?v=86',
+  '/vercel-ws-shim.js?v=86',
+  '/pcm-player-worklet.js?v=86-audio',
   '/manifest.json'
 ];
 const ASSETS_TO_CACHE = [
@@ -17,14 +17,14 @@ const ASSETS_TO_CACHE = [
   '/rota',
   '/ani-kitabi',
   '/kullanim-rehberi',
-  '/css/style.css?v=85',
-  '/vercel-ws-shim.js?v=85',
+  '/css/style.css?v=86',
+  '/vercel-ws-shim.js?v=86',
   '/vendor/leaflet/leaflet.js',
   '/vendor/leaflet/leaflet.css',
   '/vendor/mqtt/mqtt.min.js',
-  '/js/umrah-steps-map.js?v=85',
-  '/pcm-capture-worklet.js?v=85-audio',
-  '/pcm-player-worklet.js?v=85-audio',
+  '/js/umrah-steps-map.js?v=86',
+  '/pcm-capture-worklet.js?v=86-audio',
+  '/pcm-player-worklet.js?v=86-audio',
   '/manifest.json',
   '/icons/icon-512.png',
   '/icons/icon-512-maskable.png',

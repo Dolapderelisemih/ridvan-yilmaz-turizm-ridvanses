@@ -709,7 +709,8 @@
         }
         if (parsed.type === 'join') {
           const old=this._joinContext;
-          if(old&&(old.tourCode!==parsed.tourCode||old.roomId!==parsed.roomId||old.role!==parsed.role||
+          const sameRoomAndRole = Boolean(old && old.tourCode === parsed.tourCode && old.roomId === parsed.roomId && old.role === parsed.role);
+          if(old&&(!sameRoomAndRole||
             parsed.audioSourceId!==undefined&&old.audioSourceId!==parsed.audioSourceId)){
             this._lastGuideState=null;
             this._audioCoalescer?.clear();this._sendQueue=this._sendQueue.filter(m=>m.type!=='audio-chunk');
@@ -717,7 +718,9 @@
           this._isAdmin=false;
           this._subscriptionType='join';this._transportGeneration=(this._transportGeneration||0)+1;
           this._joinContext = parsed;
-          if (this._isRelay) this._initMqttBus(parsed, false);
+          if (this._isRelay && (!sameRoomAndRole || !this._mqttClients || !this._mqttClients.length)) {
+            this._initMqttBus(parsed, false);
+          }
         } else if (parsed.type === 'family-subscribe') {
           this._isAdmin=false;
           this._subscriptionType='family-subscribe';this._transportGeneration=(this._transportGeneration||0)+1;
@@ -970,6 +973,8 @@
             this._deliverIncomingMessage({
               type:'auth-error',
               status:res.status,
+              code:payload?.code||undefined,
+              assignedTour:payload?.assignedTour||undefined,
               error:payload?.error||'unauthorized',
               message:payload?.message||'Oturum süresi doldu veya yetkiniz bulunmuyor.'
             });
@@ -1045,6 +1050,7 @@
   // Yetkili oturumlarda (/panel ve /rehber) çerez engeli olsa bile tüm /api/ isteklerine Authorization başlığını otomatik ekle
   // ve .vercel.app üzerinden girildiğinde tüm /api/ isteklerini ana Cidde VDS sunucusuna (https://ses.ridvanyilmazturizm.com) yönlendir
   const VDS_API_ORIGIN = 'https://ses.ridvanyilmazturizm.com';
+  window.ryVdsOrigin = VDS_API_ORIGIN;
   const origFetch = window.fetch;
   if (typeof origFetch === 'function') {
     window.fetch = function (input, init) {

@@ -1269,11 +1269,13 @@ function serializeRoom(room, includePilgrimDetails = true) {
     }
   }
 
+  const roomTour = findRysTour(room.tourCode);
   return {
     key: room.key,
     tourCode: room.tourCode,
     roomId: room.roomId,
     tourName: room.tourName,
+    tourRooms: Array.isArray(roomTour?.rooms) ? roomTour.rooms : [],
     guideName: room.guideName,
     isLive: room.isLive,
     broadcastMode: room.broadcastMode,
@@ -3257,6 +3259,16 @@ function serveRysRelay(session,req,res,token,context,messages=[]){
     return res.status(400).json({error:'relay-context-invalid'});
   if(!acceptRysRelayRequestOrder(session,req.method==='GET'?req.query:req.body,res))return;
   if(!applyRysRelayAuth(session,req,token,context)){
+    const relayCred=[extractAuthTokenFromReq(req),token,context?.token].find(isValidAuthToken);
+    const relayPrincipal=rysPrincipal(relayCred);
+    if(relayPrincipal&&relayPrincipal.assignedTour&&context?.type==='join'&&context.role==='guide'&&!rysCanGuide(relayPrincipal,context.tourCode)){
+      return res.status(401).json({
+        error:'relay-auth-required',
+        code:'forbidden-tour',
+        assignedTour:relayPrincipal.assignedTour,
+        message:`Hesabınız yalnızca ${relayPrincipal.assignedTour} kafilesi için yetkilendirilmiştir.`
+      });
+    }
     retireRysRelayOnAuthFailure(session);
     return res.status(401).json({error:'relay-auth-required'});
   }
@@ -3674,14 +3686,11 @@ function sanitizeCustomRoomsList(rawRooms, guideName) {
   ];
   const seen = new Set(['genel', 'siyer']);
   if (!rawRooms) return baseRooms;
-  const parseRoomToken = (entry) => {
-    const trimmed = String(entry || '').trim();
-    if (!trimmed) return null;
-    const sep = trimmed.indexOf(':');
-    if (sep > 0) {
-      return { id: trimmed.slice(0, sep).trim(), name: trimmed.slice(sep + 1).trim() };
-    }
-    const slug = trimmed
+  const slugifyRoomId = (raw) =>
+    String(raw || '')
+      .trim()
+      .replace(/İ/g, 'i')
+      .replace(/I/g, 'i')
       .toLowerCase()
       .replace(/ğ/g, 'g')
       .replace(/ü/g, 'u')
@@ -3691,29 +3700,30 @@ function sanitizeCustomRoomsList(rawRooms, guideName) {
       .replace(/ç/g, 'c')
       .replace(/[^a-z0-9_-]+/g, '-')
       .replace(/^-+|-+$/g, '')
-      .slice(0, 28);
-    return { id: slug, name: trimmed };
+      .slice(0, 32);
+  const parseRoomToken = (entry) => {
+    const trimmed = String(entry || '').trim();
+    if (!trimmed) return null;
+    const sep = trimmed.indexOf(':');
+    if (sep > 0) {
+      return { id: slugifyRoomId(trimmed.slice(0, sep)), name: trimmed.slice(sep + 1).trim() };
+    }
+    return { id: slugifyRoomId(trimmed), name: trimmed };
   };
   let items = [];
   if (Array.isArray(rawRooms)) {
     items = rawRooms.map((item) => (typeof item === 'string' ? parseRoomToken(item) : item)).filter(Boolean);
   } else if (typeof rawRooms === 'string' && rawRooms.trim()) {
-    items = rawRooms
-      .split(/[\r\n,]+/)
-      .map(parseRoomToken)
-      .filter(Boolean);
+    const parts = /[\r\n;]/.test(rawRooms) ? rawRooms.split(/[\r\n;]+/) : rawRooms.split(/[,]+/);
+    items = parts.map(parseRoomToken).filter(Boolean);
   }
   for (const item of items) {
     if (baseRooms.length >= 12) break;
-    const id = String((item && item.id) || '')
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9_-]/g, '')
-      .slice(0, 32);
+    const id = slugifyRoomId(item && item.id);
     const name = String((item && item.name) || id)
       .trim()
       .slice(0, 80);
-    if (!id || id.length < 2 || seen.has(id) || !name) continue;
+    if (!id || id.length < 1 || seen.has(id) || !name) continue;
     seen.add(id);
     baseRooms.push({ id, name, guide: guideName, active: true });
   }
@@ -3793,7 +3803,9 @@ app.post('/api/tours', requireAuth, (req, res) => {
   }
   broadcastToAdmins({
     type: 'admin-rooms-update',
-    rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true))
+    rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true)),
+    tours: db.tours,
+    guides: db.guides
   });
   res.json({ success: true, tour: newTour, steps: db.journeySteps[newTour.code] });
 });
@@ -3810,6 +3822,7 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
   }
   const body = req.body || {};
   const prevPin = String(tour.pin || '').trim();
+  const prevGuideName = String(tour.guideName || '').trim();
   if (typeof body.name === 'string' && body.name.trim()) tour.name = body.name.trim().slice(0, 140);
   if (typeof body.dateText === 'string' && body.dateText.trim()) tour.dateText = body.dateText.trim().slice(0, 80);
   if (typeof body.duration === 'string' && body.duration.trim()) tour.duration = body.duration.trim().slice(0, 80);
@@ -3837,7 +3850,10 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
       });
     }
     for (const r of getTourRooms(tour.code)) {
-      r.guideName = tour.guideName;
+      // Never overwrite a different live speaker's name when admin edits unrelated tour fields
+      if (tour.guideName !== prevGuideName && (!r.isLive || r.guideName === prevGuideName)) {
+        r.guideName = tour.guideName;
+      }
       r.tourName = tour.name;
     }
   }
@@ -3853,31 +3869,34 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
   }
   if (body.customRooms !== undefined || Array.isArray(body.rooms)) {
     const prevConfiguredRoomIds = new Set(
-      (Array.isArray(tour.rooms) ? tour.rooms : []).map((rm) => rm && rm.id).filter(Boolean)
+      (Array.isArray(tour.rooms) ? tour.rooms : [])
+        .map((rm) => String((rm && rm.id) || '').trim().toLowerCase())
+        .filter((id) => id && id !== 'genel' && id !== 'siyer')
     );
     tour.rooms = sanitizeCustomRoomsList(body.customRooms !== undefined ? body.customRooms : body.rooms, tour.guideName);
-    const nextAllowedRoomIds = new Set(['genel', 'siyer', ...tour.rooms.map((rm) => rm && rm.id).filter(Boolean)]);
+    const nextAllowedRoomIds = new Set(['genel', 'siyer', ...tour.rooms.map((rm) => String((rm && rm.id) || '').trim().toLowerCase()).filter(Boolean)]);
     const removedSet = new Set(
       (Array.isArray(tour.removedRoomIds) ? tour.removedRoomIds : [])
         .map((x) => String(x || '').trim().toLowerCase())
         .filter((x) => x && !nextAllowedRoomIds.has(x))
     );
     for (const prevId of prevConfiguredRoomIds) {
-      const lowerPrev = String(prevId || '').trim().toLowerCase();
-      if (lowerPrev && lowerPrev !== 'genel' && lowerPrev !== 'siyer' && !nextAllowedRoomIds.has(lowerPrev)) {
-        removedSet.add(lowerPrev);
+      if (!nextAllowedRoomIds.has(prevId)) {
+        removedSet.add(prevId);
       }
     }
-    const roomRemovedPayload = JSON.stringify({
-      type: 'subscription-error',
-      code: 'room-removed',
-      fallbackRoomId: 'genel',
-      message: 'Bu özel oda acente tarafından kapatıldı. Lütfen Genel Yayın odasına geçiniz.'
-    });
     let droppedCustomRoom = false;
     for (const r of getTourRooms(tour.code)) {
-      if (!nextAllowedRoomIds.has(r.roomId) && (prevConfiguredRoomIds.has(r.roomId) || (r.roomId !== 'genel' && r.roomId !== 'siyer'))) {
-        removedSet.add(String(r.roomId || '').trim().toLowerCase());
+      const lowerRoomId = String(r.roomId || '').trim().toLowerCase();
+      if (!nextAllowedRoomIds.has(lowerRoomId) && prevConfiguredRoomIds.has(lowerRoomId)) {
+        const roomRemovedPayload = JSON.stringify({
+          type: 'subscription-error',
+          code: 'room-removed',
+          roomId: lowerRoomId,
+          fallbackRoomId: 'genel',
+          message: 'Bu özel oda acente tarafından kapatıldı. Lütfen Genel Yayın odasına geçiniz.'
+        });
+        removedSet.add(lowerRoomId);
         droppedCustomRoom = true;
         for (const [cid, client] of Array.from(r.clients.entries())) {
           try {
@@ -3925,13 +3944,14 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
     evictTourLiveSubscribers(tour.code, 'pin-changed');
   }
   saveState(db);
-  const firstRoom = getTourRooms(tour.code)[0];
-  if (firstRoom) {
-    broadcastRoomState(firstRoom);
+  for (const r of getTourRooms(tour.code)) {
+    broadcastRoomState(r);
   }
   broadcastToAdmins({
     type: 'admin-rooms-update',
-    rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true))
+    rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true)),
+    tours: db.tours,
+    guides: db.guides
   });
   return res.json({ success: true, tour });
 });
@@ -3946,6 +3966,9 @@ app.delete('/api/tours/:id', requireAuth, (req, res) => {
   const deletedTour = db.tours.find((t) => t.id === targetId || String(t.code || '').toUpperCase() === targetUpper);
   if (!deletedTour) {
     return res.status(404).json({ success: false, message: 'Silinecek kafile bulunamadı.' });
+  }
+  if (db.tours.length <= 1) {
+    return res.status(400).json({ success: false, message: 'Sistemde en az bir aktif kafile bulunmalıdır.' });
   }
   const deletedCode = String(deletedTour.code || '').toUpperCase().trim();
   db.tours = db.tours.filter((t) => t.id !== deletedTour.id);
@@ -3968,7 +3991,10 @@ app.delete('/api/tours/:id', requireAuth, (req, res) => {
   saveState(db);
   broadcastToAdmins({
     type: 'admin-rooms-update',
-    rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true))
+    rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true)),
+    tours: db.tours,
+    guides: db.guides,
+    announcements: db.announcements
   });
   res.json({ success: true });
 });
@@ -4225,6 +4251,11 @@ app.post('/api/guides', requireAuth, (req, res) => {
   };
   db.guides.push(guide);
   saveState(db);
+  broadcastToAdmins({
+    type: 'admin-rooms-update',
+    rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true)),
+    guides: db.guides
+  });
   res.json({ success: true, guide });
 });
 
@@ -4243,6 +4274,11 @@ app.delete('/api/guides/:id', requireAuth, (req, res) => {
   }
   db.guides = db.guides.filter((g) => g.id !== targetId);
   saveState(db);
+  broadcastToAdmins({
+    type: 'admin-rooms-update',
+    rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true)),
+    guides: db.guides
+  });
   return res.json({ success: true });
 });
 
