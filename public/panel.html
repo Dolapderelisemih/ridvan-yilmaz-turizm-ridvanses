@@ -8,14 +8,14 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=86" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=86" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=86" />
+  <link rel="manifest" href="/manifest.json?v=87" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=87" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=87" />
   <title>Acente & Kafile Yönetim Paneli | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/panel" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=86" />
+  <link rel="stylesheet" href="/css/style.css?v=87" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -72,9 +72,9 @@
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=86"></script>
+  <script src="/vercel-ws-shim.js?v=87"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=86"></script>
+  <script src="/js/umrah-steps-map.js?v=87"></script>
   <style>
     .dashboard-layout {
       display: grid;
@@ -233,7 +233,7 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:100%;">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=86" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=87" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="margin:0; font-size:1.12rem; line-height:1.2;">Rıdvan Yılmaz Turizm — Acente Yönetim Paneli</h1>
           <span class="brand-sub"><span class="live-dot"></span> Osmangazi / Bursa Merkez Operasyon & Kafile Kontrolü</span>
@@ -1116,8 +1116,8 @@
         const stillExists = appState.tours.some((t) => t.code === prev);
         if (stillExists) qrSel.value = prev;
         syncQrRoomSelectOptions();
-        if (!stillExists && typeof generateQrView === 'function') {
-          try { generateQrView(); } catch {}
+        if (!stillExists && typeof generateQrAndInvite === 'function') {
+          try { generateQrAndInvite(); } catch {}
         }
       }
 
@@ -1952,7 +1952,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=86');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=87');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -2052,7 +2052,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=86').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=87').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED') {
           if (ev.data.rotated?.sos?.subscriptionToken) {

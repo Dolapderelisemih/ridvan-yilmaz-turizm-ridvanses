@@ -8,17 +8,17 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
-  <link rel="manifest" href="/manifest.json?v=86" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=86" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=86" />
+  <link rel="manifest" href="/manifest.json?v=87" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=87" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=87" />
   <title>Hacı Canlı Dinleme Ekranı | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=86" />
-  <script src="/vercel-ws-shim.js?v=86"></script>
+  <link rel="stylesheet" href="/css/style.css?v=87" />
+  <script src="/vercel-ws-shim.js?v=87"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=86"></script>
+  <script src="/js/umrah-steps-map.js?v=87"></script>
   <style>
     .arabic-text {
       direction: rtl;
@@ -264,7 +264,7 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:540px;">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=86" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=87" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="font-size:1rem; margin:0;">Rıdvan Yılmaz Turizm</h1>
           <span class="brand-sub"><span class="live-dot"></span> <span id="i18n_brandSub">RıdvanSes Hacı Canlı Odası</span></span>
@@ -297,7 +297,7 @@
     <!-- TELEFONA UYGULAMA OLARAK İNDİR (PWA BANNER) -->
     <div class="pwa-install-banner" id="pwaInstallBanner">
       <div style="display:flex; align-items:center; gap:12px; flex:1 1 210px; min-width:0;">
-        <img src="/icons/icon-192.png?v=86" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
+        <img src="/icons/icon-192.png?v=87" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
         <div style="min-width:0;">
           <div id="i18n_pwaBannerTitle" style="font-weight:800; font-size:0.88rem; color:var(--color-gold-bright);">RıdvanSes'i Ana Ekrana Ekleyin</div>
           <div id="i18n_pwaBannerSub" style="font-size:0.75rem; color:#e2e8f0; line-height:1.35;">Mağaza şifresi gerekmeden tek dokunuşla telefonunuza kurun.</div>
@@ -2476,8 +2476,8 @@
             document.getElementById('liveTopicText').textContent = r.currentTopic;
             if (Array.isArray(r.tourRooms) && r.tourRooms.length > 0 && r.tourCode) {
               const rCode = String(r.tourCode || '').trim().toUpperCase();
-              const cached = typeof availableTours !== 'undefined' && Array.isArray(availableTours)
-                ? availableTours.find((t) => String(t.code || '').toUpperCase() === rCode)
+              const cached = typeof availableToursCache !== 'undefined' && Array.isArray(availableToursCache)
+                ? availableToursCache.find((t) => String(t.code || '').toUpperCase() === rCode)
                 : null;
               if (cached) {
                 cached.rooms = r.tourRooms;
@@ -2648,6 +2648,9 @@
 
         if (msg.type === 'announcement-deleted' && msg.id) {
           const targetId = String(msg.id);
+          if (Array.isArray(window._loadedAnnouncements)) {
+            window._loadedAnnouncements = window._loadedAnnouncements.filter((a) => !a || String(a.id) !== targetId);
+          }
           const container = document.getElementById('announcementsList');
           if (container) {
             Array.from(container.querySelectorAll('[data-ann-id]')).forEach((el) => {
@@ -2699,28 +2702,41 @@
       }
     }
 
+    var lastSpeakingUiState = null;
+    var lastSpeakingUiLang = null;
+    var lastLatencyUiPaintAt = 0;
+
     function updateGuideSpeakingIndicator(speaking, sentAtTs) {
-      window.__ryGuideSpeakingNow = Boolean(speaking);
+      const nextSpeaking = Boolean(speaking);
+      window.__ryGuideSpeakingNow = nextSpeaking;
+      const now = Date.now();
+      const stateOrLangChanged = nextSpeaking !== lastSpeakingUiState || currentLang !== lastSpeakingUiLang;
+      if (!stateOrLangChanged && (!nextSpeaking || now - lastLatencyUiPaintAt < 400)) return;
       const strip = document.getElementById('guideVoiceStatusStrip');
       const txt = document.getElementById('guideVoiceStateText');
       const latTxt = document.getElementById('pilgrimPacketLatencyText');
       if (!txt || !strip) return;
       const dict = I18N[currentLang] || I18N.tr;
-      if (speaking) {
-        txt.innerHTML = dict.guideSpeakingHtml || '🎙️ <strong style="color:#4ade80;">Hoca Şu An Konuşuyor</strong> (Canlı Akış)';
-        strip.style.borderColor = 'rgba(74, 222, 128, 0.45)';
-        strip.style.background = 'rgba(21, 128, 61, 0.22)';
-        if (latTxt) {
-          let rttMs = sentAtTs ? Math.max(18, Math.min(240, Math.abs(Date.now() - Number(sentAtTs)))) : 35;
+      if (nextSpeaking) {
+        if (stateOrLangChanged) {
+          txt.innerHTML = dict.guideSpeakingHtml || '🎙️ <strong style="color:#4ade80;">Hoca Şu An Konuşuyor</strong> (Canlı Akış)';
+          strip.style.borderColor = 'rgba(74, 222, 128, 0.45)';
+          strip.style.background = 'rgba(21, 128, 61, 0.22)';
+        }
+        if (latTxt && (stateOrLangChanged || now - lastLatencyUiPaintAt >= 400)) {
+          lastLatencyUiPaintAt = now;
+          let rttMs = sentAtTs ? Math.max(18, Math.min(240, Math.abs(now - Number(sentAtTs)))) : 35;
           if (!Number.isFinite(rttMs) || rttMs > 240) rttMs = 38;
           latTxt.textContent = `24 kHz HD • ~${rttMs}ms`;
         }
-      } else {
+      } else if (stateOrLangChanged) {
         txt.textContent = dict.guideWaiting || '⏸️ Hoca Beklemede — Bağlantınız Aktif';
         strip.style.borderColor = 'rgba(255, 255, 255, 0.14)';
         strip.style.background = 'rgba(0, 0, 0, 0.28)';
         if (latTxt) latTxt.textContent = (typeof getExtraUiDict === 'function' && getExtraUiDict().latencyReady) || '24 kHz HD • Hazır';
       }
+      lastSpeakingUiState = nextSpeaking;
+      lastSpeakingUiLang = currentLang;
     }
 
     function renderLiveTawafStage(stage) {
@@ -2865,9 +2881,37 @@
       }
     }
 
+    var sameDeviceGuideDuckUntil = 0;
+    var sameDeviceGuideDuckRestoreTimer = null;
+
+    function applyPilgrimEffectiveGain() {
+      if (!gainNode || !audioCtx) return;
+      const ducked = Date.now() < sameDeviceGuideDuckUntil;
+      const volSlider = document.getElementById('volumeSlider');
+      const targetVol = ducked ? 0 : (volSlider ? Number(volSlider.value) / 100 : 1);
+      try {
+        gainNode.gain.setTargetAtTime(Math.max(0, Math.min(1.5, targetVol)), audioCtx.currentTime, 0.015);
+      } catch {
+        gainNode.gain.value = targetVol;
+      }
+    }
+
     try {
       if (typeof BroadcastChannel !== 'undefined') {
         pilgrimAudioGuardChannel = new BroadcastChannel('ridvanses_audio_guard');
+        pilgrimAudioGuardChannel.onmessage = (ev) => {
+          const m = ev?.data;
+          if (!m || m.type !== 'guide-mic-active') return;
+          // Same-device anti-howling protection: if a Guide tab on this same device is broadcasting live,
+          // smoothly duck this listener tab's speaker output so microphone never picks up acoustic echo.
+          sameDeviceGuideDuckUntil = Date.now() + 2200;
+          applyPilgrimEffectiveGain();
+          if (sameDeviceGuideDuckRestoreTimer) clearTimeout(sameDeviceGuideDuckRestoreTimer);
+          sameDeviceGuideDuckRestoreTimer = setTimeout(() => {
+            sameDeviceGuideDuckRestoreTimer = null;
+            applyPilgrimEffectiveGain();
+          }, 2300);
+        };
       }
     } catch {}
 
@@ -2977,7 +3021,7 @@
       rxPlayerWorkletLoading=true;window.__ryRxAudioStatus='loading';
       state.timer=setTimeout(()=>failed('load-timeout'),3000);
       let loading;
-      try{loading=ctx.audioWorklet.addModule('/pcm-player-worklet.js?v=86-audio');}
+      try{loading=ctx.audioWorklet.addModule('/pcm-player-worklet.js?v=87-audio');}
       catch(error){failed('load-error');return;}
       Promise.resolve(loading)
         .then(()=>{
@@ -3168,12 +3212,17 @@
             clearInterval(interruptionRecoveryTimer);
             interruptionRecoveryTimer = null;
           }
-          if (rxPlayerWorkletNode && !rxPlayerWorkletAlive && lastRxWorkletHeartbeatAt === 1) {
-            rebuildPilgrimAudioEngine('processor-error');
+          const workletFrozen = Boolean(
+            rxPlayerWorkletNode &&
+            lastRxWorkletHeartbeatAt > 0 &&
+            (lastRxWorkletHeartbeatAt === 1 || (!rxPlayerWorkletAlive && Date.now() - lastRxWorkletHeartbeatAt > 1500) || Date.now() - lastRxWorkletHeartbeatAt > 2200)
+          );
+          if (workletFrozen && Date.now() - lastAudioEngineRebuildAt > 3000) {
+            rebuildPilgrimAudioEngine(lastRxWorkletHeartbeatAt === 1 ? 'processor-error' : 'worklet-frozen-' + trigger);
           }
         } else if (
           Date.now() - lastAudioEngineRebuildAt > 4500 &&
-          (trigger === 'user-gesture' || document.visibilityState === 'visible' || wasSystemAudioInterrupted)
+          (trigger === 'user-gesture' || trigger === 'devicechange' || trigger === 'bg-heartbeat' || document.visibilityState === 'visible' || wasSystemAudioInterrupted)
         ) {
           rebuildPilgrimAudioEngine('clock-stalled-' + trigger);
           verifyPilgrimWebSocketAfterInterruption();
@@ -3472,20 +3521,10 @@
           forceResurrectPilgrimAudio('incoming-audio-packet');
           return;
         }
-        if (!isSilent && pilgrimAudioGuardChannel) {
-          let sq = 0;
-          for (let i = 0; i < a.length; i += 4) {
-            sq += a[i] * a[i];
-          }
-          const spkRms = Math.sqrt(sq / Math.max(1, Math.ceil(a.length / 4)));
-          try {
-            pilgrimAudioGuardChannel.postMessage({ type: 'pilgrim-speaker-rms', rms: spkRms, ts: Date.now() });
-          } catch {}
-        }
         if (
           typeof window !== 'undefined' &&
           !rxPlayerWorkletNode &&
-          (window.__ryRxAudioStatus === 'unsupported' || window.__ryRxAudioStatus === 'load-error' || window.__ryRxAudioStatus === 'load-timeout') &&
+          (window.__ryRxAudioStatus === 'unsupported' || window.__ryRxAudioStatus === 'load-error' || window.__ryRxAudioStatus === 'load-timeout' || (window.__ryRxAudioStatus === 'loading' && (window.__ryRxPlayerLoad?.failures || 0) >= 1)) &&
           audioCtx &&
           gainNode &&
           typeof audioCtx.createBuffer === 'function' &&
@@ -3583,21 +3622,35 @@
       setTimeout(() => playGentleHarmonyNote(880), 140);
     }
 
+    var pilgrimSpectrumBarsCache = null;
+    var lastPilgrimSpectrumPaintAt = 0;
+
+    function getPilgrimSpectrumBars() {
+      if (!pilgrimSpectrumBarsCache || !pilgrimSpectrumBarsCache.length) {
+        pilgrimSpectrumBarsCache = specContainer ? Array.from(specContainer.querySelectorAll('.spectrum-bar')) : [];
+      }
+      return pilgrimSpectrumBarsCache;
+    }
+
     function animateSpectrumFromLevel(level) {
-      const bars = specContainer.querySelectorAll('.spectrum-bar');
-      bars.forEach((b, i) => {
-        const h = Math.min(42, Math.max(6, (level * 36) + Math.sin(Date.now() / 120 + i) * 8));
-        b.style.height = `${h.toFixed(0)}px`;
-      });
+      const now = Date.now();
+      if (now - lastPilgrimSpectrumPaintAt < 65) return;
+      lastPilgrimSpectrumPaintAt = now;
+      const bars = getPilgrimSpectrumBars();
+      const phase = now / 120;
+      for (let i = 0; i < bars.length; i++) {
+        const h = Math.min(42, Math.max(6, (level * 36) + Math.sin(phase + i) * 8));
+        bars[i].style.height = `${h.toFixed(0)}px`;
+      }
     }
 
     setInterval(() => {
       const idleMs = Date.now() - lastPacketReceivedAt;
       if (idleMs > 350) {
-        const bars = specContainer.querySelectorAll('.spectrum-bar');
-        bars.forEach((b) => {
-          b.style.height = '6px';
-        });
+        const bars = getPilgrimSpectrumBars();
+        for (let i = 0; i < bars.length; i++) {
+          if (bars[i].style.height !== '6px') bars[i].style.height = '6px';
+        }
       }
       if (lastPacketReceivedAt > 0 && idleMs > 1800) {
         updateGuideSpeakingIndicator(false);
@@ -4544,7 +4597,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=86').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=87').catch(() => {});
     }
 
     let subscribedBannerDismissed = false;
@@ -4575,7 +4628,7 @@
         return;
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=86').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=87').catch(() => {});
       }
       // iOS WebKit zorunluluğu: setWebPushTour senkron çalışır, Notification.requestPermission() doğrudan dokunuş içinde çağrılır.
       const state = rysWebPushState();
@@ -5032,8 +5085,8 @@
         artist: `${artist} (${currentTour ? currentTour.code : 'RY-KASIM'})`,
         album,
         artwork: [
-          { src: '/icons/icon-192.png?v=86', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png?v=86', sizes: '512x512', type: 'image/png' }
+          { src: '/icons/icon-192.png?v=87', sizes: '192x192', type: 'image/png' },
+          { src: '/icons/icon-512.png?v=87', sizes: '512x512', type: 'image/png' }
         ]
       });
 

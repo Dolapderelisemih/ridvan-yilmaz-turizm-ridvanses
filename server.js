@@ -1368,7 +1368,7 @@ function broadcastToGuidesInTour(tourCode, payload) {
   for (const r of getTourRooms(tourCode)) {
     for (const client of r.clients.values()) {
       if (client.role === 'guide' && client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(data);
+        try { client.ws.send(data); } catch {}
       }
     }
   }
@@ -2094,12 +2094,12 @@ function broadcastToAdmins(payload) {
   const data = JSON.stringify(payload);
   wss.clients.forEach((ws) => {
     if (ws.isAdmin && ws.readyState === WebSocket.OPEN && rysCanAdmin(rysPrincipal(ws.rysAuthContext?.rysAuthToken||ws.rysAuthContext?.rysHandshakeToken))) {
-      ws.send(data);
+      try { ws.send(data); } catch {}
     }
   });
   for (const sess of httpRelaySessions.values()) {
     if (sess.ws.isAdmin && rysCanAdmin(rysPrincipal(sess.rysAuthToken))) {
-      sess.ws.send(data);
+      try { sess.ws.send(data); } catch {}
     }
   }
 }
@@ -2109,12 +2109,12 @@ function broadcastToFamilyTrackers(tourCode, payload) {
   const data = JSON.stringify(payload);
   wss.clients.forEach((ws) => {
     if (ws.familyTourCode === code && ws.readyState === WebSocket.OPEN) {
-      ws.send(data);
+      try { ws.send(data); } catch {}
     }
   });
   for (const sess of httpRelaySessions.values()) {
     if (sess.ws.familyTourCode === code) {
-      sess.ws.send(data);
+      try { sess.ws.send(data); } catch {}
     }
   }
 }
@@ -2153,7 +2153,7 @@ function broadcastRoomState(room) {
 
       for (const client of r.clients.values()) {
         if (client.ws.readyState === WebSocket.OPEN) {
-          client.ws.send(client.role === 'guide' ? guidePayload : pilgrimPayload);
+          try { client.ws.send(client.role === 'guide' ? guidePayload : pilgrimPayload); } catch {}
         }
       }
       if (r.roomId === 'genel') {
@@ -3201,8 +3201,11 @@ function syncRysRelayContext(session,context){
   if(JSON.stringify(previous)!==JSON.stringify(desired)){
     const preservedTerminalErrors=Array.isArray(session.outbox)
       ?session.outbox.filter(raw=>{
-          try{const p=typeof raw==='string'?JSON.parse(raw):raw;return p&&(p.type==='subscription-error'||p.type==='tour-unknown');}
-          catch(e){return false;}
+          try{
+            const p=typeof raw==='string'?JSON.parse(raw):raw;
+            const inner=(p&&p.message&&typeof p.message==='object')?p.message:p;
+            return inner&&(inner.type==='subscription-error'||inner.type==='tour-unknown');
+          }catch(e){return false;}
         })
       :[];
     if(Array.isArray(session.outbox))session.outbox.length=0;
