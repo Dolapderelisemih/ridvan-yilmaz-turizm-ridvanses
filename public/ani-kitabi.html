@@ -6,11 +6,11 @@
   <title>Dijital Umre Hatıra Kitabı &amp; Ziyaret Beratı — Rıdvan Yılmaz Turizm</title>
   <meta name="description" content="Rıdvan Yılmaz Turizm Umre ve Siyer yolculuğunuzun baskıya hazır A4 manevi hatıra kitapçığı ve imzalı Umre Ziyaret Beratı." />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=87" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=87" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=87" />
-  <link rel="stylesheet" href="/css/style.css?v=87" />
-  <script src="/vercel-ws-shim.js?v=87"></script>
+  <link rel="manifest" href="/manifest.json?v=88" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=88" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=88" />
+  <link rel="stylesheet" href="/css/style.css?v=88" />
+  <script src="/vercel-ws-shim.js?v=88"></script>
   <style>
     body {
       background: #e9e2d5;
@@ -256,7 +256,7 @@
         </div>
 
         <div>
-          <img src="/icons/app-logo.png?v=87" alt="Rıdvan Yılmaz Turizm" style="height:68px;background:#fff;padding:6px 12px;border-radius:12px;margin:0 auto 20px;box-shadow:0 8px 24px rgba(0,0,0,0.28);" onerror="this.style.display='none'" />
+          <img src="/icons/app-logo.png?v=88" alt="Rıdvan Yılmaz Turizm" style="height:68px;background:#fff;padding:6px 12px;border-radius:12px;margin:0 auto 20px;box-shadow:0 8px 24px rgba(0,0,0,0.28);" onerror="this.style.display='none'" />
           <div style="font-size:0.82rem;font-weight:800;color:var(--color-gold-bright);text-transform:uppercase;letter-spacing:0.14em;margin-bottom:8px;">
             MANEVİ YOLCULUK HATIRA KİTAPÇIĞI
           </div>
@@ -490,6 +490,9 @@
 
       if (tourSelect) {
         tourSelect.addEventListener('change', () => {
+          tourPinParam = '';
+          const pinInputEl = document.getElementById('bookPinInput');
+          if (pinInputEl) pinInputEl.value = '';
           syncBookCodeUi(tourSelect.value);
           const url = new URL(window.location.href);
           url.searchParams.set('code', code);
@@ -626,6 +629,15 @@
           }
           if (pinGate) pinGate.style.display = 'none';
           if (pinErr) pinErr.style.display = 'none';
+          if (!res.ok || !data || !data.success) {
+            if (bookStage) bookStage.style.display = 'none';
+            if (printBtn) printBtn.disabled = true;
+            if (unknownBox) {
+              unknownBox.innerHTML = escapeHtml(data?.message || 'Hatıra kitabı verisi geçici olarak alınamadı. Lütfen birkaç saniye sonra tekrar deneyiniz.');
+              unknownBox.style.display = 'block';
+            }
+            return;
+          }
           if (bookStage) bookStage.style.display = 'flex';
           if (data && data.success) {
             if (activePin) {
@@ -703,7 +715,7 @@
       }
 
       if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=87').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=88').catch(() => {});
       }
 
       loadBookData();

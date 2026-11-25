@@ -8,14 +8,14 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=87" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=87" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=87" />
+  <link rel="manifest" href="/manifest.json?v=88" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=88" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=88" />
   <title>Acente & Kafile Yönetim Paneli | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/panel" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=87" />
+  <link rel="stylesheet" href="/css/style.css?v=88" />
   <script>
     (function() {
       const savedToken = (localStorage.getItem('ry_auth_token') || '').trim();
@@ -72,9 +72,9 @@
       window.location.href = '/login?next=/panel';
     }
   </script>
-  <script src="/vercel-ws-shim.js?v=87"></script>
+  <script src="/vercel-ws-shim.js?v=88"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=87"></script>
+  <script src="/js/umrah-steps-map.js?v=88"></script>
   <style>
     .dashboard-layout {
       display: grid;
@@ -233,7 +233,7 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:100%;">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=87" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=88" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="margin:0; font-size:1.12rem; line-height:1.2;">Rıdvan Yılmaz Turizm — Acente Yönetim Paneli</h1>
           <span class="brand-sub"><span class="live-dot"></span> Osmangazi / Bursa Merkez Operasyon & Kafile Kontrolü</span>
@@ -894,6 +894,17 @@
       }
     }
 
+    function syncPanelSelectOptions(sel, entries) {
+      if (!sel) return false;
+      const nextSig = entries.map((e) => `${e.value}\0${e.label}`).join('\n');
+      const curSig = Array.from(sel.options).map((o) => `${o.value}\0${o.textContent}`).join('\n');
+      if (nextSig === curSig) return false;
+      sel.innerHTML = entries
+        .map((e) => `<option value="${escapeHtml(e.value)}">${escapeHtml(e.label)}</option>`)
+        .join('');
+      return true;
+    }
+
     function syncQrRoomSelectOptions() {
       const rSel = document.getElementById('qrRoomSelect');
       if (!rSel) return;
@@ -906,10 +917,11 @@
             { id: 'genel', name: 'Genel Kafile & Tavaf Yayını' },
             { id: 'siyer', name: 'Siyer-i Nebi Sohbet Odası' }
           ];
-      rSel.innerHTML = rooms.map((rm) => {
+      const entries = rooms.map((rm) => {
         const rid = String(rm.id || 'genel').trim().toLowerCase();
-        return `<option value="${escapeHtml(rid)}">${escapeHtml(rm.name || rid)}</option>`;
-      }).join('');
+        return { value: rid, label: String(rm.name || rid) };
+      });
+      syncPanelSelectOptions(rSel, entries);
       if (Array.from(rSel.options).some((o) => o.value === prev)) {
         rSel.value = prev;
       } else {
@@ -1108,11 +1120,12 @@
         }
       }
 
-      // Populate QR tour dropdown
+      // Populate QR tour dropdown (signature-checked so WS admin-rooms-update never closes open dropdowns)
+      const tourOptionEntries = (appState.tours || []).map((t) => ({ value: t.code, label: `${t.code} — ${t.name}` }));
       const qrSel = document.getElementById('qrTourSelect');
       if (qrSel) {
         const prev = qrSel.value || (appState.tours[0] && appState.tours[0].code) || 'RY-KASIM';
-        qrSel.innerHTML = appState.tours.map((t) => `<option value="${escapeHtml(t.code)}">${escapeHtml(t.code)} — ${escapeHtml(t.name)}</option>`).join('');
+        syncPanelSelectOptions(qrSel, tourOptionEntries);
         const stillExists = appState.tours.some((t) => t.code === prev);
         if (stillExists) qrSel.value = prev;
         syncQrRoomSelectOptions();
@@ -1122,17 +1135,30 @@
       }
 
       const guideTourSel = document.getElementById('guideAssignedTourSelect');
-      if (guideTourSel && Array.isArray(appState.tours) && appState.tours.length > 0) {
+      if (guideTourSel && tourOptionEntries.length > 0) {
         const prevG = guideTourSel.value || appState.tours[0].code;
-        guideTourSel.innerHTML = appState.tours.map((t) => `<option value="${escapeHtml(t.code)}">${escapeHtml(t.code)} — ${escapeHtml(t.name)}</option>`).join('');
+        syncPanelSelectOptions(guideTourSel, tourOptionEntries);
         if (appState.tours.some((t) => t.code === prevG)) guideTourSel.value = prevG;
       }
 
       const routeSel = document.getElementById('adminRouteTourSelect');
       if (routeSel) {
-        const prevR = routeSel.value || 'RY-KASIM';
-        routeSel.innerHTML = appState.tours.map((t) => `<option value="${escapeHtml(t.code)}">${escapeHtml(t.code)} — ${escapeHtml(t.name)}</option>`).join('');
-        if (appState.tours.some((t) => t.code === prevR)) routeSel.value = prevR;
+        const prevR = routeSel.value || (appState.tours[0] && appState.tours[0].code) || 'RY-KASIM';
+        syncPanelSelectOptions(routeSel, tourOptionEntries);
+        const routeStillExists = appState.tours.some((t) => t.code === prevR);
+        if (routeStillExists) {
+          routeSel.value = prevR;
+        } else if (routeSel.options.length > 0) {
+          routeSel.value = routeSel.options[0].value;
+          const nextRouteCode = routeSel.value;
+          const openRotaLink = document.getElementById('adminOpenRotaLink');
+          const openBookLink = document.getElementById('adminOpenBookLink');
+          if (openRotaLink) openRotaLink.href = `/rota?code=${encodeURIComponent(nextRouteCode)}`;
+          if (openBookLink) openBookLink.href = `/ani-kitabi?code=${encodeURIComponent(nextRouteCode)}`;
+          if (document.getElementById('tab-routes')?.classList.contains('active') && typeof loadAdminRouteSteps === 'function') {
+            loadAdminRouteSteps(false);
+          }
+        }
       }
 
       // Populate Announcement tour dropdown
@@ -1142,10 +1168,10 @@
           ? (appState.tours[0] && appState.tours[0].code) || 'RY-KASIM'
           : 'ALL';
         const prevAnn = annSel.value || defaultAnnVal;
-        annSel.innerHTML = `
-          ${scopedAgency ? '' : '<option value="ALL">Tüm Aktif Kafileler (Genel Duyuru)</option>'}
-          ${appState.tours.map((t) => `<option value="${escapeHtml(t.code)}">${escapeHtml(t.code)} — ${escapeHtml(t.name)}</option>`).join('')}
-        `;
+        const annEntries = scopedAgency
+          ? tourOptionEntries
+          : [{ value: 'ALL', label: 'Tüm Aktif Kafileler (Genel Duyuru)' }, ...tourOptionEntries];
+        syncPanelSelectOptions(annSel, annEntries);
         if ((!scopedAgency && prevAnn === 'ALL') || appState.tours.some((t) => t.code === prevAnn)) {
           annSel.value = prevAnn;
         } else if (annSel.options.length > 0) {
@@ -1952,7 +1978,7 @@
         return false;
       }
       try {
-        const reg = await navigator.serviceWorker.register('/sw.js?v=87');
+        const reg = await navigator.serviceWorker.register('/sw.js?v=88');
         await navigator.serviceWorker.ready;
         const keyRes = await fetch('/api/push/vapid-public-key', { cache: 'no-store' });
         if (!keyRes.ok) throw new Error('Bildirim sunucusu hazır değil');
@@ -2052,7 +2078,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=87').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=88').catch(() => {});
       navigator.serviceWorker.addEventListener('message', (ev) => {
         if (ev.data && ev.data.type === 'PUSH_SUBSCRIPTION_CHANGED') {
           if (ev.data.rotated?.sos?.subscriptionToken) {

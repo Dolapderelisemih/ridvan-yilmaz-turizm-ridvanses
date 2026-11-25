@@ -1,14 +1,14 @@
 // PATCH: sw-v53
 // PATCH: sw-v53
 // PATCH: sw-v53
-const CACHE_NAME = 'ridvanses-pwa-v87';
+const CACHE_NAME = 'ridvanses-pwa-v88';
 const PUSH_META_CACHE = 'ridvanses-push-meta-v1';
 const CORE_SHELL_ASSETS = [
   '/',
   '/dinle',
-  '/css/style.css?v=87',
-  '/vercel-ws-shim.js?v=87',
-  '/pcm-player-worklet.js?v=87-audio',
+  '/css/style.css?v=88',
+  '/vercel-ws-shim.js?v=88',
+  '/pcm-player-worklet.js?v=88-audio',
   '/manifest.json'
 ];
 const ASSETS_TO_CACHE = [
@@ -17,14 +17,14 @@ const ASSETS_TO_CACHE = [
   '/rota',
   '/ani-kitabi',
   '/kullanim-rehberi',
-  '/css/style.css?v=87',
-  '/vercel-ws-shim.js?v=87',
+  '/css/style.css?v=88',
+  '/vercel-ws-shim.js?v=88',
   '/vendor/leaflet/leaflet.js',
   '/vendor/leaflet/leaflet.css',
   '/vendor/mqtt/mqtt.min.js',
-  '/js/umrah-steps-map.js?v=87',
-  '/pcm-capture-worklet.js?v=87-audio',
-  '/pcm-player-worklet.js?v=87-audio',
+  '/js/umrah-steps-map.js?v=88',
+  '/pcm-capture-worklet.js?v=88-audio',
+  '/pcm-player-worklet.js?v=88-audio',
   '/manifest.json',
   '/icons/icon-512.png',
   '/icons/icon-512-maskable.png',
@@ -317,12 +317,19 @@ self.addEventListener('pushsubscriptionchange',event=>{
             if(rotRes.ok){
               const rotData=await rotRes.json().catch(()=>({}));
               const nextToken=rotData?.subscriptionToken||meta.subscriptionToken;
+              const nextTargetView = kind === 'sos' ? (rotData?.targetView || meta.targetView || 'rehber') : undefined;
               const nextMeta={
                 ...meta,
                 endpoint:newJson.endpoint,
-                subscriptionToken:nextToken
+                subscriptionToken:nextToken,
+                ...(kind==='sos'?{targetView:nextTargetView}:{})
               };
-              rotated[kind]={endpoint:newJson.endpoint,subscriptionToken:nextToken,tourCode:meta.tourCode};
+              rotated[kind]={
+                endpoint:newJson.endpoint,
+                subscriptionToken:nextToken,
+                tourCode:meta.tourCode,
+                ...(kind==='sos'?{targetView:nextTargetView}:{})
+              };
               await rysSavePushMeta(kind,nextMeta);
             }
           }catch(e){}

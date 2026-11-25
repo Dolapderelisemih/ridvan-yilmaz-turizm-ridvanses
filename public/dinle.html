@@ -8,17 +8,17 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="RıdvanSes" />
-  <link rel="manifest" href="/manifest.json?v=87" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=87" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=87" />
+  <link rel="manifest" href="/manifest.json?v=88" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=88" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=88" />
   <title>Hacı Canlı Dinleme Ekranı | Rıdvan Yılmaz Turizm — RıdvanSes</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="canonical" href="https://ses.ridvanyilmazturizm.com/dinle" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=87" />
-  <script src="/vercel-ws-shim.js?v=87"></script>
+  <link rel="stylesheet" href="/css/style.css?v=88" />
+  <script src="/vercel-ws-shim.js?v=88"></script>
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=87"></script>
+  <script src="/js/umrah-steps-map.js?v=88"></script>
   <style>
     .arabic-text {
       direction: rtl;
@@ -264,7 +264,7 @@
   <header class="navbar">
     <div class="container navbar-inner" style="max-width:540px;">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=87" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=88" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <h1 class="brand-title" style="font-size:1rem; margin:0;">Rıdvan Yılmaz Turizm</h1>
           <span class="brand-sub"><span class="live-dot"></span> <span id="i18n_brandSub">RıdvanSes Hacı Canlı Odası</span></span>
@@ -297,7 +297,7 @@
     <!-- TELEFONA UYGULAMA OLARAK İNDİR (PWA BANNER) -->
     <div class="pwa-install-banner" id="pwaInstallBanner">
       <div style="display:flex; align-items:center; gap:12px; flex:1 1 210px; min-width:0;">
-        <img src="/icons/icon-192.png?v=87" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
+        <img src="/icons/icon-192.png?v=88" alt="RıdvanSes" style="width:42px; height:42px; flex-shrink:0; border-radius:10px; background:#fff; padding:2px; border:1px solid var(--color-gold);" />
         <div style="min-width:0;">
           <div id="i18n_pwaBannerTitle" style="font-weight:800; font-size:0.88rem; color:var(--color-gold-bright);">RıdvanSes'i Ana Ekrana Ekleyin</div>
           <div id="i18n_pwaBannerSub" style="font-size:0.75rem; color:#e2e8f0; line-height:1.35;">Mağaza şifresi gerekmeden tek dokunuşla telefonunuza kurun.</div>
@@ -2490,16 +2490,23 @@
               const roomSel = document.getElementById('roomSelect');
               if (roomSel && typeof formatLocalizedRoomLabel === 'function') {
                 const prevRoom = String(roomSel.value || 'genel').trim().toLowerCase();
-                roomSel.innerHTML = r.tourRooms
-                  .map((rm) => {
-                    const rid = String(rm.id || '').trim().toLowerCase();
-                    const optIdAttr = rid === 'genel' ? ' id="optRoomGenel"' : (rid === 'siyer' ? ' id="optRoomSiyer"' : '');
-                    const tRef = (typeof currentTour !== 'undefined' && currentTour) || cached || null;
-                    return `<option${optIdAttr} value="${escapeHtml(rid)}">${escapeHtml(formatLocalizedRoomLabel(rm, tRef))}</option>`;
-                  })
-                  .join('');
-                if (r.tourRooms.some((rm) => String(rm.id || '').trim().toLowerCase() === prevRoom)) {
-                  roomSel.value = prevRoom;
+                const tRef = (typeof currentTour !== 'undefined' && currentTour) || cached || null;
+                const desiredEntries = r.tourRooms.map((rm) => {
+                  const rid = String(rm.id || '').trim().toLowerCase();
+                  return { id: rid, text: String(formatLocalizedRoomLabel(rm, tRef)) };
+                });
+                const nextSig = desiredEntries.map((e) => `${e.id}\0${e.text}`).join('\n');
+                const curSig = Array.from(roomSel.options).map((o) => `${o.value}\0${o.textContent}`).join('\n');
+                if (nextSig !== curSig) {
+                  roomSel.innerHTML = desiredEntries
+                    .map((e) => {
+                      const optIdAttr = e.id === 'genel' ? ' id="optRoomGenel"' : (e.id === 'siyer' ? ' id="optRoomSiyer"' : '');
+                      return `<option${optIdAttr} value="${escapeHtml(e.id)}">${escapeHtml(e.text)}</option>`;
+                    })
+                    .join('');
+                  if (desiredEntries.some((e) => e.id === prevRoom)) {
+                    roomSel.value = prevRoom;
+                  }
                 }
               }
             }
@@ -2864,14 +2871,7 @@
     let pilgrimAudioGuardTimer = null;
 
     function startPilgrimAudioGuardTimer() {
-      if (!pilgrimAudioGuardChannel || pilgrimAudioGuardTimer) return;
-      pilgrimAudioGuardTimer = setInterval(() => {
-        if (isAudioListening && pilgrimAudioGuardChannel) {
-          try {
-            pilgrimAudioGuardChannel.postMessage({ type: 'pilgrim-speaker-active', ts: Date.now() });
-          } catch {}
-        }
-      }, 1200);
+      // No-op: same-device echo ducking is purely event-driven via 'guide-mic-active' on pilgrimAudioGuardChannel.
     }
 
     function stopPilgrimAudioGuardTimer() {
@@ -2887,12 +2887,11 @@
     function applyPilgrimEffectiveGain() {
       if (!gainNode || !audioCtx) return;
       const ducked = Date.now() < sameDeviceGuideDuckUntil;
-      const volSlider = document.getElementById('volumeSlider');
-      const targetVol = ducked ? 0 : (volSlider ? Number(volSlider.value) / 100 : 1);
+      const clampedVol = Math.max(0, Math.min(2.0, ducked ? 0 : (Number.isFinite(volumeMultiplier) ? volumeMultiplier : 1)));
       try {
-        gainNode.gain.setTargetAtTime(Math.max(0, Math.min(1.5, targetVol)), audioCtx.currentTime, 0.015);
+        gainNode.gain.setTargetAtTime(clampedVol, audioCtx.currentTime, 0.015);
       } catch {
-        gainNode.gain.value = targetVol;
+        gainNode.gain.value = clampedVol;
       }
     }
 
@@ -3021,7 +3020,7 @@
       rxPlayerWorkletLoading=true;window.__ryRxAudioStatus='loading';
       state.timer=setTimeout(()=>failed('load-timeout'),3000);
       let loading;
-      try{loading=ctx.audioWorklet.addModule('/pcm-player-worklet.js?v=87-audio');}
+      try{loading=ctx.audioWorklet.addModule('/pcm-player-worklet.js?v=88-audio');}
       catch(error){failed('load-error');return;}
       Promise.resolve(loading)
         .then(()=>{
@@ -3190,6 +3189,7 @@
           verifyPilgrimWebSocketAfterInterruption();
           return;
         }
+        const resumedFromInactive = ctx.state !== 'running' || wasSystemAudioInterrupted;
         if (ctx.state !== 'running') {
           await Promise.race([
             ctx.resume().catch(() => {}),
@@ -3202,9 +3202,20 @@
           syncAudioUnlockButtonUi();
           return;
         }
+        if (resumedFromInactive && rxPlayerWorkletNode && lastRxWorkletHeartbeatAt !== 1) {
+          // Give the newly resumed worklet a fresh window (>500ms) to emit its heartbeat instead of false-triggering workletFrozen.
+          lastRxWorkletHeartbeatAt = Date.now();
+        }
         const before = ctx.currentTime;
         await new Promise((r) => setTimeout(r, 160));
         if (audioCtx !== ctx || !isAudioListening || intentionalLeave) return;
+        if (ctx.state !== 'running') {
+          syncAudioUnlockButtonUi();
+          return;
+        }
+        const isIos = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/i.test(navigator.userAgent || '');
+        const isVisible = typeof document === 'undefined' || document.visibilityState === 'visible';
+        const allowRebuildHere = trigger === 'user-gesture' || (isVisible && (!isIos || trigger !== 'bg-heartbeat'));
         if (ctx.state === 'running' && ctx.currentTime > before + 0.01) {
           wasSystemAudioInterrupted = false;
           flushPendingRxFrames();
@@ -3217,12 +3228,13 @@
             lastRxWorkletHeartbeatAt > 0 &&
             (lastRxWorkletHeartbeatAt === 1 || (!rxPlayerWorkletAlive && Date.now() - lastRxWorkletHeartbeatAt > 1500) || Date.now() - lastRxWorkletHeartbeatAt > 2200)
           );
-          if (workletFrozen && Date.now() - lastAudioEngineRebuildAt > 3000) {
+          if (workletFrozen && allowRebuildHere && Date.now() - lastAudioEngineRebuildAt > 3000) {
             rebuildPilgrimAudioEngine(lastRxWorkletHeartbeatAt === 1 ? 'processor-error' : 'worklet-frozen-' + trigger);
           }
         } else if (
+          allowRebuildHere &&
           Date.now() - lastAudioEngineRebuildAt > 4500 &&
-          (trigger === 'user-gesture' || trigger === 'devicechange' || trigger === 'bg-heartbeat' || document.visibilityState === 'visible' || wasSystemAudioInterrupted)
+          (trigger === 'user-gesture' || trigger === 'devicechange' || trigger === 'bg-heartbeat' || isVisible || wasSystemAudioInterrupted)
         ) {
           rebuildPilgrimAudioEngine('clock-stalled-' + trigger);
           verifyPilgrimWebSocketAfterInterruption();
@@ -3278,9 +3290,9 @@
         rxClarity.Q.value = 0.85;
         rxClarity.gain.value = 1.0;
 
-        // 2. Kullanıcı Ses Güçlendirici (%0 - %200 Doğrusal Kazanç)
+        // 2. Kullanıcı Ses Güçlendirici (%0 - %200 Doğrusal Kazanç + aynı cihaz yankı koruması)
         gainNode = audioCtx.createGain();
-        gainNode.gain.value = volumeMultiplier;
+        gainNode.gain.value = (typeof sameDeviceGuideDuckUntil === 'number' && Date.now() < sameDeviceGuideDuckUntil) ? 0 : Math.max(0, Math.min(2.0, volumeMultiplier));
 
         // 3. %200 Kazançta Bozulmayı Önleyen Tavan Sınırlayıcı + Sıfır-Gecikmeli Doğrusal Soft-Clipper
         let rxPeakLimiter = null;
@@ -3392,6 +3404,7 @@
       }
       if (isAudioListening) {
         if (audioCtx && audioCtx.state !== 'running') {
+          if (rxPlayerWorkletNode && lastRxWorkletHeartbeatAt !== 1) lastRxWorkletHeartbeatAt = Date.now();
           audioCtx.resume().then(() => syncAudioUnlockButtonUi()).catch(() => {});
         }
         syncAudioUnlockButtonUi();
@@ -3400,12 +3413,6 @@
         startBackgroundKeepAliveAudio();
         requestWakeLock();
         updateMediaSessionMetadata();
-        if (pilgrimAudioGuardChannel) {
-          try {
-            pilgrimAudioGuardChannel.postMessage({ type: 'pilgrim-speaker-active', ts: Date.now() });
-          } catch {}
-        }
-        startPilgrimAudioGuardTimer();
       } else {
         stopPilgrimAudioGuardTimer();
         syncAudioUnlockButtonUi();
@@ -3418,9 +3425,10 @@
     }
 
     function updateVolume(val) {
-      volumeMultiplier = Number(val) / 100;
+      volumeMultiplier = Math.max(0, Math.min(2.0, Number(val) / 100));
       document.getElementById('volumeLabel').textContent = `%${val}`;
-      if (gainNode && audioCtx) gainNode.gain.setTargetAtTime(volumeMultiplier, audioCtx.currentTime, 0.010);
+      if (typeof applyPilgrimEffectiveGain === 'function') applyPilgrimEffectiveGain();
+      else if (gainNode && audioCtx) gainNode.gain.setTargetAtTime(volumeMultiplier, audioCtx.currentTime, 0.010);
     }
 
     let lastPacketReceivedAt = 0;
@@ -4255,6 +4263,7 @@
       stopBackgroundKeepAliveAudio();
       releaseWakeLock();
       if (audioCtx && audioCtx.state === 'running' && typeof audioCtx.suspend === 'function') {
+        lastRxWorkletHeartbeatAt = 0;
         try { audioCtx.suspend().catch(() => {}); } catch {}
       }
       if (typeof renderLiveTawafStage === 'function') renderLiveTawafStage(null);
@@ -4597,7 +4606,7 @@
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js?v=87').catch(() => {});
+      navigator.serviceWorker.register('/sw.js?v=88').catch(() => {});
     }
 
     let subscribedBannerDismissed = false;
@@ -4628,7 +4637,7 @@
         return;
       }
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=87').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=88').catch(() => {});
       }
       // iOS WebKit zorunluluğu: setWebPushTour senkron çalışır, Notification.requestPermission() doğrudan dokunuş içinde çağrılır.
       const state = rysWebPushState();
@@ -5085,8 +5094,8 @@
         artist: `${artist} (${currentTour ? currentTour.code : 'RY-KASIM'})`,
         album,
         artwork: [
-          { src: '/icons/icon-192.png?v=87', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png?v=87', sizes: '512x512', type: 'image/png' }
+          { src: '/icons/icon-192.png?v=88', sizes: '192x192', type: 'image/png' },
+          { src: '/icons/icon-512.png?v=88', sizes: '512x512', type: 'image/png' }
         ]
       });
 

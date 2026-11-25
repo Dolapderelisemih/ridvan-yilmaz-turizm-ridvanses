@@ -6,12 +6,12 @@
   <title>Canlı Manevi Rota & Aile Takip Ekranı — Rıdvan Yılmaz Turizm</title>
   <meta name="description" content="Rıdvan Yılmaz Turizm Umre kafilesinin kutsal topraklardaki canlı manevi yolculuk rotasını, ziyaret edilen Siyer duraklarını ve rehber konumunu canlı takip edin." />
   <meta name="theme-color" content="#06231b" />
-  <link rel="manifest" href="/manifest.json?v=87" />
-  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=87" />
-  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=87" />
+  <link rel="manifest" href="/manifest.json?v=88" />
+  <link rel="icon" type="image/png" href="/icons/icon-512.png?v=88" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=88" />
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
-  <link rel="stylesheet" href="/css/style.css?v=87" />
-  <script src="/vercel-ws-shim.js?v=87"></script>
+  <link rel="stylesheet" href="/css/style.css?v=88" />
+  <script src="/vercel-ws-shim.js?v=88"></script>
   <style>
     .rota-hero-strip {
       background:
@@ -91,7 +91,7 @@
   <header class="navbar">
     <div class="container navbar-inner">
       <a href="/" class="brand">
-        <img src="/icons/app-logo.png?v=87" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
+        <img src="/icons/app-logo.png?v=88" alt="Rıdvan Yılmaz Turizm" class="brand-logo" onerror="this.style.display='none'" />
         <div class="brand-text">
           <div class="brand-title">RıdvanSes Manevi Rota</div>
           <div class="brand-sub">Aile &amp; Yakın Canlı Kafile Takip Sistemi</div>
@@ -263,7 +263,7 @@
   <div id="rotaToast" class="toast-banner"></div>
 
   <script src="/vendor/leaflet/leaflet.js"></script>
-  <script src="/js/umrah-steps-map.js?v=87"></script>
+  <script src="/js/umrah-steps-map.js?v=88"></script>
   <script>
     (function () {
       const params = new URLSearchParams(window.location.search);
@@ -512,29 +512,42 @@
         renderAnnouncements([]);
       }
 
+      let stepsFetchSeq = 0;
+
+      function closeRealtime() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+        if (ws) {
+          try { ws.onopen = null; ws.onmessage = null; ws.onclose = null; ws.onerror = null; ws.close(); } catch (_) {}
+          ws = null;
+        }
+      }
+
       async function fetchStepsRest(autoFit = false, preservePinErr = false) {
         if (stepsFetchInFlight && !autoFit && !preservePinErr) return;
+        const reqSeq = ++stepsFetchSeq;
+        const reqCode = currentCode;
         stepsFetchInFlight = true;
         let timer = null;
         try {
-          const pinVal = getActiveTourPin(currentCode);
+          const pinVal = getActiveTourPin(reqCode);
           const headers = pinVal
             ? { 'X-Tour-Pin': encodeURIComponent(pinVal), 'X-Tour-Pin-Enc': 'uri' }
             : {};
           const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
           if (ctrl) timer = setTimeout(() => { try { ctrl.abort(); } catch (_) {} }, 8000);
-          const res = await fetch(`/api/trips/${encodeURIComponent(currentCode)}/steps`, {
+          const res = await fetch(`/api/trips/${encodeURIComponent(reqCode)}/steps`, {
             headers,
             cache: 'no-store',
             ...(ctrl ? { signal: ctrl.signal } : {})
           });
           const json = await res.json().catch(() => ({}));
+          if (reqSeq !== stepsFetchSeq || reqCode !== currentCode) return;
           const pinGate = document.getElementById('rotaPinGateBox');
           const pinErr = document.getElementById('rotaPinErrorMsg');
           if (res.status === 429 || (json && json.error === 'rate-limited')) {
             subscriptionBlocked = true;
-            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-            if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+            closeRealtime();
             clearStaleRouteView();
             if (pinGate) pinGate.style.display = 'block';
             if (pinErr) {
@@ -545,24 +558,22 @@
           }
           if (json && json.error === 'tour-unknown') {
             subscriptionBlocked = true;
-            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-            if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+            closeRealtime();
             clearStaleRouteView();
             if (pinGate) pinGate.style.display = 'none';
             document.getElementById('familyTimeline').innerHTML =
-              `<div style="padding:18px;border-radius:12px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-weight:700;font-size:0.88rem;">“${escapeHtml(currentCode)}” koduna ait aktif bir kafile bulunamadı. Lütfen kafile kodunu kontrol ediniz.</div>`;
+              `<div style="padding:18px;border-radius:12px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-weight:700;font-size:0.88rem;">“${escapeHtml(reqCode)}” koduna ait aktif bir kafile bulunamadı. Lütfen kafile kodunu kontrol ediniz.</div>`;
             return;
           }
           if (json && json.pinRequired) {
             subscriptionBlocked = true;
-            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-            if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+            closeRealtime();
             clearStaleRouteView();
             if (pinGate) pinGate.style.display = 'block';
             if (pinErr) {
               if (pinVal) {
                 pendingPinInput = '';
-                setSavedTourPin(currentCode, '');
+                setSavedTourPin(reqCode, '');
                 pinErr.textContent = 'Girilen PIN kodu hatalı. Lütfen tekrar deneyiniz.';
                 pinErr.style.display = 'block';
               } else if (!preservePinErr) {
@@ -582,20 +593,20 @@
           }
           subscriptionBlocked = false;
           if (pinVal) {
-            setSavedTourPin(currentCode, pinVal);
+            setSavedTourPin(reqCode, pinVal);
             pendingPinInput = '';
           }
           if (pinGate) pinGate.style.display = 'none';
           if (pinErr) pinErr.style.display = 'none';
           if (json && json.success) {
-            updateLinks(currentCode);
+            updateLinks(reqCode);
             applyJourneyPayload(json, autoFit);
           }
         } catch (err) {
           console.warn('Rota verisi alınamadı:', err);
         } finally {
           if (timer) clearTimeout(timer);
-          stepsFetchInFlight = false;
+          if (reqSeq === stepsFetchSeq) stepsFetchInFlight = false;
         }
       }
 
@@ -755,16 +766,18 @@
       }
 
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-          if (!subscriptionBlocked && (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING))) {
+        if (document.visibilityState === 'visible' && !subscriptionBlocked) {
+          if (!ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)) {
             connectRealtime();
           }
           fetchStepsRest(false);
         }
       });
       window.addEventListener('online', () => {
-        if (!subscriptionBlocked) connectRealtime();
-        fetchStepsRest(false);
+        if (!subscriptionBlocked) {
+          connectRealtime();
+          fetchStepsRest(false);
+        }
       });
 
       // Kamera kontrol butonları
@@ -787,6 +800,7 @@
       const triggerLoadCode = async () => {
         const val = String(codeInput.value || '').toUpperCase().trim();
         if (!val) return;
+        closeRealtime();
         currentCode = val;
         pendingPinInput = '';
         subscriptionBlocked = false;
@@ -841,7 +855,7 @@
       }
 
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js?v=87').catch(() => {});
+        navigator.serviceWorker.register('/sw.js?v=88').catch(() => {});
       }
 
       updateLinks(currentCode);

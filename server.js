@@ -271,6 +271,7 @@ function loadState() {
 
 let pendingSaveTimer = null;
 let pendingSaveStateRef = null;
+let activeAsyncSaveRef = null;
 let isWritingRuntimeFile = false;
 let writeAgainAfterCurrent = false;
 
@@ -279,14 +280,18 @@ async function flushAsyncRuntimeWrite() {
   isWritingRuntimeFile = true;
   const snapshot = pendingSaveStateRef;
   pendingSaveStateRef = null;
-  const tmpFile = `${RUNTIME_FILE}.tmp`;
+  activeAsyncSaveRef = snapshot;
+  const tmpFile = `${RUNTIME_FILE}.async.${process.pid}.${Date.now()}.tmp`;
   try {
     const payload = JSON.stringify(snapshot, null, 2);
     await fs.promises.writeFile(tmpFile, payload, { encoding: 'utf8', mode: 0o600 });
     await fs.promises.rename(tmpFile, RUNTIME_FILE);
+    if (activeAsyncSaveRef === snapshot) activeAsyncSaveRef = null;
   } catch (err) {
     console.error('Runtime state asenkron kaydedilemedi:', err.message);
+    try { await fs.promises.unlink(tmpFile); } catch {}
   } finally {
+    if (activeAsyncSaveRef === snapshot) activeAsyncSaveRef = null;
     isWritingRuntimeFile = false;
     if (writeAgainAfterCurrent || pendingSaveStateRef) {
       writeAgainAfterCurrent = false;
@@ -300,14 +305,17 @@ function flushPendingSaveSync() {
     clearTimeout(pendingSaveTimer);
     pendingSaveTimer = null;
   }
-  if (pendingSaveStateRef) {
-    const tmpFile = `${RUNTIME_FILE}.tmp`;
+  const stateToFlush = pendingSaveStateRef || activeAsyncSaveRef;
+  if (stateToFlush) {
+    const tmpFile = `${RUNTIME_FILE}.sync.${process.pid}.${Date.now()}.tmp`;
     try {
-      fs.writeFileSync(tmpFile, JSON.stringify(pendingSaveStateRef, null, 2), { encoding: 'utf8', mode: 0o600 });
+      fs.writeFileSync(tmpFile, JSON.stringify(stateToFlush, null, 2), { encoding: 'utf8', mode: 0o600 });
       fs.renameSync(tmpFile, RUNTIME_FILE);
       pendingSaveStateRef = null;
+      activeAsyncSaveRef = null;
     } catch (err) {
       console.error('Runtime state senkron flush hatası:', err.message);
+      try { fs.unlinkSync(tmpFile); } catch {}
     }
   }
 }
@@ -1100,6 +1108,7 @@ function sendEmergencySosEmail(alertItem){
 // key: `${tourCode}:${roomId}`
 const liveRooms = new Map();
 const guideDisconnectTimers = new Map(); // Tuple room.key -> Timeout
+const tourBroadcastTimers = new Map(); // tourCode -> Timeout (deduplicates full-tour room-state broadcasts)
 
 
 function rysRoomKey(tourCode,roomId='genel'){
@@ -1118,10 +1127,17 @@ function dropRysRoom(room){
   const timer=guideDisconnectTimers.get(room.key);
   if(timer){clearTimeout(timer);guideDisconnectTimers.delete(room.key);}
   if(liveRooms.get(room.key)===room)liveRooms.delete(room.key);
+  if (typeof tourBroadcastTimers !== 'undefined' && tourBroadcastTimers.has(room.tourCode)) {
+    const stillHasTourRoom = Array.from(liveRooms.values()).some((r) => r.tourCode === room.tourCode);
+    if (!stillHasTourRoom) {
+      clearTimeout(tourBroadcastTimers.get(room.tourCode));
+      tourBroadcastTimers.delete(room.tourCode);
+    }
+  }
 }
 function pruneRysRooms(now=Date.now(),pressureTour=null){
   for(const room of liveRooms.values()){
-    if(room.clients.size||guideDisconnectTimers.has(room.key)||room._broadcastTimer)continue;
+    if(room.clients.size||guideDisconnectTimers.has(room.key)||room._broadcastTimer||(typeof tourBroadcastTimers!=='undefined'&&tourBroadcastTimers.has(room.tourCode)))continue;
     const registered=!!findRysTour(room.tourCode),configured=isConfiguredRysRoom(room);
     const expired=!registered||!configured&&now-(room.idleSince??room.lastUsedAt??now)>=60000;
     const reclaim=pressureTour&&!configured&&(room.tourCode===pressureTour||liveRooms.size>=2048);
@@ -2140,11 +2156,12 @@ function broadcastStepsUpdate(tourCode, activeStepId = null) {
 }
 
 function broadcastRoomState(room) {
-  if (!room) return;
-  if (room._broadcastTimer) return;
-  room._broadcastTimer = setTimeout(() => {
-    room._broadcastTimer = null;
-    const tourRooms = getTourRooms(room.tourCode);
+  if (!room || !room.tourCode) return;
+  const code = String(room.tourCode).toUpperCase().trim();
+  if (tourBroadcastTimers.has(code)) return;
+  const timer = setTimeout(() => {
+    tourBroadcastTimers.delete(code);
+    const tourRooms = getTourRooms(code);
     for (const r of tourRooms) {
       const fullState = serializeRoom(r, true);
       const compactState = serializeRoom(r, false);
@@ -2165,6 +2182,7 @@ function broadcastRoomState(room) {
       rooms: Array.from(liveRooms.values()).map((rm) => serializeRoom(rm, true))
     });
   }, 150);
+  tourBroadcastTimers.set(code, timer);
 }
 
 let clientSeq = 1;
@@ -3947,8 +3965,9 @@ app.patch('/api/tours/:id', requireAuth, (req, res) => {
     evictTourLiveSubscribers(tour.code, 'pin-changed');
   }
   saveState(db);
-  for (const r of getTourRooms(tour.code)) {
-    broadcastRoomState(r);
+  const firstTourRoom = getTourRooms(tour.code)[0];
+  if (firstTourRoom) {
+    broadcastRoomState(firstTourRoom);
   }
   broadcastToAdmins({
     type: 'admin-rooms-update',
@@ -3977,7 +3996,16 @@ app.delete('/api/tours/:id', requireAuth, (req, res) => {
   db.tours = db.tours.filter((t) => t.id !== deletedTour.id);
   if (deletedCode) {
     evictTourLiveSubscribers(deletedCode, 'tour-deleted');
-    db.announcements = db.announcements.filter((a) => a.tourCode !== deletedCode);
+    const fallbackTourCode = String(db.tours[0]?.code || '').toUpperCase().trim();
+    if (fallbackTourCode && Array.isArray(db.guides)) {
+      db.guides.forEach((g) => {
+        if (g && String(g.assignedTour || '').toUpperCase().trim() === deletedCode) {
+          g.assignedTour = fallbackTourCode;
+        }
+      });
+    }
+    db.announcements = (db.announcements || []).filter((a) => String(a?.tourCode || '').toUpperCase().trim() !== deletedCode);
+    db.sosAlerts = (db.sosAlerts || []).filter((s) => String(s?.tourCode || '').toUpperCase().trim() !== deletedCode);
     if (db.journeySteps && db.journeySteps[deletedCode]) {
       delete db.journeySteps[deletedCode];
     }
@@ -3997,7 +4025,8 @@ app.delete('/api/tours/:id', requireAuth, (req, res) => {
     rooms: Array.from(liveRooms.values()).map((r) => serializeRoom(r, true)),
     tours: db.tours,
     guides: db.guides,
-    announcements: db.announcements
+    announcements: db.announcements,
+    sosAlerts: db.sosAlerts
   });
   res.json({ success: true });
 });
@@ -4160,6 +4189,9 @@ app.patch('/api/trips/:code/steps/:stepId', requireAuth, (req, res) => {
   if (!rysCanGuide(principal, code)) {
     return res.status(403).json({ success: false, message: 'Bu kafilenin rotası üzerinde işlem yetkiniz yok.' });
   }
+  if (!findRysTour(code)) {
+    return res.status(404).json({ success: false, error: 'tour-unknown', message: 'Kafile bulunamadı.' });
+  }
   const stepId = req.params.stepId;
   const body = req.body || {};
   const steps = getTourSteps(code);
@@ -4176,9 +4208,13 @@ app.patch('/api/trips/:code/steps/:stepId', requireAuth, (req, res) => {
   if (typeof body.guideNote === 'string') target.guideNote = body.guideNote.trim().slice(0, 1200);
   if (typeof body.prayerSummary === 'string') target.prayerSummary = body.prayerSummary.trim().slice(0, 800);
   if (typeof body.timestamp === 'string') target.timestamp = body.timestamp.trim().slice(0, 80);
-  if (Number.isFinite(Number(body.lat)) && body.lat !== undefined) target.lat = Number(body.lat);
-  if (Number.isFinite(Number(body.lng)) && body.lng !== undefined) target.lng = Number(body.lng);
-  if (Number.isFinite(Number(body.distanceKm)) && body.distanceKm !== undefined) {
+  if (body.lat !== undefined && body.lat !== null && String(body.lat).trim() !== '' && Number.isFinite(Number(body.lat)) && Number(body.lat) >= -90 && Number(body.lat) <= 90) {
+    target.lat = Number(body.lat);
+  }
+  if (body.lng !== undefined && body.lng !== null && String(body.lng).trim() !== '' && Number.isFinite(Number(body.lng)) && Number(body.lng) >= -180 && Number(body.lng) <= 180) {
+    target.lng = Number(body.lng);
+  }
+  if (body.distanceKm !== undefined && body.distanceKm !== null && String(body.distanceKm).trim() !== '' && Number.isFinite(Number(body.distanceKm)) && Number(body.distanceKm) >= 0) {
     target.distanceKm = Number(body.distanceKm);
   }
 
@@ -4211,6 +4247,9 @@ app.delete('/api/trips/:code/steps/:stepId', requireAuth, (req, res) => {
   const principal = rysPrincipal(extractAuthTokenFromReq(req));
   if (!rysCanGuide(principal, code)) {
     return res.status(403).json({ success: false, message: 'Bu kafilenin rotası üzerinde işlem yetkiniz yok.' });
+  }
+  if (!findRysTour(code)) {
+    return res.status(404).json({ success: false, error: 'tour-unknown', message: 'Kafile bulunamadı.' });
   }
   const stepId = req.params.stepId;
   const steps = getTourSteps(code);
